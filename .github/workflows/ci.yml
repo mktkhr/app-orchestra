@@ -1,0 +1,157 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # Mirrors harness/quality/toolchain.mk. Keep the two in sync.
+  GOLANGCI_LINT_VERSION: v2.13.2
+  NODE_VERSION: "24"
+  SETUP_VP_VERSION: v1.19.0
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  harness-protection:
+    name: harness protection
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: protected paths must not change without the "harness" label
+        env:
+          ALLOW: ${{ contains(github.event.pull_request.labels.*.name, 'harness') && '1' || '0' }}
+        run: ORCHESTRA_ALLOW_HARNESS_CHANGE="$ALLOW" sh harness/guard/protected-paths.sh "origin/${{ github.base_ref }}"
+
+  commit-messages:
+    name: commit messages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: every commit subject must be a Conventional Commit
+        run: |
+          fail=0
+          for sha in $(git rev-list "origin/${{ github.base_ref }}..HEAD"); do
+            git log -1 --format=%B "$sha" > /tmp/msg
+            sh harness/githooks/commit-msg /tmp/msg || { echo "  in commit $sha"; fail=1; }
+          done
+          [ "$fail" -eq 0 ]
+
+  services:
+    name: services (fmt, vet, lint, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          # go.work names every module, so adding a service needs no edit here.
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - name: install golangci-lint
+        run: GOBIN="$PWD/.tools/bin" go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}"
+      - run: make services-fmt-check
+      - run: make services-lint
+      - run: make services-test
+      - run: make services-build
+      # One archive, because upload-artifact strips the common ancestor of the
+      # paths it is given - which is services/<name>/bin for a single service
+      # and services/ for several. A tar keeps the layout either way.
+      - name: pack service binaries
+        run: |
+          bins=$(find services -path '*/bin/api' 2>/dev/null || true)
+          if [ -n "$bins" ]; then tar -cf service-bins.tar $bins;
+          else tar -cf service-bins.tar --files-from /dev/null; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: service-bins
+          path: service-bins.tar
+          retention-days: 1
+
+  web:
+    name: web (fmt, lint, typecheck, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: voidzero-dev/setup-vp@v1.19.0
+        with:
+          node-version: "24"
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      - run: make web-fmt-check
+      - run: make web-lint
+      - run: make web-test
+      - run: make web-build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 1
+
+  guards:
+    name: contract + architecture + suppression guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - uses: voidzero-dev/setup-vp@v1.19.0
+        with:
+          node-version: "24"
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      - run: make api-lint
+      - run: make guard
+      - run: make guard-test
+
+  acceptance:
+    name: acceptance (integration, e2e)
+    runs-on: ubuntu-latest
+    needs: [services, web]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - uses: voidzero-dev/setup-vp@v1.19.0
+        with:
+          node-version: "24"
+          cache: true
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: service-bins
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - name: unpack service binaries
+        run: |
+          tar -xf service-bins.tar
+          bins=$(find services -path '*/bin/api' 2>/dev/null || true)
+          [ -z "$bins" ] || chmod +x $bins
+      - run: make acceptance-services
+      - run: make acceptance-web
+      - run: make acceptance-e2e
+      - run: pnpm -C e2e exec playwright install --with-deps chromium
+      - run: make acceptance-browser
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: e2e/test-results
+          retention-days: 3

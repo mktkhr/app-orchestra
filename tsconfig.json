@@ -1,0 +1,11 @@
+{
+  "$comment": "Type checks the repository tooling: Vite+ config, quality policies and guard scripts.",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": ["vite.config.ts", "harness/**/*.ts"],
+  "$excludeComment": "harness/quality/browser has its own tsconfig: those specs need DOM types.",
+  "exclude": ["harness/quality/browser"]
+}

@@ -1,0 +1,392 @@
+# app-orchestra backend lint policy.
+#
+# This file is part of the Repository Harness. It is intentionally strict: the
+# product code must bend to the policy, not the other way around. See
+# harness/quality/README.md before changing anything here.
+version: "2"
+
+run:
+  timeout: 5m
+  # gitroot keeps issue paths comparable across the backend and tooling modules,
+  # which is what the path based exclusions below rely on.
+  relative-path-mode: gitroot
+  tests: true
+  modules-download-mode: readonly
+
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      colors: true
+  show-stats: false
+
+linters:
+  # Enable an explicit list instead of a preset so that upgrading
+  # golangci-lint never silently changes the policy.
+  default: none
+  enable:
+    # --- correctness -------------------------------------------------------
+    - asasalint
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - contextcheck
+    - copyloopvar
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - gosec
+    - govet
+    - ineffassign
+    - loggercheck
+    - makezero
+    - musttag
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - protogetter
+    - reassign
+    - recvcheck
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - unused
+    - wastedassign
+    # --- API and error hygiene --------------------------------------------
+    - err113
+    - errname
+    - iface
+    - unparam
+    - wrapcheck
+    # --- guardrails against agent shortcuts -------------------------------
+    - depguard
+    - forbidigo
+    - gochecknoglobals
+    - gochecknoinits
+    - nolintlint
+    # --- readability / consistency ----------------------------------------
+    - dupword
+    - embeddedstructfieldcheck
+    - funcorder
+    - funlen
+    # 43 of 59 handlers repeated the same five-line auth-and-membership block.
+    # gocognit and friends measure one function; nothing measured two.
+    - dupl
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - godoclint
+    - intrange
+    - iotamixing
+    - lll
+    - mirror
+    - misspell
+    - mnd
+    - modernize
+    - nakedret
+    - nestif
+    - nonamedreturns
+    - perfsprint
+    - prealloc
+    - predeclared
+    - sloglint
+    - unconvert
+    - usestdlibvars
+    - whitespace
+    # --- tests -------------------------------------------------------------
+    - testifylint
+    - testpackage
+    - thelper
+    - tparallel
+    - usetesting
+
+  settings:
+    dupl:
+      # Measured on this repository: 150 (the default) found 2, 100 found 15,
+      # 75 found 33 and 50 found 51. The five-line auth block that repeats 43
+      # times is invisible at the default and 50 starts flagging honest
+      # resemblance, so the line is drawn at 100.
+      threshold: 100
+    depguard:
+      rules:
+        # The domain layer is the centre of the architecture: standard library
+        # only, and nothing that drags I/O concerns into it.
+        domain:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**"
+          deny:
+            - pkg: github.com/mktkhr/app-orchestra/backend/internal/usecase
+              desc: "domain must not depend on usecase (dependencies point inwards)"
+            - pkg: github.com/mktkhr/app-orchestra/backend/internal/adapter
+              desc: "domain must not depend on adapter (dependencies point inwards)"
+            - pkg: github.com/mktkhr/app-orchestra/backend/internal/infra
+              desc: "domain must not depend on infra (dependencies point inwards)"
+            - pkg: net/http
+              desc: "transport concerns belong to the adapter layer"
+            - pkg: encoding/json
+              desc: "serialisation concerns belong to the adapter layer"
+            - pkg: database/sql
+              desc: "persistence concerns belong to the adapter layer"
+            - pkg: log
+              desc: "use the logger injected from the outer layers"
+            - pkg: log/slog
+              desc: "the domain layer must stay free of logging"
+        # The usecase layer may orchestrate the domain, nothing else.
+        usecase:
+          list-mode: lax
+          files:
+            - "**/internal/usecase/**"
+          deny:
+            - pkg: github.com/mktkhr/app-orchestra/backend/internal/adapter
+              desc: "usecase must not depend on adapter"
+            - pkg: github.com/mktkhr/app-orchestra/backend/internal/infra
+              desc: "usecase must not depend on infra"
+            - pkg: net/http
+              desc: "transport concerns belong to the adapter layer"
+            - pkg: encoding/json
+              desc: "serialisation concerns belong to the adapter layer"
+        # Adapters may use the inner layers but never the composition root.
+        adapter:
+          list-mode: lax
+          files:
+            - "**/internal/adapter/**"
+          deny:
+            - pkg: github.com/mktkhr/app-orchestra/backend/internal/infra
+              desc: "adapter must not depend on infra (infra wires adapters, not the reverse)"
+        # Nothing outside of cmd may import the entry point package tree.
+        all:
+          list-mode: lax
+          files:
+            - $all
+          deny:
+            - pkg: math/rand$
+              desc: "use math/rand/v2"
+            - pkg: io/ioutil
+              desc: "deprecated; use io and os"
+            - pkg: unsafe
+              desc: "unsafe is not allowed in product code"
+            - pkg: github.com/pkg/errors
+              desc: "use the standard errors package with %w"
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    exhaustive:
+      default-signifies-exhaustive: true
+      check:
+        - switch
+        - map
+
+    forbidigo:
+      analyze-types: true
+      exclude-godoc-examples: false
+      forbid:
+        - pattern: ^print(ln)?$
+          msg: "use log/slog instead of the builtin print functions"
+        - pattern: ^fmt\.Print.*$
+          msg: "use log/slog instead of writing to stdout directly"
+        - pattern: ^log\.(Print|Fatal|Panic).*$
+          msg: "use log/slog; log.Fatal and log.Panic kill the process from library code"
+        - pattern: ^os\.Exit$
+          msg: "only cmd/ may terminate the process; return an error instead"
+        - pattern: ^panic$
+          msg: "return an error instead of panicking"
+        - pattern: ^time\.Sleep$
+          msg: "sleeping hides race conditions; wait on a channel or a context instead"
+
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+
+    gocognit:
+      min-complexity: 20
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+      ignore-tests: true
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+        - opinionated
+      disabled-checks:
+        - whyNoLint
+
+    gocyclo:
+      min-complexity: 15
+
+    godot:
+      scope: declarations
+      capital: false
+
+    gosec:
+      excludes:
+        - G104 # duplicate of errcheck
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # readability beats struct packing for this codebase
+      settings:
+        shadow:
+          # Non-strict mode: report a shadowed variable only when the outer one is
+          # still live afterwards. Strict mode rejects idiomatic `if err := f(); ...`.
+          strict: false
+
+    lll:
+      line-length: 140
+      tab-width: 1
+
+    mnd:
+      ignored-functions:
+        - os.OpenFile
+        - os.WriteFile
+
+    nakedret:
+      max-func-lines: 0
+
+    nolintlint:
+      # A //nolint directive must name the linter and explain itself, and must
+      # actually suppress something. harness/guard/suppressions.sh additionally
+      # requires every directive to be registered in harness/quality/suppressions.allow.
+      allow-unused: false
+      allow-no-explanation: []
+      require-explanation: true
+      require-specific: true
+
+    revive:
+      severity: error
+      enable-all-rules: false
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: early-return
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+          arguments:
+            - checkPrivateReceivers
+            - disableStutteringCheck
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: use-any
+        - name: var-declaration
+        - name: var-naming
+
+    sloglint:
+      no-mixed-args: true
+      kv-only: false
+      attr-only: true
+      no-global: all
+      context: scope
+      static-msg: true
+      key-naming-case: snake
+
+    staticcheck:
+      checks:
+        - all
+
+    testifylint:
+      enable-all: true
+
+    unparam:
+      check-exported: false
+
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        - .Wrap(
+        - .Wrapf(
+
+  exclusions:
+    generated: strict
+    # The exclusions below are preventive: they are allowed to match nothing.
+    warn-unused: false
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # The process entry point is the one place allowed to end the process.
+      - path: ^services/[^/]+/cmd/
+        linters:
+          - forbidigo
+        text: os.Exit
+      # Harness tooling under harness/ is a set of CLIs: reporting on stdout and
+      # exiting non-zero is their contract, not a shortcut.
+      - path: ^harness/
+        linters:
+          - forbidigo
+        text: (os\.Exit|fmt\.Print)
+      # Tests are allowed to declare their own sentinel errors and long tables.
+      - path: _test\.go$
+        linters:
+          - err113
+          - funlen
+          - gochecknoglobals
+          - goconst
+          - lll
+          - mnd
+          - wrapcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+    - gci
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/mktkhr/app-orchestra
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/mktkhr/app-orchestra)
+      custom-order: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: false
+  new: false

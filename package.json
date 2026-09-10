@@ -1,0 +1,26 @@
+{
+  "name": "@app-orchestra/workspace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare": "sh harness/install-githooks.sh",
+    "postinstall": "cd e2e && pnpm exec playwright install chromium"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "catalog:",
+    "@redocly/cli": "catalog:",
+    "@types/node": "catalog:",
+    "axe-core": "^4.13.0",
+    "openapi-typescript": "catalog:",
+    "oxc-parser": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "packageManager": "pnpm@12.3.4"
+}

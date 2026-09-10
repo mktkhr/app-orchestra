@@ -1,0 +1,21 @@
+# Maximum lines per hand-written source file.
+#
+# A file that must be rewritten whole is a file the agent rewrites whole. On the
+# first long agent run backend/internal/adapter/handler/api.go reached 1,622 lines
+# holding 52 handlers, and was written from scratch eleven times, restored from
+# a copy in /tmp nine times and deleted twice, because every lint failure was
+# answered by regenerating the entire file. One rewrite cost about 20,000 output
+# tokens and three minutes.
+#
+# The limit does not stop a whole-file rewrite. It bounds what one costs, and
+# what a failed one throws away.
+#
+# Generated code is exempt: its size is decided by services/platform/api/openapi.yaml, not by
+# anyone editing it, and it is never hand-edited.
+#
+# Format: 'limit <n>' once, then one 'exclude <glob>' per line. '#' is a comment.
+
+limit 1000
+
+exclude *.gen.go
+exclude schema.d.ts

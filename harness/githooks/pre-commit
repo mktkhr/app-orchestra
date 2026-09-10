@@ -1,0 +1,48 @@
+#!/bin/sh
+# pre-commit: fast checks on staged files only. Target: a few seconds.
+#
+# Part of the Repository Harness. Bypassing it (--no-verify) is not a fix; the
+# same checks run again, in full, on push and in CI. Output is one line per
+# step on success and the diagnostics on failure (harness/quiet.sh).
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+Q="sh harness/quiet.sh"
+
+$Q pre-commit:protected-paths sh harness/guard/protected-paths.sh --staged
+
+staged_go=$(git diff --cached --name-only --diff-filter=ACMR -- '*.go' || true)
+staged_web=$(git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' '*.js' '*.mjs' '*.json' '*.css' '*.md' '*.yml' '*.yaml' || true)
+
+if [ -n "$staged_go" ]; then
+  $Q pre-commit:gofmt sh -c 'unformatted=$(gofmt -l "$@"); [ -z "$unformatted" ] || { echo "unformatted Go files (run make fmt):"; echo "$unformatted"; exit 1; }' sh $staged_go
+
+  # Modules are discovered, not listed: a directory with a go.mod is a module.
+  # Deepest first, because a file under services/<n>/acceptance belongs to that
+  # module and not to services/<n> above it; each file is claimed by the first
+  # module that matches and then leaves the pool.
+  modules=""
+  for dir in services/*/acceptance; do
+    [ -f "$dir/go.mod" ] && modules="$modules $dir"
+  done
+  modules="$modules harness/guard/archcheck"
+  for dir in services/*; do
+    [ -f "$dir/go.mod" ] && modules="$modules $dir"
+  done
+
+  remaining=$staged_go
+  for module in $modules; do
+    pkgs=$(printf '%s\n' $remaining | grep "^$module/" | xargs -r -n1 dirname | sort -u | sed "s#^$module#.#" | tr '\n' ' ' || true)
+    remaining=$(printf '%s\n' $remaining | grep -v "^$module/" || true)
+    if [ -n "$pkgs" ]; then
+      $Q "pre-commit:go-vet:$module" sh -c "cd $module && go vet $pkgs"
+    fi
+  done
+fi
+
+if [ -n "$staged_web" ]; then
+  # vp staged runs `vp check --fix` on the staged web files; any change it would
+  # make is reported as a failure so that what gets committed is what was reviewed.
+  $Q pre-commit:vp-staged pnpm exec vp staged --fail-on-changes
+fi
+
+$Q pre-commit:suppressions sh harness/guard/suppressions.sh

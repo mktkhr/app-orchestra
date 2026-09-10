@@ -1,0 +1,9 @@
+{
+  "$comment": "These specs run Playwright and evaluate callbacks inside the browser, so unlike the rest of harness/quality/ they need DOM types.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": [".", "../../scripts/guard/types"]
+}

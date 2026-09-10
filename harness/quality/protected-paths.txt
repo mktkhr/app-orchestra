@@ -1,0 +1,24 @@
+# Paths that make up the Repository Harness. Changes here are checked by
+# harness/guard/protected-paths.sh and must be explicitly acknowledged.
+# One path (file or directory) per line; '#' starts a comment.
+#
+# harness/ holds the policy, the guards, the git hooks, the Claude Code hook,
+# the output contract and the pinned code generator, so one line covers all of
+# them. Everything else listed here is a file the tooling requires to sit at the
+# repository root.
+harness
+.github
+.claude
+Makefile
+vite.config.ts
+tsconfig.base.json
+tsconfig.json
+go.work
+pnpm-workspace.yaml
+redocly.yaml
+AGENTS.md
+CLAUDE.md
+# Deliberately absent: services/*/api/. Both the contract (openapi.yaml) and the
+# generator configuration beside it belong to whoever writes that service. In a
+# single-service repository the generator config was harness; with one per
+# service it would mean amending this file every time a service is added.

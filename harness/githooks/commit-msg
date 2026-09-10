@@ -1,0 +1,81 @@
+#!/bin/sh
+# commit-msg: the subject line must be a Conventional Commit.
+#
+# Part of the Repository Harness. The accepted types live in
+# harness/quality/commit-types.txt so the rule is one reviewable file, not a regex
+# buried in a hook.
+#
+# Bypassing this (--no-verify) is not a fix: the same check runs in CI.
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+
+file=${1:?commit-msg: the message file is required}
+subject=$(sed -n '1{p;q}' "$file")
+types=$(grep -vE '^[[:space:]]*(#|$)' harness/quality/commit-types.txt | awk '{print $1}' | paste -sd'|' -)
+
+fail() {
+  echo "commit-msg: $1"
+  echo
+  echo "  subject: $subject"
+  echo
+  echo "Expected <type>(<scope>)!: <subject>, for example:"
+  echo "  feat(transactions): record a transaction with line items"
+  echo "  fix(handler): return 404 instead of 500 for a missing group"
+  echo "  refactor(repository): split filestore into one file per entity"
+  echo
+  echo "Types: $(printf '%s' "$types" | tr '|' ' ')"
+  echo "Subject: imperative mood, no trailing period, at most 72 characters."
+  echo
+  echo "Granularity: one coherent change per commit. A commit should be the"
+  echo "  smallest set of files that leaves the tree working - the code, its"
+  echo "  tests and the state files it makes true, together. Not one file at a"
+  echo "  time, and not a day of unrelated work in one go."
+  echo "Body: say why, not what. The diff already says what changed; the body"
+  echo "  is for the reason, the alternative rejected, and anything that will"
+  echo "  be surprising in six months. Wrap at 72 columns. Omit it only when"
+  echo "  the subject genuinely says everything."
+  exit 1
+}
+
+# git writes these itself; they are not authored subjects.
+case $subject in
+  'Merge '*|'Revert "'*|'fixup! '*|'squash! '*) exit 0 ;;
+esac
+
+# An empty or comment-only first line is a missing message, not an exemption.
+case $subject in
+  ''|'#'*) fail 'the commit has no subject' ;;
+esac
+
+printf '%s' "$subject" | grep -qE "^($types)(\([a-z0-9._/-]+\))?!?: .+" || fail 'the subject is not a Conventional Commit'
+
+[ "${#subject}" -le 72 ] || fail "the subject is ${#subject} characters; the limit is 72"
+
+case $subject in
+  *.) fail 'the subject ends with a period' ;;
+esac
+
+# Observed on a long agent run: STATE.md was committed on its own, over and over,
+# while fifty-eight source files sat untracked and 5,665 lines of work stayed
+# outside git. A commit that records the description of work without the work
+# leaves the history claiming something the tree cannot show.
+# Only the project-state files trigger this. A commit that touches the harness,
+# the contract or anything else is not making a claim about the product, so the
+# agent's unfinished work is none of its business.
+staged=$(git diff --cached --name-only --diff-filter=ACMR || true)
+other=$(printf '%s\n' "$staged" | grep -vE '^(STATE|TODO|DECISIONS)\.md$' | grep -c . || true)
+untracked_source=$(git ls-files --others --exclude-standard -- '*.go' '*.ts' '*.tsx' '*.css' || true)
+
+if [ -n "$staged" ] && [ "$other" -eq 0 ] && [ -n "$untracked_source" ]; then
+  count=$(printf '%s\n' "$untracked_source" | grep -c . || true)
+  echo "commit-msg: this commit records only project state, and $count source file(s) are untracked"
+  echo
+  printf '%s\n' "$untracked_source" | head -10 | sed 's/^/  /'
+  [ "$count" -gt 10 ] && echo "  ... and $((count - 10)) more"
+  echo
+  echo "Commit the work together with the state that describes it, so the"
+  echo "history and the tree agree. Use 'git add <path>' for the sources this"
+  echo "change is about. If they are genuinely not ready, leave STATE.md for"
+  echo "the same commit as the code rather than ahead of it."
+  exit 1
+fi

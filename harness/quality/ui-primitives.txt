@@ -1,0 +1,49 @@
+# Where user interface elements come from.
+#
+# MUI is the design system. Use its components directly, at the point of use.
+# Do not wrap them: a wrapper adds a name and removes the theme.
+#
+# The first version of this rule said raw controls may only live under
+# web/src/shared/ui and that modules there must import @mui/material. That
+# is what produced the five components it was meant to prevent. Every one of
+# them satisfied both clauses and shipped no design:
+#
+#   Button.tsx        <Box component="button">     MUI has Button
+#   Select.tsx        wraps MUI Select             MUI has Select
+#   TextField.tsx     wraps MUI OutlinedInput      MUI has TextField
+#   Form.tsx          <Box component="form">       forwards onSubmit, nothing else
+#   PhotoUpload.tsx   <Box component="input">      a bare file input
+#
+# Box is MUI's layout container. It carries no design, so `component="button"`
+# renders a browser-default button that satisfies a rule about imports while
+# defeating its purpose. The rendered buttons had no radius, no shadow and no
+# theme colour.
+#
+# So the rule is now the plain one: these elements come from MUI, everywhere.
+#
+#   element <tag>     this tag may not be written as JSX anywhere
+#   escape  <tag>     nor reached through `component="<tag>"`
+#   except  <path>    a reviewed exception, for something MUI does not have
+#
+# `form` is an element but not an escape on purpose: MUI has no Form component,
+# and `<Box component="form">` is its documented way to render one. Write that
+# where the form is, not in a wrapper.
+
+element button
+element input
+element select
+element textarea
+element dialog
+element fieldset
+element option
+element form
+
+escape button
+escape input
+escape select
+escape textarea
+escape dialog
+escape option
+
+# No exceptions today. Add one only when MUI genuinely has no component for the
+# job, and say which component you looked for.

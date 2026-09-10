@@ -1,0 +1,65 @@
+{
+  "$comment": "Machine readable architecture policy. Enforced by harness/guard/archcheck (Go) and harness/guard/fsd.ts (web). Part of the Repository Harness: see harness/quality/README.md.",
+  "services": {
+    "dir": "services",
+    "modulePrefix": "github.com/mktkhr/app-orchestra/services",
+    "$comment": "One declaration for every service: each directory under dir with a go.mod gets the same layers. Layers are listed innermost first. A package may import its own layer and any layer listed before it, never one listed after it. pkg/app is the composition root and the only public package; cmd only parses the environment and runs it.",
+    "layers": [
+      {
+        "name": "domain",
+        "path": "internal/domain"
+      },
+      {
+        "name": "usecase",
+        "path": "internal/usecase"
+      },
+      {
+        "name": "adapter",
+        "path": "internal/adapter"
+      },
+      {
+        "name": "infra",
+        "path": "internal/infra"
+      },
+      {
+        "name": "app",
+        "path": "pkg/app"
+      },
+      {
+        "name": "cmd",
+        "path": "cmd"
+      }
+    ]
+  },
+  "web": {
+    "dir": "web/src",
+    "$comment": "Feature-Sliced Design. Layers are listed lowest first. A module may import lower layers only, must reach other slices through their public API (index.ts), and must not import a sibling slice of its own layer.",
+    "layers": [
+      {
+        "name": "shared",
+        "sliced": false
+      },
+      {
+        "name": "entities",
+        "sliced": true
+      },
+      {
+        "name": "features",
+        "sliced": true
+      },
+      {
+        "name": "widgets",
+        "sliced": true
+      },
+      {
+        "name": "pages",
+        "sliced": true
+      },
+      {
+        "name": "app",
+        "sliced": false
+      }
+    ],
+    "segments": ["ui", "model", "api", "lib", "config"]
+  }
+}

@@ -1,0 +1,26 @@
+# Minimum statement coverage, per package.
+#
+# Nothing measured coverage for the first run and the result was 2.5% overall:
+# infra/config 100%, usecase 92%, domain 77% - all of them template code that
+# came with the repository - against adapter/handler 1.8% and
+# adapter/repository 2.2%, which is where forty-three hours of work went. Fifty-
+# nine handlers, of which forty-three repeat the same authorisation block, and
+# almost none of them was ever executed by a test.
+#
+# The acceptance suite passes, but it lives in its own module and drives the
+# product over HTTP, so it proves the outside and measures none of the inside.
+#
+# 90 rather than something softer on purpose. This agent does what is asked and
+# nothing that is not: given no target it wrote no tests, and a lower number
+# would simply be met and stopped at. A high bar can be met with shallow tests,
+# which is a real risk - but that is an argument for checking what tests assert,
+# not for asking less of them.
+#
+# Format: '<import path suffix> <minimum percent>'. The longest matching suffix
+# wins, so 'default' is the floor and a specific package can differ.
+
+default                     90
+
+# Wiring with no branches of its own; its behaviour is the acceptance suite's.
+cmd/api                      0
+internal/adapter/openapi      0

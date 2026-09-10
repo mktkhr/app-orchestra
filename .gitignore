@@ -1,0 +1,82 @@
+# Deny by default: a file enters the index only because a rule below names it.
+#
+# The usual shape of this file is the opposite - track everything, list the
+# junk - and it fails in one direction only: whatever nobody thought to list
+# gets committed. Build output, caches, downloaded browsers, an agent's
+# scratch file and a stray secret all arrive the same way, and they arrive
+# silently. Denying first means the failure lands on the other side: something
+# that should be tracked is not, which `git status` shows and a build catches.
+#
+# To add a file type, add it to section 3. To add one file, add it to section 4.
+
+# --- 1. deny everything -----------------------------------------------------
+*
+
+# --- 2. but descend into directories ---------------------------------------
+# Without this, git never looks inside a directory and no rule below can match.
+!*/
+
+# --- 3. directories that never enter the index ------------------------------
+# A file inside an excluded directory cannot be re-included, so these hold
+# regardless of the allow rules that follow.
+/.cache/
+/.tools/
+/.vite/
+/coverage/
+/services/*/bin/
+**/node_modules/
+**/dist/
+**/test-results/
+**/playwright-report/
+**/blob-report/
+**/sessions/
+**/users/
+# Scratch space. The allow rules below are extension based, so a note left
+# in one of these would otherwise be tracked for being Markdown.
+/tmp/
+/scratch/
+/.scratch/
+
+# --- 4. tracked file types --------------------------------------------------
+!*.go
+!*.mod
+!*.sum
+!*.work
+!*.ts
+!*.tsx
+!*.css
+!*.html
+!*.json
+!*.md
+!*.mk
+!*.sh
+!*.txt
+!*.yaml
+!*.yml
+!*.allow
+
+# --- 5. tracked files named individually ------------------------------------
+# No extension, or an extension that is not tracked wholesale.
+!/Makefile
+# Git hooks have no extension by design - git looks them up by name. The
+# directory exists only to hold them, so everything in it is tracked.
+!/harness/githooks/*
+!/.gitignore
+!/.npmrc
+!/.env
+
+# --- 6. exceptions inside the allowed types ---------------------------------
+# Local environment overrides are per-machine; only the committed .env above
+# is shared (it holds NO_COLOR=1, see DECISIONS.md).
+/.env.*
+!/.env.example
+*.tsbuildinfo
+# The brainstorming notes that preceded PRODUCT.md. Kept on disk for reference,
+# not tracked: their decisions are already in PRODUCT.md, in English, and a
+# second copy would go stale.
+/docs/requirements.md
+# Per-developer Claude Code overrides; the shared config is .claude/settings.json.
+/.claude/settings.local.json
+# Compiled Go test binaries (`go test -c`) have no extension and would
+# otherwise fall through section 5 only if named there - listed for clarity.
+*.test

@@ -1,0 +1,7 @@
+# Registry of every static-analysis suppression allowed in this repository.
+# Checked by harness/guard/suppressions.sh.
+# Format: <file> :: <directive> :: <trimmed source line>
+# Prefer fixing the finding. Add an entry only with a reason in the comment above it.
+
+# gosec G304: the file path is the constant policy location, not user input.
+harness/guard/archcheck/main.go :: //nolint :: raw, err := os.ReadFile(file) //nolint:gosec // the policy path is a constant

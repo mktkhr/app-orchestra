@@ -1,0 +1,20 @@
+# Redocly configuration: the OpenAPI lint rules.
+#
+# No `apis` block on purpose: `make api-lint` passes every
+# services/*/api/openapi.yaml on the command line, so adding a service needs
+# no edit here.
+# Part of the Repository Harness (harness/quality/README.md).
+extends:
+  - recommended-strict
+rules:
+  operation-operationId: error
+  operation-summary: error
+  # Off: system endpoints such as /api/health legitimately have no 4XX outcome.
+  operation-4xx-response: off
+  no-unused-components: error
+  no-ambiguous-paths: error
+  path-params-defined: error
+  spec-strict-refs: error
+  info-license: off
+  operation-description: off
+  tag-description: error

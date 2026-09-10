@@ -1,0 +1,30 @@
+# Conventional Commits: the types this repository accepts.
+#
+# The subject line is the one piece of a commit that everyone reads and nobody
+# can fix later. A fixed grammar makes history answerable by tooling - what
+# changed the contract, what was only a refactor - instead of by reading every
+# message.
+#
+# Grammar, enforced by harness/githooks/commit-msg:
+#
+#   <type>(<optional scope>)<optional !>: <subject>
+#
+#   type      one of the list below
+#   scope     lowercase, e.g. (handler), (openapi), (watchdog)
+#   !         marks a breaking change
+#   subject   imperative mood, no trailing period, at most 72 characters
+#
+# A merge, revert, fixup or squash commit is exempt: git writes those.
+#
+# One type per line, '#' starts a comment.
+
+feat        # a capability the product did not have
+fix         # a defect in behaviour that already shipped
+refactor    # behaviour unchanged, structure different
+perf        # behaviour unchanged, faster or lighter
+test        # tests only
+docs        # documentation and project state only
+build       # build, generation, dependencies, toolchain
+ci          # continuous integration configuration
+chore       # nothing above; keep this rare
+revert      # undoing an earlier commit

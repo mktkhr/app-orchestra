@@ -1,0 +1,8 @@
+#!/bin/sh
+# pre-push: the full verification, identical to `make check` and CI.
+#
+# Part of the Repository Harness. If this fails, fix the code; do not push
+# with --no-verify, CI runs the identical checks.
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+exec make check

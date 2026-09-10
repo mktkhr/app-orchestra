@@ -1,0 +1,17 @@
+# Structural duplication in the frontend.
+#
+# golangci-lint's dupl covers the backend. Nothing covered this side, and the
+# ten API clients repeat the same fetch-convert-handle shape between them.
+#
+# Two functions count as duplicates when the sequence of node types in their
+# bodies is identical and long enough. Names, literals and types are ignored, so
+# renaming a variable does not hide a copy - the same reason dupl compares
+# tokens rather than text.
+#
+#   minNodes <n>    how long a shape must be before it is worth reporting
+#   except <path>   a reviewed exception
+#
+# 100 nodes is roughly the backend's 100-token threshold: below it, honest
+# resemblance between small functions starts being reported.
+
+minNodes 60
