@@ -8,12 +8,19 @@ _None._
 
 ## Next
 
-1. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
+1. Two harness gaps the orchestration design exposed
+   (`docs/specs/orchestration.md` section 13):
+   - a guard that fails when a generated file is missing an operation id the
+     spec declares. `guard-generated` only checks freshness, so oapi-codegen
+     silently dropping a `query` operation passes it today;
+   - a Redocly rule that fails a spec where an `enum` carries no
+     `x-enum-labels`, since the model depends on those labels to map Japanese
+     to the enum value.
+2. Build the first vertical slice against `PRODUCT.md` section 5.
+3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
    in the repository already passes under 7; only code generation does not.
    orval was measured as a replacement and rejected - it runs under TypeScript 7
    but emits the wrong shape for this product (`DECISIONS.md`, 2026-09-11).
-2. Design the first vertical slice, then write `PRODUCT.md` properly with
-   acceptance criteria.
 
 ## Done
 
@@ -34,3 +41,5 @@ _None._
 - Upgraded the toolchain: Go 1.27.1, pnpm 12.3.4 and the whole catalog. Found
   that golangci-lint must be rebuilt by the Go it analyses, and tied that to
   `toolchain.mk`. TypeScript 7 was tried and reverted (`DECISIONS.md`).
+- Designed the first vertical slice (`docs/specs/orchestration.md`) and wrote
+  its acceptance criteria into `PRODUCT.md`.

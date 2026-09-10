@@ -43,17 +43,50 @@ Out of scope for the first slice: authentication and authorisation (a stub
 user, with the seat for the permission filter left open in the catalogue),
 workspaces, multi-turn context, and the genre layer between service and API.
 
-## 4. Where the rest is
+## 4. How the slice is built
 
-`docs/requirements.md` holds the functional requirements in Japanese, written
-from the original discussion. It is a draft, not a contract: it predates the
-decisions in section 2 and still lists options that have since been settled.
+`docs/specs/orchestration.md` is the design: the ports, the data flow, the
+platform's contract, the rendering rule, and how a catalogue becomes tool
+definitions. It also records what was deliberately left out and why.
 
 ## 5. Acceptance criteria
 
-None yet. When the first slice is designed, every criterion gets an identifier
-(`AC-<layer>-<n>`) and a test named after it, beside what it exercises, per
+Every criterion has a test named after it, beside what it exercises, per
 `docs/acceptance.md`.
+
+### Platform (`AC-B-*`)
+
+- **AC-B-101** The platform builds a catalogue from two running services and
+  produces one tool definition per operation.
+- **AC-B-102** A question that maps to a list endpoint returns `kind: "result"`
+  with `component: "table"`, having called the service.
+- **AC-B-103** A question that maps to a create endpoint returns `kind: "form"`
+  and does not call the service.
+- **AC-B-104** `POST /api/invoke` executes the create and returns the created
+  entity.
+- **AC-B-105** A question naming a status outside the enum returns `kind: "ask"`
+  with the candidate values and their Japanese labels.
+- **AC-B-106** A question matching no endpoint returns `kind: "none"`.
+
+### Web (`AC-F-*`)
+
+- **AC-F-101** `component: "table"` renders a paginated MUI table.
+- **AC-F-102** `component: "form"` renders inputs derived from the schema, with
+  the model's values prefilled, and a submit button that posts to
+  `/api/invoke`.
+- **AC-F-103** `component: "choice"` renders the options; picking one asks
+  again.
+- **AC-F-104** The empty conversation shows example questions covering a list,
+  a create, and a status the enum does not have.
+- **AC-F-105** A rendered table can be expanded into a full-screen modal
+  showing the same rows.
+- **AC-F-106** Every result shows the service and operation id that produced
+  it, and the arguments the model chose can be expanded.
+
+### End to end (`AC-E-*`)
+
+- **AC-E-101** The built product answers a question end to end against both
+  running dummy services.
 
 ## 6. Definition of done
 
