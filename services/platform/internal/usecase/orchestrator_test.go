@@ -122,22 +122,26 @@ func TestPlanNoneCallsNothingAndReturnsAMessage(t *testing.T) {
 	assert.Zero(t, invoker.calls, "a none decision must not invoke anything")
 }
 
-func TestPlanUnsafeCallIsNotImplemented(t *testing.T) {
+func TestPlanUnsafeCallReturnsAFormWithoutInvoking(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{
 		Kind:        usecase.DecisionCall,
 		Service:     "inventory",
 		OperationID: "CreateInventoryItem",
-		Args:        map[string]any{"name": "widget"},
+		Args:        map[string]any{"name": "widget", "status": "allocated"},
 	}}
 	invoker := &fakeInvoker{}
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker)
 
-	_, err := orchestrator.Plan(t.Context(), "在庫を登録して", nil)
+	result, err := orchestrator.Plan(t.Context(), "在庫を登録して", nil)
 
-	require.Error(t, err)
-	require.ErrorIs(t, err, usecase.ErrNotImplemented)
-	assert.Zero(t, invoker.calls, "an unsafe call must not be invoked before the form path exists")
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindForm, result.Kind)
+	assert.Equal(t, "inventory", result.Service)
+	assert.Equal(t, "CreateInventoryItem", result.OperationID)
+	assert.Equal(t, map[string]any{"name": "widget", "status": "allocated"}, result.Initial)
+	assert.Equal(t, map[string]any{"type": "object"}, result.Schema)
+	assert.Zero(t, invoker.calls, "an unsafe call must never reach the service")
 }
 
 func TestPlanAskDecisionIsNotImplemented(t *testing.T) {

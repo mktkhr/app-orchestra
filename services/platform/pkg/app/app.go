@@ -157,5 +157,11 @@ func defaultPlanFixtures() []PlanFixture {
 			Service:     "attendance",
 			OperationID: "ListAttendanceRecords",
 		},
+		{
+			Query:       "在庫を登録して",
+			Service:     "inventory",
+			OperationID: "CreateInventoryItem",
+			Args:        map[string]any{"name": "デモ棚卸資産", "status": "allocated", "quantity": 1},
+		},
 	}
 }

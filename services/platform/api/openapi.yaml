@@ -70,7 +70,7 @@ paths:
         "501":
           description: >
             The decision reached a path this deployment does not implement
-            yet (an unsafe call, or a disambiguation question).
+            yet (a disambiguation question).
           content:
             application/json:
               schema:

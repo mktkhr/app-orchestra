@@ -445,14 +445,14 @@ guard-coverage acceptance-services` — green.
 **Produces:** `Result` with `kind: "form"`, carrying the request body schema and
 the arguments the planner filled in as initial values.
 
-- [ ] **Step 1** Write the acceptance test: a stub planner returning a call to
+- [x] **Step 1** Write the acceptance test: a stub planner returning a call to
       the inventory _create_ endpoint with `{name: "…", status: "allocated"}`. Assert
       the response is `kind: "form"`, that the schema describes the request body,
       that the initial values are present, **and that the service received no
       request at all**. Run it, expect failure.
-- [ ] **Step 2** Implement: `IsSafe()` false → build the form, do not invoke.
-- [ ] **Step 3** Green on the Go gates.
-- [ ] **Step 4** Commit: `feat(platform): return a form instead of writing`
+- [x] **Step 2** Implement: `IsSafe()` false → build the form, do not invoke.
+- [x] **Step 3** Green on the Go gates.
+- [x] **Step 4** Commit: `feat(platform): return a form instead of writing`
 
 **Satisfies:** AC-B-103.
 

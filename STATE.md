@@ -5,11 +5,11 @@ _Last updated: 2026-09-11_
 ## Summary
 
 **The harness is complete and the first vertical slice is under construction.**
-Seven of the seventeen tasks in `docs/plans/orchestration.md` are done: the
+Eight of the seventeen tasks in `docs/plans/orchestration.md` are done: the
 platform's scaffold, two services that answer real requests, the rendering
 rule, the catalogue the platform builds by asking those services what they
-offer, the tool definitions built from that catalogue, and the safe-call/`none`
-paths of `/api/plan`.
+offer, the tool definitions built from that catalogue, and three of the four
+answers `/api/plan` can give: a rendered result, a form, and no match.
 
 Every gate of `make check` passes except `acceptance-e2e`, which has no test
 files: the end-to-end suite is Task 16. Until then the honest statement is that
@@ -84,11 +84,17 @@ func (o *Orchestrator) Plan(ctx context.Context, query string, answers []Answer)
 the value the plan's sketch shows, matching `domain.Render`'s and
 `Endpoint.IsSafe`'s existing precedent for the same gocritic `hugeParam` reason
 (`DECISIONS.md`, 2026-09-11). `Orchestrator.Plan` handles `DecisionCall` against
-a safe endpoint (invoke, render, return `kind: "result"`) and `DecisionNone`
-(`kind: "none"` with a fixed Japanese message, nothing invoked); a
-`DecisionCall` against an unsafe endpoint or a `DecisionAsk` returns an error
-wrapping `usecase.ErrNotImplemented` - Task 7 and Task 9's seats, left open on
-purpose rather than silently degrading to `none`.
+a safe endpoint (invoke, render, return `kind: "result"`), a `DecisionCall`
+against an unsafe one (build the form from the request body's schema, carry the
+planner's arguments as its initial values and the endpoint as its target, and
+call nothing at all) and `DecisionNone` (`kind: "none"` with a fixed Japanese
+message). Only `DecisionAsk` still returns an error wrapping
+`usecase.ErrNotImplemented` - Task 9's seat, left open on purpose rather than
+silently degrading to `none`.
+
+The form's schema is built by the same `schemaToJSONSchema` the tool
+definitions use, so an enum reaches the browser with both its values and its
+Japanese labels: the frontend can offer 引当済 and post `allocated`.
 
 `internal/adapter/planner/stub` implements `Planner` as an exact-query-string
 table lookup - deterministic, no I/O, the only planner that exists until Task
@@ -105,8 +111,12 @@ case, since `cmd/api` never sets one - falls back to a two-entry demo table
 (`"在庫の一覧を見せて"` and `"勤怠記録の一覧を見せて"`) hard-coded in `pkg/app/app.go`
 (`DECISIONS.md`, 2026-09-11). Verified against inventory and attendance running
 on 8081/8082 with `ORCHESTRA_SERVICES` set: `POST /api/plan` with the first demo
-query returns `kind: "result"`, `component: "table"`; an unrecognised query
-returns `kind: "none"`; `POST /api/invoke` returns 501.
+query returns `kind: "result"`, `component: "table"` and eight rows; a third
+demo query (`"在庫を登録して"`) returns `kind: "form"` with the request body's
+schema, its `required` list, the planner's values as `initial` and the
+endpoint as `target`, while inventory's row count stays at eight - the write
+was described, not performed. An unrecognised query returns `kind: "none"`;
+`POST /api/invoke` returns 501.
 
 ## What does not exist yet
 

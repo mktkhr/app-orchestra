@@ -4,13 +4,13 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 6 are
-   done; Task 7 makes an unsafe call return a form instead of `ErrNotImplemented`.
+1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 7 are
+   done; Task 8 gives `/api/invoke` the execution the form posts to.
 
 ## Next
 
-1. Finish the slice, tasks 7 to 16: the form path (unsafe calls), `/api/invoke`'s
-   real execution (today it always answers 501), `ask_user`, the
+1. Finish the slice, tasks 8 to 16: `/api/invoke`'s real execution (today it
+   always answers 501), `ask_user`, the
    OpenAI-compatible planner and the JSON planner behind the same port, the web
    shell and conversation, the table with its provenance and expansion, the
    detail and form components, the choice component, and the end-to-end test.

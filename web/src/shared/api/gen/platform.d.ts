@@ -226,7 +226,7 @@ export interface operations {
                     readonly "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description The decision reached a path this deployment does not implement yet (an unsafe call, or a disambiguation question). */
+            /** @description The decision reached a path this deployment does not implement yet (a disambiguation question). */
             readonly 501: {
                 headers: {
                     readonly [name: string]: unknown;

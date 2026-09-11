@@ -66,6 +66,37 @@ func TestPostPlanRendersAResult(t *testing.T) {
 	assert.Equal(t, "在庫の一覧を見せて", orchestrator.query)
 }
 
+func TestPostPlanRendersAForm(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:        usecase.ResultKindForm,
+		Service:     "inventory",
+		OperationID: "CreateInventoryItem",
+		Schema:      map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}},
+		Initial:     map[string]any{"name": "widget"},
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫を登録して"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	assert.Equal(t, openapi.DecisionKind("form"), body.Kind)
+	require.NotNil(t, body.Schema)
+	assert.Equal(t, map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}}, *body.Schema)
+	require.NotNil(t, body.Initial)
+	assert.Equal(t, map[string]any{"name": "widget"}, *body.Initial)
+	require.NotNil(t, body.Target)
+	assert.Equal(t, "inventory", body.Target.Service)
+	assert.Equal(t, "CreateInventoryItem", body.Target.OperationId)
+	assert.Nil(t, body.Source)
+	assert.Nil(t, body.Data)
+}
+
 func TestPostPlanRendersNone(t *testing.T) {
 	orchestrator := &fakeOrchestrator{result: usecase.Result{
 		Kind:    usecase.ResultKindNone,

@@ -42,6 +42,37 @@ paths:
                       type: object
 `
 
+// inventorySpecWithCreate is inventorySpec plus an unsafe create operation,
+// used to drive the form path (Task 7): the service must never receive a
+// request for it.
+const inventorySpecWithCreate = inventorySpec + `
+  /api/inventory/items/create:
+    post:
+      operationId: CreateInventoryItem
+      summary: Create a stock item.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - status
+              properties:
+                name:
+                  type: string
+                status:
+                  type: string
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+`
+
 const attendanceSpec = `
 openapi: 3.0.3
 info:
@@ -115,7 +146,13 @@ type planResponse struct {
 		Service     string `json:"service"`
 		OperationID string `json:"operationId"`
 	} `json:"source"`
-	Message string `json:"message"`
+	Message string         `json:"message"`
+	Schema  map[string]any `json:"schema"`
+	Initial map[string]any `json:"initial"`
+	Target  struct {
+		Service     string `json:"service"`
+		OperationID string `json:"operationId"`
+	} `json:"target"`
 }
 
 // postPlan posts query to /api/plan and decodes the response.
@@ -168,6 +205,55 @@ func TestPlanSafeCallReachesTheServiceAndRendersATable(t *testing.T) {
 
 	require.Len(t, inventory.requests, 1, "the inventory fixture must actually have been called")
 	assert.Equal(t, "/api/inventory/items", inventory.requests[0].URL.Path)
+	assert.Empty(t, attendance.requests, "an unrelated service must not be called")
+}
+
+func TestPlanUnsafeCallReturnsAFormAndNeverReachesTheService(t *testing.T) {
+	inventory := newFixtureService(t, inventorySpecWithCreate, "/api/inventory/items/create", `{}`)
+	attendance := newFixtureService(t, attendanceSpec, "/api/attendance/records", `{"items":[]}`)
+
+	handler, err := app.New(app.Config{
+		Services: []app.Service{
+			{Name: "inventory", URL: inventory.server.URL},
+			{Name: "attendance", URL: attendance.server.URL},
+		},
+		PlanFixtures: []app.PlanFixture{
+			{
+				Query:       "在庫を登録して",
+				Service:     "inventory",
+				OperationID: "CreateInventoryItem",
+				Args:        map[string]any{"name": "新しい棚", "status": "allocated"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	status, body := postPlan(t, server, "在庫を登録して")
+
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, "form", body.Kind)
+
+	require.NotNil(t, body.Schema)
+	assert.Equal(t, "object", body.Schema["type"])
+
+	properties, ok := body.Schema["properties"].(map[string]any)
+	require.True(t, ok, "schema must describe the request body's properties")
+	assert.Contains(t, properties, "name")
+	assert.Contains(t, properties, "status")
+
+	required, ok := body.Schema["required"].([]any)
+	require.True(t, ok, "schema must carry the request body's required fields")
+	assert.ElementsMatch(t, []any{"name", "status"}, required)
+
+	assert.Equal(t, map[string]any{"name": "新しい棚", "status": "allocated"}, body.Initial)
+
+	assert.Equal(t, "inventory", body.Target.Service)
+	assert.Equal(t, "CreateInventoryItem", body.Target.OperationID)
+
+	assert.Empty(t, inventory.requests, "an unsafe call must never reach the service")
 	assert.Empty(t, attendance.requests, "an unrelated service must not be called")
 }
 

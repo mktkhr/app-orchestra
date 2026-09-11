@@ -55,8 +55,8 @@ func (h *Plan) PostPlan(
 }
 
 // planErrorResponse maps an Orchestrator.Plan error onto an HTTP status: a
-// path this deployment does not implement yet (Task 7's form path, Task
-// 9's ask path) is reported as 501, everything else as 500.
+// path this deployment does not implement yet (Task 9's ask path) is
+// reported as 501, everything else as 500.
 func planErrorResponse(err error) openapi.PostPlanResponseObject {
 	if errors.Is(err, usecase.ErrNotImplemented) {
 		return openapi.PostPlan501JSONResponse{Message: err.Error()}
@@ -120,6 +120,20 @@ func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
 		if len(result.Args) > 0 {
 			args := result.Args
 			out.Source.Args = &args
+		}
+	}
+
+	if result.Kind == usecase.ResultKindForm {
+		schema := result.Schema
+		out.Schema = &schema
+		out.Target = &openapi.Source{
+			Service:     result.Service,
+			OperationId: result.OperationID,
+		}
+
+		if len(result.Initial) > 0 {
+			initial := result.Initial
+			out.Initial = &initial
 		}
 	}
 

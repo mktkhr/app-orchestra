@@ -12,9 +12,8 @@ import (
 type DecisionKind string
 
 // The three things a Planner can decide (docs/specs/orchestration.md,
-// section 4). Only DecisionCall against a safe endpoint, and DecisionNone,
-// are acted on by Orchestrator today: an unsafe DecisionCall (the form
-// path, Task 7) and DecisionAsk (Task 9) return ErrNotImplemented.
+// section 4). DecisionCall (safe or unsafe) and DecisionNone are acted on
+// by Orchestrator today; DecisionAsk (Task 9) returns ErrNotImplemented.
 const (
 	DecisionCall DecisionKind = "call"
 	DecisionAsk  DecisionKind = "ask"
