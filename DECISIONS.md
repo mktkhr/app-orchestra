@@ -1172,3 +1172,43 @@ about. But the JSON planner fails towards saying nothing rather than towards
 saying something wrong, and a wrong filter is the failure a person cannot
 see. Nothing changes in the code; this is what the two adapters do, recorded
 so the next person choosing between them is choosing with numbers.
+
+## 2026-09-11 guard-exposed-ops also requires title on every drawn property
+
+**Context.** A screen field's label comes from the schema's `title`
+(`web/src/entities/rendering/model/rows.ts`, `columnTitle`); with none, the
+raw English JSON key (`name`, `quantity`) leaks through. Nothing fails when
+`title` is missing - Task 13/14 only turned this up once a UI existed to
+look at it. `x-orchestra-expose: true` now marks exactly the operations a
+person can see, so "every property an exposed operation draws" is a bounded,
+checkable set rather than "every property everywhere."
+
+**Decision.** A third failing condition in `harness/guard/exposed-ops.sh`:
+for every `x-orchestra-expose: true` operation, every property the platform
+actually draws must carry a `title`. "Draws" is read off the platform's own
+rendering code rather than redefined: the response side mirrors
+`domain.FieldsSchema` (`internal/domain/rendering.go`) and
+`specsource/http.convertResponse`'s first-2xx-json-response rule; the
+request body side is an object body's own properties
+(`usecase.mergeRequestBody`); parameters count too, because
+`usecase.inputSchemaFor` merges every parameter into the same form schema
+`ask` degrades to whenever a stuck argument has no enum
+(`usecase/orchestrator.go`, `ask`), for any exposed operation, safe or not -
+verified by reading `ask` before deciding, not assumed.
+
+Bundling switched from a plain `redocly bundle` to `--dereferenced`: a plain
+bundle leaves an internal `$ref` (a parameter's schema pointing at
+`#/components/schemas/ItemStatus`, say) exactly as written, so the guard's
+`jq` would see the `$ref` object itself, never the shared schema's `title`.
+Dereferencing resolves every `$ref` before `jq` reads the file, which is
+also what "a shared schema's `title` covers every `$ref` to it" depends on
+being true.
+
+The two service specs were missing exactly one `title` each:
+`getInventoryItem`'s and `getAttendanceRecord`'s path parameter `id` had no
+`title` (every other property already carried one).
+
+**Consequences.** Verified by breaking each of the guard's three conditions
+in turn (an unrenderable exposed operation, a service with none exposed, a
+drawn property with no `title`) and confirming the guard names exactly what
+is wrong, then restoring. `make check` stays green.

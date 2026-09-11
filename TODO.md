@@ -12,10 +12,6 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## Next
 
-1. `harness/guard/exposed-ops.sh` is the natural place to also require
-   `title` on every property an exposed operation's schema describes, since
-   only an exposed operation's fields are ever shown on screen. Deliberately
-   left for a separate decision (`DECISIONS.md`, 2026-09-11).
 1. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
    in the repository already passes under 7; only code generation does not.
    orval was measured as a replacement and rejected - it runs under TypeScript 7
@@ -23,6 +19,14 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## Done
 
+- `harness/guard/exposed-ops.sh` now also requires `title` on every property
+  an exposed operation actually draws on screen (response fields, an object
+  request body's fields, and parameters - `ask` can degrade any exposed
+  operation into a form built from `inputSchemaFor`, which merges
+  parameters in). Bundling switched to `--dereferenced` so a shared schema's
+  `title` is visible through every `$ref` to it. Added the missing `title`
+  on `getInventoryItem`'s and `getAttendanceRecord`'s `id` path parameter
+  (`DECISIONS.md`, 2026-09-11).
 - Measured the two planners against the same ambiguous questions: the JSON
   planner reaches `ask` where the tool-calling one guesses, and answers
   `none` where it talks itself into a guess (`DECISIONS.md`, 2026-09-11).

@@ -93,6 +93,7 @@ paths:
           description: The record's id.
           schema:
             type: string
+            title: ID
       responses:
         "200":
           description: The requested attendance record.

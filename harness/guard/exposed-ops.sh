@@ -20,9 +20,35 @@
 #     own contract (services/platform/api/openapi.yaml) is exempt from this
 #     one check: it is the orchestrator's own API, never a spec
 #     specsource/http fetches, so x-orchestra-expose has no meaning on it.
+#   - A property a public operation actually draws on screen with no
+#     `title`: the field label a person sees comes from the schema's
+#     `title` (`web/src/entities/rendering/model/rows.ts`, `columnTitle`);
+#     with none, the raw English JSON key (`name`, `quantity`) leaks
+#     through instead, and nothing fails - Task 13/14 only turned this up
+#     once a UI existed to look at (TODO.md, DECISIONS.md 2026-09-11).
+#     "Draws on screen" is read straight off the platform's own rendering
+#     code, not redefined here:
+#       - the response side mirrors domain.FieldsSchema
+#         (internal/domain/rendering.go): a table's row schema (the array
+#         itself, or the sole array-valued property of a wrapper object
+#         such as {items: [...], total: n}), or a detail's response object
+#         itself, using the same first-2xx-json-response rule
+#         specsource/http.convertResponse applies;
+#       - the request body side is a create/update form's fields
+#         (usecase.mergeRequestBody): every property of an object request
+#         body;
+#       - parameters count too: usecase.inputSchemaFor merges every
+#         parameter into the same form schema `ask` degrades to whenever a
+#         stuck argument has no enum to offer (usecase/orchestrator.go,
+#         `ask`), and the form component renders that schema's properties
+#         directly (web/src/entities/rendering/ui/ResultForm.tsx) - a
+#         parameter reaches the screen exactly like a body field does.
+#     A shared schema (ItemStatus, say) only needs its `title` written
+#     once; every $ref to it inherits it, and redocly has already resolved
+#     every $ref by the time this guard reads the bundle.
 #
 # This guard bundles every services/*/api/openapi.yaml with redocly, reads
-# each spec's operations with jq, and fails on either case. A malformed
+# each spec's operations with jq, and fails on any of the three. A malformed
 # extension value (not exactly `true`) is caught by
 # internal/adapter/specsource/http's own unit tests, not here: this guard
 # only sees the bundled document redocly hands back.
@@ -56,6 +82,74 @@ exposed_count_query='
   | length
 '
 
+# missing_titles_query finds every property a public operation draws on
+# screen with no `title` - see the header comment above for what "draws on
+# screen" means and why. It mirrors three pieces of Go exactly, by name, so
+# a future change to any of them is a prompt to re-check this query rather
+# than a silent divergence:
+#
+#   - sole_array_prop / is_object_array / fields_schema mirror
+#     soleArrayProperty / isObjectArray / FieldsSchema
+#     (internal/domain/rendering.go).
+#   - response_schema mirrors convertResponse
+#     (internal/adapter/specsource/http/parse.go): the first 2xx response,
+#     in ascending status order, with an application/json schema.
+#   - the request body branch mirrors mergeRequestBody's object case
+#     (internal/usecase/tools.go): a non-object body is carried as a single
+#     "body" argument there, not expanded into named properties, so it has
+#     no per-property titles to require here either.
+missing_titles_query='
+  def sole_array_prop(s):
+    ([s.properties // {} | to_entries[] | select(.value.type == "array")]) as $arrs
+    | if ($arrs | length) == 1 then $arrs[0].value else null end;
+
+  def is_object_array(s):
+    if s == null then false
+    elif s.type == "array" then (s.items != null and s.items.type == "object")
+    elif s.type == "object" then
+      (sole_array_prop(s)) as $arr
+      | ($arr != null and $arr.items != null and $arr.items.type == "object")
+    else false
+    end;
+
+  def fields_schema(s):
+    if s == null then null
+    elif is_object_array(s) then
+      (if s.type == "array" then s.items else sole_array_prop(s).items end)
+    elif s.type == "object" then s
+    else null
+    end;
+
+  def response_schema(op):
+    ((op.responses // {}) | keys | map(select(test("^2"))) | sort) as $statuses
+    | reduce $statuses[] as $st (null;
+        if . != null then .
+        else (op.responses[$st].content["application/json"].schema // null)
+        end);
+
+  def untitled_names(props):
+    [(props // {}) | to_entries[] | select((.value.title // "") == "") | .key];
+
+  .paths // {}
+  | ..
+  | objects
+  | select(has("operationId"))
+  | select(.["x-orchestra-expose"] == true)
+  | . as $op
+  | (
+      (untitled_names(fields_schema(response_schema($op)).properties)
+        | map({op: $op.operationId, source: "response field", prop: .})),
+      (if (($op.requestBody.content["application/json"].schema.type // "") == "object")
+        then untitled_names($op.requestBody.content["application/json"].schema.properties)
+          | map({op: $op.operationId, source: "request body field", prop: .})
+        else [] end),
+      (untitled_names(($op.parameters // []) | map({(.name): .schema}) | add // {})
+        | map({op: $op.operationId, source: "parameter", prop: .}))
+    )
+  | .[]
+  | "\(.op)\t\(.source)\t\(.prop)"
+'
+
 tmp_json="${TMPDIR:-/tmp}/orchestra-exposed-ops.$$.json"
 bundle_err="${TMPDIR:-/tmp}/orchestra-exposed-ops.$$.err"
 problems="${TMPDIR:-/tmp}/orchestra-exposed-ops.$$.problems"
@@ -77,7 +171,16 @@ for gomod in services/*/go.mod; do
   # run. Hold them back so a passing guard says one line and a failing one
   # says only what is wrong - unless redocly itself fails, which is the one
   # time that output is the diagnostic.
-  if ! pnpm exec redocly bundle "$spec" -o "$tmp_json" --ext json >/dev/null 2>"$bundle_err"; then
+  #
+  # --dereferenced, not a plain bundle: an ordinary bundle only inlines
+  # external documents and leaves an internal $ref (say, a parameter's
+  # schema pointing at #/components/schemas/ItemStatus) exactly as
+  # written, so missing_titles_query would see the $ref object itself,
+  # never the shared schema's title. Dereferencing resolves every $ref in
+  # place before jq ever reads the file, which is also what "a shared
+  # schema's title covers every $ref to it" (see the header comment)
+  # depends on being true.
+  if ! pnpm exec redocly bundle "$spec" -o "$tmp_json" --ext json --dereferenced >/dev/null 2>"$bundle_err"; then
     cat "$bundle_err" >&2
     echo "guard-exposed-ops: could not bundle $spec"
     exit 1
@@ -88,6 +191,11 @@ for gomod in services/*/go.mod; do
     printf '%s: exposed but nothing can render it (no requestBody, no 2xx application/json response): %s\n' \
       "$svc" "$(printf '%s' "$unrenderable" | tr '\n' ' ')" >> "$problems"
   fi
+
+  jq -r "$missing_titles_query" "$tmp_json" | while IFS="$(printf '\t')" read -r op source prop; do
+    [ -n "$op" ] || continue
+    printf '%s: %s %s: %s has no title\n' "$svc" "$op" "$source" "$prop" >> "$problems"
+  done
 
   # The platform's own contract (services/platform/api/openapi.yaml) is the
   # orchestrator's external API - health, plan, invoke - never a spec
@@ -114,8 +222,8 @@ fi
 
 if [ -s "$problems" ]; then
   cat "$problems"
-  echo "guard-exposed-ops: an exposed operation must be renderable, and every service must expose at least one"
+  echo "guard-exposed-ops: an exposed operation must be renderable, every service must expose at least one, and every property it draws on screen needs a title"
   exit 1
 fi
 
-echo "guard-exposed-ops: $services service(s), every x-orchestra-expose: true operation renderable, none empty"
+echo "guard-exposed-ops: $services service(s), every x-orchestra-expose: true operation renderable, none empty, every drawn property titled"
