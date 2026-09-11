@@ -12,10 +12,17 @@ import (
 )
 
 // NewRouter builds the platform's http.Handler: every request is validated
-// against the embedded OpenAPI spec before it reaches si. When staticDir is
-// non-empty, anything that is not "/api/..." is served from that directory,
-// so the built frontend and the API share one origin.
-func NewRouter(si openapi.StrictServerInterface, staticDir string) (http.Handler, error) {
+// against the embedded OpenAPI spec, and resolved to a signed-in user (or
+// refused with 401 - requireSession), before it reaches si. When staticDir
+// is non-empty, anything that is not "/api/..." is served from that
+// directory, unauthenticated, so the built frontend - the sign-in screen
+// included - and the API share one origin (docs/plans/auth.md, Task 2:
+// static files carry no cookie to check, so there is nothing here for
+// requireSession to gate).
+//
+// sessions may be nil - see requireSession's own doc comment for what that
+// builds instead.
+func NewRouter(si openapi.StrictServerInterface, staticDir string, sessions SessionUsers) (http.Handler, error) {
 	spec, err := openapi.GetSpec()
 	if err != nil {
 		return nil, fmt.Errorf("loading embedded OpenAPI spec: %w", err)
@@ -28,6 +35,7 @@ func NewRouter(si openapi.StrictServerInterface, staticDir string) (http.Handler
 
 	apiMux := http.NewServeMux()
 	apiHandler := validator(openapi.HandlerFromMux(openapi.NewStrictHandler(si, nil), apiMux))
+	apiHandler = requireSession(sessions, apiHandler)
 
 	root := http.NewServeMux()
 	root.Handle("/api/", apiHandler)

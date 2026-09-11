@@ -2,6 +2,8 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Result } from "axe-core";
 
+import { signInAsAdmin } from "./session";
+
 /**
  * Accessibility gate.
  *
@@ -32,6 +34,7 @@ for (const scheme of ["light", "dark"] as const) {
 
     for (const target of PUBLIC_PAGES) {
       test(`${target.name} has no accessibility violations`, async ({ page }) => {
+        await signInAsAdmin(page);
         await page.goto(target.path);
         await page.waitForLoadState("networkidle");
 

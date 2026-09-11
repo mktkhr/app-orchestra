@@ -169,7 +169,7 @@ func New(cfg *Config) (http.Handler, error) {
 // spec - stays under test here.
 func build(
 	cfg *Config,
-	newRouter func(openapi.StrictServerInterface, string) (http.Handler, error),
+	newRouter func(openapi.StrictServerInterface, string, httpserver.SessionUsers) (http.Handler, error),
 ) (http.Handler, error) {
 	catalog, err := specsourcehttp.New(toSpecSourceServices(cfg.Services), nil).Fetch(context.Background())
 	if err != nil {
@@ -181,8 +181,9 @@ func build(
 		return nil, err
 	}
 
-	if seedErr := seedAdmin(cfg.DBPath, cfg.AdminPassword); seedErr != nil {
-		return nil, seedErr
+	authenticator, sessions, err := newAuth(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	planner, err := newPlanner(cfg, catalog)
@@ -202,9 +203,15 @@ func build(
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions)
 
-	api := handler.NewAPI(handler.NewHealth(), handler.NewPlan(orchestrator), handler.NewInvoke(orchestrator), workspaceHandler)
+	api := handler.NewAPI(
+		handler.NewHealth(),
+		handler.NewSession(authenticator, sessions),
+		handler.NewPlan(orchestrator),
+		handler.NewInvoke(orchestrator),
+		workspaceHandler,
+	)
 
-	router, err := newRouter(api, cfg.StaticDir)
+	router, err := newRouter(api, cfg.StaticDir, sessions)
 	if err != nil {
 		return nil, fmt.Errorf("building the router: %w", err)
 	}
@@ -311,7 +318,7 @@ func newWorkspaceHandler(dbPath string, catalog domain.Catalog) (*handler.Worksp
 }
 
 // newPermissionStore opens the permissions table in the SQLite file at
-// dbPath, the same file newWorkspaceHandler and seedAdmin open their own
+// dbPath, the same file newWorkspaceHandler and newAuth open their own
 // tables in, so a bad ORCHESTRA_DB_PATH fails startup here too, for the
 // same reason. Only called by build when cfg.DBPath is non-empty -
 // Orchestrator.catalogFor never calls a nil store, because every caller
@@ -327,36 +334,42 @@ func newPermissionStore(dbPath string) (usecase.PermissionStore, error) {
 	return store, nil
 }
 
-// seedAdmin opens the accounts table in the SQLite file at dbPath and
-// seeds the first admin from adminPassword when none exists yet
-// (docs/specs/auth.md, section 3; docs/plans/auth.md, Task 0, Step 3) - so
-// a bad ORCHESTRA_ADMIN_PASSWORD fails startup here, the same reason
-// newWorkspaceHandler's store open and newPlanner's catalogue fetch do,
-// above.
+// newAuth builds what Task 2's session endpoints need - a
+// usecase.Authenticator and a usecase.SessionStore, both backed by the
+// SQLite file at cfg.DBPath - or two nils when cfg.DBPath is empty,
+// mirroring newWorkspaceHandler and newPermissionStore's own pre-auth-test
+// case (see their doc comments): every caller that leaves DBPath empty is
+// this package's own pre-auth tests, which never drive an authenticated
+// request either. httpserver.NewRouter's own requireSession middleware
+// answers that same emptiness by running every request as a fixed admin,
+// instead of refusing any of them - see that function's doc comment.
 //
-// Nothing in this package routes a request to the result yet - Task 2
-// wires the session endpoints that will - so seedAdmin returns only the
-// error: it exists purely for the side effect of having accounts ready
-// once a person can sign in.
-//
-// Skipped when dbPath is empty, mirroring newWorkspaceHandler: every
-// caller that leaves it empty never drives an authenticated request
-// either (this package's own tests, predating auth).
-func seedAdmin(dbPath, adminPassword string) error {
-	if dbPath == "" {
-		return nil
+// Opening the accounts table also seeds the first admin from
+// cfg.AdminPassword when none exists yet (docs/specs/auth.md, section 3;
+// docs/plans/auth.md, Task 0, Step 3) - so a bad ORCHESTRA_ADMIN_PASSWORD
+// fails startup here, the same reason newWorkspaceHandler's store open and
+// newPlanner's catalogue fetch do, above.
+func newAuth(cfg *Config) (usecase.Authenticator, usecase.SessionStore, error) {
+	if cfg.DBPath == "" {
+		return nil, nil, nil
 	}
 
-	users, err := sqlitestore.NewUsers(dbPath)
+	users, err := sqlitestore.NewUsers(cfg.DBPath)
 	if err != nil {
-		return fmt.Errorf("opening the user store: %w", err)
+		return nil, nil, fmt.Errorf("opening the user store: %w", err)
 	}
 
-	if _, err := local.New(context.Background(), users, adminUserName, adminPassword); err != nil {
-		return fmt.Errorf("seeding the admin account: %w", err)
+	authenticator, err := local.New(context.Background(), users, adminUserName, cfg.AdminPassword)
+	if err != nil {
+		return nil, nil, fmt.Errorf("seeding the admin account: %w", err)
 	}
 
-	return nil
+	sessions, err := sqlitestore.NewSessions(cfg.DBPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("opening the session store: %w", err)
+	}
+
+	return authenticator, sessions, nil
 }
 
 // newPlanner selects the platform's usecase.Planner from cfg: the

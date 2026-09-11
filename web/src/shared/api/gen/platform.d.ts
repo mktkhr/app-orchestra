@@ -24,6 +24,34 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/session": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Who is signed in.
+         * @description The signed-in user, or 401 when nobody is.
+         */
+        readonly get: operations["getSession"];
+        readonly put?: never;
+        /**
+         * Sign in.
+         * @description Checks name and password against the platform's accounts (docs/specs/auth.md, A1). On success, sets the session cookie and returns the signed-in user; a wrong name or password is 401, with no cookie set.
+         */
+        readonly post: operations["postSession"];
+        /**
+         * Sign out.
+         * @description Ends the session named by the cookie, if any, and clears it. Signing out when nobody is signed in is not an error.
+         */
+        readonly delete: operations["deleteSession"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/plan": {
         readonly parameters: {
             readonly query?: never;
@@ -157,6 +185,26 @@ export type components = {
         readonly Health: {
             /** @description Always "ok" once the process is serving traffic. */
             readonly status: string;
+        };
+        /**
+         * @description What an account may do beyond the permissions it holds individually (docs/specs/auth.md, A5). An admin may read every account and set anybody's permissions; that is the whole of what the role buys.
+         * @enum {string}
+         */
+        readonly Role: "admin" | "user";
+        /** @description A signed-in account (docs/specs/auth.md, section 3). */
+        readonly User: {
+            /** @description The account's id, assigned by the platform. */
+            readonly id: string;
+            /** @description What the person types to sign in. */
+            readonly name: string;
+            readonly role: components["schemas"]["Role"];
+        };
+        /** @description A name and password to check against the platform's accounts. */
+        readonly SignInRequest: {
+            /** @description The account's name. */
+            readonly name: string;
+            /** @description The account's password, in the clear over the wire (HTTPS carries it) - never stored this way (docs/specs/auth.md, section 3). */
+            readonly password: string;
         };
         /** @description The user's answer to a previous `kind: ask` response, resubmitted alongside the original query. */
         readonly Answer: {
@@ -349,6 +397,86 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["Health"];
                 };
+            };
+        };
+    };
+    readonly getSession: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description The signed-in user. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description Nobody is signed in. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly postSession: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SignInRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Signed in. The response carries the session cookie. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description The name or password is wrong. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly deleteSession: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Signed out. The session cookie is cleared. */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -6,21 +6,54 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 )
 
+// userContextKey and sessionTokenContextKey are unexported so nothing
+// outside this package can read or forge either value directly - only
+// through WithUser/currentUser and WithSessionToken/sessionToken.
+type (
+	userContextKey         struct{}
+	sessionTokenContextKey struct{}
+)
+
+// WithUser returns ctx carrying user: the shape
+// internal/infra/httpserver's session middleware sets, once it has
+// resolved a request's cookie, so currentUser can read it back out
+// (docs/plans/auth.md, Task 2, Step 3). user is nil for a request that
+// carried no valid session - only GetSession ever sees that case, since
+// the middleware answers 401 itself for every other route before a
+// handler runs.
+func WithUser(ctx context.Context, user *domain.User) context.Context {
+	return context.WithValue(ctx, userContextKey{}, user)
+}
+
 // currentUser resolves the person a request is running as, and is the one
 // call site every handler in this package goes through to get one
-// (Plan.PostPlan, Invoke.PostInvoke, Workspace's own methods) - so wiring
-// docs/plans/auth.md Task 2's session middleware in later is a change to
-// this function's body alone, the same way pkg/app's own seedAdmin doc
-// comment describes for its own seat.
-//
-// Task 2 has not landed yet: nothing between the browser and this
-// function resolves a session cookie into a user, so every request today
-// runs as a fixed admin. That stub lives nowhere but here - every usecase
-// this package calls (Orchestrator.Plan, Orchestrator.Invoke, every
-// Workspaces method) takes the user as an argument
-// (docs/specs/auth.md, section 5, A6), so once Task 2's middleware starts
-// setting a real user on ctx, changing this one function to read it back
-// out is the whole of the change every call site needs.
-func currentUser(_ context.Context) *domain.User {
-	return &domain.User{ID: "stub-admin", Role: domain.RoleAdmin}
+// (Plan.PostPlan, Invoke.PostInvoke, Workspace's own methods, and
+// Session.GetSession). Reads back whatever internal/infra/httpserver's
+// session middleware put on ctx with WithUser - nil when nobody is signed
+// in.
+func currentUser(ctx context.Context) *domain.User {
+	if user, ok := ctx.Value(userContextKey{}).(*domain.User); ok {
+		return user
+	}
+
+	return nil
+}
+
+// WithSessionToken returns ctx carrying the raw value of the request's
+// session cookie, or "" when it carried none. Set by the same session
+// middleware that calls WithUser, so DeleteSession can end the exact
+// session a browser named without parsing a cookie itself - the
+// middleware already did, once, for every request.
+func WithSessionToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, sessionTokenContextKey{}, token)
+}
+
+// sessionToken reads back what WithSessionToken set, or "" when nothing
+// did.
+func sessionToken(ctx context.Context) string {
+	if token, ok := ctx.Value(sessionTokenContextKey{}).(string); ok {
+		return token
+	}
+
+	return ""
 }

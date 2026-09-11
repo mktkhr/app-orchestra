@@ -13,6 +13,11 @@ security: []
 tags:
   - name: system
     description: Service health and readiness endpoints.
+  - name: session
+    description: >
+      Signing a person in and out. A session is an opaque token in an
+      HttpOnly, SameSite cookie (docs/specs/auth.md, A2); every other path
+      answers 401 without one.
   - name: plan
     description: >
       Turns a question into a decision: call an endpoint, ask the user to
@@ -44,6 +49,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /api/session:
+    post:
+      operationId: postSession
+      summary: Sign in.
+      description: >
+        Checks name and password against the platform's accounts
+        (docs/specs/auth.md, A1). On success, sets the session cookie and
+        returns the signed-in user; a wrong name or password is 401, with
+        no cookie set.
+      tags:
+        - session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignInRequest"
+      responses:
+        "200":
+          description: Signed in. The response carries the session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: The name or password is wrong.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: getSession
+      summary: Who is signed in.
+      description: The signed-in user, or 401 when nobody is.
+      tags:
+        - session
+      responses:
+        "200":
+          description: The signed-in user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Nobody is signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteSession
+      summary: Sign out.
+      description: >
+        Ends the session named by the cookie, if any, and clears it.
+        Signing out when nobody is signed in is not an error.
+      tags:
+        - session
+      responses:
+        "204":
+          description: Signed out. The session cookie is cleared.
   /api/plan:
     post:
       operationId: postPlan
@@ -285,6 +350,46 @@ components:
         status:
           type: string
           description: Always "ok" once the process is serving traffic.
+    Role:
+      type: string
+      description: >
+        What an account may do beyond the permissions it holds
+        individually (docs/specs/auth.md, A5). An admin may read every
+        account and set anybody's permissions; that is the whole of what
+        the role buys.
+      enum: [admin, user]
+      x-enum-labels:
+        admin: 管理者
+        user: 一般
+    User:
+      type: object
+      description: A signed-in account (docs/specs/auth.md, section 3).
+      required:
+        - id
+        - name
+        - role
+      properties:
+        id:
+          type: string
+          description: The account's id, assigned by the platform.
+        name:
+          type: string
+          description: What the person types to sign in.
+        role:
+          $ref: "#/components/schemas/Role"
+    SignInRequest:
+      type: object
+      description: A name and password to check against the platform's accounts.
+      required:
+        - name
+        - password
+      properties:
+        name:
+          type: string
+          description: The account's name.
+        password:
+          type: string
+          description: The account's password, in the clear over the wire (HTTPS carries it) - never stored this way (docs/specs/auth.md, section 3).
     Answer:
       type: object
       description: >

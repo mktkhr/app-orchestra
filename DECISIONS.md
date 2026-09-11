@@ -1394,3 +1394,56 @@ the test suite too: `services/platform/bin/api` started twice against the
 same `ORCHESTRA_DB_PATH` file with two different `ORCHESTRA_ADMIN_PASSWORD`
 values on the two runs - the admin seeded on the first run is still there,
 under its first password, on the second.
+
+## 2026-09-12 Signing in (docs/plans/auth.md, Task 2)
+
+**Context.** Every route but `GET /api/health` must answer 401 without a
+session (docs/specs/auth.md, A2, section 6). That includes every route
+`harness/quality/browser/a11y.spec.ts` and `layout.spec.ts` measure: both
+navigate to `"/"` before a11y-scanning or layout-measuring whatever loaded
+there. `"/"` itself is the built frontend, served unauthenticated by
+`internal/infra/httpserver.NewRouter`'s static-file branch (only `/api/...`
+goes through the new session middleware) - so the HTML, JS and CSS still
+load fine. But the chat screen that HTML boots - the only screen there is;
+Task 4 has not built a sign-in screen yet - immediately calls the platform's
+API to do anything useful, and every one of those calls now comes back 401.
+Nothing in `docs/plans/auth.md` Task 2's own scope fixes that: Task 4 builds
+the sign-in screen, Task 6 repairs `e2e/`. Left alone, these two harness
+gates would measure a screen stuck in a 401 error state instead of the real
+one.
+
+Three ways to keep them measuring something real:
+
+1. Have the gates sign in first, so the screen they measure is the same one
+   a signed-in person already sees today.
+2. Exempt static file serving from auth - already true; it does not help,
+   since the 401s come from the API calls the loaded page makes, not from
+   loading the page itself.
+3. Something else - skip the gates for Task 2, or gate a different path.
+
+**Decision.** Option 1. Added `harness/quality/browser/session.ts`,
+exporting `signInAsAdmin(page)`: one `page.request.post("/api/session")`
+with `{ name: "admin", password: "guard-admin-password" }` - the same
+account `playwright.config.ts`'s own `ORCHESTRA_ADMIN_PASSWORD` already
+seeds for these gates - using Playwright's `APIRequestContext`, which
+shares its cookie jar with `page`, so the session cookie the response sets
+is already attached to every following `page.goto`. Both spec files call it
+as the first line of every test, before their own `page.goto("/")`. This is
+a harness change (`harness/quality/browser/` is a protected path) -
+committed with `ORCHESTRA_ALLOW_HARNESS_CHANGE=1`, flagged in Task 2's own
+report rather than made silently.
+
+Not option 3: skipping a required gate is a weaker answer than keeping it
+green on the real screen, and `a11y.spec.ts`'s `PUBLIC_PAGES` already names
+`"/"` `"sign in"` - forward-looking to Task 4, where a visitor with no
+session really does reach a sign-in screen there. Task 2 does not build
+that screen, so signing in first is the only way to keep measuring the
+screen that exists today rather than one that does not yet.
+
+**Consequences.** Temporary, and said so in `session.ts`'s own doc comment:
+once Task 4 lands a sign-in screen at `"/"`, this call stops being "sign in
+before measuring the public page" and starts being "measure a screen nobody
+without a session sees" - the opposite of what `PUBLIC_PAGES` asks for.
+Whoever lands Task 4 should remove `signInAsAdmin` from both files'
+`page.goto("/")` calls, and add a deliberately-named gate for any
+signed-in-only screen that still needs one.

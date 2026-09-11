@@ -1,22 +1,25 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-11_
+_Last updated: 2026-09-12_
 
 ## Summary
 
 **Both vertical slices are done, and the third (authentication and
-authorisation) has its first task.** `docs/plans/orchestration.md`'s
+authorisation) has its first three tasks.** `docs/plans/orchestration.md`'s
 seventeen tasks, `docs/plans/workspaces.md`'s eight, and now
-`docs/plans/auth.md`'s Task 0: accounts, sessions and permissions exist in
-the same SQLite file workspaces already use. `internal/adapter/auth/local`
-checks a name and password against argon2id-hashed rows and seeds the first
-admin, once, from `ORCHESTRA_ADMIN_PASSWORD` (now required at startup, the
-same as `ORCHESTRA_DB_PATH`); `internal/adapter/repository/sqlite`'s
-`Sessions` and `Permissions` types implement `usecase.SessionStore` and
-`usecase.PermissionStore`. Nothing routes to any of this over HTTP yet -
-that is `docs/plans/auth.md` Task 2 onward - so a person cannot sign in yet
-and the catalogue does not filter by permission yet (Task 1). `make check`
-is fully green.
+`docs/plans/auth.md`'s Tasks 0-2: accounts, sessions and permissions exist
+in the same SQLite file workspaces already use; the catalogue narrows to
+the signed-in person before the planner or `/api/invoke` ever sees it; and
+a person can sign in. `internal/adapter/auth/local` checks a name and
+password against argon2id-hashed rows and seeds the first admin, once, from
+`ORCHESTRA_ADMIN_PASSWORD` (required at startup, the same as
+`ORCHESTRA_DB_PATH`). `POST`/`GET`/`DELETE /api/session` sign a person in
+(HttpOnly, `SameSite=Lax`, `Secure` cookie carrying an opaque token), report
+who is signed in, and sign them out; a session-resolving middleware in
+`internal/infra/httpserver` answers every other route 401 without one,
+except `GET /api/health`. `make check` is green outside `e2e/`:
+`acceptance-e2e` and `acceptance-browser` are red on 401 as of Task 2, on
+purpose - Task 6's own job to fix, per `docs/plans/auth.md`.
 
 An answer worth keeping can be kept. A result in the chat can be saved to a
 workspace as a panel - service, operation id, arguments, component, title -
@@ -512,17 +515,71 @@ suite: `services/platform/bin/api` started twice against the same
 `ORCHESTRA_DB_PATH` file with different `ORCHESTRA_ADMIN_PASSWORD` values
 the second time - the admin seeded on the first run is still the one whose
 original password authenticates. No HTTP in this task (`docs/plans/auth.md`
-says so explicitly); a person still cannot sign in, and the catalogue does
-not yet filter by permission (`docs/plans/auth.md` Task 1).
+says so explicitly); a person still cannot sign in, and the catalogue did
+not yet filter by permission (Task 1, done since).
+
+**`docs/plans/auth.md` Task 1 (the catalogue narrows to a person).**
+`domain.Catalog.For(permissions []Permission) Catalog` keeps only the
+endpoints a permission names; `Orchestrator.Plan` and `Orchestrator.Invoke`
+now take `*domain.User` as a parameter, not a context value (A6: a
+parameter cannot be forgotten, because the code does not compile without
+it), and build the catalogue an admin's request sees as the whole one
+(`PermissionStore` is never read for them) or a user's as `For` their own
+permissions. `Invoke` refuses an operation the person may not call with the
+exact same error `usecase.ErrEndpointNotFound` an unknown one gets, so a
+403 never tells a caller a thing exists that they cannot reach. `stubOwner`
+is gone from `usecase/workspaces.go` and the `TODO(auth)` comment from
+`Orchestrator.Invoke` - both seats Task 0 left open are filled. Until Task
+2, every request still resolves to one fixed admin
+(`adapter/handler/user.go`'s `currentUser` stub), so this was invisible
+from the outside; `make check` stayed green throughout.
+
+**`docs/plans/auth.md` Task 2 (signing in).** `POST /api/session`
+(`{name, password}` -> the user, 401 on a wrong one, no cookie set either
+way), `GET /api/session` (the signed-in user, or 401) and
+`DELETE /api/session` (idempotent sign-out) in
+`internal/adapter/handler/session.go`. The session cookie
+(`orchestra_session`) is `HttpOnly`, `SameSite=Lax` and `Secure` - the last
+one unconditionally, not only over TLS: gosec's `G124` (part of the fixed
+lint policy) requires a literal `true`, and every place this runs today -
+`make check`'s own `httptest` servers, `harness/quality/browser`'s
+Playwright guard, a developer at `localhost` - is a loopback address
+`net/http/cookiejar` and every real browser already treat as a secure
+origin regardless of scheme; reaching the platform at a non-loopback,
+non-HTTPS address (a Tailscale IP) is real but nothing signs in through a
+browser yet (Task 4), and TLS termination is the answer for when that
+changes, not a weaker cookie (`DECISIONS.md`, 2026-09-12). A new middleware,
+`internal/infra/httpserver.requireSession`, resolves the cookie into a user
+once per request (`adapter/handler.WithUser`/`currentUser`, replacing the
+Task 0/1 fixed-admin stub's body only, as that stub's own doc comment
+promised) and answers 401 for everything but `GET /api/health` and
+`/api/session` itself without one. `NewRouter` and `pkg/app.build` thread a
+`usecase.SessionStore` (nil-able) through; nil - what every `Config` with an
+empty `DBPath` builds, `pkg/app`'s own pre-auth tests included - makes every
+request run as a fixed stub admin and refuses nothing, matching the
+pre-Task-2 behaviour exactly, the same convention `newWorkspaceHandler` and
+`newPermissionStore` already use for an empty `DBPath`. Static files
+(`ORCHESTRA_STATIC_DIR`) stay outside the authenticated `/api/` mux
+entirely, unauthenticated by construction, not by a special case - so a
+sign-in screen (Task 4) will still load. `harness/quality/browser/a11y.spec.ts`
+and `layout.spec.ts` sign in first now (`harness/quality/browser/session.ts`,
+new; a harness change, committed with `ORCHESTRA_ALLOW_HARNESS_CHANGE=1`,
+see `DECISIONS.md`) - the screen they measure at `"/"` is still the chat
+screen (Task 4 has not built a sign-in one), and every one of its own API
+calls would otherwise 401. `e2e/src/*.test.ts`, `e2e/browser/*.spec.ts`
+and `services/platform/acceptance`'s pre-existing suites all now 401 on
+every protected route without a session; `services/platform/acceptance`
+(part of `make check`) was updated to sign in first (`workspace_test.go`)
+and gained its own `session_test.go` proving AC-A-101, AC-A-102 and
+AC-A-107 at the platform level - `e2e/` was deliberately left red, Task 6's
+job per the plan.
 
 ## What does not exist yet
 
-Everything past `docs/plans/auth.md` Task 0: the catalogue does not narrow
-to a person yet (Task 1, the `TODO(auth)` in `Orchestrator.Invoke` and
-`stubOwner` in `usecase/workspaces.go` are both still there), there is no
-`/api/session` or `/api/users` (Tasks 2-3), and no sign-in screen or admin
-screen (Tasks 4-5) - a person cannot sign in, and every workspace is still
-read and written as `stubOwner`.
+Past `docs/plans/auth.md` Task 2: there is no `/api/users` yet (Task 3), no
+sign-in screen or admin screen (Tasks 4-5) - a person can sign in over HTTP
+but has nowhere in the UI to do it - and `e2e/`'s suites do not sign in yet
+(Task 6, expected red until then).
 
 Nothing from `docs/plans/orchestration.md`'s first vertical slice or
 `docs/plans/workspaces.md`'s second; all twenty-five tasks between them are

@@ -5,22 +5,23 @@ _Keep three lists. Move items, do not duplicate them._
 ## In progress
 
 `docs/plans/auth.md`, the third subproject. Task 0 (accounts, sessions and
-permissions exist) is done and `make check` is fully green. Next:
+permissions exist), Task 1 (the catalogue narrows to a person) and Task 2
+(signing in) are done. Non-`e2e`/browser gates are green; `acceptance-e2e`
+and `acceptance-browser` are red as of Task 2 - expected, and Task 6's job
+to fix (see below). Next:
 
-- **Task 1** - the catalogue narrows to a person: `Catalog.For(permissions)`,
-  thread `*domain.User` through `Orchestrator.Plan`/`Invoke` and every
-  `Workspaces` method, delete the `TODO(auth)` comment and `stubOwner`.
-- **Task 2** - `POST`/`DELETE`/`GET /api/session` and the middleware that
-  resolves a cookie into a user for every other route.
 - **Task 3** - the admin's endpoints (`GET /api/users`,
   `GET`/`PUT /api/users/{id}/permissions`).
-- **Task 4** - the sign-in screen.
+- **Task 4** - the sign-in screen. Also: remove `signInAsAdmin` from
+  `harness/quality/browser/a11y.spec.ts` and `layout.spec.ts`'s own
+  `page.goto("/")` calls once this lands a real one there (`DECISIONS.md`,
+  2026-09-12).
 - **Task 5** - the admin's screen (grant/revoke per service).
-- **Task 6** - end to end: the existing e2e suites sign in, and the full
-  journey (grant a service, ask a question, see it answered from only that
+- **Task 6** - end to end: the existing e2e suites sign in (`e2e/src/*.test.ts`,
+  `e2e/browser/*.spec.ts` are currently red on 401, on purpose - Task 2's
+  own plan says fixing them is this task's job), and the full journey
+  (grant a service, ask a question, see it answered from only that
   service) gets a test.
-
-Task 1 needs only Task 0 and touches no HTTP, so it can run beside Task 2.
 
 ## Next
 

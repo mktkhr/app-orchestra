@@ -3,12 +3,13 @@ package handler
 import "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
 
 // API composes every tag's handler into the one type
-// openapi.StrictServerInterface needs. Each tag (system, plan, invoke,
-// workspaces) is its own small type, tested on its own; API only wires
-// them together by embedding, so a method added to any of them is
+// openapi.StrictServerInterface needs. Each tag (system, session, plan,
+// invoke, workspaces) is its own small type, tested on its own; API only
+// wires them together by embedding, so a method added to any of them is
 // promoted here without this file changing.
 type API struct {
 	*Health
+	*Session
 	*Plan
 	*Invoke
 	*Workspace
@@ -16,7 +17,7 @@ type API struct {
 
 var _ openapi.StrictServerInterface = API{}
 
-// NewAPI builds the composed strict server interface from its four parts.
-func NewAPI(health *Health, plan *Plan, invoke *Invoke, workspace *Workspace) API {
-	return API{Health: health, Plan: plan, Invoke: invoke, Workspace: workspace}
+// NewAPI builds the composed strict server interface from its five parts.
+func NewAPI(health *Health, session *Session, plan *Plan, invoke *Invoke, workspace *Workspace) API {
+	return API{Health: health, Session: session, Plan: plan, Invoke: invoke, Workspace: workspace}
 }

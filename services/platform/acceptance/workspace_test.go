@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,12 @@ import (
 
 	"github.com/mktkhr/app-orchestra/services/platform/pkg/app"
 )
+
+// adminPassword is the password newWorkspaceTestApp seeds the first admin
+// with - fixed, since every test in this file signs in as that one
+// account (docs/plans/auth.md, Task 2: every route but /api/health and
+// /api/session is 401 without a session, workspaces included).
+const adminPassword = "correct horse battery staple"
 
 // workspaceSummaryOnWire is the wire shape of one WorkspaceSummary.
 type workspaceSummaryOnWire struct {
@@ -59,12 +66,26 @@ func newWorkspaceTestApp(t *testing.T, withUnexposed bool) *httptest.Server {
 	handler, err := app.New(&app.Config{
 		Services:      []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 		DBPath:        dbPath,
-		AdminPassword: "correct horse battery staple",
+		AdminPassword: adminPassword,
 	})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
+
+	// Every workspace route is 401 without a session (docs/plans/auth.md,
+	// Task 2). A cookie jar, set once here, is what carries the one this
+	// sign-in sets to every later request doJSON makes against server -
+	// httptest.Server.Client() otherwise builds a client with no jar at
+	// all, so a cookie an earlier response set would simply be dropped.
+	server.Client().Jar, err = cookiejar.New(nil)
+	require.NoError(t, err)
+
+	status := doJSON(t, server, http.MethodPost, "/api/session", map[string]any{
+		"name":     "admin",
+		"password": adminPassword,
+	}, nil)
+	require.Equal(t, http.StatusOK, status)
 
 	return server
 }
