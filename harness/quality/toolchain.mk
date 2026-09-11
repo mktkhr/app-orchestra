@@ -9,3 +9,5 @@ PNPM_VERSION          := 12.3.4
 # Code generators (pinned in harness/gen/go.mod and pnpm-workspace.yaml; listed for reference).
 OAPI_CODEGEN_VERSION  := v2.8.0
 OPENAPI_TS_VERSION    := 7.13.0
+# Hot reload for `make dev-platform`.
+AIR_VERSION           := v1.67.4

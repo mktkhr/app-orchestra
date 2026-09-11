@@ -15,6 +15,7 @@ include $(ROOT)/harness/quality/toolchain.mk
 
 TOOLS_BIN     := $(ROOT)/.tools/bin
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
+AIR           := $(TOOLS_BIN)/air
 GOLANGCI_CFG  := $(ROOT)/harness/quality/go/golangci.yml
 VP            := pnpm exec vp
 Q             := sh $(ROOT)/harness/quiet.sh
@@ -43,7 +44,7 @@ GENERATED := $(addsuffix /internal/adapter/openapi/openapi.gen.go,$(SERVICE_DIRS
 .PHONY: help setup tools hooks clean services \
         generate generate-services generate-web api-lint guard-generated guard-generated-ops \
         fmt fmt-check lint test build check acceptance guard \
-        services-fmt services-fmt-check services-lint services-test services-build service-run \
+        services-fmt services-fmt-check services-lint services-test services-build service-run dev-platform \
         web-fmt web-fmt-check web-lint web-typecheck web-test web-build web-dev \
         guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication guard-coverage guard-browser guard-a11y guard-layout guard-protected guard-test \
         acceptance-services acceptance-web acceptance-e2e acceptance-browser browsers
@@ -59,7 +60,7 @@ setup: tools hooks ## One-time setup: pinned tools, dependencies, git hooks, Pla
 	$(Q) setup:pnpm-install pnpm install --frozen-lockfile
 	$(MAKE) browsers
 
-tools: $(GOLANGCI_LINT) ## Install pinned Go tooling into .tools/bin
+tools: $(GOLANGCI_LINT) $(AIR) ## Install pinned Go tooling into .tools/bin
 
 # Rebuilt whenever toolchain.mk changes: golangci-lint links the standard
 # library of the Go that built it, so a binary built by an older Go reports
@@ -68,6 +69,12 @@ $(GOLANGCI_LINT): $(ROOT)/harness/quality/toolchain.mk
 	mkdir -p $(TOOLS_BIN)
 	rm -f $@
 	$(Q) tools:golangci-lint env GOBIN=$(TOOLS_BIN) GOTOOLCHAIN=go$(GO_VERSION) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+# Rebuilt whenever toolchain.mk changes, same reasoning as golangci-lint above.
+$(AIR): $(ROOT)/harness/quality/toolchain.mk
+	mkdir -p $(TOOLS_BIN)
+	rm -f $@
+	$(Q) tools:air env GOBIN=$(TOOLS_BIN) GOTOOLCHAIN=go$(GO_VERSION) go install github.com/air-verse/air@$(AIR_VERSION)
 
 hooks: ## Point git at the repository owned hooks (harness/githooks/)
 	$(Q) hooks sh harness/install-githooks.sh
@@ -151,6 +158,9 @@ service-run: services-build ## Run one service locally: make service-run SERVICE
 	@:
 	if [ -z "$(SERVICE)" ]; then echo "service-run: set SERVICE=<name>; known: $(SERVICES)"; exit 1; fi
 	./services/$(SERVICE)/bin/api
+
+dev-platform: $(AIR) ## Run the platform under air, rebuilding on change (ORCHESTRA_PORT, default 8080; not quiet: it is a server)
+	cd services/platform && $(AIR) -c .air.toml
 
 ## ---------------------------------------------------------------- web
 web-fmt: ## oxfmt in place (all workspace packages)

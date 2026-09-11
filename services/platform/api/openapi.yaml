@@ -1,0 +1,43 @@
+openapi: 3.0.3
+info:
+  title: Platform API
+  version: 0.1.0
+  description: >
+    Orchestration platform. This is the scaffold: only a health check exists
+    today. See docs/specs/orchestration.md for what comes next.
+servers:
+  - url: /
+    description: The platform serves its own API and static assets from one origin.
+security: []
+tags:
+  - name: system
+    description: Service health and readiness endpoints.
+paths:
+  /api/health:
+    get:
+      operationId: getHealth
+      summary: Report whether the platform is up.
+      description: >
+        Always returns 200 with a fixed body once the process is serving
+        traffic. Used by the dev server, the browser guards and infrastructure
+        health checks.
+      tags:
+        - system
+      responses:
+        "200":
+          description: The platform is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      description: The platform's health status.
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: Always "ok" once the process is serving traffic.

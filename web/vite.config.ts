@@ -17,6 +17,9 @@ export default defineConfig({
     },
   },
   server: {
+    // Bind every interface so the dev server is reachable over Tailscale, not
+    // only from this machine.
+    host: true,
     proxy: {
       "/api": {
         target: "http://localhost:8080",

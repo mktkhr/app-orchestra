@@ -1,0 +1,24 @@
+# air configuration for `make dev-platform`.
+#
+# Not part of the Repository Harness: this only wires up a developer
+# convenience (hot reload) around the same `go build` / `cmd/api` that
+# `make services-build` already produces. Build output goes to ./tmp, which
+# is git-ignored (see /services/*/tmp/ in the root .gitignore).
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/api ./cmd/api"
+entrypoint = ["./tmp/api"]
+include_ext = ["go"]
+exclude_dir = ["tmp", "bin", "acceptance"]
+delay = 200
+stop_on_error = true
+send_interrupt = true
+kill_delay = "2s"
+
+[log]
+time = false
+
+[misc]
+clean_on_exit = true
