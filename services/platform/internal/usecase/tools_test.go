@@ -244,6 +244,106 @@ func TestToolsForNonObjectRequestBodyBecomesBodyProperty(t *testing.T) {
 	body, ok := properties["body"].(map[string]any)
 	require.True(t, ok, "a non-object request body must be carried as a single body property")
 	assert.Equal(t, domain.SchemaTypeString, body["type"])
+	assert.Equal(t, []string{"body"}, tools[0].InputSchema["required"],
+		"a scalar/array body is itself required, since it carries the whole payload")
+}
+
+func TestToolsForObjectRequestBodyMergesRequiredFieldsIntoTopLevel(t *testing.T) {
+	c := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "CreateInventoryItem",
+			Method:      "POST",
+			Path:        "/api/inventory/items",
+			Summary:     "在庫アイテムを作成する",
+			RequestBody: &domain.Schema{
+				Type:     domain.SchemaTypeObject,
+				Required: []string{"name", "status", "quantity"},
+				Properties: map[string]domain.Schema{
+					"name":     {Type: domain.SchemaTypeString},
+					"status":   {Type: domain.SchemaTypeString},
+					"quantity": {Type: domain.SchemaTypeInteger},
+					"note":     {Type: domain.SchemaTypeString},
+				},
+			},
+		},
+	}}
+
+	tools := usecase.ToolsFor(c)
+
+	require.Len(t, tools, 2)
+	assert.Equal(t, []string{"name", "quantity", "status"}, tools[0].InputSchema["required"],
+		"the request body's required fields must reach the top-level required list, deduped and sorted")
+}
+
+func TestToolsForMergesParameterAndRequestBodyRequiredNamesDeduped(t *testing.T) {
+	c := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "UpdateInventoryItem",
+			Method:      "PUT",
+			Path:        "/api/inventory/items/{id}",
+			Summary:     "在庫アイテムを更新する",
+			Parameters: []domain.Parameter{
+				{Name: "id", In: "path", Required: true, Schema: domain.Schema{Type: domain.SchemaTypeString}},
+			},
+			RequestBody: &domain.Schema{
+				Type:     domain.SchemaTypeObject,
+				Required: []string{"id", "status"},
+				Properties: map[string]domain.Schema{
+					"id":     {Type: domain.SchemaTypeString},
+					"status": {Type: domain.SchemaTypeString},
+				},
+			},
+		},
+	}}
+
+	tools := usecase.ToolsFor(c)
+
+	require.Len(t, tools, 2)
+	assert.Equal(t, []string{"id", "status"}, tools[0].InputSchema["required"],
+		"a name required by both the parameters and the body must appear only once")
+}
+
+func TestSchemaToJSONSchemaIncludesRequiredForObjectProperties(t *testing.T) {
+	c := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "CreateInventoryBatch",
+			Method:      "POST",
+			Path:        "/api/inventory/batch",
+			Summary:     "在庫アイテムをまとめて作成する",
+			RequestBody: &domain.Schema{
+				Type: domain.SchemaTypeObject,
+				Properties: map[string]domain.Schema{
+					"items": {
+						Type: domain.SchemaTypeArray,
+						Items: &domain.Schema{
+							Type:     domain.SchemaTypeObject,
+							Required: []string{"name"},
+							Properties: map[string]domain.Schema{
+								"name": {Type: domain.SchemaTypeString},
+							},
+						},
+					},
+				},
+			},
+		},
+	}}
+
+	tools := usecase.ToolsFor(c)
+
+	require.Len(t, tools, 2)
+	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
+	require.True(t, ok)
+
+	items, ok := properties["items"].(map[string]any)
+	require.True(t, ok)
+
+	itemSchema, ok := items["items"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, []string{"name"}, itemSchema["required"],
+		"a nested object schema's Required must reach the JSON Schema as required")
 }
 
 func TestToolsForNestedObjectAndArraySchemasRecurse(t *testing.T) {

@@ -554,6 +554,16 @@ as `tools`, asks for one call, and maps the returned tool call onto `Decision`.
 `ask_user` maps to `DecisionKind("ask")`; any other name maps to a call; no tool
 call at all maps to `none`.
 
+`Tool.Strict` is a request, not a wire format: this adapter is the place that
+shapes the schema into whatever the endpoint's strict mode demands. OpenAI's
+strict function calling requires `additionalProperties: false` on every object
+and every property listed in `required`, which an optional query filter such as
+`status` is not - so the adapter must add `additionalProperties: false` and
+either widen an optional property's type to include `null` or drop strictness
+for that tool. Decide which when the transport is written and record it in
+`DECISIONS.md`; `ToolsFor` deliberately emits the plain schema, because the JSON
+planner in Task 11 needs it unshaped.
+
 - [ ] **Step 1** Write the transport test against `httptest`: assert the request
       body carries the model, the messages and the tools, and that a canned
       response decodes. Run it, expect failure.

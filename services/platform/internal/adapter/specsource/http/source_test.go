@@ -73,6 +73,7 @@ func TestFetchBuildsCatalogueFromFixtureSpec(t *testing.T) {
 
 	require.NotNil(t, list.Response)
 	assert.Equal(t, domain.SchemaTypeObject, list.Response.Type)
+	assert.Equal(t, []string{"items"}, list.Response.Required)
 	items, ok := list.Response.Properties["items"]
 	require.True(t, ok)
 	assert.Equal(t, domain.SchemaTypeArray, items.Type)
@@ -100,6 +101,8 @@ func TestFetchConvertsRequestBody(t *testing.T) {
 	assert.Equal(t, domain.SchemaTypeObject, create.RequestBody.Type)
 	_, hasStatus := create.RequestBody.Properties["status"]
 	assert.True(t, hasStatus)
+	assert.Equal(t, []string{"name", "status"}, create.RequestBody.Required,
+		"the request body's required properties must be carried, in spec order")
 }
 
 func TestFetchConvertsUIHint(t *testing.T) {

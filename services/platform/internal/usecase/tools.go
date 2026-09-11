@@ -143,7 +143,7 @@ func inputSchemaFor(e *domain.Endpoint) map[string]any {
 	}
 
 	if e.RequestBody != nil {
-		mergeRequestBody(properties, e.RequestBody)
+		required = append(required, mergeRequestBody(properties, e.RequestBody)...)
 	}
 
 	schema := map[string]any{
@@ -152,28 +152,50 @@ func inputSchemaFor(e *domain.Endpoint) map[string]any {
 	}
 
 	if len(required) > 0 {
-		sort.Strings(required)
-		schema[keyRequired] = required
+		schema[keyRequired] = dedupeSorted(required)
 	}
 
 	return schema
 }
 
 // mergeRequestBody adds a request body's fields to an endpoint's input
-// schema. An object body contributes its properties directly, since they
-// are exactly the arguments a create/update call takes; anything else
-// (a bare scalar or array body) is carried as a single "body" property so
-// no information is silently dropped.
-func mergeRequestBody(properties map[string]any, body *domain.Schema) {
+// schema, and returns the names that must additionally be marked required.
+// An object body contributes its properties directly, since they are
+// exactly the arguments a create/update call takes, along with its own
+// required property names; anything else (a bare scalar or array body) is
+// carried as a single "body" property so no information is silently
+// dropped, and "body" itself is required, since the body as a whole is.
+func mergeRequestBody(properties map[string]any, body *domain.Schema) []string {
 	if body.Type == domain.SchemaTypeObject {
 		for name, prop := range body.Properties {
 			properties[name] = schemaToJSONSchema(&prop)
 		}
 
-		return
+		return body.Required
 	}
 
 	properties["body"] = schemaToJSONSchema(body)
+
+	return []string{"body"}
+}
+
+// dedupeSorted sorts names and removes duplicates, so the input schema's
+// required list is deterministic regardless of how many sources (an
+// endpoint's own parameters, a merged request body) contributed to it.
+func dedupeSorted(names []string) []string {
+	sorted := make([]string, len(names))
+	copy(sorted, names)
+	sort.Strings(sorted)
+
+	out := sorted[:0:0]
+
+	for i, name := range sorted {
+		if i == 0 || name != sorted[i-1] {
+			out = append(out, name)
+		}
+	}
+
+	return out
 }
 
 // schemaToJSONSchema converts a domain.Schema into a JSON Schema map. An
@@ -212,6 +234,12 @@ func schemaToJSONSchema(s *domain.Schema) map[string]any {
 		}
 
 		m[keyProperties] = props
+	}
+
+	if s.Type == domain.SchemaTypeObject && len(s.Required) > 0 {
+		required := make([]string, len(s.Required))
+		copy(required, s.Required)
+		m[keyRequired] = required
 	}
 
 	return m

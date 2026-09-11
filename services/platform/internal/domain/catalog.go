@@ -45,6 +45,9 @@ type Schema struct {
 	Items *Schema
 	// Properties describes the fields when Type is "object".
 	Properties map[string]Schema
+	// Required lists the names of the properties that must be present
+	// when Type is "object".
+	Required []string
 	// Enum lists the allowed values for a string schema.
 	Enum []string
 	// EnumLabels maps each Enum value to its Japanese label.

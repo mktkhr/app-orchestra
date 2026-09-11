@@ -196,6 +196,10 @@ func convertSchema(ref *openapi3.SchemaRef) *domain.Schema {
 		out.Properties = convertProperties(s.Properties)
 	}
 
+	if len(s.Required) > 0 {
+		out.Required = append([]string(nil), s.Required...)
+	}
+
 	return out
 }
 
