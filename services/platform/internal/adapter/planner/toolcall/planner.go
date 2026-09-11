@@ -20,13 +20,19 @@ import (
 // toolNameAskUser mirrors usecase.AskUserTool's Name.
 const toolNameAskUser = "ask_user"
 
+// toolNameListCapabilities mirrors usecase.ListCapabilitiesTool's Name.
+const toolNameListCapabilities = "list_capabilities"
+
 // systemPrompt tells the model how to use the catalogue's tools: call one,
-// or ask_user when an enum value is ambiguous, or answer nothing when
-// nothing fits.
+// call list_capabilities when the question is about what can be done at
+// all, call ask_user when an enum value is ambiguous, or answer nothing
+// when nothing fits.
 const systemPrompt = "You are given a set of tools, one per operation of a catalogue of " +
-	"internal services, plus ask_user. Read the user's question, in Japanese, and either call " +
-	"exactly one tool that answers it, call ask_user when a parameter's value cannot be told from " +
-	"the question, or call no tool at all when nothing in the catalogue answers the question."
+	"internal services, plus ask_user and list_capabilities. Read the user's question, in " +
+	"Japanese, and either call exactly one tool that answers it, call list_capabilities when the " +
+	"question asks what can be done rather than asking to do something, call ask_user when a " +
+	"parameter's value cannot be told from the question, or call no tool at all when nothing in " +
+	"the catalogue answers the question."
 
 // ErrUnknownOperation is returned when the model calls a tool whose name
 // is not any endpoint in the catalogue this Planner was built with - a
@@ -81,6 +87,10 @@ func (p *Planner) Plan(
 		return decisionFromAskUser(args), nil
 	}
 
+	if call.Name == toolNameListCapabilities {
+		return decisionFromListCapabilities(args), nil
+	}
+
 	return p.decisionFromCall(call.Name, args)
 }
 
@@ -117,10 +127,25 @@ func decisionFromAskUser(args map[string]any) usecase.Decision {
 	}
 }
 
+// decisionFromListCapabilities builds a DecisionListCapabilities from
+// list_capabilities' arguments. Unlike decisionFromCall, this never
+// touches resolveService: list_capabilities is not an operation id in the
+// catalogue (usecase.ListCapabilitiesTool, like ask_user, is not derived
+// from any service's spec), so looking it up there would only ever fail.
+// Its optional "service" argument is carried as Decision.Service - not the
+// service an operation belongs to, but the filter list_capabilities itself
+// takes (see Decision's own doc comment, internal/usecase/planner.go).
+func decisionFromListCapabilities(args map[string]any) usecase.Decision {
+	return usecase.Decision{
+		Kind:    usecase.DecisionListCapabilities,
+		Service: stringArg(args, "service"),
+	}
+}
+
 // decisionFromCall builds a DecisionCall for any tool name other than
-// ask_user: name is the operation id (usecase.ToolsFor names a tool after
-// nothing else), so the service it belongs to must be looked up in the
-// catalogue.
+// ask_user or list_capabilities: name is the operation id (usecase.ToolsFor
+// names a tool after nothing else), so the service it belongs to must be
+// looked up in the catalogue.
 func (p *Planner) decisionFromCall(name string, args map[string]any) (usecase.Decision, error) {
 	service, ok := resolveService(p.catalog, name)
 	if !ok {

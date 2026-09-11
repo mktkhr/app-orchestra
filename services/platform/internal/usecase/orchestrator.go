@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sort"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 )
@@ -87,8 +88,13 @@ var ErrNotImplemented = errors.New("not implemented")
 var ErrUnknownParam = errors.New("parameter not found in catalogue")
 
 // messageNoEndpoint is the message a ResultKindNone result carries: the
-// planner itself decided nothing in the catalogue fits the question.
-const messageNoEndpoint = "その質問に答えられる操作が見つかりませんでした。"
+// planner itself decided nothing in the catalogue fits the question. It
+// points at list_capabilities rather than leaving the person at a dead
+// end - a genuinely unanswerable question ("今日の天気は？") still lands
+// here, but so does someone who simply does not know what to ask yet, and
+// the second case has an answer the first does not.
+const messageNoEndpoint = "その質問に答えられる操作が見つかりませんでした。" +
+	"「何ができるの？」と聞くと、できることの一覧を確認できます。"
 
 // formSchema builds the JSON Schema a form result carries: the endpoint's
 // request body, converted with the same schemaToJSONSchema (tools.go) used
@@ -139,6 +145,8 @@ func (o *Orchestrator) Plan(ctx context.Context, query string, answers []Answer)
 		return o.call(ctx, &decision)
 	case DecisionAsk:
 		return o.ask(&decision)
+	case DecisionListCapabilities:
+		return o.listCapabilities(&decision), nil
 	default:
 		return Result{}, fmt.Errorf("%w: unknown decision kind %q", ErrNotImplemented, decision.Kind)
 	}
@@ -285,6 +293,88 @@ func optionsFromSchema(s *domain.Schema) []domain.Option {
 	}
 
 	return options
+}
+
+// capabilitiesFields is the fixed Fields a list_capabilities result
+// carries: it does not vary with the catalogue or the filter, unlike
+// fieldsFor's output for a real endpoint, since list_capabilities' own
+// output shape (service/operation/summary) is fixed by this function, not
+// by any service's spec.
+func capabilitiesFields() map[string]any {
+	return map[string]any{
+		paramService: map[string]any{keyType: domain.SchemaTypeString, keyTitle: "サービス"},
+		"operation":  map[string]any{keyType: domain.SchemaTypeString, keyTitle: "操作"},
+		"summary":    map[string]any{keyType: domain.SchemaTypeString, keyTitle: "できること"},
+	}
+}
+
+// listCapabilities answers a DecisionListCapabilities entirely from the
+// catalogue already held in memory: it never calls the invoker, unlike
+// call and Invoke, because "what can this do" is a question about the
+// catalogue itself, not about any one service's data. Building the answer
+// from the catalogue - rather than asking the model to describe what it
+// can do in prose - is deliberate: a model's own description of the
+// catalogue can drift from it (naming an operation that does not exist, or
+// missing one that does), and D8 (docs/specs/orchestration.md) already
+// settled that a result comes from the API, not from the model's telling.
+//
+// decision is a pointer for the same gocritic hugeParam reason as call's
+// and ask's (Decision is 112 bytes; see harness/quality/go/golangci.yml).
+func (o *Orchestrator) listCapabilities(decision *Decision) Result {
+	return Result{
+		Kind:        ResultKindResult,
+		Service:     "platform",
+		OperationID: "list_capabilities",
+		Component:   domain.ComponentTable,
+		Data:        map[string]any{"items": capabilitiesItems(o.catalog, decision.Service)},
+		Fields:      capabilitiesFields(),
+	}
+}
+
+// capabilitiesItems lists the catalogue's endpoints as
+// service/operation/summary rows, filtered to service when it is
+// non-empty. A service name that matches no endpoint (a typo, or a
+// service that does not exist) yields an empty list rather than falling
+// back to the unfiltered catalogue: the person asked about one service by
+// name, and an empty table is an honest answer to "this service has
+// nothing exposed", where silently substituting every service's
+// operations would misrepresent what was asked.
+//
+// The result is sorted by (service, operationId) rather than left in
+// catalogue order, so that "which order do the rows come out in" does not
+// depend on how the operator listed services in configuration, or on
+// anything iterating a map - domain.Catalog.Endpoints is itself already a
+// plain slice, not a map, but sorting here makes the guarantee explicit
+// and independent of how the catalogue happens to have been built.
+func capabilitiesItems(c domain.Catalog, service string) []map[string]any {
+	endpoints := make([]domain.Endpoint, 0, len(c.Endpoints))
+
+	for i := range c.Endpoints {
+		if service == "" || c.Endpoints[i].Service == service {
+			endpoints = append(endpoints, c.Endpoints[i])
+		}
+	}
+
+	sort.Slice(endpoints, func(i, j int) bool {
+		if endpoints[i].Service != endpoints[j].Service {
+			return endpoints[i].Service < endpoints[j].Service
+		}
+
+		return endpoints[i].OperationID < endpoints[j].OperationID
+	})
+
+	items := make([]map[string]any, len(endpoints))
+
+	for i := range endpoints {
+		e := &endpoints[i]
+		items[i] = map[string]any{
+			paramService: e.Service,
+			"operation":  e.OperationID,
+			"summary":    e.Summary,
+		}
+	}
+
+	return items
 }
 
 // invokeAndRender calls endpoint with args and renders the decoded

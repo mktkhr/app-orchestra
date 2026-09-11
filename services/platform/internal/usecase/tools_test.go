@@ -70,11 +70,11 @@ func TestToolsForBuildsOneToolPerCatalogueEndpointPlusAskUser(t *testing.T) {
 	tools := usecase.ToolsFor(c)
 
 	// 3 catalogue endpoints (ListInventoryItems, CreateInventoryItem,
-	// GetInventoryItem) + ask_user. The catalogue never carries an
-	// unexposed operation such as GetSpec in the first place — that filter
-	// runs once, in specsource/http.parseSpec, before ToolsFor ever sees
-	// c.Endpoints.
-	require.Len(t, tools, 4)
+	// GetInventoryItem) + ask_user + list_capabilities. The catalogue never
+	// carries an unexposed operation such as GetSpec in the first place -
+	// that filter runs once, in specsource/http.parseSpec, before ToolsFor
+	// ever sees c.Endpoints.
+	require.Len(t, tools, 5)
 
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -91,6 +91,42 @@ func TestToolsForBuildsOneToolPerCatalogueEndpointPlusAskUser(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, askUserCount, "ask_user must be present exactly once")
+}
+
+func TestToolsForIncludesListCapabilitiesExactlyOnce(t *testing.T) {
+	c := catalogWithEnumParameter()
+
+	tools := usecase.ToolsFor(c)
+
+	// 3 catalogue endpoints + ask_user + list_capabilities.
+	require.Len(t, tools, 5)
+
+	count := 0
+	for _, tool := range tools {
+		if tool.Name == "list_capabilities" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "list_capabilities must be present exactly once")
+}
+
+func TestListCapabilitiesToolHasAnOptionalServiceParameterThatIsNotAnEnum(t *testing.T) {
+	tool := usecase.ListCapabilitiesTool()
+
+	assert.Equal(t, "list_capabilities", tool.Name)
+	assert.NotEmpty(t, tool.Description)
+
+	properties, ok := tool.InputSchema["properties"].(map[string]any)
+	require.True(t, ok, "input schema must carry a properties map")
+
+	serviceProp, ok := properties["service"].(map[string]any)
+	require.True(t, ok, "input schema must carry the service property")
+	assert.Equal(t, "string", serviceProp["type"])
+	_, hasEnum := serviceProp["enum"]
+	assert.False(t, hasEnum, "service must not be an enum: service names are added dynamically")
+
+	_, hasRequired := tool.InputSchema["required"]
+	assert.False(t, hasRequired, "service is the tool's only property and it is optional, so there is no required list at all")
 }
 
 func TestToolsForDoesNotExcludeAnEndpointWithNoResponseAndNoRequestBody(t *testing.T) {
@@ -113,10 +149,11 @@ func TestToolsForDoesNotExcludeAnEndpointWithNoResponseAndNoRequestBody(t *testi
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 2)
-	names := []string{tools[0].Name, tools[1].Name}
+	require.Len(t, tools, 3)
+	names := []string{tools[0].Name, tools[1].Name, tools[2].Name}
 	assert.Contains(t, names, "PingInventory")
 	assert.Contains(t, names, "ask_user")
+	assert.Contains(t, names, "list_capabilities")
 }
 
 func TestToolsForSetsStrictTrue(t *testing.T) {
@@ -272,7 +309,7 @@ func TestToolsForNonObjectRequestBodyBecomesBodyProperty(t *testing.T) {
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 2)
+	require.Len(t, tools, 3)
 	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
 	require.True(t, ok)
 
@@ -306,7 +343,7 @@ func TestToolsForObjectRequestBodyMergesRequiredFieldsIntoTopLevel(t *testing.T)
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 2)
+	require.Len(t, tools, 3)
 	assert.Equal(t, []string{"name", "quantity", "status"}, tools[0].InputSchema["required"],
 		"the request body's required fields must reach the top-level required list, deduped and sorted")
 }
@@ -335,7 +372,7 @@ func TestToolsForMergesParameterAndRequestBodyRequiredNamesDeduped(t *testing.T)
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 2)
+	require.Len(t, tools, 3)
 	assert.Equal(t, []string{"id", "status"}, tools[0].InputSchema["required"],
 		"a name required by both the parameters and the body must appear only once")
 }
@@ -368,7 +405,7 @@ func TestSchemaToJSONSchemaIncludesRequiredForObjectProperties(t *testing.T) {
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 2)
+	require.Len(t, tools, 3)
 	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
 	require.True(t, ok)
 
@@ -410,7 +447,7 @@ func TestToolsForNestedObjectAndArraySchemasRecurse(t *testing.T) {
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 2)
+	require.Len(t, tools, 3)
 	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
 	require.True(t, ok)
 

@@ -241,6 +241,150 @@ func TestPlanNoneCallsNothingAndReturnsAMessage(t *testing.T) {
 	assert.Zero(t, invoker.calls, "a none decision must not invoke anything")
 }
 
+func TestPlanNoneMessageMentionsListCapabilities(t *testing.T) {
+	// The "none" message must not be a dead end (docs/specs/orchestration.md,
+	// D14): it points at asking what the platform can do.
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "今日の天気は？", nil)
+
+	require.NoError(t, err)
+	assert.Contains(t, result.Message, "何ができるの")
+}
+
+// twoServiceCatalog carries endpoints from two services, so tests can tell
+// an unfiltered listing apart from a service-filtered one.
+func twoServiceCatalog() domain.Catalog {
+	return domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "ListInventoryItems",
+			Method:      domain.MethodGet,
+			Path:        "/api/inventory/items",
+			Summary:     "在庫アイテムの一覧を返す",
+			Response:    &domain.Schema{Type: domain.SchemaTypeArray, Items: &domain.Schema{Type: domain.SchemaTypeObject}},
+		},
+		{
+			Service:     "inventory",
+			OperationID: "CreateInventoryItem",
+			Method:      "POST",
+			Path:        "/api/inventory/items",
+			Summary:     "在庫アイテムを作成する",
+			RequestBody: &domain.Schema{Type: domain.SchemaTypeObject},
+		},
+		{
+			Service:     "attendance",
+			OperationID: "ListAttendanceRecords",
+			Method:      domain.MethodGet,
+			Path:        "/api/attendance/records",
+			Summary:     "勤怠記録の一覧を返す",
+			Response:    &domain.Schema{Type: domain.SchemaTypeArray, Items: &domain.Schema{Type: domain.SchemaTypeObject}},
+		},
+	}}
+}
+
+func TestPlanListCapabilitiesWithNoServiceListsEveryEndpoint(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionListCapabilities}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(twoServiceCatalog(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "何ができるの？", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindResult, result.Kind)
+	assert.Equal(t, domain.ComponentTable, result.Component)
+	assert.Equal(t, "platform", result.Service)
+	assert.Equal(t, "list_capabilities", result.OperationID)
+
+	data, ok := result.Data.(map[string]any)
+	require.True(t, ok, "data must be a map carrying an items array")
+
+	items, ok := data["items"].([]map[string]any)
+	require.True(t, ok, "data.items must be a []map[string]any so rowsFromData can render it")
+	require.Len(t, items, 3)
+
+	assert.Equal(t, []map[string]any{
+		{"service": "attendance", "operation": "ListAttendanceRecords", "summary": "勤怠記録の一覧を返す"},
+		{"service": "inventory", "operation": "CreateInventoryItem", "summary": "在庫アイテムを作成する"},
+		{"service": "inventory", "operation": "ListInventoryItems", "summary": "在庫アイテムの一覧を返す"},
+	}, items, "rows must be sorted deterministically by (service, operation)")
+
+	require.NotNil(t, result.Fields)
+
+	serviceField, ok := result.Fields["service"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "サービス", serviceField["title"])
+
+	operationField, ok := result.Fields["operation"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "操作", operationField["title"])
+
+	summaryField, ok := result.Fields["summary"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "できること", summaryField["title"])
+
+	assert.Zero(t, invoker.calls, "list_capabilities must never call a service")
+}
+
+func TestPlanListCapabilitiesWithServiceFiltersToThatService(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:    usecase.DecisionListCapabilities,
+		Service: "inventory",
+	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(twoServiceCatalog(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "在庫について、どういう操作ができる？", nil)
+
+	require.NoError(t, err)
+
+	data, ok := result.Data.(map[string]any)
+	require.True(t, ok)
+
+	items, ok := data["items"].([]map[string]any)
+	require.True(t, ok)
+
+	for _, item := range items {
+		assert.Equal(t, "inventory", item["service"])
+	}
+
+	assert.Equal(t, []map[string]any{
+		{"service": "inventory", "operation": "CreateInventoryItem", "summary": "在庫アイテムを作成する"},
+		{"service": "inventory", "operation": "ListInventoryItems", "summary": "在庫アイテムの一覧を返す"},
+	}, items)
+
+	assert.Zero(t, invoker.calls)
+}
+
+func TestPlanListCapabilitiesWithUnknownServiceReturnsNoRows(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:    usecase.DecisionListCapabilities,
+		Service: "no-such-service",
+	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(twoServiceCatalog(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "存在しないサービスについて何ができる？", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindResult, result.Kind, "an unmatched filter is still a result, just an empty one")
+
+	data, ok := result.Data.(map[string]any)
+	require.True(t, ok)
+
+	items, ok := data["items"].([]map[string]any)
+	require.True(t, ok)
+	assert.Empty(t, items, "a service name that matches nothing must not silently fall back to the full catalogue")
+
+	assert.Zero(t, invoker.calls)
+}
+
 func TestPlanUnsafeCallReturnsAFormWithoutInvoking(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{
 		Kind:        usecase.DecisionCall,

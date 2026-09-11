@@ -20,6 +20,13 @@ const (
 	keyEnumLabels  = "enumLabels"
 )
 
+// paramService names the "service" argument shared by ask_user and
+// list_capabilities (each with a different meaning - see their own doc
+// comments) and the "service" column of a list_capabilities result. Named
+// once, here, so the literal doesn't drift and to satisfy goconst
+// (harness/quality/go/golangci.yml, min-occurrences: 3).
+const paramService = "service"
+
 // Tool is one function the model can call: one catalogue endpoint, or the
 // fixed ask_user escape hatch. It is deliberately spec-agnostic (a plain
 // JSON Schema map, not an SDK type) so both the tool-calling planner and the
@@ -74,7 +81,7 @@ func AskUserTool() Tool {
 					keyType:        domain.SchemaTypeString,
 					keyDescription: "The question to show the person, in Japanese.",
 				},
-				"service": map[string]any{
+				paramService: map[string]any{
 					keyType:        domain.SchemaTypeString,
 					keyDescription: askUserServiceDescription,
 				},
@@ -99,14 +106,59 @@ func AskUserTool() Tool {
 					keyDescription: "The candidate values, each with its Japanese label, for the person to pick from.",
 				},
 			},
-			keyRequired: []string{"question", "service", "operationId", "param", "options"},
+			keyRequired: []string{"question", paramService, "operationId", "param", "options"},
+		},
+		Strict: true,
+	}
+}
+
+// listCapabilitiesDescription explains, to the model, when to reach for
+// list_capabilities instead of guessing an answer from memory: any
+// question about what the platform (or one named service) can do at all,
+// as opposed to a question that names a concrete thing to look up or
+// change.
+const listCapabilitiesDescription = "Call this when the question asks what operations are " +
+	"available - in general (\"何ができるの？\") or for one named service (\"在庫について、どういう" +
+	"操作ができる？\") - rather than asking to actually look something up or change something. " +
+	"Returns the catalogue's own list of operations, so it never risks naming a capability that " +
+	"does not exist."
+
+// listCapabilitiesServiceDescription explains service: it is deliberately
+// not an enum (docs/specs/orchestration.md; the harness's x-enum-labels
+// lint would force one), because the set of services grows over time and
+// this tool is not derived from any one service's spec the way a real enum
+// parameter is.
+const listCapabilitiesServiceDescription = "Optional. Restrict the answer to one service, named " +
+	"exactly as it is used elsewhere in this catalogue (for example \"inventory\" or " +
+	"\"attendance\"). Omit it to list every service's operations."
+
+// ListCapabilitiesTool is one further tool, always present, not derived
+// from any service's spec (docs/specs/orchestration.md, section 8): it
+// lets the model answer "what can this do?" from the catalogue itself
+// instead of either refusing the question or inventing an answer.
+//
+// It is a function rather than a package-level value for the same
+// gochecknoglobals reason AskUserTool is (see its own doc comment).
+func ListCapabilitiesTool() Tool {
+	return Tool{
+		Name:        "list_capabilities",
+		Description: listCapabilitiesDescription,
+		InputSchema: map[string]any{
+			keyType: domain.SchemaTypeObject,
+			keyProperties: map[string]any{
+				paramService: map[string]any{
+					keyType:        domain.SchemaTypeString,
+					keyDescription: listCapabilitiesServiceDescription,
+				},
+			},
 		},
 		Strict: true,
 	}
 }
 
 // ToolsFor converts a catalogue into the tool definitions a planner offers
-// the model: one per endpoint the catalogue carries, plus AskUserTool.
+// the model: one per endpoint the catalogue carries, plus AskUserTool and
+// ListCapabilitiesTool.
 //
 // Every endpoint here is already one the operator marked
 // x-orchestra-expose: true (internal/adapter/specsource/http.parseSpec) —
@@ -120,8 +172,14 @@ func AskUserTool() Tool {
 // never draw a component for — is a mistake in the spec, not a case to
 // silently drop. harness/guard/exposed-ops.sh catches it before it reaches
 // here.
+// builtinToolCount is how many tools ToolsFor adds beyond the catalogue's
+// own endpoints (AskUserTool, ListCapabilitiesTool) - named so the
+// capacity hint below isn't a bare "magic number" (mnd,
+// harness/quality/go/golangci.yml).
+const builtinToolCount = 2
+
 func ToolsFor(c domain.Catalog) []Tool {
-	tools := make([]Tool, 0, len(c.Endpoints)+1)
+	tools := make([]Tool, 0, len(c.Endpoints)+builtinToolCount)
 
 	for i := range c.Endpoints {
 		e := &c.Endpoints[i]
@@ -134,7 +192,7 @@ func ToolsFor(c domain.Catalog) []Tool {
 		})
 	}
 
-	tools = append(tools, AskUserTool())
+	tools = append(tools, AskUserTool(), ListCapabilitiesTool())
 
 	return tools
 }

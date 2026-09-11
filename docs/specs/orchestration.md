@@ -23,6 +23,7 @@ it. Nothing about the rendering is decided by a model.
 | **D11** | An `ask_user` tool lets the model say "I cannot tell which value you mean" and hand the choice back to the person.                                                                                                                                                                                                                                                                                          |
 | **D12** | The shell is `AppBar` + `Drawer` + `List` from Material UI directly. Results render inline in the conversation; a table can be expanded to a full-screen modal. Every result carries its provenance.                                                                                                                                                                                                        |
 | **D13** | An operation reaches the model only when its contract marks it `x-orchestra-expose: true` (default off). The mark is read once, in `specsource/http`, as the catalogue is built - not later, in `ToolsFor` or at `/api/invoke` - so the tool list and the operations `/api/invoke` will answer can never disagree, and a crafted POST cannot reach an operation the model was never offered.                |
+| **D14** | `list_capabilities` is a further built-in tool, alongside `ask_user`, that answers "what can this do?" from the catalogue itself rather than from the model's own description of it - the same reasoning as D8, applied to a question about the catalogue instead of a question about one service's data.                                                                                                   |
 
 ## 3. Architecture
 
@@ -192,11 +193,36 @@ been clear. They are required because a parameter name such as `status` or
 operation, resolving `param` against the catalogue could surface another
 service's enum entirely.
 
+`list_capabilities` is a second further tool, also always present, also not
+derived from any spec:
+
+```
+list_capabilities(service?: string)
+```
+
+It answers "what can this do?" - in general, or, with `service`, for one
+named service - by listing the catalogue's own operations
+(service/operation/summary), rendered as `kind: "result"` /
+`component: "table"` exactly like any endpoint's own result. The answer is
+built from `domain.Catalog`, not asked of the model as prose: a model's own
+description of what it can do can name an operation that does not exist or
+miss one that does, and D8 already settled that a result comes from the API,
+not from the model's telling - that holds just as much for a question about
+the catalogue as for a question about one service's data. `service` is a
+plain string rather than an enum, because the set of services is not fixed
+the way an endpoint's own declared enum values are; the tool's description
+tells the model to use one of the service names it already sees elsewhere in
+the catalogue. A `service` that matches nothing in the catalogue renders as
+a table with zero rows, not a silent fallback to every service's operations.
+
 ## 9. Error handling
 
-- No endpoint fits -> `kind: "none"`.
+- No endpoint fits -> `kind: "none"`, whose message points at `list_capabilities`
+  ("何ができるの？") rather than leaving the question at a dead end.
 - A value outside the enum -> impossible; `strict: true` rejects it at the API.
 - A value the model cannot pin down -> `ask_user` -> `kind: "ask"`.
+- A question about what the platform can do -> `list_capabilities` ->
+  `kind: "result"` / `component: "table"`, built from the catalogue.
 - The service returns an error -> its error envelope is passed through with
   `component: "error"`.
 - The LLM call itself fails -> 500 after one retry.

@@ -900,3 +900,69 @@ attempts at `破損した在庫はある？` (the other 4 guessed a status direc
 matching the measurement above), picking an option correctly re-posted the
 original query and appended a filtered table turn. Fixed independently of
 that variance in `Conversation.test.tsx`.
+
+## 2026-09-11 list_capabilities answers "what can this do" from the catalogue, as its own decision kind
+
+**Context.** The platform could not answer a question about itself: "何が
+できるの？" or "在庫について、どういう操作ができる？" fell through to
+`kind: "none"`, because nothing in the catalogue's own tools describes the
+catalogue - every tool is one endpoint, and the model has nothing to call
+when the question is about the set of endpoints rather than any one of
+them. The answer to that question already exists, in full, as
+`domain.Catalog` - the same structure `ToolsFor` already builds the model's
+tools from - so the fix is to expose it, not to ask the model to describe
+it from memory: a model's own prose summary of "what it can do" can name an
+operation that does not exist or miss one that does, which is exactly what
+D8 (`docs/specs/orchestration.md`) already ruled out for every other
+answer.
+
+**Decision.** `list_capabilities(service?: string)` is a new built-in tool,
+alongside `ask_user`: not derived from any service's spec
+(`usecase.ListCapabilitiesTool`), always offered. `service` is a plain
+string, not an enum - the harness's own `x-enum-labels` lint would force
+every enum to carry Japanese labels for a fixed value set, but the set of
+services grows as new ones are configured, so the tool's description tells
+the model to use the same service names it already sees named among the
+other tools instead.
+
+It gets its own `DecisionKind` (`DecisionListCapabilities`) rather than
+being folded into `DecisionCall` and switched on `OperationID` inside
+`Orchestrator.call`: `call` resolves its `Service`/`OperationID` against
+`Catalog.Find` and would fail outright, because `list_capabilities` is not
+a catalogue endpoint - the same reason `ask_user` already has its own
+`DecisionAsk` path rather than being a `DecisionCall` in disguise. The new
+`Orchestrator.listCapabilities` never touches the invoker; it filters and
+sorts `catalog.Endpoints` in memory and renders straight to
+`ResultKindResult` / `component: "table"`, with `data: {items: [...]}` so
+the existing `soleArrayProperty` (`domain`) / `rowsFromData` (`web`)
+envelope convention renders it without any new frontend component.
+`internal/adapter/planner/toolcall/planner.go` routes the tool name to
+`decisionFromListCapabilities` before it would otherwise reach
+`resolveService`, mirroring how `ask_user` is intercepted first.
+
+An unmatched `service` filter (a typo, or a service that genuinely does not
+exist) renders as a `table` with zero rows, not a silent fallback to the
+whole catalogue: the person asked about one named service, and answering
+with every service's operations instead would misrepresent what was asked
+
+- the same reasoning `ErrEndpointNotFound` already applies to a
+  `DecisionCall` naming an operation the catalogue does not have, just
+  rendered as an empty result instead of an error, since "this service has
+  nothing" is a legitimate answer where "this operation does not exist" is
+  not. Rows are sorted by `(service, operationId)` rather than left in
+  `catalog.Endpoints`' own order, so the order on screen cannot depend on
+  service configuration order.
+
+`kind: "none"`'s message now also points at `list_capabilities`
+("「何ができるの？」と聞くと、できることの一覧を確認できます。"): a
+question the catalogue genuinely cannot answer ("今日の天気は？") still
+lands on `none`, but it no longer reads as a dead end for someone who
+simply did not know what to ask.
+
+**Consequences.** `services/platform/api/openapi.yaml` needed no change:
+`PlanResult`'s `kind`/`component`/`data`/`source`/`fields` already cover a
+`list_capabilities` result exactly as they cover any other table.
+`web/src/entities/rendering` needed no change either, verified live.
+`ToolsFor` now returns one more tool than before for every catalogue;
+`services/platform/internal/usecase/tools_test.go`'s fixed-count
+assertions were updated alongside it.

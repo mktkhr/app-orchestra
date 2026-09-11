@@ -90,6 +90,27 @@ parameter's Japanese labels are appended to its property description
 (`allocated=引当済 / staged=出荷準備完了`) - the only route by which they reach a
 model.
 
+**"What can this do?"** `ListCapabilitiesTool` (`tools.go`) is a second
+built-in tool, alongside `AskUserTool`, that answers a question about the
+catalogue itself ("何ができるの？", "在庫について、どういう操作ができる？")
+rather than one about a service's data. It carries one optional string
+argument, `service` - deliberately not an enum, since the set of services
+grows - and `Orchestrator.listCapabilities` answers it entirely from
+`catalog.Endpoints` already in memory (no service is ever called): every
+endpoint, or only the named service's, as `service`/`operation`/`summary`
+rows sorted by `(service, operationId)` for a deterministic table, rendered
+as `kind: "result"` / `component: "table"` through the same
+`{items: [...]}` envelope shape a real endpoint's list result uses, so
+neither `domain.soleArrayProperty` nor the frontend's `rowsFromData` needed
+to change. A `service` that matches nothing renders as zero rows rather
+than falling back to the whole catalogue. `DecisionListCapabilities` is its
+own `DecisionKind`, resolved in `toolcall/planner.go` before the tool name
+would otherwise reach `resolveService` (which cannot find it - it is not a
+catalogue operation), mirroring how `ask_user` is intercepted first.
+`kind: "none"`'s message now also names `list_capabilities`, so a question
+the catalogue genuinely cannot answer no longer reads as a dead end
+(`DECISIONS.md`, 2026-09-11).
+
 **The safe path of `/api/plan`.** `services/platform/internal/usecase/planner.go`
 and `orchestrator.go` add the ports and types Task 6 calls for:
 

@@ -93,3 +93,12 @@ _Keep three lists. Move items, do not duplicate them._
   components' submit/error handling is written once. Verified live: 1 `ask`
   in 5 attempts against `qwen3.5-9b-q8` (matching the prior measurement),
   fixed in `Conversation.test.tsx` regardless.
+- Added `list_capabilities` (`service?: string`), a built-in tool alongside
+  `ask_user` that answers "what can this do?" from the catalogue itself:
+  `Orchestrator.listCapabilities` renders it as `kind: "result"` /
+  `component: "table"` without calling any service, `toolcall/planner.go`
+  routes the tool name before it would reach `resolveService`, and
+  `kind: "none"`'s message now points at it instead of being a dead end. No
+  `openapi.yaml` or frontend change was needed - verified live and with
+  `web/src/entities/rendering` unit tests unchanged (`DECISIONS.md`,
+  2026-09-11; `docs/specs/orchestration.md` D14).

@@ -7,17 +7,17 @@ import (
 )
 
 // DecisionKind names what a Planner decided to do about a question: call
-// one endpoint, ask the user to disambiguate a value, or report that
-// nothing in the catalogue fits.
+// one endpoint, ask the user to disambiguate a value, list what the
+// catalogue can do, or report that nothing in the catalogue fits.
 type DecisionKind string
 
-// The three things a Planner can decide (docs/specs/orchestration.md,
-// section 4). DecisionCall (safe or unsafe) and DecisionNone are acted on
-// by Orchestrator today; DecisionAsk (Task 9) returns ErrNotImplemented.
+// The four things a Planner can decide (docs/specs/orchestration.md,
+// section 4). All four are acted on by Orchestrator.
 const (
-	DecisionCall DecisionKind = "call"
-	DecisionAsk  DecisionKind = "ask"
-	DecisionNone DecisionKind = "none"
+	DecisionCall             DecisionKind = "call"
+	DecisionAsk              DecisionKind = "ask"
+	DecisionNone             DecisionKind = "none"
+	DecisionListCapabilities DecisionKind = "list_capabilities"
 )
 
 // Answer is the user's answer to a previous ask_user question, resubmitted
@@ -39,6 +39,12 @@ type Decision struct {
 	// one endpoint decision.Param belongs to: a parameter name such as
 	// "status" or "type" is not unique across a catalogue of many
 	// services, so the operation must be named alongside it.
+	//
+	// For DecisionListCapabilities, Service is reused for a different
+	// purpose: list_capabilities' own optional "service" argument, which
+	// narrows the catalogue listing to one service instead of naming the
+	// service an operation belongs to. Empty means "every service".
+	// OperationID is not used for this kind.
 	Service     string
 	OperationID string
 	Args        map[string]any

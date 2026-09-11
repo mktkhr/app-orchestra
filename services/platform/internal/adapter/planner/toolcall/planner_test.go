@@ -161,6 +161,61 @@ func TestPlanMapsAskUserOntoADecisionAsk(t *testing.T) {
 	assert.Equal(t, domain.Option{Value: "allocated", Label: "引当済"}, decision.Options[0])
 }
 
+const listCapabilitiesResponse = `{
+  "choices": [{
+    "finish_reason": "tool_calls",
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "id": "call_1",
+        "type": "function",
+        "function": {"name": "list_capabilities", "arguments": "{\"service\":\"inventory\"}"}
+      }]
+    }
+  }]
+}`
+
+// TestPlanMapsListCapabilitiesOntoADecisionListCapabilities is the key
+// case resolveService must never see: list_capabilities is not an
+// operation id any endpoint in fixtureCatalog declares (it is a built-in
+// tool, not derived from any spec - usecase.ListCapabilitiesTool), so if
+// the planner routed it through decisionFromCall the way it does every
+// other tool name, resolveService would fail to find it and this would
+// come back as ErrUnknownOperation instead of a decision.
+func TestPlanMapsListCapabilitiesOntoADecisionListCapabilities(t *testing.T) {
+	planner := newPlanner(t, listCapabilitiesResponse, fixtureCatalog())
+
+	decision, err := planner.Plan(context.Background(), "在庫について、どういう操作ができる？", nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionListCapabilities, decision.Kind)
+	assert.Equal(t, "inventory", decision.Service)
+}
+
+const listCapabilitiesNoServiceResponse = `{
+  "choices": [{
+    "finish_reason": "tool_calls",
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "id": "call_1",
+        "type": "function",
+        "function": {"name": "list_capabilities", "arguments": "{}"}
+      }]
+    }
+  }]
+}`
+
+func TestPlanMapsListCapabilitiesWithNoServiceArgumentToAnEmptyFilter(t *testing.T) {
+	planner := newPlanner(t, listCapabilitiesNoServiceResponse, fixtureCatalog())
+
+	decision, err := planner.Plan(context.Background(), "何ができるの？", nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionListCapabilities, decision.Kind)
+	assert.Empty(t, decision.Service)
+}
+
 const noToolCallResponse = `{
   "choices": [{
     "finish_reason": "stop",
