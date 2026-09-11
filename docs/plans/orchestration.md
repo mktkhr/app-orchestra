@@ -776,7 +776,7 @@ same mechanism.
 - [x] **Step 3** `make check` in full — every gate green, including
       `guard-a11y` and `guard-layout`, which now have a real screen to measure.
       Expect work here: contrast and target size are measured, not asserted.
-- [ ] **Step 4** Commit: `test(e2e): answer a question against the built product`
+- [x] **Step 4** Commit: `test(e2e): answer a question against the built product`
 
 **Satisfies:** AC-E-101.
 
