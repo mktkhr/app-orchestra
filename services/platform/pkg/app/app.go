@@ -24,14 +24,37 @@ type Service struct {
 	URL  string
 }
 
+// Answer is one entry of PlanFixture.Answers: an answer to a previous ask,
+// resubmitted alongside the original query. A local type, rather than
+// usecase.Answer used directly on Config, so pkg/app's one public package
+// does not leak an internal one through its own field types.
+type Answer struct {
+	Param string
+	Value string
+}
+
 // PlanFixture is one entry of the stub planner's table
-// (internal/adapter/planner/stub): an exact question mapped to the call it
-// should produce. The stub is the only Planner that exists until Task 10
-// adds a real one, so this is also how the running platform answers a
-// question today - see defaultPlanFixtures, which New falls back to when
+// (internal/adapter/planner/stub): a question - together with the answers,
+// if any, it was resubmitted with - mapped to the Decision it should
+// produce. The stub is the only Planner that exists until Task 10 adds a
+// real one, so this is also how the running platform answers a question
+// today - see defaultPlanFixtures, which New falls back to when
 // PlanFixtures is empty.
+//
+// Ask, when true, builds a DecisionAsk carrying Question and Param instead
+// of a call; Service, OperationID and Args are unused for it. The
+// candidate options themselves are never set here - Orchestrator.Plan
+// looks them up from the catalogue (docs/plans/orchestration.md, Task 9),
+// not from the fixture - so a fixture cannot hand out an option the
+// catalogue would not.
 type PlanFixture struct {
-	Query       string
+	Query   string
+	Answers []Answer
+
+	Ask      bool
+	Question string
+	Param    string
+
 	Service     string
 	OperationID string
 	Args        map[string]any
@@ -111,21 +134,45 @@ func toInvokerServices(services []Service) []invokerhttp.Service {
 }
 
 // toStubTable converts PlanFixtures into the table
-// internal/adapter/planner/stub takes: an exact query maps to a
-// DecisionCall against the named operation.
-func toStubTable(fixtures []PlanFixture) map[string]usecase.Decision {
-	table := make(map[string]usecase.Decision, len(fixtures))
+// internal/adapter/planner/stub takes: each fixture's query and answers
+// become its stub.Key, and Ask selects a DecisionAsk instead of the
+// default DecisionCall.
+func toStubTable(fixtures []PlanFixture) map[stubplanner.Key]usecase.Decision {
+	table := make(map[stubplanner.Key]usecase.Decision, len(fixtures))
 
 	for _, f := range fixtures {
-		table[f.Query] = usecase.Decision{
-			Kind:        usecase.DecisionCall,
-			Service:     f.Service,
-			OperationID: f.OperationID,
-			Args:        f.Args,
-		}
+		key := stubplanner.Key{Query: f.Query, Answers: stubplanner.AnswersKey(toUsecaseAnswers(f.Answers))}
+		table[key] = toDecision(&f)
 	}
 
 	return table
+}
+
+// toDecision builds the Decision one PlanFixture produces: an ask when
+// Ask is set, a call otherwise. See PlanFixture's doc comment for why an
+// ask fixture carries no options of its own.
+func toDecision(f *PlanFixture) usecase.Decision {
+	if f.Ask {
+		return usecase.Decision{Kind: usecase.DecisionAsk, Question: f.Question, Param: f.Param}
+	}
+
+	return usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     f.Service,
+		OperationID: f.OperationID,
+		Args:        f.Args,
+	}
+}
+
+// toUsecaseAnswers adapts PlanFixture.Answers to the shape
+// internal/adapter/planner/stub's AnswersKey takes. See toSpecSourceServices.
+func toUsecaseAnswers(answers []Answer) []usecase.Answer {
+	out := make([]usecase.Answer, 0, len(answers))
+	for _, a := range answers {
+		out = append(out, usecase.Answer{Param: a.Param, Value: a.Value})
+	}
+
+	return out
 }
 
 // planFixtures returns configured unchanged when it names at least one
@@ -138,6 +185,15 @@ func planFixtures(configured []PlanFixture) []PlanFixture {
 	return defaultPlanFixtures()
 }
 
+// serviceInventory and paramStatus name the inventory service and its
+// "status" parameter, each repeated across several fixtures below
+// (goconst, part of the fixed harness policy, wants a repeated literal
+// named once).
+const (
+	serviceInventory = "inventory"
+	paramStatus      = "status"
+)
+
 // defaultPlanFixtures is the demo table the running platform answers with
 // when Config.PlanFixtures is empty (production's case, until Task 10
 // replaces the stub with a real planner): one fixed Japanese question maps
@@ -149,7 +205,7 @@ func defaultPlanFixtures() []PlanFixture {
 	return []PlanFixture{
 		{
 			Query:       "在庫の一覧を見せて",
-			Service:     "inventory",
+			Service:     serviceInventory,
 			OperationID: "ListInventoryItems",
 		},
 		{
@@ -159,9 +215,26 @@ func defaultPlanFixtures() []PlanFixture {
 		},
 		{
 			Query:       "在庫を登録して",
-			Service:     "inventory",
+			Service:     serviceInventory,
 			OperationID: "CreateInventoryItem",
-			Args:        map[string]any{"name": "デモ棚卸資産", "status": "allocated", "quantity": 1},
+			Args:        map[string]any{"name": "デモ棚卸資産", paramStatus: "allocated", "quantity": 1},
+		},
+		{
+			// "破損" (damaged) names no ItemStatus value: a disambiguation
+			// question comes back naming the "status" parameter, with its
+			// options built from the inventory catalogue's own enum (D11,
+			// docs/specs/orchestration.md), not listed here.
+			Query:    "破損した在庫を見せて",
+			Ask:      true,
+			Question: "「破損」に近いステータスはどれですか？",
+			Param:    paramStatus,
+		},
+		{
+			Query:       "破損した在庫を見せて",
+			Answers:     []Answer{{Param: paramStatus, Value: "quarantined"}},
+			Service:     serviceInventory,
+			OperationID: "ListInventoryItems",
+			Args:        map[string]any{paramStatus: "quarantined"},
 		},
 	}
 }

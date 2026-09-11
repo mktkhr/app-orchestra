@@ -119,6 +119,41 @@ func TestPostPlanRendersNone(t *testing.T) {
 	assert.Nil(t, body.Source)
 }
 
+func TestPostPlanRendersAnAsk(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:     usecase.ResultKindAsk,
+		Question: "どのステータスですか？",
+		Param:    "status",
+		Options: []domain.Option{
+			{Value: "allocated", Label: "引当済"},
+			{Value: "quarantined", Label: "検品保留"},
+		},
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "破損した在庫を見せて"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	assert.Equal(t, openapi.DecisionKind("ask"), body.Kind)
+	require.NotNil(t, body.Question)
+	assert.Equal(t, "どのステータスですか？", *body.Question)
+	require.NotNil(t, body.Param)
+	assert.Equal(t, "status", *body.Param)
+	require.NotNil(t, body.Options)
+	assert.Equal(t, []openapi.Option{
+		{Value: "allocated", Label: "引当済"},
+		{Value: "quarantined", Label: "検品保留"},
+	}, *body.Options)
+	assert.Nil(t, body.Source)
+	assert.Nil(t, body.Data)
+}
+
 func TestPostPlanPassesAnswersThrough(t *testing.T) {
 	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
 

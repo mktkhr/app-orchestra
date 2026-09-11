@@ -5,11 +5,12 @@ _Last updated: 2026-09-11_
 ## Summary
 
 **The harness is complete and the first vertical slice is under construction.**
-Nine of the seventeen tasks in `docs/plans/orchestration.md` are done: the
+Ten of the seventeen tasks in `docs/plans/orchestration.md` are done: the
 platform's scaffold, two services that answer real requests, the rendering
 rule, the catalogue the platform builds by asking those services what they
-offer, the tool definitions built from that catalogue, and three of the four
-answers `/api/plan` can give: a rendered result, a form, and no match.
+offer, the tool definitions built from that catalogue, and all four answers
+`/api/plan` can give: a rendered result, a form, a disambiguation question,
+and no match.
 
 Every gate of `make check` passes except `acceptance-e2e`, which has no test
 files: the end-to-end suite is Task 16. Until then the honest statement is that
@@ -88,9 +89,29 @@ a safe endpoint (invoke, render, return `kind: "result"`), a `DecisionCall`
 against an unsafe one (build the form from the request body's schema, carry the
 planner's arguments as its initial values and the endpoint as its target, and
 call nothing at all) and `DecisionNone` (`kind: "none"` with a fixed Japanese
-message). Only `DecisionAsk` still returns an error wrapping
-`usecase.ErrNotImplemented` - Task 9's seat, left open on purpose rather than
-silently degrading to `none`.
+message). `DecisionAsk` (Task 9) is now built too: `Orchestrator.ask` renders
+`kind: "ask"` carrying the question, the parameter name and its options - never
+from `Decision.Options` directly. Because a `Decision` is ultimately produced
+by a model, its own list of candidate values cannot be trusted to exist;
+`optionsForParam` instead searches the catalogue's own endpoints for a
+parameter or request body property named `decision.Param` that declares an
+enum, and builds the options from that schema's `Enum` and `EnumLabels`. A
+param the catalogue does not recognise as an enum returns
+`usecase.ErrUnknownParam` (a 500) rather than falling back to the model's own
+list. A `DecisionKind` the switch does not recognise at all still returns
+`usecase.ErrNotImplemented` (a 501).
+
+The re-post half of the ask flow - `POST /api/plan` with `answers` alongside
+the original `query` reaching the planner and producing a different decision -
+was already wired: `handler.Plan.PostPlan` converts `PlanRequest.Answers` into
+`[]usecase.Answer` unconditionally, and `Orchestrator.Plan` always passes
+`answers` through to `Planner.Plan`. What Task 9 added on that side is the stub
+planner's ability to act on them: `internal/adapter/planner/stub`'s table is
+now keyed by `stub.Key{Query, Answers}`, where `Answers` is
+`stub.AnswersKey(answers)` - a canonical, order-independent encoding
+(`"param=value"` pairs, sorted, joined with `&`) - so the very same question can
+map to an `ask` decision with no answers and a `call` decision once answered,
+while staying a pure table lookup.
 
 The form's schema is built by the same `schemaToJSONSchema` the tool
 definitions use, so an enum reaches the browser with both its values and its
@@ -125,12 +146,23 @@ was described, not performed. An unrecognised query returns `kind: "none"`;
 as `component: "detail"`, while an unknown operation, a missing required
 field and a value outside an enum each return 400 having called nothing.
 
+`pkg/app.PlanFixture` grew `Answers []Answer`, `Ask bool`, `Question` and
+`Param` alongside its existing `Service`/`OperationID`/`Args`, so a fixture can
+describe either half of the ask flow; `defaultPlanFixtures()` now has a fourth
+demo pair (`"破損した在庫を見せて"` asks about `status`, then the same query with
+`{status: quarantined}` answered calls `ListInventoryItems`). Verified against
+the running platform: the bare query returns `kind: "ask"` with all four
+`ItemStatus` values and their Japanese labels (`allocated`=引当済,
+`staged`=出荷準備完了, `quarantined`=検品保留, `consigned`=預託在庫); resubmitted
+with the answer it returns `kind: "result"`, `component: "table"`, only the
+quarantined rows.
+
 ## What does not exist yet
 
-Tasks 7 to 16 of `docs/plans/orchestration.md`: the form path for unsafe calls,
-`/api/invoke`'s real execution, `ask_user`, the two planner adapters, and the
-whole of `web/src` beyond the shell. `make check` is green because the guards
-report on the code that is there, not because the product is finished.
+Tasks 10 to 16 of `docs/plans/orchestration.md`: the two planner adapters
+(tool-calling and JSON) that replace the stub with a real model, and the whole
+of `web/src` beyond the shell. `make check` is green because the guards report
+on the code that is there, not because the product is finished.
 
 ## Known gaps in the harness
 

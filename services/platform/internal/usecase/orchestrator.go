@@ -62,11 +62,21 @@ var ErrEndpointNotFound = errors.New("endpoint not found in catalogue")
 // value is not one of an enum parameter's declared values.
 var ErrInvalidArguments = errors.New("invalid arguments")
 
-// ErrNotImplemented marks a Decision this deployment does not act on yet: a
-// disambiguation question, which needs the ask path of Task 9. Returned as
-// a sentinel, rather than silently degrading to ResultKindNone, so a
-// caller can distinguish "nothing fits" from "this isn't built yet".
+// ErrNotImplemented marks a Decision this deployment does not act on: a
+// DecisionKind the switch in Plan does not recognise at all. Returned as a
+// sentinel, rather than silently degrading to ResultKindNone, so a caller
+// can distinguish "nothing fits" from "this isn't built yet".
 var ErrNotImplemented = errors.New("not implemented")
+
+// ErrUnknownParam is returned when a DecisionAsk names a parameter the
+// catalogue does not declare as an enum anywhere. A Decision is ultimately
+// produced by a model (docs/plans/orchestration.md Task 9), which can name
+// a parameter that does not exist or is not an enum, so a disambiguation
+// question is only ever answered from the catalogue's own declared
+// values (see optionsForParam) - never by trusting Decision.Options,
+// which the same model filled in and which may list values that do not
+// exist.
+var ErrUnknownParam = errors.New("parameter not found in catalogue")
 
 // messageNoEndpoint is the message a ResultKindNone result carries: the
 // planner itself decided nothing in the catalogue fits the question.
@@ -102,9 +112,10 @@ func NewOrchestrator(catalog domain.Catalog, planner Planner, invoker Invoker) *
 }
 
 // Plan turns a question (plus any answers to a previous ask) into a
-// Result. The safe-call, unsafe-call (form) and none paths are
-// implemented; an ask decision returns an error wrapping ErrNotImplemented
-// (Task 9 builds it).
+// Result: a safe call is invoked and rendered, an unsafe call comes back as
+// a form to confirm, an ask decision comes back as a disambiguation
+// question built from the catalogue (see ask), and none reports that
+// nothing fits.
 func (o *Orchestrator) Plan(ctx context.Context, query string, answers []Answer) (Result, error) {
 	tools := ToolsFor(o.catalog)
 
@@ -119,7 +130,7 @@ func (o *Orchestrator) Plan(ctx context.Context, query string, answers []Answer)
 	case DecisionCall:
 		return o.call(ctx, &decision)
 	case DecisionAsk:
-		return Result{}, fmt.Errorf("%w: an ask_user decision (Task 9 builds this path)", ErrNotImplemented)
+		return o.ask(&decision)
 	default:
 		return Result{}, fmt.Errorf("%w: unknown decision kind %q", ErrNotImplemented, decision.Kind)
 	}
@@ -178,6 +189,77 @@ func (o *Orchestrator) call(ctx context.Context, decision *Decision) (Result, er
 	}
 
 	return o.invokeAndRender(ctx, &endpoint, decision.Service, decision.OperationID, decision.Args)
+}
+
+// ask resolves a DecisionAsk into a ResultKindAsk: it never touches the
+// invoker (an ask never calls a service), and it never repeats
+// decision.Options verbatim - see optionsForParam for why the catalogue,
+// not the model's own Decision, is the source of truth for what a person
+// is offered to pick from.
+//
+// decision is a pointer for the same reason call's is: golangci-lint's
+// gocritic hugeParam check on Decision's 112 bytes (see
+// harness/quality/go/golangci.yml).
+func (o *Orchestrator) ask(decision *Decision) (Result, error) {
+	options, ok := optionsForParam(o.catalog, decision.Param)
+	if !ok {
+		return Result{}, fmt.Errorf("%w: %q", ErrUnknownParam, decision.Param)
+	}
+
+	return Result{
+		Kind:     ResultKindAsk,
+		Question: decision.Question,
+		Param:    decision.Param,
+		Options:  options,
+	}, nil
+}
+
+// optionsForParam searches every endpoint's parameters and, for an unsafe
+// endpoint, its request body's own properties, for the first one named
+// name that declares an enum, and builds the options a person is offered
+// from that schema's Enum and EnumLabels.
+//
+// The catalogue is authoritative here rather than Decision.Options: a
+// Decision is ultimately produced by a model (docs/plans/orchestration.md
+// Task 9), which can name candidate values that are not real, so an ask
+// result must only ever offer values the catalogue itself declares for
+// that parameter. The second return value is false when no endpoint
+// declares name as an enum at all, which Plan reports as ErrUnknownParam
+// rather than guessing or falling back to the model's own list.
+func optionsForParam(catalog domain.Catalog, name string) ([]domain.Option, bool) {
+	for i := range catalog.Endpoints {
+		e := &catalog.Endpoints[i]
+
+		for j := range e.Parameters {
+			p := &e.Parameters[j]
+			if p.Name == name && len(p.Schema.Enum) > 0 {
+				return optionsFromSchema(&p.Schema), true
+			}
+		}
+
+		if e.RequestBody != nil && e.RequestBody.Type == domain.SchemaTypeObject {
+			if schema, ok := e.RequestBody.Properties[name]; ok && len(schema.Enum) > 0 {
+				return optionsFromSchema(&schema), true
+			}
+		}
+	}
+
+	return nil, false
+}
+
+// optionsFromSchema builds the options for one enum schema, in enum order.
+// A value with no entry in EnumLabels - not something a spec-conformant
+// service can produce, since the harness's own x-enum-labels lint requires
+// every enum value to have one, but not ruled out by the type system - gets
+// an empty label rather than being dropped, the same defensive choice
+// tools.go's enumLabels makes for the model-facing description.
+func optionsFromSchema(s *domain.Schema) []domain.Option {
+	options := make([]domain.Option, len(s.Enum))
+	for i, value := range s.Enum {
+		options[i] = domain.Option{Value: value, Label: s.EnumLabels[value]}
+	}
+
+	return options
 }
 
 // invokeAndRender calls endpoint with args and renders the decoded

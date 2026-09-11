@@ -472,3 +472,67 @@ the stub with a real planner; anything else answers `kind: "none"`. `cmd/api`'s
 `main.go` never sets `PlanFixtures`, so this table is what production runs with
 today - a fact this decision records precisely so it is not mistaken for
 intended product behaviour later.
+
+## 2026-09-11 ask_user's options come from the catalogue, never from Decision.Options; an unknown parameter is a 500, not a silent fallback
+
+**Context.** Task 9 (`docs/plans/orchestration.md`) has `Orchestrator.Plan`
+build a `kind: "ask"` result from a `DecisionAsk`, which carries `Question`,
+`Param` and `Options` (`[]domain.Option`). `Decision` is ultimately produced by
+a `Planner` - by Task 10, a real model reading the `ask_user` tool's schema -
+so `Decision.Options` is exactly as trustworthy as any other tool-call
+argument: nothing stops a model from inventing a value the catalogue does not
+declare, or misspelling one that exists.
+
+**Decision.** `Orchestrator.ask` ignores `Decision.Options` entirely.
+`optionsForParam` searches the catalogue's own endpoints - each parameter,
+and each unsafe endpoint's request body properties - for the first schema
+named `decision.Param` that declares a non-empty `Enum`, and builds the
+options from that schema's `Enum` and `EnumLabels` alone. A parameter no
+endpoint declares as an enum returns `ok=false`, which `Plan` reports as
+`usecase.ErrUnknownParam` (mapped to a 500, the same as any other
+`Orchestrator.Plan` error the handler does not special-case) rather than
+falling back to the model's own list or silently degrading to `kind: "none"`.
+The reasoning: a disambiguation question exists specifically to replace a
+model's guess with a person's answer; presenting options nobody vetted would
+undermine the one property `ask_user` is for. An enum value with no entry in
+`EnumLabels` - not something a spec-conformant service can produce, since
+`x-enum-labels` coverage is a harness lint, but not ruled out by the type
+system - gets an empty label rather than being dropped, the same defensive
+choice `tools.go`'s `enumLabels` already makes for the model-facing
+description.
+
+**Consequences.** A `Decision.Ask` naming a real parameter always returns
+options a person can actually submit back (Step 1's acceptance test asserts
+all four `ItemStatus` values and their labels, sourced from the catalogue
+fixture, not from the stub's decision literal, which deliberately names a
+`bogus` option that never reaches the wire). A `Decision.Ask` naming a
+parameter with a typo, or one belonging to no configured service, fails
+loudly instead of asking a question with no good answers.
+
+## 2026-09-11 The stub planner's table keys on {query, answers}, not query alone
+
+**Context.** Task 9 Step 2 requires that posting the same question a second
+time, now with `answers`, reach the planner and produce a different decision
+than the bare question did (the ask, then the call it resolves to) - and the
+stub planner must stay a pure, deterministic table lookup (the `make check`
+constraint that no test ever calls a real LLM).
+
+**Decision.** `internal/adapter/planner/stub`'s table is now
+`map[Key]usecase.Decision`, where `Key{Query, Answers}` and `Answers` is built
+by the new exported `AnswersKey(answers []usecase.Answer) string`: each answer
+rendered as `"param=value"`, sorted, joined with `&`, so the same set of
+answers canonicalises to the same key regardless of slice order, and no
+answers canonicalises to `""` - the same key a bare question already used, so
+every fixture from before Task 9 keeps working unchanged once its literal
+`map[string]Decision` becomes `map[Key]Decision`. `pkg/app.PlanFixture` grew
+`Answers []Answer` (its own type, mirroring `usecase.Answer`, for the same
+reason `Service`/`PlanFixture` already avoid aliasing `internal/` types) and
+an `Ask bool` (plus `Question`/`Param`) to describe an ask fixture without
+repurposing `Service`/`OperationID`/`Args`.
+
+**Consequences.** `stub.New`'s signature changed (`map[string]Decision` to
+`map[stub.Key]Decision`); every caller and test updated in the same commit. A
+fixture author writes two `PlanFixture` entries for one ask/answer pair - the
+bare `Query` and the `Query`+`Answers` combination - rather than one entry
+with conditional behaviour, which keeps the stub itself free of any decision
+logic beyond the lookup.

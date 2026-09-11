@@ -144,12 +144,81 @@ func TestPlanUnsafeCallReturnsAFormWithoutInvoking(t *testing.T) {
 	assert.Zero(t, invoker.calls, "an unsafe call must never reach the service")
 }
 
-func TestPlanAskDecisionIsNotImplemented(t *testing.T) {
+// catalogWithStatusEnum is inventoryCatalog plus the "status" query
+// parameter ListInventoryItems actually declares (docs/specs section 8):
+// an enum with Japanese labels, which is what optionsForParam is meant to
+// read instead of trusting a Decision's own Options.
+func catalogWithStatusEnum() domain.Catalog {
+	c := inventoryCatalog()
+	c.Endpoints[0].Parameters = []domain.Parameter{
+		{
+			Name:     "status",
+			In:       "query",
+			Required: false,
+			Schema: domain.Schema{
+				Type: domain.SchemaTypeString,
+				Enum: []string{"allocated", "staged", "quarantined", "consigned"},
+				EnumLabels: map[string]string{
+					"allocated":   "引当済",
+					"staged":      "出荷準備完了",
+					"quarantined": "検品保留",
+					"consigned":   "預託在庫",
+				},
+			},
+		},
+	}
+
+	return c
+}
+
+func TestPlanAskDecisionReturnsOptionsFromTheCatalogue(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{
 		Kind:     usecase.DecisionAsk,
 		Question: "どのステータスですか？",
 		Param:    "status",
+		// The catalogue, not this fictitious option a model might have
+		// invented, must win: see optionsForParam.
+		Options: []domain.Option{{Value: "bogus", Label: "でたらめ"}},
 	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(catalogWithStatusEnum(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "検品保留の在庫を見せて", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindAsk, result.Kind)
+	assert.Equal(t, "どのステータスですか？", result.Question)
+	assert.Equal(t, "status", result.Param)
+	assert.ElementsMatch(t, []domain.Option{
+		{Value: "allocated", Label: "引当済"},
+		{Value: "staged", Label: "出荷準備完了"},
+		{Value: "quarantined", Label: "検品保留"},
+		{Value: "consigned", Label: "預託在庫"},
+	}, result.Options)
+	assert.Zero(t, invoker.calls, "an ask decision must never call a service")
+}
+
+func TestPlanAskDecisionFillsInAMissingLabelDefensively(t *testing.T) {
+	c := inventoryCatalog()
+	c.Endpoints[0].Parameters = []domain.Parameter{
+		{
+			Name:   "status",
+			Schema: domain.Schema{Type: domain.SchemaTypeString, Enum: []string{"allocated"}, EnumLabels: map[string]string{}},
+		},
+	}
+
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionAsk, Param: "status"}}
+	orchestrator := usecase.NewOrchestrator(c, planner, &fakeInvoker{})
+
+	result, err := orchestrator.Plan(t.Context(), "在庫の一覧を見せて", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, []domain.Option{{Value: "allocated", Label: ""}}, result.Options)
+}
+
+func TestPlanAskDecisionForAnUnknownParamFails(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionAsk, Param: "no-such-param"}}
 	invoker := &fakeInvoker{}
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker)
@@ -157,7 +226,7 @@ func TestPlanAskDecisionIsNotImplemented(t *testing.T) {
 	_, err := orchestrator.Plan(t.Context(), "検品保留の在庫を見せて", nil)
 
 	require.Error(t, err)
-	require.ErrorIs(t, err, usecase.ErrNotImplemented)
+	require.ErrorIs(t, err, usecase.ErrUnknownParam)
 	assert.Zero(t, invoker.calls)
 }
 

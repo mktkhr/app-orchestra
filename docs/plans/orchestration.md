@@ -504,16 +504,16 @@ arrives; leave the seat, do not build it.
 name, and the options with their Japanese labels taken from
 `Schema.EnumLabels`.
 
-- [ ] **Step 1** Write the acceptance test: a stub planner returning an
+- [x] **Step 1** Write the acceptance test: a stub planner returning an
       `ask` decision for the `status` parameter. Assert the response lists all four
       values with their Japanese labels and that no service was called. Run it,
       expect failure.
-- [ ] **Step 2** Add a second test: posting the same question again with
+- [x] **Step 2** Add a second test: posting the same question again with
       `answers: [{param: "status", value: "allocated"}]` reaches the planner with
       those answers and produces a result.
-- [ ] **Step 3** Implement until both pass.
-- [ ] **Step 4** Green on the Go gates.
-- [ ] **Step 5** Commit: `feat(platform): hand an ambiguous value back to the user`
+- [x] **Step 3** Implement until both pass.
+- [x] **Step 4** Green on the Go gates.
+- [x] **Step 5** Commit: `feat(platform): hand an ambiguous value back to the user`
 
 **Satisfies:** AC-B-105.
 

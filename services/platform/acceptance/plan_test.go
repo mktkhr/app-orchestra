@@ -28,6 +28,19 @@ paths:
     get:
       operationId: ListInventoryItems
       summary: List stock items.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Restrict the result to items in this status.
+          schema:
+            type: string
+            enum: [allocated, staged, quarantined, consigned]
+            x-enum-labels:
+              allocated: 引当済
+              staged: 出荷準備完了
+              quarantined: 検品保留
+              consigned: 預託在庫
       responses:
         "200":
           description: ok
@@ -153,13 +166,34 @@ type planResponse struct {
 		Service     string `json:"service"`
 		OperationID string `json:"operationId"`
 	} `json:"target"`
+	Question string             `json:"question"`
+	Param    string             `json:"param"`
+	Options  []planOptionOnWire `json:"options"`
 }
 
-// postPlan posts query to /api/plan and decodes the response.
-func postPlan(t *testing.T, server *httptest.Server, query string) (int, planResponse) {
+// planOptionOnWire is the wire shape of Option.
+type planOptionOnWire struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// answerOnWire is the wire shape of one Answer.
+type answerOnWire struct {
+	Param string `json:"param"`
+	Value string `json:"value"`
+}
+
+// postPlan posts query (and, when given, answers) to /api/plan and decodes
+// the response.
+func postPlan(t *testing.T, server *httptest.Server, query string, answers ...answerOnWire) (int, planResponse) {
 	t.Helper()
 
-	raw, err := json.Marshal(map[string]string{"query": query})
+	payload := map[string]any{"query": query}
+	if len(answers) > 0 {
+		payload["answers"] = answers
+	}
+
+	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
@@ -276,4 +310,78 @@ func TestPlanNoneCallsNoServiceAndReportsAMessage(t *testing.T) {
 	assert.Equal(t, "none", body.Kind)
 	assert.NotEmpty(t, body.Message)
 	assert.Empty(t, inventory.requests, "a none decision must not call any service")
+}
+
+// TestPlanAskDecisionListsCatalogueOptionsAndCallsNoService drives Task 9
+// Step 1: an ask decision must list every value the inventorySpec fixture's
+// "status" enum declares, with its Japanese label, and it must never touch
+// a service - a disambiguation question is answered from the catalogue
+// alone.
+func TestPlanAskDecisionListsCatalogueOptionsAndCallsNoService(t *testing.T) {
+	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[]}`)
+
+	handler, err := app.New(app.Config{
+		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
+		PlanFixtures: []app.PlanFixture{
+			{Query: "破損した在庫を見せて", Ask: true, Question: "どのステータスですか？", Param: "status"},
+		},
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	status, body := postPlan(t, server, "破損した在庫を見せて")
+
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, "ask", body.Kind)
+	assert.Equal(t, "どのステータスですか？", body.Question)
+	assert.Equal(t, "status", body.Param)
+	assert.ElementsMatch(t, []planOptionOnWire{
+		{Value: "allocated", Label: "引当済"},
+		{Value: "staged", Label: "出荷準備完了"},
+		{Value: "quarantined", Label: "検品保留"},
+		{Value: "consigned", Label: "預託在庫"},
+	}, body.Options)
+
+	assert.Empty(t, inventory.requests, "an ask decision must never call a service")
+}
+
+// TestPlanResubmittedWithAnswersReachesThePlannerAndProducesAResult drives
+// Task 9 Step 2: posting the same question again with an answer must reach
+// the planner with it (the stub fixture below only matches the {query,
+// answers} pair, so a mismatch would fall through to DecisionNone) and
+// produce the resulting table.
+func TestPlanResubmittedWithAnswersReachesThePlannerAndProducesAResult(t *testing.T) {
+	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[{"id":"itm-1","status":"quarantined"}]}`)
+
+	handler, err := app.New(app.Config{
+		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
+		PlanFixtures: []app.PlanFixture{
+			{Query: "破損した在庫を見せて", Ask: true, Question: "どのステータスですか？", Param: "status"},
+			{
+				Query:       "破損した在庫を見せて",
+				Answers:     []app.Answer{{Param: "status", Value: "quarantined"}},
+				Service:     "inventory",
+				OperationID: "ListInventoryItems",
+				Args:        map[string]any{"status": "quarantined"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	status, body := postPlan(t, server, "破損した在庫を見せて", answerOnWire{Param: "status", Value: "quarantined"})
+
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, "result", body.Kind)
+	assert.Equal(t, "table", body.Component)
+	assert.Equal(t, "inventory", body.Source.Service)
+	assert.Equal(t, "ListInventoryItems", body.Source.OperationID)
+	require.Len(t, body.Data["items"], 1)
+
+	require.Len(t, inventory.requests, 1)
+	assert.Equal(t, "status=quarantined", inventory.requests[0].URL.RawQuery)
 }

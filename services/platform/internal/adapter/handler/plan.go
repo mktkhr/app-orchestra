@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
@@ -55,8 +56,9 @@ func (h *Plan) PostPlan(
 }
 
 // planErrorResponse maps an Orchestrator.Plan error onto an HTTP status: a
-// path this deployment does not implement yet (Task 9's ask path) is
-// reported as 501, everything else as 500.
+// DecisionKind this deployment does not implement at all is reported as
+// 501; everything else, including a disambiguation naming a parameter the
+// catalogue does not recognise (usecase.ErrUnknownParam), as 500.
 func planErrorResponse(err error) openapi.PostPlanResponseObject {
 	if errors.Is(err, usecase.ErrNotImplemented) {
 		return openapi.PostPlan501JSONResponse{Message: err.Error()}
@@ -137,7 +139,24 @@ func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
 		}
 	}
 
+	if result.Kind == usecase.ResultKindAsk {
+		out.Question = &result.Question
+		out.Param = &result.Param
+		out.Options = toAPIOptions(result.Options)
+	}
+
 	return out, nil
+}
+
+// toAPIOptions converts a usecase.Result's catalogue-sourced options into
+// the wire Option slice.
+func toAPIOptions(options []domain.Option) *[]openapi.Option {
+	out := make([]openapi.Option, len(options))
+	for i, o := range options {
+		out[i] = openapi.Option{Value: o.Value, Label: o.Label}
+	}
+
+	return &out
 }
 
 // toAPIData asserts a usecase.Result's Data as the JSON object the

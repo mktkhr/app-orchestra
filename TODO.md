@@ -4,12 +4,13 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 8 are
-   done; Task 9 hands an ambiguous enum value back to the person.
+1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 9 are
+   done; Task 10 builds the OpenAI-compatible transport and the tool-calling
+   planner.
 
 ## Next
 
-1. Finish the slice, tasks 9 to 16: `ask_user`, the
+1. Finish the slice, tasks 10 to 16: the
    OpenAI-compatible planner and the JSON planner behind the same port, the web
    shell and conversation, the table with its provenance and expansion, the
    detail and form components, the choice component, and the end-to-end test.
@@ -52,3 +53,9 @@ _Keep three lists. Move items, do not duplicate them._
   `Planner`/`Invoker`/`Orchestrator` ports and the stub planner, and wired the
   safe-call and `none` paths of `/api/plan` end to end against the running
   services (`DECISIONS.md`, 2026-09-11, three entries).
+- Built the form path for an unsafe call and `/api/invoke`'s real execution
+  with argument validation against the catalogue.
+- Built `ask_user`: `Orchestrator.ask` renders `kind: "ask"` from the
+  catalogue's own enum, never from a Decision's own (model-supplied) options;
+  the stub planner routes on `{query, answers}` so a re-posted answer reaches
+  a different decision (`DECISIONS.md`, 2026-09-11).
