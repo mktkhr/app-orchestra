@@ -17,6 +17,7 @@ const (
 	keyEnum        = "enum"
 	keyItems       = "items"
 	keyTitle       = "title"
+	keyEnumLabels  = "enumLabels"
 )
 
 // Tool is one function the model can call: one catalogue endpoint, or the
@@ -222,7 +223,10 @@ func dedupeSorted(names []string) []string {
 // schemaToJSONSchema converts a domain.Schema into a JSON Schema map. An
 // enum's Japanese labels (x-enum-labels) are appended to the property's
 // description as "value=label / value=label", per docs/plans/orchestration.md
-// Task 5 — this is the only place those labels reach the model.
+// Task 5 — that remains the only form the model itself reads. The same
+// labels are also carried as a structured `enumLabels` map (value ->
+// label), which is what a UI consumes instead of parsing the description
+// string apart (see DECISIONS.md).
 func schemaToJSONSchema(s *domain.Schema) map[string]any {
 	m := map[string]any{}
 
@@ -238,6 +242,7 @@ func schemaToJSONSchema(s *domain.Schema) map[string]any {
 		enum := make([]string, len(s.Enum))
 		copy(enum, s.Enum)
 		m[keyEnum] = enum
+		m[keyEnumLabels] = enumLabelsMap(s.Enum, s.EnumLabels)
 	}
 
 	if description := describe(s); description != "" {
@@ -293,4 +298,19 @@ func enumLabels(enum []string, labels map[string]string) string {
 	}
 
 	return strings.Join(parts, " / ")
+}
+
+// enumLabelsMap builds the structured value->label map schemaToJSONSchema
+// carries alongside enum, for a UI to look a value's label up by key
+// instead of parsing describe's string apart. Same defensive choice as
+// enumLabels: a value with no entry in labels (a spec violation the
+// harness's own x-enum-labels lint would already have caught upstream)
+// gets an empty label rather than being dropped.
+func enumLabelsMap(enum []string, labels map[string]string) map[string]string {
+	out := make(map[string]string, len(enum))
+	for _, value := range enum {
+		out[value] = labels[value]
+	}
+
+	return out
 }

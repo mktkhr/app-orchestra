@@ -175,6 +175,43 @@ func TestToolsForEnumParameterCarriesEnumAndJapaneseLabelsInDescription(t *testi
 	assert.Contains(t, description, "consigned=預託在庫")
 }
 
+func TestToolsForEnumParameterAlsoCarriesStructuredEnumLabels(t *testing.T) {
+	c := catalogWithEnumParameter()
+
+	tools := usecase.ToolsFor(c)
+
+	var listTool usecase.Tool
+	for _, tool := range tools {
+		if tool.Name == "ListInventoryItems" {
+			listTool = tool
+		}
+	}
+	require.NotEmpty(t, listTool.Name)
+
+	properties, ok := listTool.InputSchema["properties"].(map[string]any)
+	require.True(t, ok, "input schema must carry a properties map")
+
+	statusProp, ok := properties["status"].(map[string]any)
+	require.True(t, ok, "input schema must carry the status property")
+
+	enumLabels, ok := statusProp["enumLabels"].(map[string]string)
+	require.True(t, ok, "the status property must carry a structured enumLabels map")
+
+	assert.Equal(t, map[string]string{
+		"allocated":   "引当済",
+		"staged":      "出荷準備完了",
+		"quarantined": "検品保留",
+		"consigned":   "預託在庫",
+	}, enumLabels)
+
+	// The description form (for the model) must still be present alongside
+	// the structured one (for the UI) — this is an addition, not a
+	// replacement.
+	description, ok := statusProp["description"].(string)
+	require.True(t, ok, "the status property must still carry a description")
+	assert.Contains(t, description, "allocated=引当済")
+}
+
 func TestToolsForCreateEndpointMergesRequestBodyIntoInputSchema(t *testing.T) {
 	c := catalogWithEnumParameter()
 

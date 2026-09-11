@@ -115,12 +115,16 @@ export type components = {
             /** @description Its Japanese label (from x-enum-labels). */
             readonly label: string;
         };
-        /** @description The planner's decision and, when it was safe to act on immediately, its result. Which of the optional fields are present depends on `kind`: `result` carries `component`, `data` and `source`; `form` carries `schema`, `initial` and `target`; `ask` carries `question`, `param` and `options`; `none` carries `message`. */
+        /** @description The planner's decision and, when it was safe to act on immediately, its result. Which of the optional fields are present depends on `kind`: `result` carries `component`, `data`, `source` and, when the response has columns to describe, `fields`; `form` carries `schema`, `initial` and `target`; `ask` carries `question`, `param` and `options`; `none` carries `message`. */
         readonly PlanResult: {
             readonly kind: components["schemas"]["DecisionKind"];
             readonly component?: components["schemas"]["Component"];
             /** @description The rendered result, when kind is "result". */
             readonly data?: {
+                readonly [key: string]: unknown;
+            };
+            /** @description Per-property JSON Schema for `data`'s columns (`table`) or own properties (`detail`), when kind is "result" - most importantly each enum property's `enumLabels` (value -> Japanese label), so a table cell or form control can show "検品保留" instead of "quarantined" without parsing a model-facing description string apart. Absent when the result has no columns to describe (not an empty object). */
+            readonly fields?: {
                 readonly [key: string]: unknown;
             };
             readonly source?: components["schemas"]["Source"];

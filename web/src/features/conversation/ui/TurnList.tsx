@@ -52,7 +52,7 @@ function TurnItem({ turn }: { readonly turn: Turn }): JSX.Element {
     return (
       <Paper elevation={1} sx={{ p: 2 }}>
         <Provenance source={turn.result.source} />
-        <ResultTable data={turn.result.data} />
+        <ResultTable data={turn.result.data} fields={turn.result.fields} />
       </Paper>
     );
   }

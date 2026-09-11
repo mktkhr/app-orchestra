@@ -123,6 +123,11 @@ func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
 			args := result.Args
 			out.Source.Args = &args
 		}
+
+		if len(result.Fields) > 0 {
+			fields := result.Fields
+			out.Fields = &fields
+		}
 	}
 
 	if result.Kind == usecase.ResultKindForm {

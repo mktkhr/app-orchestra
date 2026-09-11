@@ -7,7 +7,7 @@ import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
 import type { JSX } from "react";
 
-import { ResultTableGrid, type Row } from "./ResultTableGrid";
+import { ResultTableGrid, type Fields, type Row } from "./ResultTableGrid";
 import { ResultTablePagination } from "./ResultTablePagination";
 
 interface ResultTableDialogProps {
@@ -18,6 +18,7 @@ interface ResultTableDialogProps {
   readonly rowCount: number;
   readonly page: number;
   readonly onPageChange: (page: number) => void;
+  readonly fields?: Fields | undefined;
 }
 
 /** The same table rows, expanded into a full-screen modal (AC-F-105). */
@@ -29,6 +30,7 @@ export function ResultTableDialog({
   rowCount,
   page,
   onPageChange,
+  fields,
 }: ResultTableDialogProps): JSX.Element {
   return (
     <Dialog fullScreen open={open} onClose={onClose}>
@@ -43,7 +45,7 @@ export function ResultTableDialog({
         </Toolbar>
       </AppBar>
       <Box sx={{ p: 2 }}>
-        <ResultTableGrid columns={columns} rows={rows} />
+        <ResultTableGrid columns={columns} rows={rows} fields={fields} />
         <ResultTablePagination rowCount={rowCount} page={page} onPageChange={onPageChange} />
       </Box>
     </Dialog>

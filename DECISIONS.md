@@ -739,3 +739,37 @@ so a service had two different `GetSpec`s in one package.
 Every new service pays one line of naming convention: prefix, suffix, or
 anything else that makes the name its own. The alternative was paying it in a
 planner that sometimes calls the wrong service.
+
+## 2026-09-11 PlanResult.fields structures enum labels for the UI
+
+**Context.** `x-enum-labels` reaches `domain.Schema.EnumLabels`, and
+`schemaToJSONSchema` (`services/platform/internal/usecase/tools.go`) already
+folded it into a property's `description` as `"allocated=引当済 / staged=..."`
+— but that string exists to be read by the model, not parsed by a UI. Task
+13 shipped a `/api/plan` `kind: "result"` response with no column
+information at all, so a person asking "検品保留の在庫を見せて" in Japanese
+got a table whose `status` column showed the raw English enum value
+(`quarantined`) — there was nowhere else in the response for a label to
+come from, and splitting the model-facing description string apart in the
+browser was not an option.
+
+**Decision.** `schemaToJSONSchema` now also emits a structured `enumLabels`
+(value -> label) map alongside `enum`, in addition to — not instead of —
+the folded description; the model still reads the description, the UI reads
+`enumLabels`. `PlanResult` gained a `fields` property: per-column schema for
+a table's rows or a detail's own properties, built by calling
+`schemaToJSONSchema` on the schema `domain.FieldsSchema` (`internal/domain/
+rendering.go`) returns — a new exported function added next to `RenderResult`
+rather than reimplementing its wrapper/`soleArrayProperty` judgment a second
+time in `usecase`. One conversion function, one row-schema judgment; `fields`
+is omitted (not an empty object) whenever the result renders as neither
+`table` nor `detail`, or the row schema has no properties to describe.
+
+**Consequences.** `web/src/entities/rendering/model/rows.ts` reads
+`fields[column].enumLabels[value]` for a cell and `fields[column].title` for
+a header, falling back to the raw value/key when either is absent — checked
+against the running inventory and attendance contracts, neither of which
+declares a property `title` today, so headers still show the raw key until
+a spec adds one. Every endpoint gains one more thing `Render`'s rules decide
+for it instead of the browser guessing: the UI no longer needs, and must
+never regain, its own copy of "which array property holds the rows".

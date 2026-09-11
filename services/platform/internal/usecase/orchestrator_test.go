@@ -108,6 +108,125 @@ func TestPlanSafeCallInvokesAndRendersTheResult(t *testing.T) {
 	assert.NotEmpty(t, planner.tools, "the orchestrator must offer the planner the catalogue's tools")
 }
 
+// inventoryCatalogWithStatusColumn is inventoryCatalog, but ListInventoryItems'
+// row schema carries a "status" enum property, mirroring the real
+// inventory service's Item schema - so a test can assert on the Japanese
+// labels Fields carries for it.
+func inventoryCatalogWithStatusColumn() domain.Catalog {
+	statusSchema := domain.Schema{
+		Type: domain.SchemaTypeString,
+		Enum: []string{"allocated", "staged", "quarantined", "consigned"},
+		EnumLabels: map[string]string{
+			"allocated":   "引当済",
+			"staged":      "出荷準備完了",
+			"quarantined": "検品保留",
+			"consigned":   "預託在庫",
+		},
+	}
+
+	return domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "ListInventoryItems",
+			Method:      domain.MethodGet,
+			Path:        "/api/inventory/items",
+			Summary:     "在庫アイテムの一覧を返す",
+			Response: &domain.Schema{
+				Type: domain.SchemaTypeObject,
+				Properties: map[string]domain.Schema{
+					"items": {
+						Type: domain.SchemaTypeArray,
+						Items: &domain.Schema{
+							Type: domain.SchemaTypeObject,
+							Properties: map[string]domain.Schema{
+								"status": statusSchema,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			Service:     "inventory",
+			OperationID: "GetInventoryItem",
+			Method:      domain.MethodGet,
+			Path:        "/api/inventory/items/{id}",
+			Summary:     "在庫アイテムを取得する",
+			Response: &domain.Schema{
+				Type: domain.SchemaTypeObject,
+				Properties: map[string]domain.Schema{
+					"status": statusSchema,
+				},
+			},
+		},
+	}}
+}
+
+func TestPlanTableResultCarriesFieldsFromTheRowSchema(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}}
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalogWithStatusColumn(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "検品保留の在庫を見せて", nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result.Fields)
+
+	status, ok := result.Fields["status"].(map[string]any)
+	require.True(t, ok, "fields must carry a status property schema")
+
+	enumLabels, ok := status["enumLabels"].(map[string]string)
+	require.True(t, ok, "the status field must carry a structured enumLabels map")
+	assert.Equal(t, "検品保留", enumLabels["quarantined"])
+	assert.Equal(t, "引当済", enumLabels["allocated"])
+}
+
+func TestPlanDetailResultCarriesFieldsFromTheResponseSchema(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "GetInventoryItem",
+	}}
+	invoker := &fakeInvoker{data: map[string]any{"status": "quarantined"}}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalogWithStatusColumn(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "この在庫の詳細を見せて", nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result.Fields)
+
+	status, ok := result.Fields["status"].(map[string]any)
+	require.True(t, ok, "fields must carry a status property schema")
+
+	enumLabels, ok := status["enumLabels"].(map[string]string)
+	require.True(t, ok, "the status field must carry a structured enumLabels map")
+	assert.Equal(t, "検品保留", enumLabels["quarantined"])
+}
+
+func TestPlanResultWithNoColumnsHasNoFields(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}}
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+
+	// inventoryCatalog's rows have no properties at all, so there is
+	// nothing a Fields map could usefully describe.
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "在庫の一覧を見せて", nil)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.Fields)
+}
+
 func TestPlanNoneCallsNothingAndReturnsAMessage(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
 	invoker := &fakeInvoker{}

@@ -72,7 +72,7 @@ thing: `/api/plan` does not execute unsafe methods.
 
 ```
 POST /api/plan     { query, answers? }
-  -> { kind: "result", component, data, source }
+  -> { kind: "result", component, data, source, fields? }
   -> { kind: "form",   schema, initial, target }
   -> { kind: "ask",    question, param, options }
   -> { kind: "none",   message }
@@ -96,6 +96,16 @@ A pure function of the response schema, in `domain`:
 
 `x-ui-hint.component` on the operation overrides the result. Labels come from
 the schema's `title` and `description`; no separate label vocabulary.
+
+A `kind: "result"` response also carries `fields`: the per-property JSON
+Schema for a table's columns (the row schema) or a detail's own properties,
+built by the same conversion the model's tool definitions use
+(`schemaToJSONSchema`), so an enum property's `x-enum-labels` are never
+derived twice. `fields` exists for two reasons: someone asking a question in
+Japanese should not be shown an enum's raw English value (`quarantined`
+instead of `検品保留`), and a form's select control needs the value/label
+pairs to offer, not just the value. `fields` is absent — not an empty
+object — when the result renders as neither `table` nor `detail`.
 
 ## 7. User interface
 

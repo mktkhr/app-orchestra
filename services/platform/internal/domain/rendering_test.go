@@ -150,3 +150,66 @@ func TestRenderResultWithNoResponseHasNoComponent(t *testing.T) {
 
 	assert.Empty(t, domain.RenderResult(&e))
 }
+
+func TestFieldsSchemaBareArrayReturnsItemSchema(t *testing.T) {
+	itemSchema := &domain.Schema{
+		Type: "object",
+		Properties: map[string]domain.Schema{
+			"status": {Type: "string", Enum: []string{"quarantined"}},
+		},
+	}
+	e := domain.Endpoint{
+		Response: &domain.Schema{Type: "array", Items: itemSchema},
+	}
+
+	assert.Same(t, itemSchema, domain.FieldsSchema(&e))
+}
+
+func TestFieldsSchemaWrappedArrayReturnsItemSchema(t *testing.T) {
+	itemSchema := &domain.Schema{
+		Type: "object",
+		Properties: map[string]domain.Schema{
+			"status": {Type: "string", Enum: []string{"quarantined"}},
+		},
+	}
+	e := domain.Endpoint{
+		Response: &domain.Schema{
+			Type: "object",
+			Properties: map[string]domain.Schema{
+				"items": {Type: "array", Items: itemSchema},
+				"total": {Type: "integer"},
+			},
+		},
+	}
+
+	assert.Equal(t, itemSchema, domain.FieldsSchema(&e))
+}
+
+func TestFieldsSchemaSingleObjectReturnsResponseSchema(t *testing.T) {
+	e := domain.Endpoint{
+		Response: &domain.Schema{
+			Type: "object",
+			Properties: map[string]domain.Schema{
+				"status": {Type: "string", Enum: []string{"quarantined"}},
+			},
+		},
+	}
+
+	assert.Same(t, e.Response, domain.FieldsSchema(&e))
+}
+
+func TestFieldsSchemaNoComponentReturnsNil(t *testing.T) {
+	e := domain.Endpoint{
+		RequestBody: &domain.Schema{Type: "object"},
+	}
+
+	assert.Nil(t, domain.FieldsSchema(&e))
+}
+
+func TestFieldsSchemaScalarResponseReturnsNil(t *testing.T) {
+	e := domain.Endpoint{
+		Response: &domain.Schema{Type: "string"},
+	}
+
+	assert.Nil(t, domain.FieldsSchema(&e))
+}

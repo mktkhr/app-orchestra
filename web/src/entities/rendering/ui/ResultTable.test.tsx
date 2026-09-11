@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { Fields } from "../model/rows";
 import { ResultTable } from "./ResultTable";
 
 function items(count: number): readonly { readonly id: string; readonly name: string }[] {
@@ -63,5 +64,35 @@ describe("ResultTable", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
+  });
+
+  it("shows an enum cell's Japanese label when fields declares one, and the raw value otherwise", () => {
+    const fields: Fields = {
+      status: {
+        type: "string",
+        enum: ["quarantined"],
+        enumLabels: { quarantined: "検品保留" },
+      },
+    };
+
+    render(
+      <ResultTable
+        data={{ items: [{ id: "itm-005", name: "梱包用ダンボール", status: "quarantined" }] }}
+        fields={fields}
+      />,
+    );
+
+    expect(screen.getByText("検品保留")).toBeTruthy();
+    expect(screen.queryByText("quarantined")).toBeNull();
+    expect(screen.getByText("梱包用ダンボール")).toBeTruthy();
+  });
+
+  it("uses fields[column].title as the column header when it declares one", () => {
+    const fields: Fields = { status: { type: "string", title: "在庫状況" } };
+
+    render(<ResultTable data={{ items: [{ id: "itm-001", status: "x" }] }} fields={fields} />);
+
+    expect(screen.getByRole("columnheader", { name: "在庫状況" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "status" })).toBeNull();
   });
 });

@@ -63,7 +63,45 @@ func TestPostPlanRendersAResult(t *testing.T) {
 	require.NotNil(t, body.Source.Args)
 	assert.Equal(t, map[string]any{"status": "allocated"}, *body.Source.Args)
 
+	assert.Nil(t, body.Fields)
+
 	assert.Equal(t, "在庫の一覧を見せて", orchestrator.query)
+}
+
+func TestPostPlanRendersAResultWithFields(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:        usecase.ResultKindResult,
+		Component:   domain.ComponentTable,
+		Data:        map[string]any{"items": []any{}},
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Fields: map[string]any{
+			"status": map[string]any{
+				"type":       "string",
+				"enum":       []string{"quarantined"},
+				"enumLabels": map[string]string{"quarantined": "検品保留"},
+			},
+		},
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "検品保留の在庫を見せて"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	require.NotNil(t, body.Fields)
+
+	status, ok := (*body.Fields)["status"].(map[string]any)
+	require.True(t, ok)
+
+	enumLabels, ok := status["enumLabels"].(map[string]string)
+	require.True(t, ok)
+	assert.Equal(t, "検品保留", enumLabels["quarantined"])
 }
 
 func TestPostPlanRendersAForm(t *testing.T) {

@@ -213,7 +213,8 @@ components:
       description: >
         The planner's decision and, when it was safe to act on immediately,
         its result. Which of the optional fields are present depends on
-        `kind`: `result` carries `component`, `data` and `source`; `form`
+        `kind`: `result` carries `component`, `data`, `source` and,
+        when the response has columns to describe, `fields`; `form`
         carries `schema`, `initial` and `target`; `ask` carries `question`,
         `param` and `options`; `none` carries `message`.
       required:
@@ -226,6 +227,17 @@ components:
         data:
           type: object
           description: The rendered result, when kind is "result".
+          additionalProperties: true
+        fields:
+          type: object
+          description: >
+            Per-property JSON Schema for `data`'s columns (`table`) or own
+            properties (`detail`), when kind is "result" - most importantly
+            each enum property's `enumLabels` (value -> Japanese label), so
+            a table cell or form control can show "検品保留" instead of
+            "quarantined" without parsing a model-facing description string
+            apart. Absent when the result has no columns to describe (not
+            an empty object).
           additionalProperties: true
         source:
           $ref: "#/components/schemas/Source"

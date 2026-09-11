@@ -7,24 +7,31 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import type { JSX } from "react";
 
-import { formatCellValue, type Row } from "../model/rows";
+import { cellText, columnTitle, type Fields, type Row } from "../model/rows";
 
-export type { Row };
+export type { Fields, Row };
 
 interface ResultTableGridProps {
   readonly columns: readonly string[];
   readonly rows: readonly Row[];
+  /**
+   * Per-column schema, from `PlanResult.fields`. Undefined when the result
+   * carried none (see `usecase.fieldsFor`, services/platform), in which
+   * case every column falls back to its raw key and every cell to its raw
+   * value.
+   */
+  readonly fields?: Fields | undefined;
 }
 
 /** The rows of a table result, as an MUI `Table`. */
-export function ResultTableGrid({ columns, rows }: ResultTableGridProps): JSX.Element {
+export function ResultTableGrid({ columns, rows, fields }: ResultTableGridProps): JSX.Element {
   return (
     <TableContainer component={Paper} variant="outlined">
       <Table size="small">
         <TableHead>
           <TableRow>
             {columns.map((column) => (
-              <TableCell key={column}>{column}</TableCell>
+              <TableCell key={column}>{columnTitle(fields, column)}</TableCell>
             ))}
           </TableRow>
         </TableHead>
@@ -32,7 +39,7 @@ export function ResultTableGrid({ columns, rows }: ResultTableGridProps): JSX.El
           {rows.map((row) => (
             <TableRow key={JSON.stringify(row)}>
               {columns.map((column) => (
-                <TableCell key={column}>{formatCellValue(row[column])}</TableCell>
+                <TableCell key={column}>{cellText(fields, column, row[column])}</TableCell>
               ))}
             </TableRow>
           ))}

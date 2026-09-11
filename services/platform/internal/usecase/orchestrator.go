@@ -38,6 +38,14 @@ type Result struct {
 	Component domain.Component
 	Data      any
 	Args      map[string]any
+	// Fields describes, per property, the schema a table's columns or a
+	// detail's own properties carry - most importantly each enum
+	// property's EnumLabels, so a UI can show "検品保留" instead of
+	// "quarantined" without parsing the model-facing description string
+	// apart (see DECISIONS.md). Built by fieldsFor, and nil whenever
+	// domain.FieldsSchema finds nothing to describe (Component is not
+	// table or detail).
+	Fields map[string]any
 
 	// Populated when Kind is ResultKindNone.
 	Message string
@@ -305,7 +313,36 @@ func (o *Orchestrator) invokeAndRender(
 		Service:     service,
 		OperationID: operationID,
 		Args:        args,
+		Fields:      fieldsFor(endpoint),
 	}, nil
+}
+
+// fieldsFor builds the per-property schema a ResultKindResult result
+// carries as Fields: the row schema for a table, or the response schema
+// itself for a detail - domain.FieldsSchema decides which, reusing exactly
+// the judgment RenderResult already made about where a table's rows live
+// (see soleArrayProperty), rather than repeating that logic here.
+//
+// The conversion to JSON Schema is schemaToJSONSchema, the same function
+// tools.go uses to describe a schema to the model, so a property's enum
+// labels are never derived twice. Only its "properties" map is kept -
+// fieldsFor describes the fields themselves, not a wrapping object - and a
+// schema with no properties (or none at all) yields no Fields, per
+// docs/specs/orchestration.md section 6: absent, not an empty object.
+func fieldsFor(endpoint *domain.Endpoint) map[string]any {
+	rowSchema := domain.FieldsSchema(endpoint)
+	if rowSchema == nil || len(rowSchema.Properties) == 0 {
+		return nil
+	}
+
+	converted := schemaToJSONSchema(rowSchema)
+
+	fields, ok := converted[keyProperties].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	return fields
 }
 
 // validateArgs checks args against endpoint's schema before it is called:

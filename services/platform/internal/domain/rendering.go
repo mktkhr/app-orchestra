@@ -60,6 +60,54 @@ func RenderResult(e *Endpoint) Component {
 	return ""
 }
 
+// FieldsSchema returns the schema whose Properties describe the columns a
+// rendered result carries: for a table, the row schema (the array's own
+// Items when the response is a bare array, or the wrapper's sole array
+// property's Items for an envelope such as {items: [...], total: n}); for
+// a detail, the response schema itself. It answers the same "what does this
+// endpoint's response look like" question RenderResult does, and by the
+// same rules, so a caller building a per-field schema (docs/specs/orchestration.md
+// section 6, `fields`) never has to re-derive which property of a wrapper
+// object holds the rows - that judgment is made exactly once, here.
+//
+// It returns nil when RenderResult would render neither a table nor a
+// detail (an ask/form path, or a response with no component at all), so a
+// caller knows not to produce a fields output at all rather than an empty
+// one.
+func FieldsSchema(e *Endpoint) *Schema {
+	switch RenderResult(e) {
+	case ComponentTable:
+		return tableRowSchema(e.Response)
+	case ComponentDetail:
+		return e.Response
+	default:
+		return nil
+	}
+}
+
+// tableRowSchema returns the schema of one row of a table response: s
+// itself when it already is an array (Items), or the sole array property's
+// Items when s is a wrapper object. Mirrors isObjectArray's own judgment of
+// where the rows live, so the two can never disagree about which property
+// holds them.
+func tableRowSchema(s *Schema) *Schema {
+	if s == nil {
+		return nil
+	}
+
+	if s.Type == SchemaTypeArray {
+		return s.Items
+	}
+
+	if s.Type == SchemaTypeObject {
+		if arr := soleArrayProperty(s); arr != nil {
+			return arr.Items
+		}
+	}
+
+	return nil
+}
+
 // isObjectArray reports whether s is an array of objects, either directly
 // or as the single array-valued property of a wrapper object (a paginated
 // envelope such as {items: [...], total: n}).
