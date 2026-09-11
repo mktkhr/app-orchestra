@@ -1290,3 +1290,43 @@ directory each run, so no suite sees another's workspaces), which keeps
 `acceptance-e2e` and `acceptance-browser` green. The harness file needs the
 same one-line addition, but that is a protected path change this agent is
 not authorised to make; see `TODO.md`.
+
+## 2026-09-11 Workspaces Task 7: restarting the platform mid-test, and the drawer's own staleness
+
+**Context.** AC-W-105 (a workspace survives a restart of the platform) needs a
+process-level test that stops and starts the built `platform` binary itself,
+not just the browser or the page - `e2e/src/orchestration.test.ts`'s helpers
+(`freePort`, `startBinary`, `stop`, `waitForReady`) start their processes once
+in `beforeAll` and stop them once in `afterAll`; nothing there restarts one
+mid-test. Separately, the browser journey (ask → save → reopen) hit a real
+product behaviour: `web/src/features/workspaces/model/useWorkspaces.ts`, which
+the drawer uses to list workspaces, loads once on mount and is never told
+about a workspace `SaveToWorkspaceControl` created through its own, separate
+`useSaveToWorkspace` hook - so a freshly-saved workspace does not appear in the
+drawer without some kind of reload.
+
+**Decision.** `e2e/src/workspaces.test.ts` is a sibling file, not a change to
+`orchestration.test.ts`: it duplicates the same handful of small process
+helpers rather than importing them, because this suite's shape is
+genuinely different (it starts a _second_ platform process against the
+_same_ `ORCHESTRA_DB_PATH` file mid-test, after stopping the first), and
+`make guard-duplication` only scans `web/src` - there is no guard this
+would fail either way. It keeps its own `inventory` service running
+across both platform starts, since `pkg/app.build` fetches the catalogue
+at startup and fails to start at all if a configured service is
+unreachable - so what survives the restart is the workspace's row in
+SQLite, not the platform having to run without its catalogue.
+
+For the browser journey (`e2e/browser/workspace.spec.ts`), "reopen the
+workspace" is written as a real `page.reload()` after saving, the same
+thing a person returning later would do, rather than reaching into the
+app's state to force the drawer to refetch. This is the honest way to
+prove AC-W-101/102 end to end without changing product code that Task 7
+was not scoped to touch; `useWorkspaces` re-fetching live is not a defect
+this task's acceptance criteria ask for.
+
+**Consequences.** `e2e/src/workspaces.test.ts` only pushes its _second_
+platform process onto the array `afterAll` cleans up - the first is
+stopped inline, mid-test, and `stop`'s `once("exit", ...)` listener never
+fires for a process that has already exited by the time it is attached,
+which hung the suite for the full hook timeout before this was noticed.

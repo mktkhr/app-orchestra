@@ -290,15 +290,15 @@ Nothing about the planner changes. It is the chat, on another screen.
 And a restart: the platform is stopped and started on the same database file,
 and the workspace is still there.
 
-- [ ] **Step 1** Write the process-level test: create a workspace and a panel
+- [x] **Step 1** Write the process-level test: create a workspace and a panel
       over HTTP, stop the platform, start it again on the same file, read the
       workspace back. Run it, expect failure.
-- [ ] **Step 2** Make it pass. The e2e database is a file in a temporary
+- [x] **Step 2** Make it pass. The e2e database is a file in a temporary
       directory, so the suites cannot see each other's workspaces.
-- [ ] **Step 3** Write the browser journey: ask a question, save the result,
+- [x] **Step 3** Write the browser journey: ask a question, save the result,
       open the workspace, see the panel.
-- [ ] **Step 4** `make check` in full — every gate green.
-- [ ] **Step 5** Commit: `test(e2e): keep an answer and find it again`
+- [x] **Step 4** `make check` in full — every gate green.
+- [x] **Step 5** Commit: `test(e2e): keep an answer and find it again`
 
 **Satisfies:** AC-W-105, and the whole of section 10 end to end.
 

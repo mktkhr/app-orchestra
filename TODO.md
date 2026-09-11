@@ -4,37 +4,68 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. The second vertical slice, `docs/plans/workspaces.md`. Task 0 (storage) is
-   done - see Done below. Task 1 (the workspace endpoints) is next.
-2. **Blocker for a fully green `make check`, discovered doing Task 0**:
-   `harness/quality/browser/playwright.config.ts` (protected; the agent may
-   not edit it) starts `services/platform/bin/api` without
-   `ORCHESTRA_DB_PATH`, which `internal/infra/config.Load` now requires
-   (`ErrMissingDBPath` - `docs/plans/workspaces.md`, Task 0, Step 3: "an
-   unset path is an error, not a default"). `guard-a11y` and `guard-layout`
-   both fail as a result; every other `make check` target is green,
-   including `acceptance-e2e` and `acceptance-browser`, whose own configs
-   (`e2e/src/orchestration.test.ts`, `e2e/playwright.config.ts`, both
-   unprotected) were updated to set it. The fix is one line - add
-   `ORCHESTRA_DB_PATH: <a path in a temp dir>` to that file's `webServer.env`
-   - but needs a human to apply it under a PR carrying the "harness" label
-     (`.github/workflows/ci.yml`'s `harness-protection` job); no in-bounds
-     workaround exists. Until then, `make check` (no `-k`) stops at
-     `guard-a11y`; `make -k check` shows nothing else failing.
+Nothing. Both vertical slices (`docs/plans/orchestration.md`,
+`docs/plans/workspaces.md`) are done, and `make check` is fully green.
 
 ## Next
 
-1. `docs/plans/workspaces.md`, Task 1: the workspace endpoints
-   (`POST /api/workspaces` and friends), against Task 0's store.
-2. Once Task 1 lands (or sooner, with the "harness" label), fix the blocker
-   above.
-3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
-   in the repository already passes under 7; only code generation does not.
-   orval was measured as a replacement and rejected - it runs under TypeScript 7
-   but emits the wrong shape for this product (`DECISIONS.md`, 2026-09-11).
+Everything remaining sits outside the two vertical slices:
+
+1. Authentication and authorisation. Workspaces carry an owner column
+   filled with the stub user (W6, `docs/specs/workspaces.md`); nothing
+   currently checks who is asking.
+2. Multi-turn conversational context. Today's planner makes one call per
+   request (D8); nothing remembers a prior turn across a `/api/plan` call.
+3. A genre/domain layer above individual services - grouping services by
+   what they are for, rather than listing every one flat.
+4. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+   else in the repository already passes under 7; only code generation does
+   not. orval was measured as a replacement and rejected - it runs under
+   TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
+   2026-09-11).
 
 ## Done
 
+- `docs/plans/workspaces.md`, Task 7: end to end. `e2e/src/workspaces.test.ts`
+  proves AC-W-105 (a workspace survives a restart of the platform) at the
+  process level - create a workspace and a panel over HTTP, stop the built
+  platform binary, start a fresh one on the same `ORCHESTRA_DB_PATH` file,
+  read the workspace back. `e2e/browser/workspace.spec.ts` drives the built
+  product in headless Chromium through the whole journey: ask, save, reopen
+  (a real page reload), see the panel draw, refresh it (AC-W-101, AC-W-102,
+  AC-W-103). Both suites keep their own temporary database file and feed the
+  stub planner through `ORCHESTRA_PLAN_FIXTURES` - no real LLM is ever
+  called by `make check`. See `DECISIONS.md`, 2026-09-11 ("Workspaces
+  Task 7"). This closes `docs/plans/workspaces.md`: every criterion in
+  `docs/specs/workspaces.md` section 10 now has a test that runs in CI.
+- `docs/plans/workspaces.md`, Task 6: asking from the workspace screen.
+  `web/src/pages/workspace/ui/WorkspacePage.tsx` carries
+  `widgets/conversation`'s `ConversationPanel`, passed the current
+  `workspaceId` as `defaultWorkspaceId` so a result's save control defaults
+  to the workspace it was asked from (AC-W-104).
+- `docs/plans/workspaces.md`, Task 5: a panel can be run again.
+  `web/src/entities/workspace/model/usePanelInvoke.ts` exposes `refresh`; the
+  refresh control never disables itself, only swaps its icon/label while in
+  flight, since a disabled `contained` `Button` fails `make guard-layout`
+  (AC-W-103).
+- `docs/plans/workspaces.md`, Task 4: a result can be kept.
+  `web/src/features/workspaces/ui/SaveToWorkspaceControl.tsx` posts a
+  result's `source`/`component` as a panel, with an editable title
+  defaulting to the question that produced it, and can create a workspace
+  on the spot (AC-W-101).
+- `docs/plans/workspaces.md`, Task 3: a workspace draws its panels.
+  `web/src/pages/workspace/ui/PanelResult.tsx` composes
+  `entities/workspace`'s card shell with `entities/rendering`'s provenance
+  and result widgets; each panel loads independently, so one unreachable
+  service only shows up in its own card (AC-W-102, AC-W-106).
+- `docs/plans/workspaces.md`, Task 2: the drawer lists workspaces.
+  `web/src/features/workspaces` (list, create, delete) and
+  `NavigationDrawer`.
+- `docs/plans/workspaces.md`, Task 1: the workspace endpoints -
+  `POST`/`GET /api/workspaces`, `GET`/`DELETE /api/workspaces/{id}`,
+  `POST /api/workspaces/{id}/panels`, `DELETE
+/api/workspaces/{id}/panels/{panelId}` - against Task 0's store, rejecting
+  an unexposed operation with the same 400 `/api/invoke` gives.
 - `docs/plans/workspaces.md`, Task 0: workspaces have somewhere to live.
   `internal/domain/workspace.go` (`Workspace`, `Panel`, stdlib only);
   `internal/usecase/workspaces.go` (`WorkspaceStore` port); the SQLite
@@ -52,8 +83,8 @@ _Keep three lists. Move items, do not duplicate them._
   not the value shown in the plan's pseudocode, for the same `gocritic`
   hugeParam reason `pkg/app.Config` is already a pointer (112 bytes each).
   91.5% package coverage (`t.TempDir()`, plus a second store opened on the
-  same file proving persistence - AC-W-105's storage half). See the blocker
-  above and `DECISIONS.md`, 2026-09-11.
+  same file proving persistence - AC-W-105's storage half). See
+  `DECISIONS.md`, 2026-09-11.
 - `harness/guard/exposed-ops.sh` now also requires `title` on every property
   an exposed operation actually draws on screen (response fields, an object
   request body's fields, and parameters - `ask` can degrade any exposed
@@ -129,7 +160,8 @@ _Keep three lists. Move items, do not duplicate them._
   `entities/rendering/model/useSubmission.ts` out of `ResultForm` so the two
   components' submit/error handling is written once. Verified live: 1 `ask`
   in 5 attempts against `qwen3.5-9b-q8` (matching the prior measurement),
-  fixed in `Conversation.test.tsx` regardless.
+  fixed in `Conversation.test.tsx` regardless of what any particular live
+  run does.
 - Added `list_capabilities` (`service?: string`), a built-in tool alongside
   `ask_user` that answers "what can this do?" from the catalogue itself:
   `Orchestrator.listCapabilities` renders it as `kind: "result"` /

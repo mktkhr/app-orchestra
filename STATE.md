@@ -4,15 +4,17 @@ _Last updated: 2026-09-11_
 
 ## Summary
 
-**The first vertical slice is done, all seventeen tasks.** The second,
-`docs/plans/workspaces.md`, is starting: Task 0 (storage) is done -
-`internal/domain/workspace.go`, `internal/usecase/workspaces.go`'s
-`WorkspaceStore` port, and its SQLite implementation in
-`internal/adapter/repository/sqlite` (`modernc.org/sqlite`, no HTTP yet).
-`ORCHESTRA_DB_PATH` is now required - see `TODO.md` for the one harness
-browser config this broke (a protected path the agent cannot fix) and
-`DECISIONS.md`, 2026-09-11, for the rest. `make -k check` is green except
-for `guard-a11y`/`guard-layout`.
+**Both vertical slices are done.** `docs/plans/orchestration.md`'s seventeen
+tasks, and now `docs/plans/workspaces.md`'s eight (Task 0 through Task 7):
+an answer worth keeping can be kept. A result in the chat can be saved to a
+workspace as a panel - service, operation id, arguments, component, title -
+and opening the workspace re-runs every panel through the same
+`/api/invoke` the chat uses, drawing each answer with the same components.
+Workspaces live in a SQLite file (`modernc.org/sqlite`, `ORCHESTRA_DB_PATH`,
+required) and survive a restart of the platform process, proven at the
+process level, not just in memory. `make check` is fully green, and every
+criterion in `docs/specs/workspaces.md` section 10 (AC-W-101 through
+AC-W-106) has a test that runs in CI.
 
 The platform's scaffold, two services that answer real
 requests, the rendering rule, the catalogue the platform builds by asking
@@ -421,17 +423,68 @@ Chromium: click the list example question, see the question echoed, see
 `inventory / ListInventoryItems`, see a `<table>` containing `itm-001`. See
 `DECISIONS.md`, 2026-09-11, for `ORCHESTRA_PLAN_FIXTURES` itself.
 
+**Workspaces (`docs/plans/workspaces.md`, all eight tasks) close the second
+slice.** `services/platform/internal/domain/workspace.go` (`Workspace`,
+`Panel`, stdlib only), `internal/usecase/workspaces.go` (the
+`WorkspaceStore` port and the usecase over it), and
+`internal/adapter/repository/sqlite` (the store, embedded schema, IDs via
+`crypto/rand.Text()`) from Task 0; `POST /api/workspaces`,
+`GET /api/workspaces`, `GET`/`DELETE /api/workspaces/{id}`,
+`POST /api/workspaces/{id}/panels`, `DELETE
+/api/workspaces/{id}/panels/{panelId}` from Task 1, rejecting an operation
+the catalogue does not expose with the same 400 `/api/invoke` gives, and an
+unknown workspace with 404. `web/src/features/workspaces` (list, create,
+delete, save-a-result), `web/src/entities/workspace` (the panel card shell,
+`usePanelInvoke`), `web/src/pages/workspace` (the screen) from Tasks 2-6: a
+workspace under チャット in the drawer per row with a delete control that
+asks first; opening one posts each panel to `/api/invoke` independently -
+one unreachable service shows its error in its own card, the rest still
+draw (AC-W-106); a result turn in the chat carries a "ワークスペースに保存"
+control that copies its `source`/`component` and lets its title be edited,
+creating a workspace on the spot if none exists yet (AC-W-101); each panel
+card carries its own refresh control, which never disables itself, only
+swaps its icon and label while in flight (AC-W-103); the workspace screen
+carries the same conversation the chat does, and a result asked from there
+defaults its save control to that workspace (AC-W-104).
+
+Task 7 closes it end to end. `e2e/src/workspaces.test.ts` creates a
+workspace and a panel over real HTTP against the built platform binary,
+stops that process, starts a fresh one on the same `ORCHESTRA_DB_PATH`
+file (inventory kept running throughout, since the platform re-fetches its
+catalogue at startup and will not start without a configured service
+answering), and reads the workspace and its panel back unchanged - AC-W-105,
+proven at the process level, not just against an in-memory store.
+`e2e/browser/workspace.spec.ts` drives the built product in headless
+Chromium: ask the list example question, save the result to a new
+workspace, reload (a person returning later does the same), open the
+workspace from the drawer, see the same table draw again from a fresh
+`/api/invoke` call, then refresh the panel and see the table still draw
+(AC-W-101, AC-W-102, AC-W-103). Both suites use their own `mkdtempSync`
+database file, so neither sees another suite's workspaces, and both feed
+the stub planner through `ORCHESTRA_PLAN_FIXTURES` - no real LLM is ever
+called. See `DECISIONS.md`, 2026-09-11 ("Workspaces Task 7"), for why the
+process-level suite duplicates rather than imports
+`orchestration.test.ts`'s helpers, and why the browser journey reopens the
+workspace with a real page reload.
+
 ## What does not exist yet
 
-Nothing from `docs/plans/orchestration.md`'s first vertical slice; all
-seventeen tasks are done. `ask_user` is implemented and unit-tested for both
-planners (a fixed tool-call fixture, and a fixed `kind: "ask"` JSON fixture,
-each map to `DecisionAsk`), but no local model under about 20B parameters
-was observed to choose it reliably live - `qwen3.5-9b-q8` picked it roughly
-1 run in 5 against a genuinely ambiguous query through the tool-calling
-planner, guessing a value the rest of the time (`DECISIONS.md`); not
-re-measured for the JSON planner, since none of the questions exercised
-live for Task 11 were ambiguous enough to reach it.
+Nothing from `docs/plans/orchestration.md`'s first vertical slice or
+`docs/plans/workspaces.md`'s second; all twenty-five tasks between them are
+done. `ask_user` is implemented and unit-tested for both planners (a fixed
+tool-call fixture, and a fixed `kind: "ask"` JSON fixture, each map to
+`DecisionAsk`), but no local model under about 20B parameters was observed
+to choose it reliably live - `qwen3.5-9b-q8` picked it roughly 1 run in 5
+against a genuinely ambiguous query through the tool-calling planner,
+guessing a value the rest of the time (`DECISIONS.md`); not re-measured for
+the JSON planner, since none of the questions exercised live for Task 11
+were ambiguous enough to reach it.
+
+Everything past the two vertical slices remains future work: authentication
+and authorisation (workspaces carry a stub owner column, W6), multi-turn
+conversational context (one call per request, D8), a genre/domain layer
+above individual services, and the move to TypeScript 7 once
+`openapi-typescript` supports it (see "Known gaps in the harness" below).
 
 ## Known gaps in the harness
 
