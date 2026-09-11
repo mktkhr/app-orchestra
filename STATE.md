@@ -145,11 +145,29 @@ names its operation for exactly this reason, DECISIONS.md 2026-09-11), then
 body properties for one named `decision.Param` that declares an enum, and
 builds the options from that schema's `Enum` and `EnumLabels`. Resolving
 `param` within its own endpoint, not the whole catalogue, is what keeps a
-parameter name such as `status` from colliding across services. A
-param the catalogue does not recognise as an enum returns
-`usecase.ErrUnknownParam` (a 500) rather than falling back to the model's own
-list. A `DecisionKind` the switch does not recognise at all still returns
-`usecase.ErrNotImplemented` (a 501).
+parameter name such as `status` from colliding across services. A param the
+catalogue does not recognise as an enum - most often a free-text required
+field, such as `name` on `CreateInventoryItem`, that the model reached
+`ask_user` for anyway because it had nothing to fill in - degrades to
+`kind: "form"` instead of an error (`DECISIONS.md`, 2026-09-11: this used to
+be a 500, `usecase.ErrUnknownParam`, which is now deleted). A `DecisionKind`
+the switch does not recognise at all still returns `usecase.ErrNotImplemented`
+(a 501).
+
+The form both this degraded `ask` and an unsafe `DecisionCall` (above) build
+is now the same `inputSchemaFor` (`tools.go`) that already builds a tool's
+`InputSchema` for the model - an endpoint's parameters and request body
+merged into one JSON Schema - not the deleted `formSchema`, which converted
+only the request body and left a form empty for a GET-shaped endpoint (query
+parameters, no body) such as `GetInventoryItem`. There is now exactly one
+converter from a `domain.Endpoint`'s arguments to JSON Schema, not two.
+`askUserDescription` (`tools.go`) now says explicitly not to call `ask_user`
+for a free-text parameter - measured before and after, alongside the fix
+itself, against the running `qwen3.5-9b-q8`: before, `"在庫を登録したい"`
+("I want to register some inventory") 500'd 3-4 times in 5; after, every run
+returns `kind: "form"` or `kind: "ask"` (about `status`, once the model
+reaches a genuine enum question) or `kind: "result"` (`list_capabilities`),
+never a 500.
 
 The re-post half of the ask flow - `POST /api/plan` with `answers` alongside
 the original `query` reaching the planner and producing a different decision -

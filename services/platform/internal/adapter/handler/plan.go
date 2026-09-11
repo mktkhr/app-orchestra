@@ -57,8 +57,9 @@ func (h *Plan) PostPlan(
 
 // planErrorResponse maps an Orchestrator.Plan error onto an HTTP status: a
 // DecisionKind this deployment does not implement at all is reported as
-// 501; everything else, including a disambiguation naming a parameter the
-// catalogue does not recognise (usecase.ErrUnknownParam), as 500.
+// 501; everything else - which no longer includes a disambiguation naming
+// a parameter with no enum, since Orchestrator.ask degrades that case to a
+// form instead of an error - as 500.
 func planErrorResponse(err error) openapi.PostPlanResponseObject {
 	if errors.Is(err, usecase.ErrNotImplemented) {
 		return openapi.PostPlan501JSONResponse{Message: err.Error()}

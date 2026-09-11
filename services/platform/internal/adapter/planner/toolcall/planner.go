@@ -184,8 +184,8 @@ func resolveService(catalog domain.Catalog, operationID string) (string, bool) {
 
 // stringArg reads a string argument, defaulting to "" when absent or of
 // the wrong type - a model that gets ask_user's schema wrong should not
-// crash the planner, just produce a Decision Orchestrator.ask will reject
-// with ErrEndpointNotFound or ErrUnknownParam.
+// crash the planner, just produce a Decision Orchestrator.ask will either
+// reject with ErrEndpointNotFound or degrade to a form for.
 func stringArg(args map[string]any, name string) string {
 	s, ok := args[name].(string)
 	if !ok {

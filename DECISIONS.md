@@ -966,3 +966,73 @@ simply did not know what to ask.
 `ToolsFor` now returns one more tool than before for every catalogue;
 `services/platform/internal/usecase/tools_test.go`'s fixed-count
 assertions were updated alongside it.
+
+## 2026-09-11 An ask over a parameter with no enum degrades to a form, not a 500
+
+**Context.** `POST /api/plan` with `{"query":"在庫を登録したい"}` ("I want to
+register some inventory") returned a 500 roughly 3 times in 5:
+`parameter not found in catalogue: "name" on inventory/CreateInventoryItem`.
+"登録したい" names no item, so the model - reasonably - reached for
+`ask_user` naming `name`, the one required field it had nothing to fill in.
+D11 built `ask_user` around an enum (a list of values to pick from), and
+`optionsForParam` (`orchestrator.go`) only ever looks for one; `name` is a
+free-text string with no enum, so `optionsForParam` reported it unknown and
+`Orchestrator.ask` turned that into `ErrUnknownParam`, which
+`handler/plan.go` mapped straight to 500. This is a platform defect, not a
+model misbehaviour: the model used `ask_user` exactly as its own
+description told it to ("call this when the question does not tell you
+which value to use"), for a case the tool's shape did not anticipate. A
+model choosing a documented tool for a documented reason must never crash
+the response.
+
+**Decision.** `Orchestrator.ask` no longer returns `ErrUnknownParam` when
+`optionsForParam` cannot find an enum for the named parameter. It degrades
+to `ResultKindForm` instead - the same shape an unsafe `DecisionCall`
+already produces - naming the endpoint the model was stuck on and carrying
+`decision.Args` (whatever the model did fill in) as the form's initial
+values. `ErrUnknownParam` is deleted; nothing outside its own doc comment
+and two other comments referenced it (checked, `grep -rn ErrUnknownParam`).
+A person cannot pick a free-text value from a list, so a form - type it in
+yourself - is the only thing left an ask can degrade to; this was the
+model's genuine question, just asked through a tool built for an enum it
+did not have (D11, `docs/specs/orchestration.md`, updated alongside).
+
+The form's schema is now built by `inputSchemaFor` (`tools.go`) - the same
+function that already builds a tool's `InputSchema` for the model, merging
+an endpoint's parameters and request body into one JSON Schema - rather
+than `formSchema`, which converted only the request body and left a form
+empty for a GET-shaped endpoint (query parameters, no body) such as
+`GetInventoryItem`. `formSchema` is deleted; there is now exactly one
+converter, not two, so a form's fields can never drift from what the model
+was told about the same endpoint. This changes the exact JSON a form's
+`schema.properties` carries for an endpoint with no properties at all (an
+explicit `"properties": {}` where none was sent before, since
+`inputSchemaFor` always initialises the map) - not a behaviour change,
+since an absent and an empty `properties` render identically, but
+`orchestrator_test.go`'s fixed-value assertions for the existing create
+form were updated to match.
+
+`askUserDescription` (`tools.go`) was also sharpened - "ONLY" for an enum
+parameter, an explicit "do NOT call this for a free-text parameter" - but
+only after measuring, not as the fix itself: a description is a request a
+model can still ignore, and this one already was (D11's original wording
+already said "for an enum" without stopping the model reaching for it over
+a free-text field). The platform-side degradation above is what makes the
+outcome safe regardless of what the model does next.
+
+**Measurement**, `qwen3.5-9b-q8`, 5 runs per query, before and after (recorded
+in the PR/report rather than duplicated here in full): before the fix, the
+four registration-intent queries 500'd 3-4 times in 5 with
+`ErrUnknownParam`, the rest landing on `list_capabilities` or a correct
+`ask` about `status`; after, every run of those four queries returned
+`kind: "form"` for `CreateInventoryItem`, and the unrelated
+`list_capabilities`/`result`/`none` queries were re-measured alongside and
+were unaffected by either change.
+
+**Consequences.** `ErrUnknownParam` is gone from `usecase`'s exported
+surface; a caller that matched on it (none exists in this repository -
+checked) would need updating. `formSchema` is gone; `inputSchemaFor` is now
+called from both `Orchestrator.call` (the unsafe-call form) and
+`Orchestrator.ask` (the new degraded form), so the two forms' schemas are
+built identically. No `openapi.yaml` change was needed: `PlanResult.schema`
+was already an untyped JSON object.

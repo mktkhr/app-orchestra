@@ -403,7 +403,7 @@ func TestPlanUnsafeCallReturnsAFormWithoutInvoking(t *testing.T) {
 	assert.Equal(t, "inventory", result.Service)
 	assert.Equal(t, "CreateInventoryItem", result.OperationID)
 	assert.Equal(t, map[string]any{"name": "widget", "status": "allocated"}, result.Initial)
-	assert.Equal(t, map[string]any{"type": "object"}, result.Schema)
+	assert.Equal(t, map[string]any{"type": "object", "properties": map[string]any{}}, result.Schema)
 	assert.Zero(t, invoker.calls, "an unsafe call must never reach the service")
 }
 
@@ -484,18 +484,92 @@ func TestPlanAskDecisionFillsInAMissingLabelDefensively(t *testing.T) {
 	assert.Equal(t, []domain.Option{{Value: "allocated", Label: ""}}, result.Options)
 }
 
-func TestPlanAskDecisionForAnUnknownParamFails(t *testing.T) {
+// TestPlanAskDecisionForAFreeTextParamReturnsAForm drives the fix this
+// repository shipped for a real 500: the model reaches for ask_user not
+// only to disambiguate an enum, but also when it simply does not know what
+// value to use for a required free-text field ("在庫を登録したい" names no
+// item, so the model asks about CreateInventoryItem's "name"). "name" is a
+// plain string with no declared enum, so optionsForParam cannot find
+// anything to offer - and there is nothing to offer, since a free-text
+// value cannot be chosen from a list. The only person who can supply it is
+// the one asking, so the answer is the same form an unsafe call already
+// produces, not an error.
+func TestPlanAskDecisionForAFreeTextParamReturnsAForm(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{
-		Kind: usecase.DecisionAsk, Service: "inventory", OperationID: "ListInventoryItems", Param: "no-such-param",
+		Kind:        usecase.DecisionAsk,
+		Service:     "inventory",
+		OperationID: "CreateInventoryItem",
+		Question:    "アイテム名を教えてください",
+		Param:       "name",
+		Args:        map[string]any{"status": "allocated"},
 	}}
 	invoker := &fakeInvoker{}
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker)
 
-	_, err := orchestrator.Plan(t.Context(), "検品保留の在庫を見せて", nil)
+	result, err := orchestrator.Plan(t.Context(), "在庫を登録したい", nil)
 
-	require.Error(t, err)
-	require.ErrorIs(t, err, usecase.ErrUnknownParam)
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindForm, result.Kind)
+	assert.Equal(t, "inventory", result.Service)
+	assert.Equal(t, "CreateInventoryItem", result.OperationID)
+	assert.Equal(t, map[string]any{"status": "allocated"}, result.Initial)
+	assert.Equal(t, map[string]any{"type": "object", "properties": map[string]any{}}, result.Schema)
+	assert.Zero(t, invoker.calls, "a degraded ask must never call a service")
+}
+
+// TestPlanAskDecisionForANameTheEndpointDoesNotDeclareAlsoReturnsAForm
+// covers the defensive case optionsForParam already guarded: a param name
+// the endpoint does not declare at all (a model's mistake, not just a
+// free-text field). It degrades the same way a free-text field does, for
+// the same reason - there is no list of values in the catalogue to offer,
+// so there is nothing an ask can do that a form cannot.
+//
+// It also proves the form's schema now describes the endpoint's whole
+// argument set, not just a request body: ListInventoryItems has no
+// RequestBody at all, only the "status" query parameter catalogWithStatusEnum
+// declares, and that parameter must still appear in the form's Schema -
+// the gap formSchema (request-body-only) left open for a GET-shaped
+// endpoint like GetInventoryItem.
+func TestPlanAskDecisionForANameTheEndpointDoesNotDeclareAlsoReturnsAForm(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "inventory", OperationID: "ListInventoryItems", Param: "no-such-param",
+	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(catalogWithStatusEnum(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "検品保留の在庫を見せて", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindForm, result.Kind)
+	assert.Equal(t, "inventory", result.Service)
+	assert.Equal(t, "ListInventoryItems", result.OperationID)
+
+	properties, ok := result.Schema["properties"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, properties, "status", "a parameter, not just a request body, must reach the form's schema")
+
+	assert.Zero(t, invoker.calls)
+}
+
+// TestPlanAskDecisionForAnEnumParamStillAsks is the regression guard for
+// the fix above: an ask naming a parameter the endpoint *does* declare as
+// an enum must keep returning kind: "ask", not degrade to a form just
+// because the degradation path now exists.
+func TestPlanAskDecisionForAnEnumParamStillAsks(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "inventory", OperationID: "ListInventoryItems", Param: "status",
+	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(catalogWithStatusEnum(), planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), "検品保留の在庫を見せて", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindAsk, result.Kind)
+	assert.NotEmpty(t, result.Options)
 	assert.Zero(t, invoker.calls)
 }
 

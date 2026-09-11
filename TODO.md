@@ -102,3 +102,12 @@ _Keep three lists. Move items, do not duplicate them._
   `openapi.yaml` or frontend change was needed - verified live and with
   `web/src/entities/rendering` unit tests unchanged (`DECISIONS.md`,
   2026-09-11; `docs/specs/orchestration.md` D14).
+- Fixed a 500: an `ask_user` naming a parameter with no declared enum (a
+  free-text required field, such as `CreateInventoryItem`'s `name`, when the
+  question never said what to call the thing) now degrades to `kind: "form"`
+  instead of `usecase.ErrUnknownParam` (deleted). `Orchestrator.ask`'s form
+  and `Orchestrator.call`'s unsafe-call form both now build their schema from
+  `inputSchemaFor` (`tools.go`) instead of the deleted `formSchema`, so a
+  form also covers path/query parameters, not just a request body.
+  `askUserDescription` was sharpened after measuring. Measured live against
+  `qwen3.5-9b-q8`, before and after (`DECISIONS.md`, 2026-09-11).

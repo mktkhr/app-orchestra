@@ -46,8 +46,11 @@ type Tool struct {
 
 // askUserDescription explains, to the model, when to reach for ask_user
 // instead of one of the catalogue's own tools.
-const askUserDescription = "Call this when the question does not tell you which value to use for an " +
-	"enum parameter. It hands the choice back to the person instead of guessing."
+const askUserDescription = "Call this ONLY when the question does not tell you which value to use for " +
+	"a parameter that declares a fixed set of allowed values (an enum), and you need the person to pick " +
+	"one from that set. Do NOT call this for a free-text parameter (for example a name) that has no " +
+	"declared set of values - there is nothing to pick from, so this tool cannot help; leave that " +
+	"parameter out of your call instead."
 
 // askUserServiceDescription and askUserOperationIDDescription explain why
 // ask_user must name the operation it is standing in for: a parameter name

@@ -77,16 +77,6 @@ var ErrInvalidArguments = errors.New("invalid arguments")
 // can distinguish "nothing fits" from "this isn't built yet".
 var ErrNotImplemented = errors.New("not implemented")
 
-// ErrUnknownParam is returned when a DecisionAsk names a parameter its own
-// (service, operationId) endpoint does not declare as an enum. A Decision
-// is ultimately produced by a model (docs/plans/orchestration.md Task 9),
-// which can name a parameter that does not exist or is not an enum on that
-// endpoint, so a disambiguation question is only ever answered from the
-// catalogue's own declared values for that one endpoint (see
-// optionsForParam) - never by trusting Decision.Options, which the same
-// model filled in and which may list values that do not exist.
-var ErrUnknownParam = errors.New("parameter not found in catalogue")
-
 // messageNoEndpoint is the message a ResultKindNone result carries: the
 // planner itself decided nothing in the catalogue fits the question. It
 // points at list_capabilities rather than leaving the person at a dead
@@ -95,20 +85,6 @@ var ErrUnknownParam = errors.New("parameter not found in catalogue")
 // the second case has an answer the first does not.
 const messageNoEndpoint = "その質問に答えられる操作が見つかりませんでした。" +
 	"「何ができるの？」と聞くと、できることの一覧を確認できます。"
-
-// formSchema builds the JSON Schema a form result carries: the endpoint's
-// request body, converted with the same schemaToJSONSchema (tools.go) used
-// to describe it to the planner, so the two never drift apart. An unsafe
-// endpoint with no request body at all - not something the catalogue
-// produces today, but not ruled out by the type system either - reports an
-// empty object schema rather than dereferencing a nil Schema.
-func formSchema(e *domain.Endpoint) map[string]any {
-	if e.RequestBody == nil {
-		return map[string]any{keyType: domain.SchemaTypeObject}
-	}
-
-	return schemaToJSONSchema(e.RequestBody)
-}
 
 // Orchestrator drives one /api/plan request: it asks Planner for a
 // Decision over the catalogue's tools and, for a safe call, invokes it and
@@ -181,8 +157,9 @@ func (o *Orchestrator) Invoke(ctx context.Context, service, operationID string, 
 // call resolves a DecisionCall against the catalogue: a safe endpoint is
 // invoked and rendered; an unsafe one (D8, docs/specs/orchestration.md)
 // never reaches the service at all - it comes back as a form to confirm
-// instead, carrying the request body's schema and the planner's arguments
-// as initial values.
+// instead, carrying the endpoint's whole argument schema (parameters and
+// request body alike, see inputSchemaFor) and the planner's arguments as
+// initial values.
 //
 // decision is a pointer, not the value Plan holds, because Decision is 112
 // bytes: golangci-lint's gocritic hugeParam check (part of the fixed
@@ -199,7 +176,7 @@ func (o *Orchestrator) call(ctx context.Context, decision *Decision) (Result, er
 			Kind:        ResultKindForm,
 			Service:     decision.Service,
 			OperationID: decision.OperationID,
-			Schema:      formSchema(&endpoint),
+			Schema:      inputSchemaFor(&endpoint),
 			Initial:     decision.Args,
 		}, nil
 	}
@@ -207,11 +184,11 @@ func (o *Orchestrator) call(ctx context.Context, decision *Decision) (Result, er
 	return o.invokeAndRender(ctx, &endpoint, decision.Service, decision.OperationID, decision.Args)
 }
 
-// ask resolves a DecisionAsk into a ResultKindAsk: it never touches the
-// invoker (an ask never calls a service), and it never repeats
-// decision.Options verbatim - see optionsForParam for why the catalogue,
-// not the model's own Decision, is the source of truth for what a person
-// is offered to pick from.
+// ask resolves a DecisionAsk into a ResultKindAsk, or degrades it into a
+// ResultKindForm: it never touches the invoker either way (an ask never
+// calls a service), and it never repeats decision.Options verbatim - see
+// optionsForParam for why the catalogue, not the model's own Decision, is
+// the source of truth for what a person is offered to pick from.
 //
 // The endpoint is looked up from decision.Service and decision.OperationID
 // - the operation the model was stuck on when it reached for ask_user
@@ -221,6 +198,22 @@ func (o *Orchestrator) call(ctx context.Context, decision *Decision) (Result, er
 // so searching the whole catalogue by name alone can surface another
 // service's enum entirely; naming the operation is what keeps the search
 // inside the one endpoint the question is actually about.
+//
+// D11 designed ask_user around an enum: hand the choice back as a list of
+// values to pick from. In practice the model also reaches for it when a
+// required argument has no enum at all - most often a create's free-text
+// field, such as "name" on CreateInventoryItem, when the question never
+// said what to call the thing - because from the model's own point of
+// view the situation is the same ("I cannot fill this in"), even though
+// the catalogue has nothing to offer a list of. optionsForParam reports
+// that with its second return value, and there is exactly one thing left
+// to do with a value nobody can choose from a list: let the person type
+// it, which is what a form is for. This is not a fallback that papers
+// over an error - it is what the model was actually asking for, expressed
+// through a tool that assumes an enum it did not have (see DECISIONS.md).
+// decision.Args, when the model already filled in other arguments
+// alongside the one it got stuck on, carries through as the form's
+// initial values, exactly as an unsafe DecisionCall's do (see call).
 //
 // decision is a pointer for the same reason call's is: golangci-lint's
 // gocritic hugeParam check on Decision's 112 bytes (see
@@ -233,7 +226,13 @@ func (o *Orchestrator) ask(decision *Decision) (Result, error) {
 
 	options, ok := optionsForParam(&endpoint, decision.Param)
 	if !ok {
-		return Result{}, fmt.Errorf("%w: %q on %s/%s", ErrUnknownParam, decision.Param, decision.Service, decision.OperationID)
+		return Result{
+			Kind:        ResultKindForm,
+			Service:     decision.Service,
+			OperationID: decision.OperationID,
+			Schema:      inputSchemaFor(&endpoint),
+			Initial:     decision.Args,
+		}, nil
 	}
 
 	return Result{
@@ -256,9 +255,10 @@ func (o *Orchestrator) ask(decision *Decision) (Result, error) {
 // that parameter - and only for the one endpoint decision named, not
 // whichever endpoint elsewhere in the catalogue happens to share the
 // parameter's name. The second return value is false when this endpoint
-// does not declare name as an enum at all, which Plan reports as
-// ErrUnknownParam rather than guessing or falling back to the model's own
-// list.
+// does not declare name as an enum at all - name may still be a real,
+// required argument (a free-text field such as "name"), just not one with
+// a list of values to offer - which ask reports by degrading to a form
+// rather than guessing or falling back to the model's own list.
 //
 // endpoint is a pointer for the same gocritic hugeParam reason as call's
 // and ask's decision parameter (domain.Endpoint is 136 bytes; see
