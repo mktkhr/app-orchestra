@@ -1,5 +1,7 @@
+import RefreshIcon from "@mui/icons-material/Refresh";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
+import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
 import type { JSX } from "react";
 
@@ -24,12 +26,29 @@ interface PanelResultProps {
  * docs/specs/workspaces.md). A failed call shows its message inside this
  * card instead of throwing, so a workspace with one unreachable panel still
  * draws the rest of them (AC-W-106).
+ *
+ * The refresh control is an `IconButton`, not a disabled `Button
+ * variant="contained"`: `make guard-layout` rejects a disabled contained
+ * button outright (it has no edge the layout guard can see), and the
+ * control must stay usable-looking anyway - AC-W-103 asks that it show it
+ * is working, not that it lock itself. So it never disables; while
+ * `refreshing` it swaps its icon for a small `CircularProgress` and its
+ * label from "更新" to "更新中", and double-clicks are absorbed by
+ * `usePanelInvoke`'s own in-flight guard rather than by disabling the
+ * button.
  */
 export function PanelResult({ panel }: PanelResultProps): JSX.Element {
-  const { loading, error, result } = usePanelInvoke(panel);
+  const { loading, refreshing, error, result, refresh } = usePanelInvoke(panel);
 
   return (
-    <PanelCardShell title={panel.title}>
+    <PanelCardShell
+      title={panel.title}
+      action={
+        <IconButton onClick={refresh} aria-label={refreshing ? "更新中" : "更新"}>
+          {refreshing ? <CircularProgress size={20} /> : <RefreshIcon />}
+        </IconButton>
+      }
+    >
       <Provenance
         source={{ service: panel.service, operationId: panel.operationId, args: panel.args }}
       />

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { postInvoke, type WorkspacePanel } from "@/shared/api/client";
@@ -72,5 +72,91 @@ describe("PanelResult", () => {
 
     expect(await screen.findByText("itm-fast")).toBeTruthy();
     expect(resolveSlow).toBeDefined();
+  });
+
+  it("runs the panel again and draws a row the first call did not have (W2)", async () => {
+    vi.mocked(postInvoke)
+      .mockResolvedValueOnce({ component: "table", data: { items: [{ id: "itm-001" }] } })
+      .mockResolvedValueOnce({
+        component: "table",
+        data: { items: [{ id: "itm-001" }, { id: "itm-new" }] },
+      });
+
+    render(<PanelResult panel={panel()} />);
+    expect(await screen.findByText("itm-001")).toBeTruthy();
+    expect(screen.queryByText("itm-new")).toBeFalsy();
+    vi.mocked(postInvoke).mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "更新" }));
+
+    expect(await screen.findByText("itm-new")).toBeTruthy();
+    expect(postInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the previous result on screen while a refresh is in flight", async () => {
+    let resolveRefresh: ((value: Awaited<ReturnType<typeof postInvoke>>) => void) | undefined;
+
+    vi.mocked(postInvoke)
+      .mockResolvedValueOnce({ component: "table", data: { items: [{ id: "itm-001" }] } })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      );
+
+    render(<PanelResult panel={panel()} />);
+    expect(await screen.findByText("itm-001")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "更新" }));
+
+    expect(await screen.findByRole("button", { name: "更新中" })).toBeTruthy();
+    expect(screen.getByText("itm-001")).toBeTruthy();
+
+    resolveRefresh?.({ component: "table", data: { items: [{ id: "itm-001" }] } });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "更新" })).toBeTruthy();
+    });
+  });
+
+  it("keeps the previous result and shows the error when a refresh fails", async () => {
+    vi.mocked(postInvoke)
+      .mockResolvedValueOnce({ component: "table", data: { items: [{ id: "itm-001" }] } })
+      .mockRejectedValueOnce(new Error("boom"));
+
+    render(<PanelResult panel={panel()} />);
+    expect(await screen.findByText("itm-001")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "更新" }));
+
+    expect(await screen.findByText(/取得に失敗しました/u)).toBeTruthy();
+    expect(screen.getByText("itm-001")).toBeTruthy();
+  });
+
+  it("ignores a second click while a refresh is already in flight", async () => {
+    let resolveRefresh: ((value: Awaited<ReturnType<typeof postInvoke>>) => void) | undefined;
+
+    vi.mocked(postInvoke)
+      .mockResolvedValueOnce({ component: "table", data: { items: [{ id: "itm-001" }] } })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      );
+
+    render(<PanelResult panel={panel()} />);
+    expect(await screen.findByText("itm-001")).toBeTruthy();
+    vi.mocked(postInvoke).mockClear();
+
+    const button = screen.getByRole("button", { name: "更新" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await screen.findByRole("button", { name: "更新中" });
+    expect(postInvoke).toHaveBeenCalledTimes(1);
+
+    resolveRefresh?.({ component: "table", data: { items: [{ id: "itm-001" }] } });
   });
 });
