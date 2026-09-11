@@ -26,7 +26,7 @@ without visiting any of them.
 | **D1** | The system decomposes into seven subprojects. The first vertical slice is: dummy services, service catalogue, LLM orchestration, dynamic UI, chat screen. Authentication and workspaces come after it.                                                          |
 | **D2** | The service catalogue is sent whole on every request and kept warm in the prompt cache. Staged narrowing (service, then genre, then API) is not adopted for cost reasons: at the expected scale it is several times more expensive and three times the latency. |
 | **D3** | Component selection is deterministic, derived from the OpenAPI response schema plus `x-ui-hint`. No LLM call participates in rendering.                                                                                                                         |
-| **D4** | The frontend is a Vite + React Router SPA with Material UI and Toolpad Core. Orchestration lives in the Go backend, not in a Node BFF.                                                                                                                          |
+| **D4** | The frontend is a Vite + React Router SPA built on Material UI. Orchestration lives in the Go backend, not in a Node BFF. Toolpad Core was adopted and then dropped - see `DECISIONS.md`, 2026-09-11.                                                           |
 
 The consequence of D2 and D3 together is that the LLM has exactly one job:
 choose the API and fill its parameters. Everything downstream of that is

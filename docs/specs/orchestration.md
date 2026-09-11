@@ -21,7 +21,7 @@ it. Nothing about the rendering is decided by a model.
 | **D9**  | The component is chosen by the Go platform, not by the browser. The rule lives in `domain` as a pure function.                                                                                                                                                                                                                                                                                              |
 | **D10** | Enum parameters carry Japanese labels (`x-enum-labels`) and are sent to the model with `strict: true`, so a value outside the enum cannot be returned at all.                                                                                                                                                                                                                                               |
 | **D11** | An `ask_user` tool lets the model say "I cannot tell which value you mean" and hand the choice back to the person.                                                                                                                                                                                                                                                                                          |
-| **D12** | The screen is a Toolpad Core `DashboardLayout` from the start. Results render inline in the conversation; a table can be expanded to a full-screen modal. Every result carries its provenance.                                                                                                                                                                                                              |
+| **D12** | The shell is `AppBar` + `Drawer` + `List` from Material UI directly. Results render inline in the conversation; a table can be expanded to a full-screen modal. Every result carries its provenance.                                                                                                                                                                                                        |
 
 ## 3. Architecture
 
@@ -99,9 +99,11 @@ the schema's `title` and `description`; no separate label vocabulary.
 
 ## 7. User interface
 
-**Layout.** A Toolpad Core `DashboardLayout` from the first screen. The
-navigation holds one entry now; workspaces will be the second, and adopting the
-frame late would mean rebuilding the shell around it.
+**Layout.** A bar, a drawer and a list, straight from Material UI. The
+navigation holds one entry now and workspaces will be the second, so the shell
+is built to take more from the start - but it is built here rather than taken
+from a framework, because the one on offer trails Material UI by two majors
+(`DECISIONS.md`, 2026-09-11).
 
 **Empty state.** Before the first question the conversation shows example
 questions, one per shape the slice can answer - a list, a create, and one that

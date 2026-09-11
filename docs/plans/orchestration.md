@@ -12,7 +12,7 @@ that renders a result is chosen by a pure function over the response schema, not
 by a model. A Vite + React Router SPA renders what the platform names.
 
 **Tech stack:** Go 1.27.1, OpenAPI 3.0.3 + oapi-codegen, Vite+ / React 19 /
-MUI / Toolpad Core, openapi-typescript + openapi-fetch.
+MUI, openapi-typescript + openapi-fetch.
 
 **Spec:** `docs/specs/orchestration.md`. Acceptance criteria: `PRODUCT.md`
 section 5.
@@ -71,6 +71,51 @@ web/src/
   shared/api/                  generated types + client
 e2e/                           process-level suite
 ```
+
+---
+
+### Task 0: something that runs
+
+Nothing in this repository starts. `services/platform/` holds a `go.mod` and
+`web/src/` is an empty directory, so neither a dev server nor a browser has
+anything to show. Progress cannot be watched while that is true, and every later
+task is easier to judge against a screen that already exists.
+
+This task builds the smallest thing that runs and serves. **No feature.**
+
+**Files:**
+
+- Create: `services/platform/api/openapi.yaml` (`GET /api/health` only),
+  `internal/infra/config/`, `internal/infra/httpserver/`,
+  `internal/adapter/handler/`, `pkg/app/`, `cmd/api/`,
+  `acceptance/health_test.go`
+- Create: `web/src/app/{main.tsx,App.tsx}`, `web/src/pages/chat/`,
+  `web/src/shared/api/`
+- Modify: `harness/quality/toolchain.mk` (pin air), `Makefile` (`dev-platform`)
+
+**Produces:** a platform binary answering `/api/health`, a web app rendering an
+MUI `AppBar` + `Drawer` shell with one navigation entry, and `make dev-platform`
+running it under air. The chat page shows the result of calling `/api/health` so
+that a broken connection between the two is visible rather than silent.
+
+`ORCHESTRA_STATIC_DIR` makes the platform serve a built frontend from `/`, which
+is what the browser gates and the end-to-end suite rely on later.
+
+- [ ] **Step 1** Write `api/openapi.yaml` with the single operation.
+      `make api-lint`, then `make generate`.
+- [ ] **Step 2** Write the acceptance test: the real graph from `pkg/app` behind
+      `httptest` answers `/api/health` with 200. Run it, expect failure.
+- [ ] **Step 3** Implement config, httpserver, handler, app, cmd until it passes.
+- [ ] **Step 4** Build the web shell and the chat page. A test asserts the page
+      renders and shows the health result from a scripted client.
+- [ ] **Step 5** Pin air in `toolchain.mk`, install it through `make tools`, add
+      `dev-platform`. Server targets do not go through `harness/quiet.sh` - their
+      output is the point.
+- [ ] **Step 6** Start both for real. `curl localhost:8080/api/health` returns
+      the payload; the Vite port serves HTML. Record the port.
+- [ ] **Step 7** `make fmt-check services-lint services-test web-lint web-test
+guard api-lint acceptance-services guard-coverage` — green.
+- [ ] **Step 8** Commit: `feat(platform): serve a health endpoint and a shell`
 
 ---
 
@@ -572,13 +617,11 @@ failure returns an error.
 - Create: `web/src/app/{App.tsx,router.tsx,theme.ts}`,
   `web/src/pages/chat/`, `web/src/features/conversation/`,
   `web/src/shared/api/client.ts`, `web/index.html` entry
-- Modify: `web/package.json` (add `@toolpad/core`)
 
 **Consumes:** the platform's generated TypeScript types
 (`web/src/shared/api/gen/platform.d.ts`, produced by `make generate`).
 
-**Produces:** one screen inside a Toolpad Core `DashboardLayout`: a turn list, a
-question input, and — when there are no turns — three example questions, one per
+**Produces:** one screen inside the MUI shell: a turn list, a question input, and — when there are no turns — three example questions, one per
 shape (a list, a create, a status the enum does not have). Clicking an example
 submits it.
 
@@ -587,8 +630,7 @@ fails on a raw `<button>` or `<input>`.
 
 - [ ] **Step 1** Write the test: render `App` with a scripted API, assert the
       three examples are present. Run it, expect failure.
-- [ ] **Step 2** Add `@toolpad/core`, build the shell and the conversation until
-      it passes.
+- [ ] **Step 2** Build the shell and the conversation until it passes.
 - [ ] **Step 3** Add a test that submitting a question posts to `/api/plan` and
       appends an assistant turn.
 - [ ] **Step 4** `make web-lint web-test guard-fsd guard-ui guard-duplication`
@@ -710,8 +752,9 @@ same mechanism.
 
 ## Order and parallelism
 
-Tasks 1 and 2 are independent of everything else and of each other. Task 3 is
-independent of 1-2. Tasks 4-9 are a chain. Tasks 10 and 11 depend on 5-6 but not
+Task 0 comes first and blocks nothing conceptually, but until it lands there is
+no running process to check anything against. Tasks 1 and 2 are independent of
+everything else and of each other. Task 3 is independent of 1-2. Tasks 4-9 are a chain. Tasks 10 and 11 depend on 5-6 but not
 on each other beyond the shared transport, and neither blocks the web work.
 Tasks 12-15 need the platform's generated types (Task 6) but not its behaviour —
 they can start once `/api/plan` exists in the spec. Task 16 needs all of it.
