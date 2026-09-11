@@ -44,7 +44,14 @@ export function QuestionForm({ onSubmit, disabled }: QuestionFormProps): JSX.Ele
           type="submit"
           variant="contained"
           endIcon={<SendIcon />}
-          disabled={disabled || value.trim() === ""}
+          // Disabled only while a question is in flight, not because the
+          // field is empty. A disabled contained button is a translucent
+          // grey rectangle with no edge of its own - make guard-layout
+          // measures 1:1 against the page, which is WCAG 1.4.11's way of
+          // saying nobody can see it. Submitting an empty question already
+          // does nothing (handleSubmit returns early), so there is nothing
+          // for the disabled state to prevent.
+          disabled={disabled}
           sx={{ whiteSpace: "nowrap" }}
         >
           送信

@@ -12,16 +12,26 @@ export const DRAWER_WIDTH = 240;
 
 interface NavigationDrawerProps {
   readonly open: boolean;
+  /**
+   * True when the viewport has room to hold the drawer beside the content.
+   * A persistent drawer takes {@link DRAWER_WIDTH} out of the width and
+   * leaves the rest to `main`; on a 375px phone that is 240 of 375, and the
+   * page ends up wider than the screen. Below that width the drawer floats
+   * over the content and closes when it is dismissed.
+   */
+  readonly beside: boolean;
+  readonly onClose: () => void;
 }
 
 /** The application's left navigation. One entry today: チャット. */
-export function NavigationDrawer({ open }: NavigationDrawerProps): JSX.Element {
+export function NavigationDrawer({ open, beside, onClose }: NavigationDrawerProps): JSX.Element {
   return (
     <Drawer
-      variant="persistent"
+      variant={beside ? "persistent" : "temporary"}
       open={open}
+      onClose={onClose}
       sx={{
-        width: open ? DRAWER_WIDTH : 0,
+        width: beside && open ? DRAWER_WIDTH : 0,
         flexShrink: 0,
         [`& .MuiDrawer-paper`]: { width: DRAWER_WIDTH, boxSizing: "border-box" },
       }}
@@ -29,7 +39,7 @@ export function NavigationDrawer({ open }: NavigationDrawerProps): JSX.Element {
       <Toolbar />
       <List>
         <ListItem disablePadding>
-          <ListItemButton component="a" href="#chat">
+          <ListItemButton component="a" href="#chat" onClick={onClose}>
             <ListItemIcon>
               <ChatIcon />
             </ListItemIcon>

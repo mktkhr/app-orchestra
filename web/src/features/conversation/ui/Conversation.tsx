@@ -3,6 +3,7 @@ import Stack from "@mui/material/Stack";
 import { useState, type JSX } from "react";
 
 import { postPlan } from "@/shared/api/client";
+import { nextTurnId } from "@/shared/lib/turnId";
 
 import type { Turn } from "../model/turn";
 import { ExampleQuestions } from "./ExampleQuestions";
@@ -22,12 +23,12 @@ export function Conversation(): JSX.Element {
   const ask = async (query: string): Promise<void> => {
     setError(null);
     setPending(true);
-    setTurns((current) => [...current, { id: crypto.randomUUID(), role: "question", text: query }]);
+    setTurns((current) => [...current, { id: nextTurnId(), role: "question", text: query }]);
 
     try {
       const result = await postPlan({ query });
 
-      setTurns((current) => [...current, { id: crypto.randomUUID(), role: "answer", result }]);
+      setTurns((current) => [...current, { id: nextTurnId(), role: "answer", result }]);
     } catch {
       setError("質問の送信に失敗しました。時間をおいて試してください。");
     } finally {

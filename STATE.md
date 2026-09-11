@@ -18,9 +18,11 @@ catalogue and fills its arguments, and the platform calls the service and
 says what to draw with the answer. Nothing in the path is hard-coded: the
 services declare their own contracts, and the model is told about them.
 
-Every gate of `make check` passes except `acceptance-e2e`, which has no test
-files: the end-to-end suite is Task 16. Until then the honest statement is that
-the Go and web halves are green and the cross-process half does not exist.
+Every gate of `make check` passes except `acceptance-e2e` and
+`acceptance-browser`, neither of which has any test files: both suites are
+Task 16. `make check` stops at the first failure, so run `make -k check` to
+see past them - the browser guards sit behind `acceptance-e2e` in the order,
+and were failing unnoticed for two tasks because of it.
 
 ## What works
 
@@ -221,6 +223,12 @@ rows full-screen. The slice sits in `entities` rather than the `features`
 the plan named, because `conversation` has to render it and Feature-Sliced
 Design forbids one feature importing another; these components draw the
 contract's own shapes, which is what `entities` is for.
+
+The `status` column reads 検品保留, not `quarantined`. A result carries
+`fields`, the schema of one row built by the same converter that builds the
+tool definitions, with each enum's Japanese labels structured rather than
+folded into the model-facing description - a person who asked in Japanese
+should not be shown the code.
 
 Rows are found the way the platform found them: the sole array-valued
 property of the response object, mirroring `soleArrayProperty` in
