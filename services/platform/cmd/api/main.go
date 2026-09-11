@@ -21,9 +21,10 @@ func main() {
 	}
 
 	handler, err := app.New(&app.Config{
-		StaticDir: cfg.StaticDir,
-		Services:  toAppServices(cfg.Services),
-		LLM:       app.LLM{BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel},
+		StaticDir:    cfg.StaticDir,
+		Services:     toAppServices(cfg.Services),
+		LLM:          app.LLM{BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel},
+		PlanFixtures: toAppPlanFixtures(cfg.PlanFixtures),
 	})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))
@@ -46,6 +47,38 @@ func toAppServices(services []config.Service) []app.Service {
 	out := make([]app.Service, 0, len(services))
 	for _, s := range services {
 		out = append(out, app.Service{Name: s.Name, URL: s.URL})
+	}
+
+	return out
+}
+
+// toAppPlanFixtures adapts config.PlanFixture to app.PlanFixture. See
+// toAppServices; same reasoning, and see config.Config.PlanFixtures for
+// why this exists at all - production never sets ORCHESTRA_PLAN_FIXTURES,
+// so this path is empty on every real deployment.
+func toAppPlanFixtures(fixtures []config.PlanFixture) []app.PlanFixture {
+	out := make([]app.PlanFixture, 0, len(fixtures))
+	for _, f := range fixtures {
+		out = append(out, app.PlanFixture{
+			Query:       f.Query,
+			Answers:     toAppAnswers(f.Answers),
+			Ask:         f.Ask,
+			Question:    f.Question,
+			Param:       f.Param,
+			Service:     f.Service,
+			OperationID: f.OperationID,
+			Args:        f.Args,
+		})
+	}
+
+	return out
+}
+
+// toAppAnswers adapts config.Answer to app.Answer. See toAppServices.
+func toAppAnswers(answers []config.Answer) []app.Answer {
+	out := make([]app.Answer, 0, len(answers))
+	for _, a := range answers {
+		out = append(out, app.Answer{Param: a.Param, Value: a.Value})
 	}
 
 	return out

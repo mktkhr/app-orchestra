@@ -1036,3 +1036,40 @@ called from both `Orchestrator.call` (the unsafe-call form) and
 `Orchestrator.ask` (the new degraded form), so the two forms' schemas are
 built identically. No `openapi.yaml` change was needed: `PlanResult.schema`
 was already an untyped JSON object.
+
+## 2026-09-11 ORCHESTRA_PLAN_FIXTURES feeds the stub planner from outside the process
+
+**Context.** Task 16 (`docs/plans/orchestration.md`) needed a process-level
+suite (`e2e/src/orchestration.test.ts`) and a browser suite
+(`e2e/browser/chat.spec.ts`) that ask a question against the platform's
+_built binary_, started as a separate OS process. Both must go through the
+stub planner - `make check` must never call a real LLM - but
+`pkg/app.Config.PlanFixtures` is a Go API: a test driving `services/platform/bin/api`
+over TCP cannot reach it, and the stub's table is empty by default since
+`defaultPlanFixtures` was removed (2026-09-11, above): every question would
+come back `DecisionNone` with no way to fixture one from outside the process.
+
+**Decision.** Added `ORCHESTRA_PLAN_FIXTURES`: a JSON array, read once by
+`internal/infra/config.Load` (the one seam allowed to read an environment
+variable) into `[]config.PlanFixture`, converted by `cmd/api/main.go` into
+`[]app.PlanFixture` exactly the way `ORCHESTRA_SERVICES` already becomes
+`[]app.Service`. It reaches `pkg/app.Config.PlanFixtures` unchanged from
+there - no new plumbing inside `pkg/app` itself. Production never sets it:
+an operator sets `ORCHESTRA_LLM_BASE_URL` instead, which makes
+`pkg/app.newPlanner` pick the tool-calling planner and ignore
+`PlanFixtures` outright, so this variable has no effect once a real LLM is
+configured. `e2e/playwright.config.ts`'s `webServer.env` and
+`e2e/src/orchestration.test.ts`'s spawned platform process both set it to
+one fixture: `"在庫の一覧を見せて"` against `inventory`'s
+`ListInventoryItems`, the same query `web/acceptance/src/App.test.tsx`
+already exercises against a scripted `fetch`.
+
+**Consequences.** The stub planner's escape hatch for driving a built
+binary from outside the process is now a first-class, tested part of
+`config.Load` (`config_test.go` covers parsing, defaulting and malformed
+JSON), not a one-off. `e2e/playwright.config.ts`'s `webServer` became an
+array of three (inventory, attendance, platform) on fixed ports
+(18083/18084/18080) distinct from a developer's own running processes and
+from the harness's own browser gates (port 18081); Playwright 1.63 supports
+an array there. `guard-a11y`/`guard-layout` (`make guard-browser`) now run
+against a real, populated screen for the first time and passed unchanged.

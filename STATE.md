@@ -4,27 +4,36 @@ _Last updated: 2026-09-11_
 
 ## Summary
 
-**The harness is complete and the first vertical slice is under construction.**
-Fifteen of the seventeen tasks in `docs/plans/orchestration.md` are done: the
+**The first vertical slice is done. `make check` is fully green.** Sixteen of
+the seventeen tasks in `docs/plans/orchestration.md` are complete: the
 platform's scaffold, two services that answer real requests, the rendering
 rule, the catalogue the platform builds by asking those services what they
-offer, the tool definitions built from that catalogue, and all four answers
-`/api/plan` can give: a rendered result, a form, a disambiguation question,
-and no match - decided by a real model over an OpenAI-compatible endpoint. The
-browser now draws all four of the platform's `kind`s, including the choice an
-`ask` offers (Task 15).
+offer, the tool definitions built from that catalogue, all four answers
+`/api/plan` can give - a rendered result, a form, a disambiguation question,
+and no match - decided by a real model over an OpenAI-compatible endpoint, the
+browser drawing all four of those `kind`s, and now (Task 16) a process-level
+suite and a browser suite that drive the built product end to end.
 
-The whole backend half of the slice now runs end to end. A question in
-Japanese reaches a local model, the model picks one operation out of the
-catalogue and fills its arguments, and the platform calls the service and
-says what to draw with the answer. Nothing in the path is hard-coded: the
-services declare their own contracts, and the model is told about them.
+The whole slice now runs end to end, twice over: once against a real local
+model (the platform's own `dev-platform`/`ORCHESTRA_LLM_BASE_URL` path,
+proven by the acceptance suites' fixtures standing in for it), and once, for
+`make check` itself, against the stub planner - which is the only planner
+`make check` is ever allowed to exercise. `e2e/src/orchestration.test.ts`
+starts both dummy services and the platform from their built binaries on
+free ports and asks `/api/plan` directly; `e2e/browser/chat.spec.ts` drives
+the same built product (platform serving `web/dist` via
+`ORCHESTRA_STATIC_DIR`) in headless Chromium, clicking the list example
+question through to a rendered table. Both feed the stub planner the one
+question they ask through `ORCHESTRA_PLAN_FIXTURES`, a new environment
+variable `internal/infra/config` decodes - see `DECISIONS.md`, 2026-09-11,
+for why: `pkg/app.Config.PlanFixtures` is a Go API a separate OS process
+cannot reach, and `make check` must never call a real LLM.
 
-Every gate of `make check` passes except `acceptance-e2e` and
-`acceptance-browser`, neither of which has any test files: both suites are
-Task 16. `make check` stops at the first failure, so run `make -k check` to
-see past them - the browser guards sit behind `acceptance-e2e` in the order,
-and were failing unnoticed for two tasks because of it.
+Every gate of `make check` passes, including `guard-a11y` and `guard-layout`
+(`make guard-browser`), which now measure a real, populated screen for the
+first time - both passed unchanged, so no accessibility or layout defect was
+found. Only Task 11 (a JSON planner behind the same port) remains, plus the
+continuing work `TODO.md` tracks under "Next".
 
 ## What works
 
@@ -349,17 +358,30 @@ appended a new table turn filtered to the two quarantined items. Fixed
 against this behaviour in `Conversation.test.tsx` regardless of what any
 particular live run does.
 
+**Task 16, the end-to-end suite, closes the slice.**
+`e2e/src/orchestration.test.ts` picks three free TCP ports, starts
+`services/inventory/bin/api`, `services/attendance/bin/api` and
+`services/platform/bin/api` (`ORCHESTRA_SERVICES` pointed at the first two,
+`ORCHESTRA_PLAN_FIXTURES` carrying one fixture), waits for each to answer,
+posts `在庫の一覧を見せて` to `/api/plan`, and asserts `kind: "result"`,
+`component: "table"`, the inventory source, and a non-empty `data.items` -
+then kills all three. `e2e/browser/chat.spec.ts` drives the same three
+processes (now started by `e2e/playwright.config.ts`'s array `webServer`,
+fixed ports 18083/18084/18080, chosen not to collide with a developer's own
+8080/8081/8082 or the harness's own browser gate on 18081) through headless
+Chromium: click the list example question, see the question echoed, see
+`inventory / ListInventoryItems`, see a `<table>` containing `itm-001`. See
+`DECISIONS.md`, 2026-09-11, for `ORCHESTRA_PLAN_FIXTURES` itself.
+
 ## What does not exist yet
 
 Task 11 of `docs/plans/orchestration.md`, the JSON planner for models without
-tool calling, and Task 16, the end-to-end suite.
+tool calling - the slice's only remaining task.
 `ask_user` is implemented and unit-tested (a fixed tool-call fixture maps to
 `DecisionAsk`), but no local model under about 20B parameters was observed to
 choose it reliably live - `qwen3.5-9b-q8` picked it roughly 1 run in 5 against
 a genuinely ambiguous query, guessing a value the rest of the time
 (`DECISIONS.md`).
-`make check` is green because the guards report on the code that is there,
-not because the product is finished.
 
 ## Known gaps in the harness
 

@@ -4,9 +4,10 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 10 and
-   12 to 15 are done; Task 16 (the end-to-end suite) is the one step left in
-   the slice.
+1. The first vertical slice, `docs/plans/orchestration.md`, is complete
+   through Task 16: `make check` is fully green, including `acceptance-e2e`,
+   `acceptance-browser` and `guard-browser`. Task 11 (the JSON planner for
+   models without tool calling) is the one task left in the slice.
 
 ## Next
 
@@ -14,10 +15,8 @@ _Keep three lists. Move items, do not duplicate them._
    `title` on every property an exposed operation's schema describes, since
    only an exposed operation's fields are ever shown on screen. Deliberately
    left for a separate decision (`DECISIONS.md`, 2026-09-11).
-1. Finish the slice, Task 16: the end-to-end test. Then Task 11, the JSON
-   planner behind the same `usecase.Planner` port - left until last because
-   the slice was not vertical until the browser could draw everything the
-   platform already returns (now true as of Task 15).
+1. Task 11, the JSON planner behind the same `usecase.Planner` port - the
+   slice's last remaining task.
 1. No local model under ~20B parameters was observed to reliably choose
    `ask_user` (`DECISIONS.md`, 2026-09-11) - worth revisiting once Task 11's
    JSON planner exists, since a JSON `{"kind": "ask", ...}` object may be an
@@ -111,3 +110,10 @@ _Keep three lists. Move items, do not duplicate them._
   form also covers path/query parameters, not just a request body.
   `askUserDescription` was sharpened after measuring. Measured live against
   `qwen3.5-9b-q8`, before and after (`DECISIONS.md`, 2026-09-11).
+- Task 16, the end-to-end suite: `e2e/src/orchestration.test.ts` (process
+  level, built binaries, free ports) and `e2e/browser/chat.spec.ts`
+  (headless Chromium against the platform serving `web/dist` via
+  `ORCHESTRA_STATIC_DIR`). Both drive the stub planner through the new
+  `ORCHESTRA_PLAN_FIXTURES` environment variable rather than a real LLM
+  (`DECISIONS.md`, 2026-09-11). `make check` is now fully green, including
+  `guard-a11y`/`guard-layout` against a real screen for the first time.

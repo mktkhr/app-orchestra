@@ -79,6 +79,53 @@ func TestLoadRejectsServiceEntryWithEmptyName(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLoadPlanFixturesDefaultsToEmpty(t *testing.T) {
+	t.Setenv("ORCHESTRA_PLAN_FIXTURES", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Empty(t, cfg.PlanFixtures)
+}
+
+func TestLoadParsesPlanFixtures(t *testing.T) {
+	t.Setenv(
+		"ORCHESTRA_PLAN_FIXTURES",
+		`[{"query":"在庫の一覧を見せて","service":"inventory","operationId":"ListInventoryItems"},`+
+			`{"query":"破損した在庫を見せて","answers":[{"param":"status","value":"quarantined"}],`+
+			`"ask":true,"question":"どのステータスですか？","param":"status","service":"inventory",`+
+			`"operationId":"ListInventoryItems","args":{"status":"quarantined"}}]`,
+	)
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	require.Len(t, cfg.PlanFixtures, 2)
+	assert.Equal(t, config.PlanFixture{
+		Query:       "在庫の一覧を見せて",
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}, cfg.PlanFixtures[0])
+	assert.Equal(t, config.PlanFixture{
+		Query:       "破損した在庫を見せて",
+		Answers:     []config.Answer{{Param: "status", Value: "quarantined"}},
+		Ask:         true,
+		Question:    "どのステータスですか？",
+		Param:       "status",
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Args:        map[string]any{"status": "quarantined"},
+	}, cfg.PlanFixtures[1])
+}
+
+func TestLoadRejectsMalformedPlanFixtures(t *testing.T) {
+	t.Setenv("ORCHESTRA_PLAN_FIXTURES", "not-json")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+}
+
 func TestLoadLLMSettingsDefaultToEmpty(t *testing.T) {
 	t.Setenv("ORCHESTRA_LLM_BASE_URL", "")
 	t.Setenv("ORCHESTRA_LLM_API_KEY", "")

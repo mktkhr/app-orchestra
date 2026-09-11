@@ -771,9 +771,9 @@ The platform binary must serve `web/dist` for this to work — check
 `ORCHESTRA_STATIC_DIR` is honoured, as the harness's browser gates rely on the
 same mechanism.
 
-- [ ] **Step 1** Write the test. Run it, expect failure.
-- [ ] **Step 2** Make it pass, starting the processes from the built binaries.
-- [ ] **Step 3** `make check` in full — every gate green, including
+- [x] **Step 1** Write the test. Run it, expect failure.
+- [x] **Step 2** Make it pass, starting the processes from the built binaries.
+- [x] **Step 3** `make check` in full — every gate green, including
       `guard-a11y` and `guard-layout`, which now have a real screen to measure.
       Expect work here: contrast and target size are measured, not asserted.
 - [ ] **Step 4** Commit: `test(e2e): answer a question against the built product`

@@ -5,6 +5,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,6 +25,29 @@ var ErrInvalidServiceEntry = errors.New("invalid ORCHESTRA_SERVICES entry, want 
 type Service struct {
 	Name string
 	URL  string
+}
+
+// Answer is one entry of PlanFixture.Answers, decoded from
+// ORCHESTRA_PLAN_FIXTURES. Mirrors pkg/app.Answer.
+type Answer struct {
+	Param string `json:"param"`
+	Value string `json:"value"`
+}
+
+// PlanFixture is one entry of ORCHESTRA_PLAN_FIXTURES, decoded straight
+// into the shape pkg/app.PlanFixture takes - see that type's doc comment
+// for what each field means.
+type PlanFixture struct {
+	Query   string   `json:"query"`
+	Answers []Answer `json:"answers"`
+
+	Ask      bool   `json:"ask"`
+	Question string `json:"question"`
+	Param    string `json:"param"`
+
+	Service     string         `json:"service"`
+	OperationID string         `json:"operationId"`
+	Args        map[string]any `json:"args"`
 }
 
 // Config is the platform's runtime configuration.
@@ -49,6 +73,17 @@ type Config struct {
 	// different backend gets used behind a router such as llama-swap (D5,
 	// docs/specs/orchestration.md).
 	LLMModel string
+	// PlanFixtures configures the stub planner's table when LLMBaseURL is
+	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
+	// never sets this - an operator sets ORCHESTRA_LLM_BASE_URL instead,
+	// which makes pkg/app ignore PlanFixtures entirely (see
+	// pkg/app.newPlanner). It exists only so a process started from the
+	// built binary, such as e2e/src/orchestration.test.ts or
+	// e2e/browser/chat.spec.ts, can drive the stub planner without an
+	// in-process Go test's access to pkg/app.Config - `make check` must
+	// never call a real LLM, and this is how the built product is
+	// exercised without one.
+	PlanFixtures []PlanFixture
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
@@ -70,6 +105,13 @@ func Load() (Config, error) {
 	}
 
 	cfg.Services = services
+
+	fixtures, err := parsePlanFixtures(os.Getenv("ORCHESTRA_PLAN_FIXTURES"))
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.PlanFixtures = fixtures
 
 	raw, ok := os.LookupEnv("ORCHESTRA_PORT")
 	if !ok || raw == "" {
@@ -114,4 +156,20 @@ func parseServices(raw string) ([]Service, error) {
 	}
 
 	return services, nil
+}
+
+// parsePlanFixtures reads ORCHESTRA_PLAN_FIXTURES: a JSON array of
+// PlanFixture, or empty for none. See PlanFixture's doc comment for why
+// this exists.
+func parsePlanFixtures(raw string) ([]PlanFixture, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+
+	var fixtures []PlanFixture
+	if err := json.Unmarshal([]byte(raw), &fixtures); err != nil {
+		return nil, fmt.Errorf("ORCHESTRA_PLAN_FIXTURES: %w", err)
+	}
+
+	return fixtures, nil
 }
