@@ -4,13 +4,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { JSX } from "react";
 
-import {
-  Provenance,
-  ResultChoice,
-  ResultDetail,
-  ResultForm,
-  ResultTable,
-} from "@/entities/rendering";
+import { Provenance, RenderedResult, ResultChoice, ResultForm } from "@/entities/rendering";
 import type { PlanResult } from "@/shared/api/client";
 
 import type { Turn } from "../model/turn";
@@ -127,7 +121,7 @@ function AnswerResult({ result, originalQuery, onFormSubmitted }: AnswerResultPr
     return (
       <Paper elevation={1} sx={{ p: 2 }}>
         <Provenance source={result.source} />
-        <ResultTable data={result.data} fields={result.fields} />
+        <RenderedResult component={result.component} data={result.data} fields={result.fields} />
       </Paper>
     );
   }
@@ -136,7 +130,7 @@ function AnswerResult({ result, originalQuery, onFormSubmitted }: AnswerResultPr
     return (
       <Paper elevation={1} sx={{ p: 2 }}>
         {result.source === undefined ? null : <Provenance source={result.source} />}
-        <ResultDetail data={result.data} fields={result.fields} />
+        <RenderedResult component={result.component} data={result.data} fields={result.fields} />
       </Paper>
     );
   }

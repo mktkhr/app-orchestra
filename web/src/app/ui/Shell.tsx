@@ -4,9 +4,8 @@ import Toolbar from "@mui/material/Toolbar";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useState, type JSX } from "react";
 
-import { ChatPage } from "@/pages/chat";
-
 import { ErrorBoundary } from "./ErrorBoundary";
+import { MainContent } from "./MainContent";
 import { NavigationDrawer } from "./NavigationDrawer";
 import { TopBar } from "./TopBar";
 
@@ -52,7 +51,7 @@ export function Shell(): JSX.Element {
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0 }}>
         <Toolbar />
         <ErrorBoundary>
-          <ChatPage />
+          <MainContent />
         </ErrorBoundary>
       </Box>
     </Box>

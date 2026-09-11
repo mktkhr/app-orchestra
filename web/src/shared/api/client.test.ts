@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { getHealth, postPlan } from "./client";
+import { getHealth, getWorkspace, postPlan } from "./client";
 
 function stubFetch(status: number, body: unknown): void {
   vi.stubGlobal(
@@ -54,5 +54,40 @@ describe("postPlan", () => {
     await expect(postPlan({ query: "在庫の一覧を見せて" })).rejects.toThrow(
       "POST /api/plan failed",
     );
+  });
+});
+
+describe("getWorkspace", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the workspace and its panels on success", async () => {
+    const workspace = {
+      id: "ws-1",
+      name: "在庫ボード",
+      panels: [
+        {
+          id: "pnl-1",
+          workspaceId: "ws-1",
+          service: "inventory",
+          operationId: "ListInventoryItems",
+          args: { status: "quarantined" },
+          component: "table",
+          title: "検品保留の在庫",
+          position: 0,
+        },
+      ],
+    };
+
+    stubFetch(200, workspace);
+
+    await expect(getWorkspace("ws-1")).resolves.toEqual(workspace);
+  });
+
+  it("throws when the request fails", async () => {
+    stubFetch(404, { message: "not found" });
+
+    await expect(getWorkspace("missing")).rejects.toThrow("GET /api/workspaces/{id} failed");
   });
 });

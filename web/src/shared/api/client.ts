@@ -58,6 +58,15 @@ export async function postPlan(request: PlanRequest): Promise<PlanResult> {
   return data;
 }
 
+/**
+ * The widget a result is drawn with - `table`, `detail`, `form` or `choice`.
+ * Shared by `/api/plan`'s `PlanResult.component` and `/api/invoke`'s
+ * `InvokeResult.component`, and by a saved panel's own `component`
+ * (`WorkspacePanel`): the same enum names the same four widgets everywhere
+ * it appears.
+ */
+export type Component = components["schemas"]["Component"];
+
 /** A confirmed call to execute, posted to POST /api/invoke. */
 export type InvokeRequest = components["schemas"]["InvokeRequest"];
 
@@ -131,6 +140,43 @@ export async function createWorkspace(request: CreateWorkspaceRequest): Promise<
   }
 
   return data;
+}
+
+/**
+ * openapi-fetch's own raw response shape for `GET /api/workspaces/{id}`. Not
+ * exported: its `panels` property types as an index signature
+ * (`{ readonly [x: number]: Panel }`) rather than a real array - the same
+ * gap `WorkspacesList`'s comment above notes for a top-level array
+ * response, here one level deeper. `WorkspaceDetail` below is the shape the
+ * client actually hands back, with that array made real again.
+ */
+type WorkspaceDetailRaw = MethodResponse<typeof client, "get", "/api/workspaces/{id}">;
+
+/** One panel of a `WorkspaceDetail` - a saved call, no answer (W2). */
+export type WorkspacePanel = WorkspaceDetailRaw["panels"][number];
+
+/** A workspace with its panels, in position order. */
+export interface WorkspaceDetail {
+  readonly id: WorkspaceDetailRaw["id"];
+  readonly name: WorkspaceDetailRaw["name"];
+  readonly panels: readonly WorkspacePanel[];
+}
+
+/** Calls GET /api/workspaces/{id} and returns the workspace with its panels. */
+export async function getWorkspace(id: string): Promise<WorkspaceDetail> {
+  // See the comment on getHealth above: fetch is read at call time on purpose.
+  const { data, error } = await client.GET("/api/workspaces/{id}", {
+    params: { path: { id } },
+    fetch: globalThis.fetch,
+  });
+
+  if (error !== undefined) {
+    throw new Error("GET /api/workspaces/{id} failed");
+  }
+
+  // Array.from into a plain array: see the comment on WorkspacesList above -
+  // the same openapi-fetch gap, one property deeper, and the same fix.
+  return { ...data, panels: Array.from(data.panels) };
 }
 
 /**
