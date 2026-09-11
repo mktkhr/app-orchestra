@@ -1,10 +1,11 @@
 import { App } from "@app-orchestra/web";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 /**
  * Application-level: renders the real App (AppBar + Drawer shell + chat
- * page) against a scripted backend, the way the built product will
+ * page) against a scripted platform, the way the built product will
  * actually run.
  */
 describe("App", () => {
@@ -12,15 +13,22 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the chat navigation and reaches the backend", async () => {
+  it("offers example questions and answers one against the platform", async () => {
+    const user = userEvent.setup();
+
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ status: "ok" }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }),
+          new Response(
+            JSON.stringify({
+              kind: "result",
+              component: "table",
+              data: { items: [{ id: "itm-001", name: "ラベル用紙", status: "allocated" }] },
+              source: { service: "inventory", operationId: "ListInventoryItems" },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
         ),
       ),
     );
@@ -28,6 +36,13 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getAllByText("チャット").length).toBeGreaterThan(0);
-    expect(await screen.findByText(/バックエンド応答: ok/u)).toBeTruthy();
+
+    const example = screen.getByRole("button", { name: "在庫の一覧を見せて" });
+    await user.click(example);
+
+    // The question becomes a turn, and the platform's answer follows it. What
+    // that answer is drawn with is Tasks 13-15; this asserts the round trip.
+    expect(await screen.findByText("在庫の一覧を見せて")).toBeTruthy();
+    expect((await screen.findAllByText(/result/u)).length).toBeGreaterThan(0);
   });
 });

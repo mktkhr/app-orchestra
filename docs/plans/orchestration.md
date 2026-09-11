@@ -660,14 +660,14 @@ submits it.
 Controls come from MUI. The form is `<Box component="form">`. `make guard-ui`
 fails on a raw `<button>` or `<input>`.
 
-- [ ] **Step 1** Write the test: render `App` with a scripted API, assert the
+- [x] **Step 1** Write the test: render `App` with a scripted API, assert the
       three examples are present. Run it, expect failure.
-- [ ] **Step 2** Build the shell and the conversation until it passes.
-- [ ] **Step 3** Add a test that submitting a question posts to `/api/plan` and
+- [x] **Step 2** Build the shell and the conversation until it passes.
+- [x] **Step 3** Add a test that submitting a question posts to `/api/plan` and
       appends an assistant turn.
-- [ ] **Step 4** `make web-lint web-test guard-fsd guard-ui guard-duplication`
+- [x] **Step 4** `make web-lint web-test guard-fsd guard-ui guard-duplication`
       — green. FSD: a page may import features, a feature may not import a page.
-- [ ] **Step 5** Commit: `feat(web): chat shell with an example-led empty state`
+- [x] **Step 5** Commit: `feat(web): chat shell with an example-led empty state`
 
 **Satisfies:** AC-F-104.
 

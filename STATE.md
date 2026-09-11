@@ -5,7 +5,7 @@ _Last updated: 2026-09-11_
 ## Summary
 
 **The harness is complete and the first vertical slice is under construction.**
-Eleven of the seventeen tasks in `docs/plans/orchestration.md` are done: the
+Twelve of the seventeen tasks in `docs/plans/orchestration.md` are done: the
 platform's scaffold, two services that answer real requests, the rendering
 rule, the catalogue the platform builds by asking those services what they
 offer, the tool definitions built from that catalogue, and all four answers
@@ -206,6 +206,18 @@ table; `在庫を登録して。名前はテスト品、数量は5、引当済�
 parsed values as `initial`; `今日の天気は？` → `kind: "none"`; `在庫を全部見せて` →
 `ListInventoryItems` called with **no** `args` at all - confirming this model
 does not invent a filter when none was asked for.
+
+**The chat screen**, `web/src/features/conversation` inside the MUI shell.
+An empty conversation offers three example questions - a list, a create, and
+a status the enum does not have - written out as the questions themselves
+rather than labels for them, because an example question is there to show
+what a question may look like. Clicking one submits it; so does the form.
+Each answer becomes a turn.
+
+What a turn shows is still a placeholder naming its `kind`:
+`features/rendering` is Tasks 13 to 15, and `TurnList` marks the seat.
+Verified in the browser against the running platform: clicking the create
+example reaches the local model and comes back `kind: "form"`.
 
 ## What does not exist yet
 

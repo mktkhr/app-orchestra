@@ -4,15 +4,16 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 10 are
-   done; Task 11 builds the JSON planner for models without tool calling.
+1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 10 and
+   12 are done; Task 13 draws a result as a table with its provenance.
 
 ## Next
 
-1. Finish the slice, tasks 11 to 16: the JSON planner behind the same
-   `usecase.Planner` port, the web shell and conversation, the table with its
-   provenance and expansion, the detail and form components, the choice
-   component, and the end-to-end test.
+1. Finish the slice, tasks 13 to 16: the table with its provenance and
+   expansion, the detail and form components, the choice component, and the
+   end-to-end test. Then Task 11, the JSON planner behind the same
+   `usecase.Planner` port - left until last because the slice is not vertical
+   until the browser can draw what the platform already returns.
 2. No local model under ~20B parameters was observed to reliably choose
    `ask_user` (`DECISIONS.md`, 2026-09-11) - worth revisiting once Task 11's
    JSON planner exists, since a JSON `{"kind": "ask", ...}` object may be an
