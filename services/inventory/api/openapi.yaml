@@ -1,0 +1,172 @@
+openapi: 3.0.3
+info:
+  title: Inventory API
+  version: 0.1.0
+  description: >
+    Dummy inventory service: stock items. Exists so the orchestration
+    platform has a real endpoint to plan against. See
+    docs/specs/orchestration.md.
+servers:
+  - url: /
+    description: The inventory service serves its own API and its own contract.
+security: []
+tags:
+  - name: items
+    description: Stock items held by the inventory service.
+  - name: system
+    description: The service's own contract.
+paths:
+  /openapi.yaml:
+    get:
+      operationId: getSpec
+      summary: Return this service's own OpenAPI contract.
+      description: >
+        Served so the platform can fetch the contract over HTTP (it is a
+        process, not a file on a shared disk) and build its catalogue from it.
+      tags:
+        - system
+      responses:
+        "200":
+          description: The service's OpenAPI document, as YAML.
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /api/inventory/items:
+    get:
+      operationId: listInventoryItems
+      summary: List stock items, optionally filtered by status.
+      description: >
+        Returns every stock item known to the service. The optional status
+        query parameter narrows the result to items in that status.
+      tags:
+        - items
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Restrict the result to items in this status.
+          schema:
+            $ref: "#/components/schemas/ItemStatus"
+      responses:
+        "200":
+          description: The matching stock items.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemList"
+    post:
+      operationId: createInventoryItem
+      summary: Create a stock item.
+      description: >
+        Adds a new stock item to the service's in-memory store. Its id is
+        assigned by the service.
+      tags:
+        - items
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewItem"
+      responses:
+        "201":
+          description: The created stock item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+  /api/inventory/items/{id}:
+    get:
+      operationId: getInventoryItem
+      summary: Get one stock item by id.
+      description: Returns a single stock item, or 404 when the id is unknown.
+      tags:
+        - items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The item's id.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The requested stock item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        "404":
+          description: No item exists with this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    ItemStatus:
+      type: string
+      description: Where a stock item sits in the inventory workflow.
+      enum: [allocated, staged, quarantined, consigned]
+      x-enum-labels:
+        allocated: 引当済
+        staged: 出荷準備完了
+        quarantined: 検品保留
+        consigned: 預託在庫
+    Item:
+      type: object
+      description: A single stock item.
+      required:
+        - id
+        - name
+        - status
+        - quantity
+      properties:
+        id:
+          type: string
+          description: The item's id.
+        name:
+          type: string
+          description: The item's name.
+        status:
+          $ref: "#/components/schemas/ItemStatus"
+        quantity:
+          type: integer
+          description: How many units are on hand.
+    ItemList:
+      type: object
+      description: A page of stock items.
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          description: The matching stock items.
+          items:
+            $ref: "#/components/schemas/Item"
+    NewItem:
+      type: object
+      description: The fields needed to create a stock item.
+      required:
+        - name
+        - status
+        - quantity
+      properties:
+        name:
+          type: string
+          description: The item's name.
+        status:
+          $ref: "#/components/schemas/ItemStatus"
+        quantity:
+          type: integer
+          description: How many units are on hand.
+    Error:
+      type: object
+      description: A machine-readable error.
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: What went wrong, for humans.
