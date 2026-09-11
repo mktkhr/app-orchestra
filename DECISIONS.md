@@ -1073,3 +1073,73 @@ array of three (inventory, attendance, platform) on fixed ports
 from the harness's own browser gates (port 18081); Playwright 1.63 supports
 an array there. `guard-a11y`/`guard-layout` (`make guard-browser`) now run
 against a real, populated screen for the first time and passed unchanged.
+
+## 2026-09-11 The JSON planner's response_format schema must preserve field order, not just contents
+
+**Context.** Task 11 (`docs/plans/orchestration.md`) adds `jsonmode.Planner`,
+a second `usecase.Planner` for models that cannot call tools: it renders the
+catalogue as text and asks for one JSON object back. `response_format`
+(OpenAI's `json_schema` mode) was unverified against llama.cpp/llama-swap
+before this task; tested by hand first (`curl` straight to
+`http://localhost:11435/v1/chat/completions`), it was accepted and honoured -
+a `json_schema` response_format around a flat object produced clean,
+schema-matching JSON. On that basis the planner was built to always send
+`response_format`, falling back to a plain request only when the endpoint
+answers with a non-2xx status (`Planner.complete`, checking
+`errors.Is(err, chat.ErrRequestFailed)`) - the literal reading of "sets
+response_format when the endpoint accepts one and falls back... when it does
+not", since acceptance is a runtime property of the endpoint, not something
+knowable from configuration.
+
+That much worked - until it was exercised against the full catalogue prompt
+live, where `qwen3.5-9b-q8` corrupted its own JSON on every `kind: "call"`
+attempt (`{"kind":"call","service":"inventory\",\"operationId\":...`,
+consistently breaking right after "service"), while `kind: "none"` and
+`kind: "list_capabilities"` - the two shapes with the fewest fields - came
+back clean every time. The `response_format`'s JSON Schema was built as a Go
+`map[string]any`, the way every other schema in this codebase is; `json_schema` grammar-constrains
+the model's token generation to the schema's _declared_ property order, and `encoding/json`
+always marshals a map's keys alphabetically. That put `"args"` before
+`"kind"` and `"service"` in the wire request - a property order that does
+not match the order the model's own chain-of-thought reaches them in (it
+reasons about `kind`, then `service`+`operationId`, then `args` last),
+confirmed by hand: the exact same system prompt and question, with the
+schema's `properties` reordered to `kind, service, operationId, args, param,
+question` (the order those fields already appear in in
+`systemPromptHeader`'s own four examples), produced clean JSON on every
+attempt against a model that had just failed at it three times running.
+
+**Decision.** `jsonmode.decisionSchemaJSON` is a hand-written
+`json.RawMessage` constant, not a `map[string]any` - the one schema in this
+package built that way, called out in its own doc comment so it is not
+"fixed" back to a map later. Its property order matches the prompt's own
+example order. `buildResponseFormat` assigns it directly as the `"schema"`
+value inside the (otherwise ordinary, alphabetised-by-`encoding/json`)
+outer `map[string]any` `ResponseFormat.JSONSchema` - `json.RawMessage`
+implements `json.Marshaler`, so `encoding/json` emits its bytes verbatim
+wherever it sits, regardless of the surrounding map's own key order. The
+schema stays deliberately permissive (every field optional but `kind`, no
+stricter `oneOf` keyed on `kind`): `docs/specs/orchestration.md` already
+notes `strict: true` has no equivalent for this transport, so the real
+validation is `jsonmode.parse`/`validateArgs` in Go, and a plainer grammar
+is also less for the model to fight.
+
+Verified live end to end after the fix: `検品保留の在庫を見せて` and
+`在庫を全部見せて` (both `kind: "call"`), `何ができるの？` (`kind:
+"list_capabilities"`) and `今日の天気は？` (`kind: "none"`), three times
+each against `qwen3.5-9b-q8` through `ORCHESTRA_LLM_MODE=json` on a
+separate port - 12 for 12, no retry ever needed. The tool-calling planner
+answered the same `検品保留の在庫を見せて` identically (same `args`, same
+rows) over the already-running dev instance, for comparison.
+
+**Consequences.** A JSON Schema built for a grammar-constrained local model
+is not just a validation contract - its _property order_ is part of the
+prompt, in the same way message order already is. Any future schema built
+for `response_format` against a small local model should default to
+matching whatever order the model is already being told about the fields in
+(the prompt's own examples, here), not whatever order `encoding/json` or a
+schema library happens to produce. `jsonmode.Planner`'s enum validation
+(`validateArgs`) and its one-retry-then-error behaviour were exercised
+separately, with `httptest` fixtures (`planner_test.go`), and never needed
+against the live model in these dozen runs - the ordered schema alone was
+enough to stop the corruption that would have triggered them.

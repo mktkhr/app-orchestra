@@ -625,20 +625,20 @@ the model's side the way `strict: true` does for tool calling. A rejected or
 unparseable answer is retried once with the failure quoted back; a second
 failure returns an error.
 
-- [ ] **Step 1** Write the test: a canned response containing a valid JSON
+- [x] **Step 1** Write the test: a canned response containing a valid JSON
       object produces the matching `Decision`. Run it, expect failure.
-- [ ] **Step 2** Implement rendering, parsing and mapping. Test passes.
-- [ ] **Step 3** Write the validation test: a response naming an enum value the
+- [x] **Step 2** Implement rendering, parsing and mapping. Test passes.
+- [x] **Step 3** Write the validation test: a response naming an enum value the
       parameter does not allow is rejected, retried once, and the second answer is
       used. Assert the retry prompt quotes the rejected value. Make it pass.
-- [ ] **Step 4** Write the give-up test: two bad answers produce an error, and
+- [x] **Step 4** Write the give-up test: two bad answers produce an error, and
       no service is called.
-- [ ] **Step 5** Add a live test guarded by `ORCHESTRA_LIVE_LLM=1`, skipped by
+- [x] **Step 5** Add a live test guarded by `ORCHESTRA_LIVE_LLM=1`, skipped by
       default.
-- [ ] **Step 6** Select the adapter from configuration: `ORCHESTRA_LLM_MODE` is
+- [x] **Step 6** Select the adapter from configuration: `ORCHESTRA_LLM_MODE` is
       `toolcall` or `json`, defaulting to `toolcall`.
-- [ ] **Step 7** Go gates green; live tests skipped.
-- [ ] **Step 8** Commit: `feat(platform): plan with JSON for models without tool calling`
+- [x] **Step 7** Go gates green; live tests skipped.
+- [x] **Step 8** Commit: `feat(platform): plan with JSON for models without tool calling`
 
 ---
 

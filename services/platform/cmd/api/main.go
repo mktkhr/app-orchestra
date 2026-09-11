@@ -23,7 +23,7 @@ func main() {
 	handler, err := app.New(&app.Config{
 		StaticDir:    cfg.StaticDir,
 		Services:     toAppServices(cfg.Services),
-		LLM:          app.LLM{BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel},
+		LLM:          app.LLM{BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, Mode: cfg.LLMMode},
 		PlanFixtures: toAppPlanFixtures(cfg.PlanFixtures),
 	})
 	if err != nil {

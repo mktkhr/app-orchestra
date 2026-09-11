@@ -4,14 +4,15 @@ _Last updated: 2026-09-11_
 
 ## Summary
 
-**The first vertical slice is done. `make check` is fully green.** Sixteen of
-the seventeen tasks in `docs/plans/orchestration.md` are complete: the
-platform's scaffold, two services that answer real requests, the rendering
-rule, the catalogue the platform builds by asking those services what they
-offer, the tool definitions built from that catalogue, all four answers
-`/api/plan` can give - a rendered result, a form, a disambiguation question,
-and no match - decided by a real model over an OpenAI-compatible endpoint, the
-browser drawing all four of those `kind`s, and now (Task 16) a process-level
+**The first vertical slice is done, all seventeen tasks. `make check` is
+fully green.** The platform's scaffold, two services that answer real
+requests, the rendering rule, the catalogue the platform builds by asking
+those services what they offer, the tool definitions built from that
+catalogue, all four answers `/api/plan` can give - a rendered result, a
+form, a disambiguation question, and no match - decided by a real model over
+an OpenAI-compatible endpoint (now two planners behind that port: tool
+calling and, as of Task 11, JSON for a model that cannot call tools), the
+browser drawing all four of those `kind`s, and (Task 16) a process-level
 suite and a browser suite that drive the built product end to end.
 
 The whole slice now runs end to end, twice over: once against a real local
@@ -30,10 +31,48 @@ for why: `pkg/app.Config.PlanFixtures` is a Go API a separate OS process
 cannot reach, and `make check` must never call a real LLM.
 
 Every gate of `make check` passes, including `guard-a11y` and `guard-layout`
-(`make guard-browser`), which now measure a real, populated screen for the
-first time - both passed unchanged, so no accessibility or layout defect was
-found. Only Task 11 (a JSON planner behind the same port) remains, plus the
-continuing work `TODO.md` tracks under "Next".
+(`make guard-browser`), which measure a real, populated screen - both passed
+unchanged, so no accessibility or layout defect was found. Nothing from the
+plan remains; `TODO.md` tracks the continuing work under "Next".
+
+**Task 11, the JSON planner, closes the slice.**
+`internal/adapter/planner/jsonmode.Planner` is the port's second
+implementation: it renders the catalogue as text in the system prompt (one
+line per endpoint, one per parameter, an enum's Japanese labels inline -
+`renderCatalog`), asks for a single JSON object shaped by `kind` (`call`,
+`ask`, `list_capabilities` or `none` - the plan's own JSON examples predate
+`list_capabilities`, D14, so they show only three; the implementation
+carries all four), and both sets `response_format` (a `json_schema`) and
+instructs the same shape in the prompt, so a backend that ignores
+`response_format` still has something to answer from. `Planner.complete`
+falls back to a bare request, once, only when the endpoint's own HTTP
+response is non-2xx - not every OpenAI-compatible backend is documented to
+accept `response_format` at all, though llama.cpp/llama-swap, the only
+backend measured, does. A `call` or `ask` answer is validated against
+`domain.Catalog` (unknown service/operationId, or an argument naming a value
+outside its parameter's enum - the check that stands in for tool calling's
+`strict: true`, which this transport has no equivalent of) and a bad or
+unparseable answer is retried once, quoting the failure back, before giving
+up with an error. `Decision.Service`: unlike `toolcall.Planner`, `jsonmode`
+needs no `resolveService`-style guess at all - a JSON answer names its own
+`service` field directly, so `domain.Catalog` is kept only to validate that
+service/operationId pair, not to resolve an ambiguity a tool call's bare
+operation-id name would have left open. `ORCHESTRA_LLM_MODE` (`toolcall`,
+the default, or `json`) selects the adapter in `pkg/app.newPlanner`; an
+unrecognised value fails `internal/infra/config.Load` at startup rather than
+silently defaulting.
+
+The one finding worth carrying forward: `response_format`'s JSON Schema
+must be built with its properties in the same order the prompt's own
+examples already use them in, not whatever order `encoding/json` produces
+for a `map[string]any` (alphabetical) - a grammar-constrained local model
+(`qwen3.5-9b-q8`) was observed, by hand, to corrupt its own JSON under the
+alphabetical order and answer cleanly, every time, once the schema's
+`properties` were reordered to match. `jsonmode.decisionSchemaJSON` is a
+hand-written `json.RawMessage` for exactly this reason - see `DECISIONS.md`,
+2026-09-11, for the full account and the live verification (twelve runs,
+four questions three times each, all through `ORCHESTRA_LLM_MODE=json`,
+zero retries needed after the fix).
 
 ## What works
 
@@ -375,13 +414,15 @@ Chromium: click the list example question, see the question echoed, see
 
 ## What does not exist yet
 
-Task 11 of `docs/plans/orchestration.md`, the JSON planner for models without
-tool calling - the slice's only remaining task.
-`ask_user` is implemented and unit-tested (a fixed tool-call fixture maps to
-`DecisionAsk`), but no local model under about 20B parameters was observed to
-choose it reliably live - `qwen3.5-9b-q8` picked it roughly 1 run in 5 against
-a genuinely ambiguous query, guessing a value the rest of the time
-(`DECISIONS.md`).
+Nothing from `docs/plans/orchestration.md`'s first vertical slice; all
+seventeen tasks are done. `ask_user` is implemented and unit-tested for both
+planners (a fixed tool-call fixture, and a fixed `kind: "ask"` JSON fixture,
+each map to `DecisionAsk`), but no local model under about 20B parameters
+was observed to choose it reliably live - `qwen3.5-9b-q8` picked it roughly
+1 run in 5 against a genuinely ambiguous query through the tool-calling
+planner, guessing a value the rest of the time (`DECISIONS.md`); not
+re-measured for the JSON planner, since none of the questions exercised
+live for Task 11 were ambiguous enough to reach it.
 
 ## Known gaps in the harness
 

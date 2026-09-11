@@ -4,10 +4,11 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. The first vertical slice, `docs/plans/orchestration.md`, is complete
-   through Task 16: `make check` is fully green, including `acceptance-e2e`,
-   `acceptance-browser` and `guard-browser`. Task 11 (the JSON planner for
-   models without tool calling) is the one task left in the slice.
+1. The first vertical slice, `docs/plans/orchestration.md`, is complete: all
+   seventeen tasks, `make check` fully green, including `acceptance-e2e`,
+   `acceptance-browser`, `guard-browser` and (Task 11) the JSON planner.
+   Nothing from the plan remains; the slice is done and what follows is
+   whatever comes after it (not yet planned).
 
 ## Next
 
@@ -15,12 +16,12 @@ _Keep three lists. Move items, do not duplicate them._
    `title` on every property an exposed operation's schema describes, since
    only an exposed operation's fields are ever shown on screen. Deliberately
    left for a separate decision (`DECISIONS.md`, 2026-09-11).
-1. Task 11, the JSON planner behind the same `usecase.Planner` port - the
-   slice's last remaining task.
 1. No local model under ~20B parameters was observed to reliably choose
-   `ask_user` (`DECISIONS.md`, 2026-09-11) - worth revisiting once Task 11's
-   JSON planner exists, since a JSON `{"kind": "ask", ...}` object may be an
-   easier target for a smaller model than a tool call is.
+   `ask_user` through the tool-calling planner (`DECISIONS.md`, 2026-09-11).
+   Not yet re-measured against the JSON planner's `{"kind": "ask", ...}`
+   shape, which may be an easier target for a smaller model than a tool call
+   is - none of the questions exercised live for Task 11 were ambiguous
+   enough to reach it.
 1. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
    in the repository already passes under 7; only code generation does not.
    orval was measured as a replacement and rejected - it runs under TypeScript 7
@@ -117,3 +118,18 @@ _Keep three lists. Move items, do not duplicate them._
   `ORCHESTRA_PLAN_FIXTURES` environment variable rather than a real LLM
   (`DECISIONS.md`, 2026-09-11). `make check` is now fully green, including
   `guard-a11y`/`guard-layout` against a real screen for the first time.
+- Task 11, the JSON planner: `internal/adapter/planner/jsonmode.Planner`, a
+  second `usecase.Planner` for models that cannot call tools - renders the
+  catalogue as text, asks for one JSON object (`kind`: `call`/`ask`/
+  `list_capabilities`/`none`), validates a `call`/`ask` answer against
+  `domain.Catalog` (unknown operation, or an argument outside its
+  parameter's enum), and retries once, quoting the failure back, before
+  giving up. `ORCHESTRA_LLM_MODE` (`toolcall`/`json`) selects the adapter in
+  `pkg/app.newPlanner`; an unknown value fails startup. Verified live:
+  twelve runs (four questions, three times each) through
+  `ORCHESTRA_LLM_MODE=json` against `qwen3.5-9b-q8`, twelve clean answers,
+  zero retries - after discovering and fixing that `response_format`'s JSON
+  Schema must preserve the prompt's own field order, not the alphabetical
+  order a `map[string]any` marshals to (`DECISIONS.md`, 2026-09-11). This
+  closes the first vertical slice: all seventeen tasks in
+  `docs/plans/orchestration.md` are done.

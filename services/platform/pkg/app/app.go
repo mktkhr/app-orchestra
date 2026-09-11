@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -11,6 +12,7 @@ import (
 	invokerhttp "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/invoker/http"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jsonmode"
 	stubplanner "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/stub"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/toolcall"
 	specsourcehttp "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/specsource/http"
@@ -75,7 +77,31 @@ type LLM struct {
 	BaseURL string
 	APIKey  string
 	Model   string
+	// Mode selects which usecase.Planner adapter newPlanner builds: empty or
+	// ModeToolCall picks internal/adapter/planner/toolcall (so a Config
+	// that never mentions Mode - every test in this package that predates
+	// Task 11 - keeps today's behaviour unchanged), ModeJSON picks
+	// internal/adapter/planner/jsonmode, for a model that cannot call tools
+	// (docs/plans/orchestration.md, Task 11). Mirrors
+	// config.Config.LLMMode's already-validated string the way Service
+	// mirrors config.Service; New still rejects any other value itself
+	// (ErrInvalidLLMMode) rather than trusting every caller to have gone
+	// through config.Load's own validation first.
+	Mode string
 }
+
+// The two non-empty values LLM.Mode accepts, mirroring
+// internal/infra/config.LLMModeToolCall and LLMModeJSON.
+const (
+	ModeToolCall = "toolcall"
+	ModeJSON     = "json"
+)
+
+// ErrInvalidLLMMode is returned by New when Config.LLM.Mode is set to
+// anything other than "" (the default), ModeToolCall or ModeJSON -
+// mirroring internal/infra/config.ErrInvalidLLMMode's own refusal to fall
+// back to the default silently.
+var ErrInvalidLLMMode = errors.New("invalid LLM.Mode, want \"\", \"toolcall\" or \"json\"")
 
 // Config is everything New needs to wire the platform's object graph.
 type Config struct {
@@ -126,7 +152,11 @@ func build(
 		return nil, fmt.Errorf("building the catalogue: %w", err)
 	}
 
-	planner := newPlanner(cfg, catalog)
+	planner, err := newPlanner(cfg, catalog)
+	if err != nil {
+		return nil, err
+	}
+
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker)
 
@@ -221,12 +251,19 @@ func toUsecaseAnswers(answers []Answer) []usecase.Answer {
 // build a Config with no LLM field set (every one of them; see
 // app_test.go) never call a real one: they simply exercise this same
 // fallback path.
-func newPlanner(cfg *Config, catalog domain.Catalog) usecase.Planner {
+func newPlanner(cfg *Config, catalog domain.Catalog) (usecase.Planner, error) {
 	if cfg.LLM.BaseURL == "" {
-		return stubplanner.New(toStubTable(cfg.PlanFixtures), &usecase.Decision{Kind: usecase.DecisionNone})
+		return stubplanner.New(toStubTable(cfg.PlanFixtures), &usecase.Decision{Kind: usecase.DecisionNone}), nil
 	}
 
 	client := chat.New(chat.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model})
 
-	return toolcall.New(client, catalog)
+	switch cfg.LLM.Mode {
+	case "", ModeToolCall:
+		return toolcall.New(client, catalog), nil
+	case ModeJSON:
+		return jsonmode.New(client, catalog), nil
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrInvalidLLMMode, cfg.LLM.Mode)
+	}
 }

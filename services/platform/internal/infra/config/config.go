@@ -20,6 +20,22 @@ const defaultPort = 8080
 // ORCHESTRA_SERVICES contains an entry that is not "name=url".
 var ErrInvalidServiceEntry = errors.New("invalid ORCHESTRA_SERVICES entry, want name=url")
 
+// ErrInvalidLLMMode is wrapped into the error returned when ORCHESTRA_LLM_MODE
+// names anything other than LLMModeToolCall or LLMModeJSON. An unrecognised
+// value fails startup rather than silently falling back to the default
+// (docs/plans/orchestration.md, Task 11) - a typo'd mode should not quietly
+// run the wrong planner.
+var ErrInvalidLLMMode = errors.New("invalid ORCHESTRA_LLM_MODE, want toolcall or json")
+
+// The two values ORCHESTRA_LLM_MODE accepts: which of the two
+// usecase.Planner adapters (internal/adapter/planner/toolcall,
+// internal/adapter/planner/jsonmode) pkg/app.newPlanner selects when an LLM
+// base URL is configured. LLMModeToolCall is the default.
+const (
+	LLMModeToolCall = "toolcall"
+	LLMModeJSON     = "json"
+)
+
 // Service is one entry of ORCHESTRA_SERVICES: a service's name and the base
 // URL its /openapi.yaml is fetched from.
 type Service struct {
@@ -73,6 +89,11 @@ type Config struct {
 	// different backend gets used behind a router such as llama-swap (D5,
 	// docs/specs/orchestration.md).
 	LLMModel string
+	// LLMMode selects which usecase.Planner adapter pkg/app.newPlanner
+	// builds when LLMBaseURL is set: LLMModeToolCall (the default, used
+	// when ORCHESTRA_LLM_MODE is unset) or LLMModeJSON, for a model that
+	// cannot call tools (docs/plans/orchestration.md, Task 11).
+	LLMMode string
 	// PlanFixtures configures the stub planner's table when LLMBaseURL is
 	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
 	// never sets this - an operator sets ORCHESTRA_LLM_BASE_URL instead,
@@ -98,6 +119,13 @@ func Load() (Config, error) {
 		LLMAPIKey:  os.Getenv("ORCHESTRA_LLM_API_KEY"),
 		LLMModel:   os.Getenv("ORCHESTRA_LLM_MODEL"),
 	}
+
+	mode, err := parseLLMMode(os.Getenv("ORCHESTRA_LLM_MODE"))
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.LLMMode = mode
 
 	services, err := parseServices(os.Getenv("ORCHESTRA_SERVICES"))
 	if err != nil {
@@ -156,6 +184,22 @@ func parseServices(raw string) ([]Service, error) {
 	}
 
 	return services, nil
+}
+
+// parseLLMMode reads ORCHESTRA_LLM_MODE: LLMModeToolCall when unset, or
+// exactly LLMModeToolCall or LLMModeJSON otherwise - anything else fails
+// startup instead of silently falling back to the default (Config.LLMMode's
+// doc comment; docs/plans/orchestration.md, Task 11).
+func parseLLMMode(raw string) (string, error) {
+	if raw == "" {
+		return LLMModeToolCall, nil
+	}
+
+	if raw != LLMModeToolCall && raw != LLMModeJSON {
+		return "", fmt.Errorf("%w: %q", ErrInvalidLLMMode, raw)
+	}
+
+	return raw, nil
 }
 
 // parsePlanFixtures reads ORCHESTRA_PLAN_FIXTURES: a JSON array of

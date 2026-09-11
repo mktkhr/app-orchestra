@@ -188,6 +188,80 @@ func TestNewWithLLMBaseURLConfiguredUsesTheToolCallingPlanner(t *testing.T) {
 	assert.Equal(t, "table", body.Component)
 }
 
+// fixtureJSONChatServer answers every chat-completions request with a
+// message whose content is the JSON object internal/adapter/planner/jsonmode
+// reads a Decision from - just enough to prove app.New wires that planner
+// in when Config.LLM.Mode is app.ModeJSON, not to test its own mapping
+// (internal/adapter/planner/jsonmode has that).
+func fixtureJSONChatServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	const response = `{
+    "choices": [{
+      "finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "{\"kind\":\"call\",\"service\":\"fixture\",\"operationId\":\"ListWidgets\",\"args\":{}}"
+      }
+    }]
+  }`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(response)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+func TestNewWithLLMModeJSONUsesTheJSONPlanner(t *testing.T) {
+	fixture := fixtureService(t)
+	chatServer := fixtureJSONChatServer(t)
+
+	handler, err := app.New(&app.Config{
+		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:      app.LLM{BaseURL: chatServer.URL, Model: "test-model", Mode: app.ModeJSON},
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Kind      string `json:"kind"`
+		Component string `json:"component"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "result", body.Kind)
+	assert.Equal(t, "table", body.Component)
+}
+
+func TestNewRejectsAnUnknownLLMMode(t *testing.T) {
+	_, err := app.New(&app.Config{
+		LLM: app.LLM{BaseURL: "http://127.0.0.1:0", Mode: "not-a-real-mode"},
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, app.ErrInvalidLLMMode)
+}
+
 func TestNewFailsWhenAConfiguredServiceIsUnreachable(t *testing.T) {
 	_, err := app.New(&app.Config{Services: []app.Service{{Name: "gone", URL: "http://127.0.0.1:0"}}})
 

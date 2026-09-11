@@ -151,3 +151,30 @@ func TestLoadReadsLLMSettings(t *testing.T) {
 	assert.Equal(t, "test-key", cfg.LLMAPIKey)
 	assert.Equal(t, "gemma4-26b-a4b-qat", cfg.LLMModel)
 }
+
+func TestLoadLLMModeDefaultsToToolCall(t *testing.T) {
+	t.Setenv("ORCHESTRA_LLM_MODE", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.LLMModeToolCall, cfg.LLMMode)
+}
+
+func TestLoadReadsLLMModeJSON(t *testing.T) {
+	t.Setenv("ORCHESTRA_LLM_MODE", "json")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.LLMModeJSON, cfg.LLMMode)
+}
+
+func TestLoadRejectsAnUnknownLLMMode(t *testing.T) {
+	t.Setenv("ORCHESTRA_LLM_MODE", "not-a-real-mode")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidLLMMode)
+}
