@@ -307,3 +307,10 @@ invisible to git and `guard-ignored` failed on it. Rather than tracking `.js`
 wholesale - the rest of the workspace is TypeScript, and a blanket allow would
 let build output in - the one file is named individually in the `.gitignore`
 section meant for exactly that.
+
+The lint policy needed the same treatment. Redocly calls the default export of
+its plugin, which `import/no-default-export` forbids, and JavaScript leaves the
+type-aware rules nothing to narrow, so every value reads as `any`. Both are
+switched off for `harness/quality/redocly/*.js` alone, next to the existing
+exemption that lets Vite configs be default exports for the same reason: the
+tool decides the shape, not the author.
