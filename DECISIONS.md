@@ -277,3 +277,33 @@ spec, registering every operation as a tool and exposing them as
 the endpoint list into a runtime-addressable map. Adopting it would change the
 shape of the catalogue and the orchestration decided in `PRODUCT.md` (D2), so it
 belongs to that design, not to a generator swap.
+
+## 2026-09-11 Two guards the orchestration design asked for
+
+**Context.** Designing the first vertical slice turned up two things the harness
+could not see. `oapi-codegen` v2.8.0 accepts a valid OpenAPI 3.2 document
+containing a `query` operation and generates nothing for it - no error, no
+warning, an empty `ServerInterface` - and `guard-generated` only compares the
+generated files against a fresh run, so a silently dropped operation passes it.
+Separately, the whole enum-label mechanism the planner depends on rests on spec
+authors remembering to write `x-enum-labels`, which is exactly the kind of rule
+that decays when it lives in prose.
+
+**Decision.** Two static checks. `harness/guard/generated-ops.sh` extracts every
+operationId a spec declares and fails when it is absent from the Go or the
+TypeScript output, per service, discovered the same way every other target
+discovers them. A Redocly plugin at `harness/quality/redocly/enum-labels.js`
+fails a spec whose `enum` carries no `x-enum-labels`, or whose labels do not
+cover exactly the enum's values.
+
+**Consequences.** Both were verified by making them fail on purpose: a probe
+service with a 3.2 `query` operation reproduced the silent drop and was
+reported, and three spec variants confirmed the label rule accepts a complete
+mapping and rejects both a missing one and a mismatched one.
+
+One thing had to give. Redocly loads plugins as JavaScript, and `.gitignore`
+denies by default with no `.js` among the tracked extensions, so the plugin was
+invisible to git and `guard-ignored` failed on it. Rather than tracking `.js`
+wholesale - the rest of the workspace is TypeScript, and a blanket allow would
+let build output in - the one file is named individually in the `.gitignore`
+section meant for exactly that.

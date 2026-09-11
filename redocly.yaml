@@ -6,7 +6,10 @@
 # Part of the Repository Harness (harness/quality/README.md).
 extends:
   - recommended-strict
+plugins:
+  - harness/quality/redocly/enum-labels.js
 rules:
+  orchestra/enum-labels-required: error
   operation-operationId: error
   operation-summary: error
   # Off: system endpoints such as /api/health legitimately have no 4XX outcome.

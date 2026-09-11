@@ -61,6 +61,10 @@
 # Git hooks have no extension by design - git looks them up by name. The
 # directory exists only to hold them, so everything in it is tracked.
 !/harness/githooks/*
+# Redocly loads a custom plugin as JS, not TypeScript; .js is not tracked
+# wholesale (the rest of the workspace writes TypeScript), so this one file
+# is named individually.
+!/harness/quality/redocly/enum-labels.js
 !/.gitignore
 !/.npmrc
 !/.env

@@ -168,5 +168,22 @@ export const lintPolicy: OxlintConfig = {
         "import/no-default-export": "off",
       },
     },
+    {
+      // Redocly loads a plugin as JavaScript and calls the default export it
+      // finds. JavaScript also gives the type-aware rules nothing to narrow, so
+      // every value they see is `any` and the checks are noise rather than
+      // findings. Scoped to this one directory; everything else stays
+      // TypeScript with the rules on.
+      files: ["harness/quality/redocly/*.js"],
+      rules: {
+        "import/no-default-export": "off",
+        "typescript/strict-boolean-expressions": "off",
+        "typescript/no-unsafe-member-access": "off",
+        "typescript/no-unsafe-assignment": "off",
+        "typescript/no-unsafe-call": "off",
+        "typescript/no-unsafe-argument": "off",
+        "typescript/no-unsafe-return": "off",
+      },
+    },
   ],
 };
