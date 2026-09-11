@@ -15,7 +15,7 @@ import (
 )
 
 func TestNewRouterServesHealth(t *testing.T) {
-	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewPlan(nil), handler.NewInvoke(nil)), "")
+	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil)), "")
 	require.NoError(t, err)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/health", http.NoBody)
@@ -28,7 +28,7 @@ func TestNewRouterServesHealth(t *testing.T) {
 }
 
 func TestNewRouterRejectsUnknownRoute(t *testing.T) {
-	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewPlan(nil), handler.NewInvoke(nil)), "")
+	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil)), "")
 	require.NoError(t, err)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/does-not-exist", http.NoBody)
@@ -43,7 +43,7 @@ func TestNewRouterServesStaticDir(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("hello"), 0o600))
 
-	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewPlan(nil), handler.NewInvoke(nil)), dir)
+	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil)), dir)
 	require.NoError(t, err)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)

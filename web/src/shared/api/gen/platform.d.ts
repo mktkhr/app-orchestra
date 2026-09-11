@@ -64,6 +64,91 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/workspaces": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List the stub owner's workspaces.
+         * @description Every workspace belongs to the stub user until authentication exists (W6, docs/specs/workspaces.md). No panel data is returned here - only panelCount - because opening a workspace re-runs its panels through /api/invoke instead of storing their answers (W2).
+         */
+        readonly get: operations["listWorkspaces"];
+        readonly put?: never;
+        /** Create an empty workspace. */
+        readonly post: operations["createWorkspace"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/workspaces/{id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Read one workspace and its panels, in position order.
+         * @description No panel carries its data - the browser posts each panel to /api/invoke itself (section 5, docs/specs/workspaces.md).
+         */
+        readonly get: operations["getWorkspace"];
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Delete a workspace and every panel it holds.
+         * @description Deleting a workspace that does not exist is not an error: the end state is the same either way.
+         */
+        readonly delete: operations["deleteWorkspace"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/workspaces/{id}/panels": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Save a call as a panel on a workspace.
+         * @description A panel is a saved call - service, operation id, arguments, component, title (W1). Naming an operation the catalogue does not expose is rejected here, at save time, with the same rule /api/invoke applies via the catalogue - a panel that could be saved unexposed would fail every time its workspace opened it.
+         */
+        readonly post: operations["addPanel"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/workspaces/{id}/panels/{panelId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Remove one panel from a workspace.
+         * @description Deleting a panel that does not exist is not an error, for the same reason deleting a workspace that does not exist is not.
+         */
+        readonly delete: operations["deletePanel"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -173,6 +258,70 @@ export type components = {
         readonly ErrorResponse: {
             /** @description What went wrong, for humans. */
             readonly message: string;
+        };
+        /** @description One row of the workspaces list - no panel data, only a count. */
+        readonly WorkspaceSummary: {
+            /** @description The workspace's id, assigned by the platform. */
+            readonly id: string;
+            /** @description The workspace's name. */
+            readonly name: string;
+            /** @description How many panels the workspace holds. */
+            readonly panelCount: number;
+        };
+        /** @description A new, empty workspace. */
+        readonly CreateWorkspaceRequest: {
+            /** @description The workspace's name. */
+            readonly name: string;
+        };
+        /** @description The workspace just created. */
+        readonly WorkspaceCreated: {
+            /** @description The workspace's id, assigned by the platform. */
+            readonly id: string;
+            /** @description The workspace's name. */
+            readonly name: string;
+        };
+        /** @description A saved call: everything a plan result's source and component already carry, plus a title and a position (docs/specs/workspaces.md, section 3). No panel carries its answer - opening a workspace re-runs each panel's call through /api/invoke instead (W2). */
+        readonly Panel: {
+            /** @description The panel's id, assigned by the platform. */
+            readonly id: string;
+            /** @description The workspace this panel belongs to. */
+            readonly workspaceId: string;
+            /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
+            readonly service: string;
+            /** @description The operation id, as declared in that service's contract. */
+            readonly operationId: string;
+            /** @description The call's arguments. */
+            readonly args: {
+                readonly [key: string]: unknown;
+            };
+            readonly component: components["schemas"]["Component"];
+            /** @description The panel's title. A person can edit it; left blank when saved, it defaults to the operation id. */
+            readonly title: string;
+            /** @description Where the panel sits among its workspace's others, ascending. Not editable in this slice (W5). */
+            readonly position: number;
+        };
+        /** @description A call to save as a new panel, appended after this workspace's others. */
+        readonly CreatePanelRequest: {
+            /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
+            readonly service: string;
+            /** @description The operation id, as declared in that service's contract. */
+            readonly operationId: string;
+            /** @description The call's arguments. */
+            readonly args: {
+                readonly [key: string]: unknown;
+            };
+            readonly component: components["schemas"]["Component"];
+            /** @description The panel's title. Left blank, the panel is titled with its operation id instead of showing an empty card header. */
+            readonly title: string;
+        };
+        /** @description One workspace and its panels, in position order. */
+        readonly Workspace: {
+            /** @description The workspace's id, assigned by the platform. */
+            readonly id: string;
+            /** @description The workspace's name. */
+            readonly name: string;
+            /** @description The workspace's panels, in position order. */
+            readonly panels: readonly components["schemas"]["Panel"][];
         };
     };
     responses: never;
@@ -284,6 +433,166 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["ErrorResponse"];
                 };
+            };
+        };
+    };
+    readonly listWorkspaces: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description The stub owner's workspaces, most recently created last. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["WorkspaceSummary"][];
+                };
+            };
+        };
+    };
+    readonly createWorkspace: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateWorkspaceRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description The workspace was created. */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WorkspaceCreated"];
+                };
+            };
+        };
+    };
+    readonly getWorkspace: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description The workspace, with its panels. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            /** @description No workspace has this id. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly deleteWorkspace: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description The workspace, and its panels, no longer exist. */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly addPanel: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreatePanelRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description The saved panel, with its assigned id and position. */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Panel"];
+                };
+            };
+            /** @description The named operation is not in the catalogue. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No workspace has this id. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly deletePanel: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly id: string;
+                readonly panelId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description The panel no longer exists on this workspace. */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

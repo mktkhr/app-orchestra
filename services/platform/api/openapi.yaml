@@ -21,6 +21,11 @@ tags:
     description: >
       Executes a confirmed call against a service. The only mouth through
       which the platform mutates anything; never calls the planner.
+  - name: workspaces
+    description: >
+      A person's saved collections of panels - each panel a saved call,
+      re-run through /api/invoke whenever its workspace is opened. See
+      docs/specs/workspaces.md.
 paths:
   /api/health:
     get:
@@ -120,6 +125,155 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/workspaces:
+    get:
+      operationId: listWorkspaces
+      summary: List the stub owner's workspaces.
+      description: >
+        Every workspace belongs to the stub user until authentication
+        exists (W6, docs/specs/workspaces.md). No panel data is returned
+        here - only panelCount - because opening a workspace re-runs its
+        panels through /api/invoke instead of storing their answers (W2).
+      tags:
+        - workspaces
+      responses:
+        "200":
+          description: The stub owner's workspaces, most recently created last.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkspaceSummary"
+    post:
+      operationId: createWorkspace
+      summary: Create an empty workspace.
+      tags:
+        - workspaces
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkspaceRequest"
+      responses:
+        "201":
+          description: The workspace was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceCreated"
+  /api/workspaces/{id}:
+    get:
+      operationId: getWorkspace
+      summary: Read one workspace and its panels, in position order.
+      description: >
+        No panel carries its data - the browser posts each panel to
+        /api/invoke itself (section 5, docs/specs/workspaces.md).
+      tags:
+        - workspaces
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The workspace, with its panels.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workspace"
+        "404":
+          description: No workspace has this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteWorkspace
+      summary: Delete a workspace and every panel it holds.
+      description: >
+        Deleting a workspace that does not exist is not an error: the end
+        state is the same either way.
+      tags:
+        - workspaces
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The workspace, and its panels, no longer exist.
+  /api/workspaces/{id}/panels:
+    post:
+      operationId: addPanel
+      summary: Save a call as a panel on a workspace.
+      description: >
+        A panel is a saved call - service, operation id, arguments,
+        component, title (W1). Naming an operation the catalogue does not
+        expose is rejected here, at save time, with the same rule
+        /api/invoke applies via the catalogue - a panel that could be
+        saved unexposed would fail every time its workspace opened it.
+      tags:
+        - workspaces
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePanelRequest"
+      responses:
+        "201":
+          description: The saved panel, with its assigned id and position.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Panel"
+        "400":
+          description: The named operation is not in the catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No workspace has this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/workspaces/{id}/panels/{panelId}:
+    delete:
+      operationId: deletePanel
+      summary: Remove one panel from a workspace.
+      description: >
+        Deleting a panel that does not exist is not an error, for the same
+        reason deleting a workspace that does not exist is not.
+      tags:
+        - workspaces
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: panelId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The panel no longer exists on this workspace.
 components:
   schemas:
     Health:
@@ -315,3 +469,133 @@ components:
         message:
           type: string
           description: What went wrong, for humans.
+    WorkspaceSummary:
+      type: object
+      description: One row of the workspaces list - no panel data, only a count.
+      required:
+        - id
+        - name
+        - panelCount
+      properties:
+        id:
+          type: string
+          description: The workspace's id, assigned by the platform.
+        name:
+          type: string
+          description: The workspace's name.
+        panelCount:
+          type: integer
+          description: How many panels the workspace holds.
+    CreateWorkspaceRequest:
+      type: object
+      description: A new, empty workspace.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: The workspace's name.
+    WorkspaceCreated:
+      type: object
+      description: The workspace just created.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          description: The workspace's id, assigned by the platform.
+        name:
+          type: string
+          description: The workspace's name.
+    Panel:
+      type: object
+      description: >
+        A saved call: everything a plan result's source and component
+        already carry, plus a title and a position (docs/specs/workspaces.md,
+        section 3). No panel carries its answer - opening a workspace
+        re-runs each panel's call through /api/invoke instead (W2).
+      required:
+        - id
+        - workspaceId
+        - service
+        - operationId
+        - args
+        - component
+        - title
+        - position
+      properties:
+        id:
+          type: string
+          description: The panel's id, assigned by the platform.
+        workspaceId:
+          type: string
+          description: The workspace this panel belongs to.
+        service:
+          type: string
+          description: The service's name, as configured in ORCHESTRA_SERVICES.
+        operationId:
+          type: string
+          description: The operation id, as declared in that service's contract.
+        args:
+          type: object
+          description: The call's arguments.
+          additionalProperties: true
+        component:
+          $ref: "#/components/schemas/Component"
+        title:
+          type: string
+          description: >
+            The panel's title. A person can edit it; left blank when saved,
+            it defaults to the operation id.
+        position:
+          type: integer
+          description: >
+            Where the panel sits among its workspace's others, ascending.
+            Not editable in this slice (W5).
+    CreatePanelRequest:
+      type: object
+      description: A call to save as a new panel, appended after this workspace's others.
+      required:
+        - service
+        - operationId
+        - args
+        - component
+        - title
+      properties:
+        service:
+          type: string
+          description: The service's name, as configured in ORCHESTRA_SERVICES.
+        operationId:
+          type: string
+          description: The operation id, as declared in that service's contract.
+        args:
+          type: object
+          description: The call's arguments.
+          additionalProperties: true
+        component:
+          $ref: "#/components/schemas/Component"
+        title:
+          type: string
+          description: >
+            The panel's title. Left blank, the panel is titled with its
+            operation id instead of showing an empty card header.
+    Workspace:
+      type: object
+      description: One workspace and its panels, in position order.
+      required:
+        - id
+        - name
+        - panels
+      properties:
+        id:
+          type: string
+          description: The workspace's id, assigned by the platform.
+        name:
+          type: string
+          description: The workspace's name.
+        panels:
+          type: array
+          description: The workspace's panels, in position order.
+          items:
+            $ref: "#/components/schemas/Panel"

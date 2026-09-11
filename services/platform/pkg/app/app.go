@@ -162,8 +162,9 @@ func build(
 		return nil, fmt.Errorf("building the catalogue: %w", err)
 	}
 
-	if dbErr := checkWorkspaceStore(cfg.DBPath); dbErr != nil {
-		return nil, dbErr
+	workspaceHandler, err := newWorkspaceHandler(cfg.DBPath, catalog)
+	if err != nil {
+		return nil, err
 	}
 
 	planner, err := newPlanner(cfg, catalog)
@@ -174,7 +175,7 @@ func build(
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker)
 
-	api := handler.NewAPI(handler.NewHealth(), handler.NewPlan(orchestrator), handler.NewInvoke(orchestrator))
+	api := handler.NewAPI(handler.NewHealth(), handler.NewPlan(orchestrator), handler.NewInvoke(orchestrator), workspaceHandler)
 
 	router, err := newRouter(api, cfg.StaticDir)
 	if err != nil {
@@ -256,32 +257,30 @@ func toUsecaseAnswers(answers []Answer) []usecase.Answer {
 	return out
 }
 
-// checkWorkspaceStore opens and immediately closes the workspace store at
-// dbPath, so a bad ORCHESTRA_DB_PATH (an unwritable directory, say) fails
-// startup here rather than on the first request that touches it - the
-// same reason newPlanner's catalogue fetch happens eagerly, above. An
-// empty dbPath skips the check entirely: see Config.DBPath's doc comment
-// for who leaves it empty and why that is fine.
+// newWorkspaceHandler opens the workspace store at dbPath and wraps it in
+// the workspaces usecase and its handler, so a bad ORCHESTRA_DB_PATH (an
+// unwritable directory, say) fails startup here rather than on the first
+// request that touches it - the same reason newPlanner's catalogue fetch
+// happens eagerly, above.
 //
-// docs/plans/workspaces.md, Task 0 stops here - nothing yet keeps the
-// store open or hands it to a handler, because nothing in this task
-// speaks HTTP. Task 1 replaces this open-then-close with an open-and-keep
-// once a handler exists to give it to.
-func checkWorkspaceStore(dbPath string) error {
+// An empty dbPath builds a handler over a nil usecase instead of opening
+// anything: see Config.DBPath's doc comment for who leaves it empty and
+// why that is fine - every caller that does never drives a /api/workspaces
+// request either. The store, once opened, is never closed: it lives for
+// the process's lifetime, same as the catalogue and the invoker's HTTP
+// client above, with nothing in this package's own lifecycle to close it
+// from.
+func newWorkspaceHandler(dbPath string, catalog domain.Catalog) (*handler.Workspace, error) {
 	if dbPath == "" {
-		return nil
+		return handler.NewWorkspace(nil), nil
 	}
 
 	store, err := sqlitestore.New(dbPath)
 	if err != nil {
-		return fmt.Errorf("opening the workspace store: %w", err)
+		return nil, fmt.Errorf("opening the workspace store: %w", err)
 	}
 
-	if err := store.Close(); err != nil {
-		return fmt.Errorf("closing the workspace store: %w", err)
-	}
-
-	return nil
+	return handler.NewWorkspace(usecase.NewWorkspaces(store, catalog)), nil
 }
 
 // newPlanner selects the platform's usecase.Planner from cfg: the

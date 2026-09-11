@@ -22,7 +22,14 @@ entrypoint = ["./tmp/api"]
 # gpt-oss-20b and qwen38-27b-iq3s with the same tool definitions, it is the
 # only one of the four that neither invents an unrequested filter nor drops
 # a requested one (DECISIONS.md, 2026-09-11).
-full_bin = "ORCHESTRA_SERVICES=inventory=http://localhost:8081,attendance=http://localhost:8082 ORCHESTRA_LLM_BASE_URL=http://localhost:11435/v1 ORCHESTRA_LLM_MODEL=qwen3.5-9b-q8 ./tmp/api"
+# ORCHESTRA_DB_PATH points outside the repository - a hot-reloading platform
+# rebuilds on every `.go` save (see include_ext below), and a file under this
+# tree would either churn on every workspace write or get swept up by a
+# careless `git clean`. $HOME/.local/state is this machine's normal home for
+# a long-lived, non-package application file (XDG_STATE_HOME's default), so
+# a workspace saved here survives both a rebuild and a restart of air itself
+# (docs/specs/workspaces.md, AC-W-105) without living inside version control.
+full_bin = "ORCHESTRA_SERVICES=inventory=http://localhost:8081,attendance=http://localhost:8082 ORCHESTRA_LLM_BASE_URL=http://localhost:11435/v1 ORCHESTRA_LLM_MODEL=qwen3.5-9b-q8 ORCHESTRA_DB_PATH=/home/takahiro/.local/state/app-orchestra/workspaces.db ./tmp/api"
 include_ext = ["go"]
 exclude_dir = ["tmp", "bin", "acceptance"]
 delay = 200

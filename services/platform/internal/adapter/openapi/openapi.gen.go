@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/oapi-codegen/runtime"
 )
 
 // Defines values for Component.
@@ -80,6 +81,30 @@ type Answer struct {
 // Component The widget the frontend renders the result with.
 type Component string
 
+// CreatePanelRequest A call to save as a new panel, appended after this workspace's others.
+type CreatePanelRequest struct {
+	// Args The call's arguments.
+	Args map[string]interface{} `json:"args"`
+
+	// Component The widget the frontend renders the result with.
+	Component Component `json:"component"`
+
+	// OperationId The operation id, as declared in that service's contract.
+	OperationId string `json:"operationId"`
+
+	// Service The service's name, as configured in ORCHESTRA_SERVICES.
+	Service string `json:"service"`
+
+	// Title The panel's title. Left blank, the panel is titled with its operation id instead of showing an empty card header.
+	Title string `json:"title"`
+}
+
+// CreateWorkspaceRequest A new, empty workspace.
+type CreateWorkspaceRequest struct {
+	// Name The workspace's name.
+	Name string `json:"name"`
+}
+
 // DecisionKind What the planner decided to do about a question.
 type DecisionKind string
 
@@ -126,6 +151,33 @@ type Option struct {
 
 	// Value The enum value.
 	Value string `json:"value"`
+}
+
+// Panel A saved call: everything a plan result's source and component already carry, plus a title and a position (docs/specs/workspaces.md, section 3). No panel carries its answer - opening a workspace re-runs each panel's call through /api/invoke instead (W2).
+type Panel struct {
+	// Args The call's arguments.
+	Args map[string]interface{} `json:"args"`
+
+	// Component The widget the frontend renders the result with.
+	Component Component `json:"component"`
+
+	// Id The panel's id, assigned by the platform.
+	Id string `json:"id"`
+
+	// OperationId The operation id, as declared in that service's contract.
+	OperationId string `json:"operationId"`
+
+	// Position Where the panel sits among its workspace's others, ascending. Not editable in this slice (W5).
+	Position int `json:"position"`
+
+	// Service The service's name, as configured in ORCHESTRA_SERVICES.
+	Service string `json:"service"`
+
+	// Title The panel's title. A person can edit it; left blank when saved, it defaults to the operation id.
+	Title string `json:"title"`
+
+	// WorkspaceId The workspace this panel belongs to.
+	WorkspaceId string `json:"workspaceId"`
 }
 
 // PlanRequest A question, and any answers to a previous disambiguation.
@@ -188,11 +240,50 @@ type Source struct {
 	Service string `json:"service"`
 }
 
+// Workspace One workspace and its panels, in position order.
+type Workspace struct {
+	// Id The workspace's id, assigned by the platform.
+	Id string `json:"id"`
+
+	// Name The workspace's name.
+	Name string `json:"name"`
+
+	// Panels The workspace's panels, in position order.
+	Panels []Panel `json:"panels"`
+}
+
+// WorkspaceCreated The workspace just created.
+type WorkspaceCreated struct {
+	// Id The workspace's id, assigned by the platform.
+	Id string `json:"id"`
+
+	// Name The workspace's name.
+	Name string `json:"name"`
+}
+
+// WorkspaceSummary One row of the workspaces list - no panel data, only a count.
+type WorkspaceSummary struct {
+	// Id The workspace's id, assigned by the platform.
+	Id string `json:"id"`
+
+	// Name The workspace's name.
+	Name string `json:"name"`
+
+	// PanelCount How many panels the workspace holds.
+	PanelCount int `json:"panelCount"`
+}
+
 // PostInvokeJSONRequestBody defines body for PostInvoke for application/json ContentType.
 type PostInvokeJSONRequestBody = InvokeRequest
 
 // PostPlanJSONRequestBody defines body for PostPlan for application/json ContentType.
 type PostPlanJSONRequestBody = PlanRequest
+
+// CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
+type CreateWorkspaceJSONRequestBody = CreateWorkspaceRequest
+
+// AddPanelJSONRequestBody defines body for AddPanel for application/json ContentType.
+type AddPanelJSONRequestBody = CreatePanelRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -205,6 +296,24 @@ type ServerInterface interface {
 	// PostPlan Turn a question into a decision and, when safe, its result.
 	// (POST /api/plan)
 	PostPlan(w http.ResponseWriter, r *http.Request)
+	// ListWorkspaces List the stub owner's workspaces.
+	// (GET /api/workspaces)
+	ListWorkspaces(w http.ResponseWriter, r *http.Request)
+	// CreateWorkspace Create an empty workspace.
+	// (POST /api/workspaces)
+	CreateWorkspace(w http.ResponseWriter, r *http.Request)
+	// DeleteWorkspace Delete a workspace and every panel it holds.
+	// (DELETE /api/workspaces/{id})
+	DeleteWorkspace(w http.ResponseWriter, r *http.Request, id string)
+	// GetWorkspace Read one workspace and its panels, in position order.
+	// (GET /api/workspaces/{id})
+	GetWorkspace(w http.ResponseWriter, r *http.Request, id string)
+	// AddPanel Save a call as a panel on a workspace.
+	// (POST /api/workspaces/{id}/panels)
+	AddPanel(w http.ResponseWriter, r *http.Request, id string)
+	// DeletePanel Remove one panel from a workspace.
+	// (DELETE /api/workspaces/{id}/panels/{panelId})
+	DeletePanel(w http.ResponseWriter, r *http.Request, id string, panelId string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -249,6 +358,147 @@ func (siw *ServerInterfaceWrapper) PostPlan(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostPlan(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkspaces operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkspaces(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorkspace(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWorkspace(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkspace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkspace(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddPanel operation middleware
+func (siw *ServerInterfaceWrapper) AddPanel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddPanel(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePanel operation middleware
+func (siw *ServerInterfaceWrapper) DeletePanel(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "panelId" -------------
+	var panelId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "panelId", r.PathValue("panelId"), &panelId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "panelId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePanel(w, r, id, panelId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -381,6 +631,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/plan", wrapper.PostPlan)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/invoke", wrapper.PostInvoke)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/workspaces", wrapper.ListWorkspaces)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/workspaces", wrapper.CreateWorkspace)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/workspaces/{id}", wrapper.DeleteWorkspace)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/workspaces/{id}", wrapper.GetWorkspace)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/workspaces/{id}/panels", wrapper.AddPanel)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/workspaces/{id}/panels/{panelId}", wrapper.DeletePanel)
 
 	return m
 }
@@ -506,6 +762,169 @@ func (response PostPlan501JSONResponse) VisitPostPlanResponse(w http.ResponseWri
 	return err
 }
 
+type ListWorkspacesRequestObject struct {
+}
+
+type ListWorkspacesResponseObject interface {
+	VisitListWorkspacesResponse(w http.ResponseWriter) error
+}
+
+type ListWorkspaces200JSONResponse []WorkspaceSummary
+
+func (response ListWorkspaces200JSONResponse) VisitListWorkspacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkspaceRequestObject struct {
+	Body *CreateWorkspaceJSONRequestBody
+}
+
+type CreateWorkspaceResponseObject interface {
+	VisitCreateWorkspaceResponse(w http.ResponseWriter) error
+}
+
+type CreateWorkspace201JSONResponse WorkspaceCreated
+
+func (response CreateWorkspace201JSONResponse) VisitCreateWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceRequestObject struct {
+	Id string `json:"id"`
+}
+
+type DeleteWorkspaceResponseObject interface {
+	VisitDeleteWorkspaceResponse(w http.ResponseWriter) error
+}
+
+type DeleteWorkspace204Response struct {
+}
+
+func (response DeleteWorkspace204Response) VisitDeleteWorkspaceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetWorkspaceRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetWorkspaceResponseObject interface {
+	VisitGetWorkspaceResponse(w http.ResponseWriter) error
+}
+
+type GetWorkspace200JSONResponse Workspace
+
+func (response GetWorkspace200JSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkspace404JSONResponse ErrorResponse
+
+func (response GetWorkspace404JSONResponse) VisitGetWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddPanelRequestObject struct {
+	Id   string `json:"id"`
+	Body *AddPanelJSONRequestBody
+}
+
+type AddPanelResponseObject interface {
+	VisitAddPanelResponse(w http.ResponseWriter) error
+}
+
+type AddPanel201JSONResponse Panel
+
+func (response AddPanel201JSONResponse) VisitAddPanelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddPanel400JSONResponse ErrorResponse
+
+func (response AddPanel400JSONResponse) VisitAddPanelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddPanel404JSONResponse ErrorResponse
+
+func (response AddPanel404JSONResponse) VisitAddPanelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePanelRequestObject struct {
+	Id      string `json:"id"`
+	PanelId string `json:"panelId"`
+}
+
+type DeletePanelResponseObject interface {
+	VisitDeletePanelResponse(w http.ResponseWriter) error
+}
+
+type DeletePanel204Response struct {
+}
+
+func (response DeletePanel204Response) VisitDeletePanelResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetHealth Report whether the platform is up.
@@ -517,6 +936,24 @@ type StrictServerInterface interface {
 	// PostPlan Turn a question into a decision and, when safe, its result.
 	// (POST /api/plan)
 	PostPlan(ctx context.Context, request PostPlanRequestObject) (PostPlanResponseObject, error)
+	// ListWorkspaces List the stub owner's workspaces.
+	// (GET /api/workspaces)
+	ListWorkspaces(ctx context.Context, request ListWorkspacesRequestObject) (ListWorkspacesResponseObject, error)
+	// CreateWorkspace Create an empty workspace.
+	// (POST /api/workspaces)
+	CreateWorkspace(ctx context.Context, request CreateWorkspaceRequestObject) (CreateWorkspaceResponseObject, error)
+	// DeleteWorkspace Delete a workspace and every panel it holds.
+	// (DELETE /api/workspaces/{id})
+	DeleteWorkspace(ctx context.Context, request DeleteWorkspaceRequestObject) (DeleteWorkspaceResponseObject, error)
+	// GetWorkspace Read one workspace and its panels, in position order.
+	// (GET /api/workspaces/{id})
+	GetWorkspace(ctx context.Context, request GetWorkspaceRequestObject) (GetWorkspaceResponseObject, error)
+	// AddPanel Save a call as a panel on a workspace.
+	// (POST /api/workspaces/{id}/panels)
+	AddPanel(ctx context.Context, request AddPanelRequestObject) (AddPanelResponseObject, error)
+	// DeletePanel Remove one panel from a workspace.
+	// (DELETE /api/workspaces/{id}/panels/{panelId})
+	DeletePanel(ctx context.Context, request DeletePanelRequestObject) (DeletePanelResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -644,57 +1081,245 @@ func (sh *strictHandler) PostPlan(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListWorkspaces operation middleware
+func (sh *strictHandler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
+	var request ListWorkspacesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkspaces(ctx, request.(ListWorkspacesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkspaces")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkspacesResponseObject); ok {
+		if err := validResponse.VisitListWorkspacesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateWorkspace operation middleware
+func (sh *strictHandler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
+	var request CreateWorkspaceRequestObject
+
+	var body CreateWorkspaceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWorkspace(ctx, request.(CreateWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWorkspace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWorkspaceResponseObject); ok {
+		if err := validResponse.VisitCreateWorkspaceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteWorkspace operation middleware
+func (sh *strictHandler) DeleteWorkspace(w http.ResponseWriter, r *http.Request, id string) {
+	var request DeleteWorkspaceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteWorkspace(ctx, request.(DeleteWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteWorkspace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteWorkspaceResponseObject); ok {
+		if err := validResponse.VisitDeleteWorkspaceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkspace operation middleware
+func (sh *strictHandler) GetWorkspace(w http.ResponseWriter, r *http.Request, id string) {
+	var request GetWorkspaceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkspace(ctx, request.(GetWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkspace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkspaceResponseObject); ok {
+		if err := validResponse.VisitGetWorkspaceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddPanel operation middleware
+func (sh *strictHandler) AddPanel(w http.ResponseWriter, r *http.Request, id string) {
+	var request AddPanelRequestObject
+
+	request.Id = id
+
+	var body AddPanelJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddPanel(ctx, request.(AddPanelRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddPanel")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddPanelResponseObject); ok {
+		if err := validResponse.VisitAddPanelResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeletePanel operation middleware
+func (sh *strictHandler) DeletePanel(w http.ResponseWriter, r *http.Request, id string, panelId string) {
+	var request DeletePanelRequestObject
+
+	request.Id = id
+	request.PanelId = panelId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeletePanel(ctx, request.(DeletePanelRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeletePanel")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeletePanelResponseObject); ok {
+		if err := validResponse.VisitDeletePanelResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7FpNjyRH0f4roXpfaWekmp6x/b6X3tNgj+w1i3eZWWMhz4qKroruSk9VZjkza3pbVh8W37iAZFkIyVgg",
-	"ccA+IQwSBxA/ZvEH/wJFZFZ3dXf17izyBwdOO1OTFRkfTzzxUftekpu6MZq0d8n4vcTlJdUoP55qNyfL",
-	"PxXkcqsar4xOxsmDkqB1ZG85QDkC3gBCY+lamdZBdqV0MQZ0VxlYco3RjlL+qZ3UynsqACujZ04VBL4k",
-	"MFbNlMYK3m3JLkaXOkmTxpqGrFckmjRosR5WRP5EnixorIO8a6xagqmqKgdKj5I08YuGknHivFV6lizT",
-	"RI4MC8xL40gHIQPvLtPE0rutslQk47ejZp3Ah6vjZvIO5Z6verlz7/B1c1XMyIveU2u0J12AJV2QdfKQ",
-	"3VZ5mCtfsjak25rv9TipKEmTgjyqKkmTqbGsR14alfcViXqnyaMjfveowglV4tR4dJz88/FfvvjZx2th",
-	"4+SrTz778k9/6KSOkyfvf/jkp588ef+vT97/TZLGy8fJV7/9vTjkFcqVU0Z/X+li18q3Sgz2NRVqTRYK",
-	"ylVBBaOmMIAT03pADr7jN/pWBuPX1qG7StJEG30zC/n4OPnqs08///Dne40RaWzyHz//2wdPHn/65PEv",
-	"k7S7eZx8+edffPHxR2LmmbXGnkdA79p5CjXmpdJ0ZAkLdhEQvzHagXNNzuGM9rhqTtrD3Bo9S2FqLJRt",
-	"jdo9G4qd1CEQvkZY+XJPBlXo2TW3HJRyDJxH37pdvcPzAcurOS4cXCbm6jIBo/OQh401OTkHyoEje630",
-	"DLzF6VTlzzYmXjVkyx19ba7onAQwQ2HIjZ4qW1MBOVYVw4weUd562rUI7Sz8WxSK38fqfu/v3raUDlEE",
-	"VhWTn521NWnfj81aTRaD/NKdYtjvqwOgihTQcV5UaKkApcEzEsRrOd1ybJK3mPtBMovHhm9Zy2B+lHvE",
-	"P7M23nTv/OXXzi4enJ/+5OLs/Ed3Xj67uEF04o2bVqbBnU+LWUiqgZAFjwbioyKy3m688j6Z/q+laTJO",
-	"/ud49dQdx/J1vGbdZZoU6PH5ozygzI5dU0VV8ZwIuk/2KFq1gNcv7r0BF6K0JHvGumYS8aqttYODTNg2",
-	"OwRjwcw1rB0CB1lg7OwQjiTjHJdAV2JDHOfsfoU6+HwUFM1SmLSq8uvDc1yk4AwgBFHgW6sBm4aNLwCn",
-	"niyIajVI/XaOEetKM3eA8Do2qMkReOUrAtQFMAeDcDDQI8x9tYBKXREgZMfYqGOuAllX1gpDbgSnEyec",
-	"V5Lu17wSHWiz8gSXC3HkhOBAGw+ogerGLyDE4zB0Dlsx2kLuGkARFkNovRdDtY3Te5pzXxeqQN+1GT42",
-	"Q/wHaFR+lUqtBuXd2jvijl00y+Pda+7svAoHU2tq2Chwh8/b2EhgbtjWBDFp1HDIRwFbezm4q+apYAL1",
-	"IraKbqtXLJTDeqJmLXa1f4ugw1sDVwyKG2491ZQ1YOHKU+2exR1BdLJcWY3W4oJ/lwZ12Ltrg5VeRe/Z",
-	"jg4S9zt4mDAfrLupW1I3pP1iV6chi5SHOTpwOCXxUO7BaFB1TYVCT9UiFYBGZoO3SpWXYKahHW8Cj0Hg",
-	"DEDLpZwkRQtiYnAsTFydjSELQjLI0VpFDrKVS7M08lkKmTOtzSnr6RgzXWIkuT6Q6ClkkbluQ8Yk1Lsm",
-	"hItlK628wkqEQ+bRzsjzCwKD1fkuQvyGtO3xfLBXbtBGU++N2FFlQyPJd1iJov/Y/6C47QqPL5P/6BK1",
-	"V2s4gto4D6pujPWouWIQ5mUgrE6NWw4yfnBXyC+Dg0C/R5ftyclLtMWXh7GmiV6QU1WxalLEpJMyldA1",
-	"VzG4TL743Ueff/D4H3//9Zcf/uoyAaWdJyw4HS6Td1u0qL3SVFwmwuw8rTRoHbezCLUpqDqaYs6/9pwI",
-	"Id8BG7T+m61waRLx//zAEh+6jeGMx2ZpDHfixe7bg7GrOPg9LQ82hsRlun8IOg0TT2+KesTKYWDXLaU4",
-	"YzeUWpfCmNd7pvzNMi6+z0tjnIzh9c496K4ukxtXkNhADFSQG20yOB5xszJXVSUxGYrISqkd2zuue3qt",
-	"YqMlB7om5jluCKb+O1wmt8PEFJzTPXJ5HsCFavKsMFyEUxwGqQk3Pb9VowXdQyX6YqXF9hivhL6Kxijt",
-	"mUjm8iSOTYBhMJ2jS8FYmJu2KoCLXY0FAc5Qaee/rmF1NaVupPmBsauoH4Jrm6ZSVPx3kBUrd2O9FJad",
-	"moGZwOYlOR8d0O1SxjJHOUDQ6FuL1VGFetbirJd8SnsDRhOc3r8TABEjDwi21ZrLR9QvdNHdWrDfuV0Q",
-	"QWFyd+wayt2x6WszqguYxjhP26ri4qJmOhYRHti41EeNWQveY5J1wbCT0Qujkxh/jY1KxslLo5PRSwxL",
-	"9KUgUQa6crVbiik2uByyFDzy4slJGJAQpuoRFUIEN9oZwZuOjy/kXEHXcoA5i3+fWDN3ZGHWoi2cuEvp",
-	"qUXnbZv71lK328pLyq9c8MEGspNXycc1WZp0falY+eLJSSIdn/ax30NOl1xePX7HBZpdE+LTKCbeIIDa",
-	"v4pj89tmJHB1bV0jTx3JOTXGShPhy1gltl9gpmOSeDtxC+epTh6yCAmTkhUM69eYoZntrjFXLg4AXT63",
-	"TUhhrpceKzNrKeWCKZUzHF7TS4dehqeLjM6wZsBuAnjdAY3gDbomG8/1COo28PMF1ORLU8DMyHXWtLMS",
-	"SrIEE8qxdQQIDVnHqWfJMUAEDa33Ro/gQakESnN5RcST7XYYgoQgWeCHrS9J+xhXQGvVNQ0i5b5xPmy0",
-	"kkAn5Pz3TLH42lCyueJcbrIWE/3yG4Toxq5uD1BX+7owj3QDyoj54v++Rl02V+57lOnKqrEbpYgDr40f",
-	"QLCxW9AtjJx06JWbLnoI5ugv0+T/v22TusW175k3RVVRsU0KZ2G1Dbi99l4Xkyigzw6RDNbswGm3nxt4",
-	"8XX37g+C4PD5xsH8WV1Ot6HpdZwjOA1LiZjXB6+ePUjhtbPTV1L44Ztn5z8+5KgF7Yr+viIw+qrwrUfi",
-	"g7jyCc+zwxGcamh1/5Lc1ORggvkVoOuWmd50DluJ4OfZYX/+mxAXoKiOSA7LKtO63jpt54J+f73aDx70",
-	"dlOHt1efQ9erWFkFhdqYRd9l63EsKuyVbmkEb5i146fKe6mT/c5+EXY38U7ZazAdhmYj+lAL9c5Mp3vU",
-	"VkbasXQmXbOuHJgeBPZxIq+sviFG7K8bv2U+7C3i9mRrt4BLt1EqAw17rr+Mm5LPy9F3QiurIb+jEtbh",
-	"hW9Xh85ZYHnJQwVXcPQleK7VBTWVWdSyamRcCn/XTUXyaEEeDnBrZ7zCvGxHNsnxgXzM2Gq5cWhhysHZ",
-	"2In2yFK48aGYE1pOfvq0L6mhMw2NOu/DOOcYGc6jVzmgc+Sd7BkEHOH/P/CNreWv78fJ8uHq9u17LiK7",
-	"xnY2tFVYKE3OrThBvkjymJSMu0Zwme5oHCeUfd4ZxzqiV2J56LpaM5o3/VAQYKBDqa829Koy/WnjSyao",
-	"qfKua/jq1ksLyS6hwCdRX/H2rraxzrmbFDohOqOrBdSm9eWqcQz1aaNv7vRAvRAlb0dW3GlIN3SM5XP5",
-	"cPmvAQA=",
+	"7FtbjxxJVv4rRwmSu6Ws6p4bD+WnxtPa8WJmjNuLhbYtKirjVGVMZ0bkRER2uWT1wzBvvIC0GiGkZQUS",
+	"D+w+IRYkHkD8GDMX/gU6JyJvVVl9mbU9M4gnt6syI06c63e+E/UyyUxZGY3au2T2MnFZjqXgP0+0W6Ol",
+	"vyS6zKrKK6OTWfI0R6gd2nsOBD8C3oCAyuKlMrWD+YXScgbCXczBoquMdpjSX/WiVN6jBFEYvXJKIvgc",
+	"wVi1UloU8FmNdjM910maVNZUaL1ClqQSVpTjgvBX6NGCFmVY71IUNcJSFYUDpadJmvhNhckscd4qvUqu",
+	"0oQfGV8wy41DHRYZefcqTSx+ViuLMpn9PErWLPi8fdwsPsXM01YPGvWOb7dWcoWe5V5aoz1qCRa1ROv4",
+	"Q1Jb4WGtfE7SoK5L2teLRYFJmkj0QhVJmiyNJTmy3KisL0iUO01eTOjdSSEWWLBS46Oz5H8+//ev//JX",
+	"3WKz5Ntf//abf/3nZtVZ8uqLL1/9xa9fffEfr774+ySNm8+Sb//hn1ghDywKj4+FxuIJflajGznrCWSi",
+	"KMhTnLhEEA4EaFxDRW+lIKqKDi1BLMmWPlcO1sZeuEpkeM+B8TlaN93xDGFX4V8pFe0kise9772tMR2z",
+	"sSgK8l67qkty/GkyYrisb7jft7hMZsnvHbWfuqMYKkedha/ShDYXtNVDOW7w9gFQMiU9SMwKYVGC0uBz",
+	"4cGhvVR86sxob0XmR304Pja+S7cGhQXvkxm9VKs67vTJkwcfnZ49fXLy52enT/704YPTs9FNvPIF7os8",
+	"jaRFfmQKj3DpYVEIfZGCb74GFb+X7MGgvBsoAJR2HoUEswSXm7XSKxAasKz8BjJhJeQoJNqQFK4PxUYf",
+	"QxukwUX65mxONRqt7MrPGs+7xp01rtMoaOuou/5J2t8T+D3vpqduzjW81pjQH2KmnDL6j5Qecbpn5FNs",
+	"kUJojZYcTlGoeQPSgFiY2oMAPqgyup9lQvLpsotwF0maaKNvl2Ho8Vny7W9/89WXf7U3mfBqlHL+5av/",
+	"/MWrz3/z6vO/SdJm51nyzb/99de/+iXr4tRaY5/EgjJmklJkudI4sSgkpShAemPXKCU6J1a4R1Vr1B7W",
+	"1uhVCktjIa9Lod3N5mlWHbPQRygKn++Jo0J4Us09R85e+BycF74eSXbh85GTF2uxcXCemIvzBIzOQh2s",
+	"rMnQOYpBjg29Am/Fcqmymw8Ttxo7y0N9aS6uiwxONLZE2aZ8fIFZ7fGtpu//U4n4LqnuOpuFoBqvzfdc",
+	"BB4oI+rYtdd3q4lSeHF3K48Is3OupcJC3tGDHqOdxFNt4Kdnn3wMZyw0B/ucZJ2zxYu61A4O5ox25odg",
+	"LJi1hk4hcDAPiGl+CBOOOEcQ1OWiYoAzf1wIHXQ+DYLOU1jUqvDdw2uxScEZEBCWAl9bvY2GWLQSGD87",
+	"Rx5LtdKBgJ8KKrMOQ5EFoSVQDgbOwYAvROaLDRTqAkHA/EhU6oiqwLyBldKgm8LJwnHOy1H3MWcuHGjT",
+	"aoLKBStygXCgje8KdbDH4aBINzba8tx+FWa3GPPWT6Kptv30E02xr6WSwjcw38dmhL6ASmUXaYc0Wu2w",
+	"Ona9mT/e3ebhzqtwsLSmhEGBO7xrY8GGuWVbEZZJo4RjOmK0PRbKBK9D5p0BXqLd+JxRFZf/aNp7Dpyp",
+	"bRY8prUJiIJKJyMvu0mhKmpyss63BFTGcZjBgTSZO3IVZu6ohTJuWsoUHGb8yHuHU/jYRCBIS1LMKN92",
+	"jRNKwToI1y4BFie21g5QZHmLMUMhya2pVzmwGyvOaC1+PHj27uFY5/iD6w+UvB5Nh1rk1EqjhMUGfA8h",
+	"jHrc26tzje3HcBNa7KF+x1YujV6xvXcbOZIjQy2VXpGPeECpOM8GmZQDV6gM4eDZB8O0orTHFdofYP9z",
+	"AhVaZzQnIjoOKH8firYrCumVozMF5UHiUtSF57zqt8w02u6kSavHfaZuHwg6DMZYILMt4M3NeUcRiuhv",
+	"k969reo5ymji4qK4Fzw2bUgaEo7exGzhtkgmqZwoF2pVi6Zp2Qr88NbIFqPLjXNWakkS0OLKY+luCvSw",
+	"dHLVnlpYKzb0f2a2xm3WHVjptuzcbKmw4n4FjyO9p10beI8TAfeNpOo0+KfysBYOnFgiayjzQB5ZliiV",
+	"8FhsUo7oCMngWa6ynJr34MEhw0IAOyAskoIZW0gkRONoMVb1fAbzsMi8LQ3zVqXzNAKxFOahUM17MkaI",
+	"wjZikDKCUFKYR8h1H+aUO3vbBHPR2korr0TBi8PcC7tCTy+wG7TPNxaiN5jvi8+H8/IO2mjsvRFbwflY",
+	"RfoeIXTUH+kfFPWL4ePz5AeNrfdKDRMojfOgyspYLzRBXUYNjLQaMe45mNMHjxi1zeEg4MbJeX18/B5u",
+	"Ab3DCMZDLcqwKEg0Rt9cGk3B6Z3gN5wnX//jL7/6xef//V9/982Xf3ue9Lms8+SzWlihvdIozxOGpKb2",
+	"UAnrAuApjcRishQZ/benRAjxDqIS1r9ZaJ4m0f/v7lisQzdglYhv59K6Yy9S3x4fu4iM1XVxMGC3rtL9",
+	"7M1JoGp69M8LEk6E7LolFEXsQKg+oqI33J7xwLD/YN1nuTGO+ftyZx/hLs6TW1eQ2PmMVJBbjUDIHhFc",
+	"r1VRsE3GLNIKtXP2JtddX6vo0BwDTfd1hx3CUb9LLuPdYWEkxXQvudzF4UI1uckMZ+EpMgPXhNs+v1Wj",
+	"2bvHSvRZK8U2jlacvmRllPaUSNb8ScRgIEIjtBYuBWNhbepCAhW7UkgEsRJKO/+6WLa2+xmE+YGxrdUP",
+	"wdVVVSiU/8/A8SnHbN3OEsb5jA6yC3JfH1G7YzjYdtvG0hBkx7BK3jxbuHND+TuNLNIkiH/zAtce81bJ",
+	"MlAgO7lyrKXhM7WyXWumMAG6scH6tHYesvDsj8Ewe7VyrTLO6rIUdjPuutasG+jfCuCgUM7DBHRD/Ejh",
+	"RQpGFxtKX6bW/kfkxw9I3t1FPjJrKKk35YfcUAWQm0K66QhncZNnht12DXLFUG1pRsxgsxydj1m0UceM",
+	"WWSesAtfW1FMCqFXtVj1KrjS3oDRCCePH4aqEssHCLC1ZlouJrnQijeXEvrt3xki9HhA05dmWkpG/Xyz",
+	"oS4KkEjGi0g00CrJ4ygxSUG3KNC6cLDj6TvT41hEtKhUMkvemx5P32NV+Zy9hnnAvJ2sxTo9OhqzGDTy",
+	"7vFxoIcFLNULciQjN7eamMHPXOd3Ei/5AbRh1r2wZu3QwqoWVrqQyfXSCudtnfnaYjPZy3LMLlzQwaA8",
+	"Jj9BH4eEadI0t3zKd4+PE24btY9No6Cam/GrR5+6gNU6VHVdxow7sEPtH0TS8etqyv7qmgSQPMHKWO5E",
+	"fB6h5vYLaeIFIY2fJ27jPJbJc1qiR9eSfJUZI34eGXPhtniwugo4ACETXhRmVWNKqJvhd3i4wyiN95J7",
+	"uggLya3JYYcO3LVRU/iYGPL4XA/l3A/MOZTocyNhZdC17DNTnQvMRO0QREP6VRYdOQh7Q+290VN4mit2",
+	"pXXHjqJtJjjsCWFldj9R+xy1j3YFYa26xFFPeWycD/O8JOQTdP4Pjdy8Ni8ZDnivhmmL0OLVG3TRwaRy",
+	"j6O208pAajQsx5TyxfuvUZbhhYM9wjTY3Nitmy0OtPEjHmzslutKw0864ZVbbnoeTNa/SpMP3vaRmrG9",
+	"7x1vKVSBcjspnIbBPojtoX9XTOIC/ewQk0GXHSjs9ucGwhqPHv1xWDhcXnGwvqlVamjeXttKJD0zmzGu",
+	"D35y+jSFj05PPkzhT352+uTPDslqQTrZJz1bbB7pl5ZXO4i8cfh8fjiFEw217m+SmRIdLER2ES69ccL0",
+	"plFYuwR9Pj/sk0gLpAIUxeGVA+NtatcbJu5s0G/S2+noQY/gPrzfXsbsBtHMJ4faOI+6m3ecThTYK10j",
+	"D/VaxS+V91wne3qGTSCA455MjlI6DGAj6lBz6l2ZRvYoLfNiM0YmTcevHJieC+zLicR7v6GM2J9ZvOV8",
+	"2GPz90Rrw+Kn217KrAhprs/oL9Fn+fR7SSstU9ikEpLhnbcrQ6MssMQUI4+0hc/DvExiVZhNyfMK8kvO",
+	"32VVIH+0QQ8HYmvw1Po8U6zD5PiUr3JsQW4xNnUh4wwGK71kybmxS5Vdp7UX854ydmkf7A0AQ7j7ehGS",
+	"Qq29KraRB75Qzjs4ePYHKeyb8fcH+1J4QSEaIDbKAJAmoePr2hqYtKDpuql/R4BcO+43S3De2Jh4lG3T",
+	"fXcPYJggHinnn3Wq+x0D9lb0xE4TvctUjAMKso9ZhxFdp/Y0DDssZsiTjsg9QCGI8ht6Hp0W/P61+v7V",
+	"fZo8D0N+VsBQfVvXYt9Qmt1z+fZWGff15ZEdJmiPnTrnpfzaUkFDS4Q1unnM4KrwqAl2A/3opZJXIcwL",
+	"9COcxof0+XZEMX/apjGO6gaTkjTWGjtjH0Et+cYp0tctHkDFbd5abMbCiXcc+EM7hKATvUwUyUWZtaE4",
+	"ZoHuGJqxPw3Y5que75j4/RvYnHSHQtUGKPWhDeffNk44xUBrtELo/eL9dd+jc8YjZjQHj9574lQ5GTAG",
+	"FG79u07gzTDheYfFEg6aO1UfXJeUx2mFt2yl49cfiDdGYO/OXzB9bAXff3vg4mPTZwCFC4hCyV0aRcgA",
+	"yu5G/N8lVxx1HPx4R3XS/TpD9C4MwqSj/LZmM02zmna3BdN4MfDg2TuEB0QZf7zRvTlofPu5qDIOA2Yg",
+	"gjNihhSEZ2HAq7IxaZuPbF3gIDLYlujgUomtjSYg4vk4B2ZxShYPWuuwv4zjM0KjMeRp3+GFNTqMRjLP",
+	"WHCdSBlmEG8qsN5UiR38VOstl9c4tdmDfdhE8TdhbUy3tL+SHCxNdHw/hA/ZU/bjY5zo+eGmoDNx2Y6S",
+	"mTEIwWJ0vxJ+x5xz9JL/fXhrwNIL1OvBStpOE0I+QOGMBnk36LMfy7yxQE5HF4laejOIKOh0C/zw3bvh",
+	"7yp3a1NpLpGrU1iCb73fyiniEL5R2zXDBX4s4CGz1swIiYhAVUahjt6FjY1ufhtM+9a2SGbJUXL1vJVh",
+	"e5+zyP3FYUsg/YVUGp1rGSs37awQxxRX6fZKT+P8bF/vPovRo9tlU6LWOr7Nmz5RQOHGZB2zvzZMUthL",
+	"tQnX85fKu2YcUdaeBxwMyoPHNl5TCD0ibWRh3W1oWKbhuDcvTe3ztssO7OlgqtPIIXT4DcH9yNntjEsG",
+	"MkZyd1fK5oL0PRfTfGaKIsBaRw19bPsnfTTcRydpJAlGiQGiUVi4YflWLlbwnVnlADoPDtB9k1w9v/rf",
+	"AQA=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

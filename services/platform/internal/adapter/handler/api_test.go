@@ -10,7 +10,7 @@ import (
 )
 
 func TestNewAPIComposesEveryTag(t *testing.T) {
-	api := handler.NewAPI(handler.NewHealth(), handler.NewPlan(nil), handler.NewInvoke(nil))
+	api := handler.NewAPI(handler.NewHealth(), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil))
 
 	var iface openapi.StrictServerInterface = api
 	assert.NotNil(t, iface)
