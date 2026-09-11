@@ -3,8 +3,9 @@ info:
   title: Platform API
   version: 0.1.0
   description: >
-    Orchestration platform. This is the scaffold: only a health check exists
-    today. See docs/specs/orchestration.md for what comes next.
+    Orchestration platform: turns a natural-language question into one API
+    call against a running service, and renders its result. See
+    docs/specs/orchestration.md for the full design.
 servers:
   - url: /
     description: The platform serves its own API and static assets from one origin.
@@ -12,6 +13,14 @@ security: []
 tags:
   - name: system
     description: Service health and readiness endpoints.
+  - name: plan
+    description: >
+      Turns a question into a decision: call an endpoint, ask the user to
+      disambiguate a value, or report that nothing fits. Never mutates state.
+  - name: invoke
+    description: >
+      Executes a confirmed call against a service. The only mouth through
+      which the platform mutates anything; never calls the planner.
 paths:
   /api/health:
     get:
@@ -30,6 +39,85 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /api/plan:
+    post:
+      operationId: postPlan
+      summary: Turn a question into a decision and, when safe, its result.
+      description: >
+        One LLM call decides which endpoint of which service answers the
+        question. A safe method (GET, HEAD, QUERY) is invoked immediately and
+        its result rendered (`kind: result`). An unsafe method comes back as
+        a form to confirm (`kind: form`) instead of being invoked. An
+        ambiguous enum value comes back as a question to the user
+        (`kind: ask`); resubmit the same query with `answers` filled in to
+        continue. No endpoint fitting the question yields `kind: none`. The
+        API result never goes back to the model: one request is one LLM call.
+      tags:
+        - plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanRequest"
+      responses:
+        "200":
+          description: The decision, and its result when one was safe to fetch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanResult"
+        "501":
+          description: >
+            The decision reached a path this deployment does not implement
+            yet (an unsafe call, or a disambiguation question).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The planner failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/invoke:
+    post:
+      operationId: postInvoke
+      summary: Execute a confirmed call against a service.
+      description: >
+        Looks the operation up in the catalogue, validates the arguments
+        against its schema, calls it, and renders the result. Never calls
+        the planner; every method goes through here because a person pressed
+        the button. This is where the permission check goes once
+        authentication arrives.
+      tags:
+        - invoke
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvokeRequest"
+      responses:
+        "200":
+          description: The call's result, rendered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvokeResult"
+        "400":
+          description: The service or operation id is not in the catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Not implemented in this deployment yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     Health:
@@ -41,3 +129,165 @@ components:
         status:
           type: string
           description: Always "ok" once the process is serving traffic.
+    Answer:
+      type: object
+      description: >
+        The user's answer to a previous `kind: ask` response, resubmitted
+        alongside the original query.
+      required:
+        - param
+        - value
+      properties:
+        param:
+          type: string
+          description: The parameter name the value fills in.
+        value:
+          type: string
+          description: The chosen value.
+    PlanRequest:
+      type: object
+      description: A question, and any answers to a previous disambiguation.
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          description: The question, in Japanese.
+        answers:
+          type: array
+          description: "Answers to a previous `kind: ask` response, if any."
+          items:
+            $ref: "#/components/schemas/Answer"
+    DecisionKind:
+      type: string
+      description: What the planner decided to do about a question.
+      enum: [result, form, ask, none]
+      x-enum-labels:
+        result: 結果
+        form: フォーム
+        ask: 質問
+        none: 該当なし
+    Component:
+      type: string
+      description: The widget the frontend renders the result with.
+      enum: [table, detail, form, choice]
+      x-enum-labels:
+        table: 表
+        detail: 詳細
+        form: フォーム
+        choice: 選択
+    Source:
+      type: object
+      description: Which endpoint of which service a call was, or would be, made against.
+      required:
+        - service
+        - operationId
+      properties:
+        service:
+          type: string
+          description: The service's name, as configured in ORCHESTRA_SERVICES.
+        operationId:
+          type: string
+          description: The operation id, as declared in that service's contract.
+        args:
+          type: object
+          description: The arguments the planner (or the user) supplied.
+          additionalProperties: true
+    Option:
+      type: object
+      description: One candidate value the user can pick, with its Japanese label.
+      required:
+        - value
+        - label
+      properties:
+        value:
+          type: string
+          description: The enum value.
+        label:
+          type: string
+          description: Its Japanese label (from x-enum-labels).
+    PlanResult:
+      type: object
+      description: >
+        The planner's decision and, when it was safe to act on immediately,
+        its result. Which of the optional fields are present depends on
+        `kind`: `result` carries `component`, `data` and `source`; `form`
+        carries `schema`, `initial` and `target`; `ask` carries `question`,
+        `param` and `options`; `none` carries `message`.
+      required:
+        - kind
+      properties:
+        kind:
+          $ref: "#/components/schemas/DecisionKind"
+        component:
+          $ref: "#/components/schemas/Component"
+        data:
+          type: object
+          description: The rendered result, when kind is "result".
+          additionalProperties: true
+        source:
+          $ref: "#/components/schemas/Source"
+        message:
+          type: string
+          description: A human-readable explanation, when kind is "none".
+        schema:
+          type: object
+          description: The request body's JSON Schema, when kind is "form".
+          additionalProperties: true
+        initial:
+          type: object
+          description: The values the planner filled in, when kind is "form".
+          additionalProperties: true
+        target:
+          $ref: "#/components/schemas/Source"
+        question:
+          type: string
+          description: The question to show the user, when kind is "ask".
+        param:
+          type: string
+          description: The parameter the answer will fill in, when kind is "ask".
+        options:
+          type: array
+          description: The candidate values to choose from, when kind is "ask".
+          items:
+            $ref: "#/components/schemas/Option"
+    InvokeRequest:
+      type: object
+      description: A confirmed call to execute.
+      required:
+        - service
+        - operationId
+        - args
+      properties:
+        service:
+          type: string
+          description: The service's name, as configured in ORCHESTRA_SERVICES.
+        operationId:
+          type: string
+          description: The operation id, as declared in that service's contract.
+        args:
+          type: object
+          description: The call's arguments.
+          additionalProperties: true
+    InvokeResult:
+      type: object
+      description: A call's rendered result.
+      required:
+        - component
+        - data
+      properties:
+        component:
+          $ref: "#/components/schemas/Component"
+        data:
+          type: object
+          description: The rendered result.
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      description: A machine-readable error.
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: What went wrong, for humans.

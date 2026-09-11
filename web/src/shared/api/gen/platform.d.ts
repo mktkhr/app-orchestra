@@ -24,6 +24,46 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/plan": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Turn a question into a decision and, when safe, its result.
+         * @description One LLM call decides which endpoint of which service answers the question. A safe method (GET, HEAD, QUERY) is invoked immediately and its result rendered (`kind: result`). An unsafe method comes back as a form to confirm (`kind: form`) instead of being invoked. An ambiguous enum value comes back as a question to the user (`kind: ask`); resubmit the same query with `answers` filled in to continue. No endpoint fitting the question yields `kind: none`. The API result never goes back to the model: one request is one LLM call.
+         */
+        readonly post: operations["postPlan"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/invoke": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Execute a confirmed call against a service.
+         * @description Looks the operation up in the catalogue, validates the arguments against its schema, calls it, and renders the result. Never calls the planner; every method goes through here because a person pressed the button. This is where the permission check goes once authentication arrives.
+         */
+        readonly post: operations["postInvoke"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -32,6 +72,99 @@ export type components = {
         readonly Health: {
             /** @description Always "ok" once the process is serving traffic. */
             readonly status: string;
+        };
+        /** @description The user's answer to a previous `kind: ask` response, resubmitted alongside the original query. */
+        readonly Answer: {
+            /** @description The parameter name the value fills in. */
+            readonly param: string;
+            /** @description The chosen value. */
+            readonly value: string;
+        };
+        /** @description A question, and any answers to a previous disambiguation. */
+        readonly PlanRequest: {
+            /** @description The question, in Japanese. */
+            readonly query: string;
+            /** @description Answers to a previous `kind: ask` response, if any. */
+            readonly answers?: readonly components["schemas"]["Answer"][];
+        };
+        /**
+         * @description What the planner decided to do about a question.
+         * @enum {string}
+         */
+        readonly DecisionKind: "result" | "form" | "ask" | "none";
+        /**
+         * @description The widget the frontend renders the result with.
+         * @enum {string}
+         */
+        readonly Component: "table" | "detail" | "form" | "choice";
+        /** @description Which endpoint of which service a call was, or would be, made against. */
+        readonly Source: {
+            /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
+            readonly service: string;
+            /** @description The operation id, as declared in that service's contract. */
+            readonly operationId: string;
+            /** @description The arguments the planner (or the user) supplied. */
+            readonly args?: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** @description One candidate value the user can pick, with its Japanese label. */
+        readonly Option: {
+            /** @description The enum value. */
+            readonly value: string;
+            /** @description Its Japanese label (from x-enum-labels). */
+            readonly label: string;
+        };
+        /** @description The planner's decision and, when it was safe to act on immediately, its result. Which of the optional fields are present depends on `kind`: `result` carries `component`, `data` and `source`; `form` carries `schema`, `initial` and `target`; `ask` carries `question`, `param` and `options`; `none` carries `message`. */
+        readonly PlanResult: {
+            readonly kind: components["schemas"]["DecisionKind"];
+            readonly component?: components["schemas"]["Component"];
+            /** @description The rendered result, when kind is "result". */
+            readonly data?: {
+                readonly [key: string]: unknown;
+            };
+            readonly source?: components["schemas"]["Source"];
+            /** @description A human-readable explanation, when kind is "none". */
+            readonly message?: string;
+            /** @description The request body's JSON Schema, when kind is "form". */
+            readonly schema?: {
+                readonly [key: string]: unknown;
+            };
+            /** @description The values the planner filled in, when kind is "form". */
+            readonly initial?: {
+                readonly [key: string]: unknown;
+            };
+            readonly target?: components["schemas"]["Source"];
+            /** @description The question to show the user, when kind is "ask". */
+            readonly question?: string;
+            /** @description The parameter the answer will fill in, when kind is "ask". */
+            readonly param?: string;
+            /** @description The candidate values to choose from, when kind is "ask". */
+            readonly options?: readonly components["schemas"]["Option"][];
+        };
+        /** @description A confirmed call to execute. */
+        readonly InvokeRequest: {
+            /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
+            readonly service: string;
+            /** @description The operation id, as declared in that service's contract. */
+            readonly operationId: string;
+            /** @description The call's arguments. */
+            readonly args: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** @description A call's rendered result. */
+        readonly InvokeResult: {
+            readonly component: components["schemas"]["Component"];
+            /** @description The rendered result. */
+            readonly data: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** @description A machine-readable error. */
+        readonly ErrorResponse: {
+            /** @description What went wrong, for humans. */
+            readonly message: string;
         };
     };
     responses: never;
@@ -58,6 +191,90 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    readonly postPlan: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PlanRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description The decision, and its result when one was safe to fetch. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PlanResult"];
+                };
+            };
+            /** @description The planner failed. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The decision reached a path this deployment does not implement yet (an unsafe call, or a disambiguation question). */
+            readonly 501: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly postInvoke: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["InvokeRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description The call's result, rendered. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvokeResult"];
+                };
+            };
+            /** @description The service or operation id is not in the catalogue. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not implemented in this deployment yet. */
+            readonly 501: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

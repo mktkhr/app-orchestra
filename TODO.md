@@ -4,16 +4,16 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 4 are
-   done; Task 5 converts the catalogue into tool definitions.
+1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 6 are
+   done; Task 7 makes an unsafe call return a form instead of `ErrNotImplemented`.
 
 ## Next
 
-1. Finish the slice, tasks 5 to 16: tool definitions, the safe path of
-   `/api/plan`, the form path, `/api/invoke`, `ask_user`, the OpenAI-compatible
-   planner and the JSON planner behind the same port, the web shell and
-   conversation, the table with its provenance and expansion, the detail and
-   form components, the choice component, and the end-to-end test.
+1. Finish the slice, tasks 7 to 16: the form path (unsafe calls), `/api/invoke`'s
+   real execution (today it always answers 501), `ask_user`, the
+   OpenAI-compatible planner and the JSON planner behind the same port, the web
+   shell and conversation, the table with its provenance and expansion, the
+   detail and form components, the choice component, and the end-to-end test.
 2. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
    in the repository already passes under 7; only code generation does not.
    orval was measured as a replacement and rejected - it runs under TypeScript 7
@@ -47,3 +47,9 @@ _Keep three lists. Move items, do not duplicate them._
 - Built the slice's foundation: the platform's shell and health endpoint, the
   `inventory` and `attendance` services, the domain's rendering rule, and the
   catalogue the platform fetches from the running services.
+- Converted the catalogue into tool definitions (`usecase.ToolsFor`,
+  `usecase.AskUserTool`), enum labels folded into each property's description.
+- Added `/api/plan` and `/api/invoke` to the platform's contract, the
+  `Planner`/`Invoker`/`Orchestrator` ports and the stub planner, and wired the
+  safe-call and `none` paths of `/api/plan` end to end against the running
+  services (`DECISIONS.md`, 2026-09-11, three entries).

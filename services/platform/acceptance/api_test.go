@@ -16,7 +16,7 @@ import (
 )
 
 func TestHealthEndpointReportsOK(t *testing.T) {
-	handler, err := app.New("")
+	handler, err := app.New(app.Config{})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)

@@ -398,3 +398,77 @@ id must take it from the catalogue's own vocabulary - `ListInventoryItems`, not
 The alternative, serving `api/openapi.yaml` through `go:embed`, was rejected: it
 would make the document a service serves and the document it validates requests
 against two separate artefacts, to fix a difference in capitalisation.
+
+## 2026-09-11 One flat PlanResult schema instead of a `kind`-discriminated oneOf
+
+**Context.** `/api/plan` (docs/specs/orchestration.md, section 6) answers with
+one of four shapes depending on `kind`: `result`, `form`, `ask` or `none`. OpenAPI
+models a "one of these shapes" contract with `oneOf` plus a `discriminator`, and
+oapi-codegen's Go output for a discriminated union is a union type with its own
+`As<Variant>`/`From<Variant>` accessors on every response - a second vocabulary
+layered over the one the strict server interface already gives each status code
+its own named response type.
+
+**Decision.** Model `PlanResult` as one flat object: `kind` plus every field any
+variant can carry (`component`, `data`, `source`, `message`, `schema`, `initial`,
+`target`, `question`, `param`, `options`), all but `kind` optional. The schema's
+description states which fields are populated for which `kind`. Both new enums
+this task adds (`DecisionKind` and `Component`) carry `x-enum-labels`, per the
+harness's Redocly rule - `kind`'s labels (`結果`/`フォーム`/`質問`/`該当なし`) read
+naturally in Japanese, so it stayed an enum rather than becoming a plain string.
+
+**Consequences.** `internal/adapter/handler/plan.go` populates only the fields
+its current `kind` needs and leaves the rest zero-valued; Task 7 (form) and Task
+9 (ask) add fields to an existing struct rather than a new response type. The
+generated Go and TypeScript types allow a client to read a field that `kind`
+does not populate - not compile-time enforced. Given the four variants share
+`Task 6`'s two-of-four-implemented status (`call`/`none` today, `form`/`ask`
+belonging to Task 7 and Task 9), this reads as a stable contract to build a
+frontend against sooner, at the cost of the stronger guarantee `oneOf` would
+have given once every variant exists.
+
+## 2026-09-11 domain.Endpoint and usecase.Decision travel by pointer through the Invoker port
+
+**Context.** Task 6's plan sketch for `usecase.Invoker` reads
+`Invoke(ctx, e domain.Endpoint, args map[string]any) (any, error)` - `e` by
+value. `domain.Endpoint` is 136 bytes; golangci-lint's gocritic `hugeParam`
+check (part of the fixed harness policy) already forced `domain.Render` and
+`Endpoint.IsSafe` to take a pointer for the same reason (see the doc comments on
+both), and it rejects `Invoker.Invoke`'s value parameter identically.
+
+**Decision.** Declare `Invoker.Invoke` with `e *domain.Endpoint`, matching
+`Render`'s and `IsSafe`'s existing precedent rather than the plan's literal
+snippet. The same reasoning applies to `Orchestrator.call`'s `Decision`
+parameter (112 bytes) and `stub.New`'s `notFound` parameter: both took a
+pointer for the same hugeParam reason, with `stub.New(table, nil)` treated as
+`&usecase.Decision{Kind: usecase.DecisionNone}`.
+
+**Consequences.** The port's signature differs from the plan's code block by
+one `*`; every caller and test double follows it. No behavioural difference -
+`domain.Endpoint` and `usecase.Decision` are read-only inputs to `Invoke` and
+`call` in every implementation.
+
+## 2026-09-11 The stub planner's production table lives in pkg/app, keyed by exact Japanese query
+
+**Context.** Task 6 requires the running platform to answer `/api/plan` without
+ever calling a real LLM (`planner/stub` is every test's default, and until Task
+10 it is the platform's _only_ Planner). `pkg/app.New` is the one place
+acceptance tests and `cmd/api` both go through, and per its own doc comment
+neither caller should need to see `internal/`.
+
+**Decision.** `pkg/app` gained its own exported `Config`, `Service` and
+`PlanFixture` types - not aliases of `internal/infra/config.Service` or
+`internal/usecase.Decision` - so a caller builds a stub table without importing
+anything under `internal/`. `Config.PlanFixtures` empty (production's default,
+since nothing sets `ORCHESTRA_PLAN_FIXTURES` or similar) falls back to
+`defaultPlanFixtures()`, a two-entry demo table (`"在庫の一覧を見せて"` →
+`inventory/ListInventoryItems`, `"勤怠記録の一覧を見せて"` →
+`attendance/ListAttendanceRecords`) hard-coded in `pkg/app/app.go`.
+
+**Consequences.** A person can drive the running platform to a real rendered
+table without any configuration beyond `ORCHESTRA_SERVICES`. The two demo
+queries are the only Japanese the platform "understands" until Task 10 replaces
+the stub with a real planner; anything else answers `kind: "none"`. `cmd/api`'s
+`main.go` never sets `PlanFixtures`, so this table is what production runs with
+today - a fact this decision records precisely so it is not mistaken for
+intended product behaviour later.

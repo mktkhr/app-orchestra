@@ -10,6 +10,11 @@ tmp_dir = "tmp"
 [build]
 cmd = "go build -o ./tmp/api ./cmd/api"
 entrypoint = ["./tmp/api"]
+# The catalogue is fetched over HTTP, so a hot-reloading platform needs to be
+# told where the services are. These are the two services' own default ports
+# (`make service-run SERVICE=inventory` and `SERVICE=attendance`), so
+# `make dev-platform` answers real questions with no further configuration.
+full_bin = "ORCHESTRA_SERVICES=inventory=http://localhost:8081,attendance=http://localhost:8082 ./tmp/api"
 include_ext = ["go"]
 exclude_dir = ["tmp", "bin", "acceptance"]
 delay = 200

@@ -1,0 +1,142 @@
+package handler
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
+)
+
+// errUnrenderableData marks a usecase.Result whose Data is not a JSON
+// object: the /api/plan contract's "data" field is one (PlanResult.Data is
+// map[string]interface{}), because every endpoint Render draws a
+// table or detail component for produces one - a bare array or scalar
+// response renders as no component at all (see domain.Render) and never
+// reaches here.
+var errUnrenderableData = errors.New("result data is not a JSON object")
+
+// planner is what Plan needs from the orchestration layer: satisfied by
+// *usecase.Orchestrator. An interface here, rather than the concrete type,
+// keeps this handler's test doubles simple.
+type planner interface {
+	Plan(ctx context.Context, query string, answers []usecase.Answer) (usecase.Result, error)
+}
+
+// Plan implements the "plan" tag of the generated strict server interface:
+// POST /api/plan.
+type Plan struct {
+	orchestrator planner
+}
+
+// NewPlan builds the /api/plan handler over orchestrator.
+func NewPlan(orchestrator planner) *Plan {
+	return &Plan{orchestrator: orchestrator}
+}
+
+// PostPlan turns a question into a decision and, when it was safe to act
+// on, its result.
+func (h *Plan) PostPlan(
+	ctx context.Context,
+	request openapi.PostPlanRequestObject,
+) (openapi.PostPlanResponseObject, error) {
+	result, err := h.orchestrator.Plan(ctx, request.Body.Query, toAnswers(request.Body.Answers))
+	if err != nil {
+		return planErrorResponse(err), nil
+	}
+
+	apiResult, err := toAPIPlanResult(&result)
+	if err != nil {
+		return dataErrorResponse(err), nil
+	}
+
+	return openapi.PostPlan200JSONResponse(apiResult), nil
+}
+
+// planErrorResponse maps an Orchestrator.Plan error onto an HTTP status: a
+// path this deployment does not implement yet (Task 7's form path, Task
+// 9's ask path) is reported as 501, everything else as 500.
+func planErrorResponse(err error) openapi.PostPlanResponseObject {
+	if errors.Is(err, usecase.ErrNotImplemented) {
+		return openapi.PostPlan501JSONResponse{Message: err.Error()}
+	}
+
+	return openapi.PostPlan500JSONResponse{Message: err.Error()}
+}
+
+// dataErrorResponse reports a Result that could not be rendered onto the
+// wire (see errUnrenderableData) as a 500: this is a bug in the running
+// deployment's endpoints, not something the caller did wrong.
+func dataErrorResponse(err error) openapi.PostPlanResponseObject {
+	return openapi.PostPlan500JSONResponse{Message: err.Error()}
+}
+
+// toAnswers converts the wire representation of PlanRequest.Answers into
+// usecase.Answer.
+func toAnswers(answers *[]openapi.Answer) []usecase.Answer {
+	if answers == nil {
+		return nil
+	}
+
+	out := make([]usecase.Answer, 0, len(*answers))
+	for _, a := range *answers {
+		out = append(out, usecase.Answer{Param: a.Param, Value: a.Value})
+	}
+
+	return out
+}
+
+// toAPIPlanResult converts a usecase.Result into the wire PlanResult.
+//
+// result is a pointer, not the value Orchestrator.Plan returns, because
+// usecase.Result is over 100 bytes: golangci-lint's gocritic hugeParam
+// check (part of the fixed harness policy, see
+// harness/quality/go/golangci.yml) rejects passing it by value.
+func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
+	out := openapi.PlanResult{Kind: openapi.DecisionKind(result.Kind)}
+
+	if result.Component != "" {
+		component := openapi.Component(result.Component)
+		out.Component = &component
+	}
+
+	if result.Message != "" {
+		out.Message = &result.Message
+	}
+
+	if result.Kind == usecase.ResultKindResult {
+		data, err := toAPIData(result.Data)
+		if err != nil {
+			return openapi.PlanResult{}, err
+		}
+
+		out.Data = &data
+		out.Source = &openapi.Source{
+			Service:     result.Service,
+			OperationId: result.OperationID,
+		}
+
+		if len(result.Args) > 0 {
+			args := result.Args
+			out.Source.Args = &args
+		}
+	}
+
+	return out, nil
+}
+
+// toAPIData asserts a usecase.Result's Data as the JSON object the
+// contract requires. See errUnrenderableData.
+func toAPIData(data any) (map[string]any, error) {
+	if data == nil {
+		return map[string]any{}, nil
+	}
+
+	m, ok := data.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%w: got %T", errUnrenderableData, data)
+	}
+
+	return m, nil
+}

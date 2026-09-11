@@ -354,13 +354,13 @@ with YAML, so it has neither a request body nor a JSON response schema, and no
 component can render its result. `ToolsFor` skips any endpoint with neither, by
 that property rather than by name.
 
-- [ ] **Step 1** Write the test: a catalogue with one enum parameter produces a
+- [x] **Step 1** Write the test: a catalogue with one enum parameter produces a
       tool whose input schema carries the enum values and whose description contains
       both the English value and the Japanese label. Assert `Strict` is true and
       that `ask_user` is present exactly once. Run it, expect failure.
-- [ ] **Step 2** Implement `ToolsFor` and `AskUserTool`. Tests pass.
-- [ ] **Step 3** `make guard-coverage` — 90%.
-- [ ] **Step 4** Commit: `feat(platform): convert the catalogue into tool definitions`
+- [x] **Step 2** Implement `ToolsFor` and `AskUserTool`. Tests pass.
+- [x] **Step 3** `make guard-coverage` — 90%.
+- [x] **Step 4** Commit: `feat(platform): convert the catalogue into tool definitions`
 
 **Satisfies:** the tool-definition half of AC-B-101.
 
@@ -414,20 +414,20 @@ constructor takes. Tests build it explicitly; nothing guesses.
 
 `POST /api/plan` shape is in `docs/specs/orchestration.md` section 6.
 
-- [ ] **Step 1** Add `/api/plan` and `/api/invoke` to the platform's
+- [x] **Step 1** Add `/api/plan` and `/api/invoke` to the platform's
       `api/openapi.yaml`. `make api-lint`, then `make generate`.
-- [ ] **Step 2** Write the acceptance test: two fixture services behind
+- [x] **Step 2** Write the acceptance test: two fixture services behind
       `httptest`, a stub planner returning a call to the inventory list endpoint,
       post a question, assert `kind: "result"`, `component: "table"`, and that the
       service actually received the request. Run it, expect failure.
-- [ ] **Step 3** Implement the orchestrator's safe path and the handler until
+- [x] **Step 3** Implement the orchestrator's safe path and the handler until
       it passes: safe method → invoke → render → result.
-- [ ] **Step 4** Add the `none` case: a stub planner returning
+- [x] **Step 4** Add the `none` case: a stub planner returning
       `DecisionKind("none")` produces `kind: "none"` with a message and calls
       nothing. Make it pass.
-- [ ] **Step 5** `make check`'s Go half: `services-lint services-test guard-arch
+- [x] **Step 5** `make check`'s Go half: `services-lint services-test guard-arch
 guard-coverage acceptance-services` — green.
-- [ ] **Step 6** Commit: `feat(platform): answer a question with a rendered result`
+- [x] **Step 6** Commit: `feat(platform): answer a question with a rendered result`
 
 **Satisfies:** AC-B-102, AC-B-106.
 
@@ -576,7 +576,13 @@ planner in Task 11 needs it unshaped.
 - [ ] **Step 5** Write the live test. It must `t.Skip()` unless
       `ORCHESTRA_LIVE_LLM=1`. Confirm with `go test -v` that it skips by default.
 - [ ] **Step 6** Wire adapter selection in `pkg/app` from configuration: the
-      stub unless a base URL is configured.
+      stub unless a base URL is configured. Delete `defaultPlanFixtures` in the
+      same step - the two hard-coded Japanese questions exist only so the
+      platform answers something before a real planner exists
+      (`DECISIONS.md`, 2026-09-11), and a real planner is what this task adds.
+      `make dev-platform` must still work afterwards, which means
+      `services/platform/.air.toml` needs the LLM's base URL alongside the
+      service list it already carries.
 - [ ] **Step 7** `make services-lint services-test guard-arch guard-coverage`
       green, and the test output shows the live test skipped.
 - [ ] **Step 8** Commit: `feat(platform): plan through an OpenAI-compatible endpoint`

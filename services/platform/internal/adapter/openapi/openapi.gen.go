@@ -20,17 +20,185 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
+// Defines values for Component.
+const (
+	ComponentChoice Component = "choice"
+	ComponentDetail Component = "detail"
+	ComponentForm   Component = "form"
+	ComponentTable  Component = "table"
+)
+
+// Valid indicates whether the value is a known member of the Component enum.
+func (e Component) Valid() bool {
+	switch e {
+	case ComponentChoice:
+		return true
+	case ComponentDetail:
+		return true
+	case ComponentForm:
+		return true
+	case ComponentTable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DecisionKind.
+const (
+	DecisionKindAsk    DecisionKind = "ask"
+	DecisionKindForm   DecisionKind = "form"
+	DecisionKindNone   DecisionKind = "none"
+	DecisionKindResult DecisionKind = "result"
+)
+
+// Valid indicates whether the value is a known member of the DecisionKind enum.
+func (e DecisionKind) Valid() bool {
+	switch e {
+	case DecisionKindAsk:
+		return true
+	case DecisionKindForm:
+		return true
+	case DecisionKindNone:
+		return true
+	case DecisionKindResult:
+		return true
+	default:
+		return false
+	}
+}
+
+// Answer The user's answer to a previous `kind: ask` response, resubmitted alongside the original query.
+type Answer struct {
+	// Param The parameter name the value fills in.
+	Param string `json:"param"`
+
+	// Value The chosen value.
+	Value string `json:"value"`
+}
+
+// Component The widget the frontend renders the result with.
+type Component string
+
+// DecisionKind What the planner decided to do about a question.
+type DecisionKind string
+
+// ErrorResponse A machine-readable error.
+type ErrorResponse struct {
+	// Message What went wrong, for humans.
+	Message string `json:"message"`
+}
+
 // Health The platform's health status.
 type Health struct {
 	// Status Always "ok" once the process is serving traffic.
 	Status string `json:"status"`
 }
 
+// InvokeRequest A confirmed call to execute.
+type InvokeRequest struct {
+	// Args The call's arguments.
+	Args map[string]interface{} `json:"args"`
+
+	// OperationId The operation id, as declared in that service's contract.
+	OperationId string `json:"operationId"`
+
+	// Service The service's name, as configured in ORCHESTRA_SERVICES.
+	Service string `json:"service"`
+}
+
+// InvokeResult A call's rendered result.
+type InvokeResult struct {
+	// Component The widget the frontend renders the result with.
+	Component Component `json:"component"`
+
+	// Data The rendered result.
+	Data map[string]interface{} `json:"data"`
+}
+
+// Option One candidate value the user can pick, with its Japanese label.
+type Option struct {
+	// Label Its Japanese label (from x-enum-labels).
+	Label string `json:"label"`
+
+	// Value The enum value.
+	Value string `json:"value"`
+}
+
+// PlanRequest A question, and any answers to a previous disambiguation.
+type PlanRequest struct {
+	// Answers Answers to a previous `kind: ask` response, if any.
+	Answers *[]Answer `json:"answers,omitempty"`
+
+	// Query The question, in Japanese.
+	Query string `json:"query"`
+}
+
+// PlanResult The planner's decision and, when it was safe to act on immediately, its result. Which of the optional fields are present depends on `kind`: `result` carries `component`, `data` and `source`; `form` carries `schema`, `initial` and `target`; `ask` carries `question`, `param` and `options`; `none` carries `message`.
+type PlanResult struct {
+	// Component The widget the frontend renders the result with.
+	Component *Component `json:"component,omitempty"`
+
+	// Data The rendered result, when kind is "result".
+	Data *map[string]interface{} `json:"data,omitempty"`
+
+	// Initial The values the planner filled in, when kind is "form".
+	Initial *map[string]interface{} `json:"initial,omitempty"`
+
+	// Kind What the planner decided to do about a question.
+	Kind DecisionKind `json:"kind"`
+
+	// Message A human-readable explanation, when kind is "none".
+	Message *string `json:"message,omitempty"`
+
+	// Options The candidate values to choose from, when kind is "ask".
+	Options *[]Option `json:"options,omitempty"`
+
+	// Param The parameter the answer will fill in, when kind is "ask".
+	Param *string `json:"param,omitempty"`
+
+	// Question The question to show the user, when kind is "ask".
+	Question *string `json:"question,omitempty"`
+
+	// Schema The request body's JSON Schema, when kind is "form".
+	Schema *map[string]interface{} `json:"schema,omitempty"`
+
+	// Source Which endpoint of which service a call was, or would be, made against.
+	Source *Source `json:"source,omitempty"`
+
+	// Target Which endpoint of which service a call was, or would be, made against.
+	Target *Source `json:"target,omitempty"`
+}
+
+// Source Which endpoint of which service a call was, or would be, made against.
+type Source struct {
+	// Args The arguments the planner (or the user) supplied.
+	Args *map[string]interface{} `json:"args,omitempty"`
+
+	// OperationId The operation id, as declared in that service's contract.
+	OperationId string `json:"operationId"`
+
+	// Service The service's name, as configured in ORCHESTRA_SERVICES.
+	Service string `json:"service"`
+}
+
+// PostInvokeJSONRequestBody defines body for PostInvoke for application/json ContentType.
+type PostInvokeJSONRequestBody = InvokeRequest
+
+// PostPlanJSONRequestBody defines body for PostPlan for application/json ContentType.
+type PostPlanJSONRequestBody = PlanRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetHealth Report whether the platform is up.
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// PostInvoke Execute a confirmed call against a service.
+	// (POST /api/invoke)
+	PostInvoke(w http.ResponseWriter, r *http.Request)
+	// PostPlan Turn a question into a decision and, when safe, its result.
+	// (POST /api/plan)
+	PostPlan(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -47,6 +215,34 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostInvoke operation middleware
+func (siw *ServerInterfaceWrapper) PostInvoke(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostInvoke(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostPlan operation middleware
+func (siw *ServerInterfaceWrapper) PostPlan(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostPlan(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -177,6 +373,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/plan", wrapper.PostPlan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/invoke", wrapper.PostInvoke)
 
 	return m
 }
@@ -202,11 +400,117 @@ func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseW
 	return err
 }
 
+type PostInvokeRequestObject struct {
+	Body *PostInvokeJSONRequestBody
+}
+
+type PostInvokeResponseObject interface {
+	VisitPostInvokeResponse(w http.ResponseWriter) error
+}
+
+type PostInvoke200JSONResponse InvokeResult
+
+func (response PostInvoke200JSONResponse) VisitPostInvokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoke400JSONResponse ErrorResponse
+
+func (response PostInvoke400JSONResponse) VisitPostInvokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostInvoke501JSONResponse ErrorResponse
+
+func (response PostInvoke501JSONResponse) VisitPostInvokeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostPlanRequestObject struct {
+	Body *PostPlanJSONRequestBody
+}
+
+type PostPlanResponseObject interface {
+	VisitPostPlanResponse(w http.ResponseWriter) error
+}
+
+type PostPlan200JSONResponse PlanResult
+
+func (response PostPlan200JSONResponse) VisitPostPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostPlan500JSONResponse ErrorResponse
+
+func (response PostPlan500JSONResponse) VisitPostPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostPlan501JSONResponse ErrorResponse
+
+func (response PostPlan501JSONResponse) VisitPostPlanResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetHealth Report whether the platform is up.
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
+	// PostInvoke Execute a confirmed call against a service.
+	// (POST /api/invoke)
+	PostInvoke(ctx context.Context, request PostInvokeRequestObject) (PostInvokeResponseObject, error)
+	// PostPlan Turn a question into a decision and, when safe, its result.
+	// (POST /api/plan)
+	PostPlan(ctx context.Context, request PostPlanRequestObject) (PostPlanResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -272,20 +576,113 @@ func (sh *strictHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// PostInvoke operation middleware
+func (sh *strictHandler) PostInvoke(w http.ResponseWriter, r *http.Request) {
+	var request PostInvokeRequestObject
+
+	var body PostInvokeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostInvoke(ctx, request.(PostInvokeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostInvoke")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostInvokeResponseObject); ok {
+		if err := validResponse.VisitPostInvokeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostPlan operation middleware
+func (sh *strictHandler) PostPlan(w http.ResponseWriter, r *http.Request) {
+	var request PostPlanRequestObject
+
+	var body PostPlanJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostPlan(ctx, request.(PostPlanRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostPlan")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostPlanResponseObject); ok {
+		if err := validResponse.VisitPostPlanResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"7FlNjyRH0f4roXxfaXek2p6xDZfe02CP7DVmd5lZYyHvio6ujO5Kd1VmOTNreltWH4xvXEBCFhdkwQ37",
+	"hDBIHODXjPzBv0CRmVVd3V09M4vs5cJpZ2sy4zueeCLnI5GbqjaatHdi/JFweUEVhh9PtVuS5Z8kudyq",
+	"2iujxVg8KQgaR/aOAwxHwBtAqC1dKtM4mCyUlmNAt5iAJVcb7Sjjn5pppbwnCVgaPXdKEviCwFg1VxpL",
+	"+LAhuxo91SITtTU1Wa8oWFKjxWrYkPAr8mRBYxXlXWLZEMxUWTpQeiQy4Vc1ibFw3io9F+tMhCPDAvPC",
+	"ONJRyMDddSYsfdgoS1KM30+WtQKfdcfN9APKPat6vQ3vsLqlknPywe6ZNdqTlmBJS7IufOSwlR6Wyhds",
+	"DemmYr0epyWJTEjyqEqRiZmxbEdeGJX3DUl2Z+L5Pb57r8QplSGo6ehY/Ovjv3/9q882wsbi28+//Oav",
+	"f26ljsXVJ59e/fLzq0/+cfXJH0SWlI/Ft3/8UwjIG5Qrp4z+sdJy38v3Coz+1SVqTRYk5UqS5KqRBnBq",
+	"Gg/IyXd8o+9ldH7jHbqFyIQ2+nYe8vGx+PbLL7769NcHnQnS2OW/fPXP3159/MXVx78TWat5LL7522++",
+	"/uz3wc0za409TwW97+cpVJgXStM9Syg5REB8Y7RXzhU5h3M6EKolaQ9La/Q8g5mxUDQVandzKbZSh4rw",
+	"LcLSFwc6qETPobnjoAjHwHn0jdu3O34f8Lxc4srBU2EWTwUYncc+rK3JyTlQDhzZS6Xn4C3OZiq/2Zmk",
+	"asiXB/rSLOicQsEMpSE3eqZsRRJyLEsuM3pOeeNp3yO08/ivlIrvY/m493tvG8qGIALLksHPzpuKtO/n",
+	"ZmMmi0G+9EAOx707AEpmgI77okRLEpQGz5UQopbTHccueYu5HwSzdGxYy0YG42PQE+Izb5KmR+evv3V2",
+	"8eT89BcXZ+c/e/D62cUtspM0bnuZxXBel7PYVAMpixGNwEcyod5+vvI+mP6/pZkYi/877r664zS+jjeo",
+	"u86ERI8vnuUBY3b82onKxrikcigSj5KK3Rg80lxXWiqJvh1hPg1a/gXUKl9kYQ6A8g7exho1OYIAd/uR",
+	"Cp/31TzYuwp3Z9ZUsAWeRy86NPnubUdmFJMlC4di9LhEfU1/t5MiA9QSUK8SDXE7PEQqh9VUzRts58pO",
+	"88dbAyoGxQ3TGjVjC1i48lS5m+oyihbrzmu0Flf8/0B+hqO7cVjpLns3BzpKPBzg4WZ8spnUdwImhdHO",
+	"oc5gWZAG5WGJDhzOKEQo92A0qKoiqdBTucpCgaaugfcKlRdgZpHq1bH/YKaolAyhPCbIkfYgqSYtHQsL",
+	"oZ6MYRKFTCBHaxU5mHQhnWQw4SabhCKYONPYnCb3YcKjrHchBp5PK628wjJd8Gjn5PlCSGh3vo013wjk",
+	"Lp2Plju+oI2m3o00dydDxPW/iFcpWxxJUDyc4+enYnBapeC8uNbQzW6L3zHzDrNlzwTOzQEDFok7Xhek",
+	"LZ65zg7zqNNImnpE7Dkbh7GJdozidD4VA+3E0y0k/cCisI3WAS7ywhgXmHy1pwfd4qm4NVCkOTEAFLda",
+	"hjgfaTlbqrIMORnKSGfUnu9tI1wPSey0K8yym1UvoCG6+p8UetAOUyNXdxy8ffHoIVwEWS9ScBExbkrD",
+	"RTzFaQiAcdvzO1AcqnsIiS86K3Y3AUZN0rI2SnuGz2X4kpgXYOS2S3QZGAtL05QSppRBhZIA56i0898V",
+	"3+2I7lab3zW2y/oRuKauS0Xyf1w4eLmf63VA2ZkZoH42L8j5FIB2HRuDb6x2gKDRNxbLeyXqeYPzXvMp",
+	"7Q0YTXD6+EEsiJR5QLCN1rxyJfsiWWpfFvoD+oIIpMndsaspd8emb82okjBLeZ41ZQmSnJrrOOq88uEZ",
+	"4HGymK3gpxCyLjp2MnpldJLyr7FWYixeG52MXuOyRF+ESjzGWh0X3XqaWmxwv7QUI/LqyUnkwQgz9Zxk",
+	"AIJbrZ3wruPjq3BO0mU4wJjF/59as3RkYd6gZWrCGKJnFp23Te4bS+16nBeUL1yMwVZlizfJp007Ey1F",
+	"DF6+enIiAh3QPpEB5HbJw9XjD1yE2Q0gXgcxSUMoqMPbPLvf1KNQrq6pKmRyKc6pNtYzSvoiTYndC4x0",
+	"DBLvC7dynirxjEWENKmwxbF9tRmi5u8Ys3CJ57X93NSxhXleeizNvKGMB2aYnPHwBl7a6uXydAnRuay5",
+	"YLcLePM0NoKHdEk2nesB1H3g7yuoyBdGwtwEddY08wIKsgRTyrFxjKU1WcetZ8lxgYRqaLw3egRPChVK",
+	"aRmuBPFkK+UCKQ6VECWH8sPGF6R9yiugteqSBivlsXE+LsUiwgk5/yMjV99ZlWy/kqy3UYuBfv09lujW",
+	"un+gULuVP5LVlr2OGC9+8B3asv1qd8CYdqwauzWKOPHa+L0KDkb+8OSVl2fkQ7aiqkviRmnHouI5WZdm",
+	"xR9hRX633c/iuxdgnHObN7HNmEie9/s+tfmm77mhDnc9v1y8885PouD4tutgeRN/aVfsHpccwWncKlPH",
+	"3n3z7EkGb52dvpHBT989O//5EecjWif7C2fE6m6kbTahu2lnT2vk0QhONTS6ryQ3FTmYYr4A5GEboNCb",
+	"NmCdiLBWHgFHjVCyQ1Pi0ZLMCZLja4NpXO89ZE9Bnzl3Dzx3e48LR/e7v5WEA47/rhF2+Tj1Jil2k82i",
+	"lQz2Sjc0godmE/iZ8j5MwD5nX8XlO+kM6ywDXaQRKYY6gOrctLYnaysjqRwHztHScOXA9ErgENrxm8P3",
+	"hHX996KXjHS9l5QD0NK+oGS7VRpWFY5c/zVlRj4vEry8ZAzs1ndUJcmXD3H9YIElzAuSPJvRF3tYJw0l",
+	"ZG4xkeEP7mLX3lyKYTXCnXfArg2OuFK38fJJYzXgDr/GoUcw1rH1ztXDzwCXz4KHkV/y1+v+8hJpaGTl",
+	"ZqlDG3KxOI9e5YDOkXfhUSHUS/x7KWtsbCnG4lisn3Xad/VcJMBN3DVyKJRKk3MdTIS/YPBOJMYt61tn",
+	"exandeRQdMZptOhOLG9Yiw3IedNPBU+lgJAhSzYS07DqaeMLxqyZ8q5ld1XjA1/kkFCEmGRviPa+tWn0",
+	"udvMvoB9RpcrqEzji44lxpG1RZJbO1CvgpH3E1Dusc8tG9NEXT9b/3sA",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

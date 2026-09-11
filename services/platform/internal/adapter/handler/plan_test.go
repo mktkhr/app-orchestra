@@ -1,0 +1,145 @@
+package handler_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/handler"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
+)
+
+// fakeOrchestrator is a test double for the planner interface plan.go
+// declares: it always answers with the fixed result (or error) it was
+// built with, and records what it was called with.
+type fakeOrchestrator struct {
+	result usecase.Result
+	err    error
+
+	query   string
+	answers []usecase.Answer
+}
+
+func (f *fakeOrchestrator) Plan(_ context.Context, query string, answers []usecase.Answer) (usecase.Result, error) {
+	f.query = query
+	f.answers = answers
+
+	return f.result, f.err
+}
+
+func TestPostPlanRendersAResult(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:        usecase.ResultKindResult,
+		Component:   domain.ComponentTable,
+		Data:        map[string]any{"items": []any{}},
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Args:        map[string]any{"status": "allocated"},
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	assert.Equal(t, openapi.DecisionKind("result"), body.Kind)
+	require.NotNil(t, body.Component)
+	assert.Equal(t, openapi.Component("table"), *body.Component)
+	require.NotNil(t, body.Data)
+	assert.Equal(t, map[string]any{"items": []any{}}, *body.Data)
+	require.NotNil(t, body.Source)
+	assert.Equal(t, "inventory", body.Source.Service)
+	assert.Equal(t, "ListInventoryItems", body.Source.OperationId)
+	require.NotNil(t, body.Source.Args)
+	assert.Equal(t, map[string]any{"status": "allocated"}, *body.Source.Args)
+
+	assert.Equal(t, "在庫の一覧を見せて", orchestrator.query)
+}
+
+func TestPostPlanRendersNone(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:    usecase.ResultKindNone,
+		Message: "見つかりませんでした",
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "今日の天気は？"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	assert.Equal(t, openapi.DecisionKind("none"), body.Kind)
+	require.NotNil(t, body.Message)
+	assert.Equal(t, "見つかりませんでした", *body.Message)
+	assert.Nil(t, body.Source)
+}
+
+func TestPostPlanPassesAnswersThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{
+			Query:   "在庫の一覧を見せて",
+			Answers: &[]openapi.Answer{{Param: "status", Value: "allocated"}},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, orchestrator.answers, 1)
+	assert.Equal(t, usecase.Answer{Param: "status", Value: "allocated"}, orchestrator.answers[0])
+}
+
+func TestPostPlanNotImplementedErrorIs501(t *testing.T) {
+	orchestrator := &fakeOrchestrator{err: errors.Join(usecase.ErrNotImplemented, errors.New("form path"))}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{Body: &openapi.PlanRequest{Query: "在庫を登録して"}})
+
+	require.NoError(t, err)
+	_, ok := resp.(openapi.PostPlan501JSONResponse)
+	assert.True(t, ok, "expected a 501 response, got %T", resp)
+}
+
+func TestPostPlanOtherErrorIs500(t *testing.T) {
+	orchestrator := &fakeOrchestrator{err: errors.New("boom")}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{Body: &openapi.PlanRequest{Query: "何か"}})
+
+	require.NoError(t, err)
+	_, ok := resp.(openapi.PostPlan500JSONResponse)
+	assert.True(t, ok, "expected a 500 response, got %T", resp)
+}
+
+func TestPostPlanUnrenderableDataIs500(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind: usecase.ResultKindResult,
+		Data: []any{"not an object"},
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{Body: &openapi.PlanRequest{Query: "何か"}})
+
+	require.NoError(t, err)
+	_, ok := resp.(openapi.PostPlan500JSONResponse)
+	assert.True(t, ok, "expected a 500 response, got %T", resp)
+}

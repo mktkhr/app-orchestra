@@ -101,6 +101,15 @@ func (e *Endpoint) IsSafe() bool {
 	}
 }
 
+// Option is one candidate value a person can pick from, with its Japanese
+// label. Used by a planner's ask_user decision (D11,
+// docs/specs/orchestration.md) to hand an ambiguous enum value back to the
+// user instead of guessing.
+type Option struct {
+	Value string
+	Label string
+}
+
 // Catalog is the set of endpoints gathered from every configured service.
 type Catalog struct {
 	Endpoints []Endpoint

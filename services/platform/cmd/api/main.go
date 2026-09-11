@@ -20,7 +20,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler, err := app.New(cfg.StaticDir)
+	handler, err := app.New(app.Config{StaticDir: cfg.StaticDir, Services: toAppServices(cfg.Services)})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))
 		os.Exit(1)
@@ -32,4 +32,17 @@ func main() {
 		logger.Error("serving http", slog.Any("error", err))
 		os.Exit(1)
 	}
+}
+
+// toAppServices adapts config.Service to app.Service: cmd is the one place
+// allowed to see both the infra config package and pkg/app's public
+// surface, so the conversion lives here rather than making either package
+// depend on the other's type.
+func toAppServices(services []config.Service) []app.Service {
+	out := make([]app.Service, 0, len(services))
+	for _, s := range services {
+		out = append(out, app.Service{Name: s.Name, URL: s.URL})
+	}
+
+	return out
 }

@@ -15,7 +15,7 @@ import (
 var errBoom = errors.New("boom")
 
 func TestBuildWrapsRouterError(t *testing.T) {
-	_, err := build("", func(openapi.StrictServerInterface, string) (http.Handler, error) {
+	_, err := build(Config{}, func(openapi.StrictServerInterface, string) (http.Handler, error) {
 		return nil, errBoom
 	})
 
