@@ -5,7 +5,7 @@ _Last updated: 2026-09-11_
 ## Summary
 
 **The harness is complete and the first vertical slice is under construction.**
-Thirteen of the seventeen tasks in `docs/plans/orchestration.md` are done: the
+Fourteen of the seventeen tasks in `docs/plans/orchestration.md` are done: the
 platform's scaffold, two services that answer real requests, the rendering
 rule, the catalogue the platform builds by asking those services what they
 offer, the tool definitions built from that catalogue, and all four answers
@@ -235,8 +235,13 @@ property of the response object, mirroring `soleArrayProperty` in
 `internal/domain/rendering.go`, so inventory's `items` and attendance's
 `records` both work without either name appearing in the frontend.
 
-`detail`, `form` and `choice` are still placeholders naming their kind -
-Tasks 14 and 15. Verified in the browser against the running platform and a
+A `detail` answer is a list of the object's fields. A `form` answer is the
+inputs its schema describes - a select for an enum, showing the Japanese
+label and posting the value, a switch for a boolean, a numeric field for an
+integer - prefilled with what the planner chose, and submitting posts to
+`/api/invoke` and appends what comes back as another turn.
+
+`choice` is the last placeholder - Task 15. Verified in the browser against the running platform and a
 local model.
 
 ## What does not exist yet

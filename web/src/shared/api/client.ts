@@ -57,3 +57,30 @@ export async function postPlan(request: PlanRequest): Promise<PlanResult> {
 
   return data;
 }
+
+/** A confirmed call to execute, posted to POST /api/invoke. */
+export type InvokeRequest = components["schemas"]["InvokeRequest"];
+
+/**
+ * The body of a successful POST /api/invoke.
+ *
+ * Same reasoning as `PlanResult` above: openapi-fetch's own `MethodResponse`
+ * rather than `components["schemas"]["InvokeResult"]`, so
+ * `exactOptionalPropertyTypes` sees the type the client actually produces.
+ */
+export type InvokeResult = MethodResponse<typeof client, "post", "/api/invoke">;
+
+/** Calls POST /api/invoke and returns the executed call's rendered result. */
+export async function postInvoke(request: InvokeRequest): Promise<InvokeResult> {
+  // See the comment on getHealth above: fetch is read at call time on purpose.
+  const { data, error } = await client.POST("/api/invoke", {
+    body: request,
+    fetch: globalThis.fetch,
+  });
+
+  if (error !== undefined) {
+    throw new Error("POST /api/invoke failed");
+  }
+
+  return data;
+}

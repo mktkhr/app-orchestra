@@ -2,7 +2,7 @@ import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
 import { useState, type JSX } from "react";
 
-import { postPlan } from "@/shared/api/client";
+import { postPlan, type PlanResult } from "@/shared/api/client";
 import { nextTurnId } from "@/shared/lib/turnId";
 
 import type { Turn } from "../model/turn";
@@ -40,12 +40,22 @@ export function Conversation(): JSX.Element {
     void ask(query);
   };
 
+  /**
+   * `ResultForm`'s successful `/api/invoke` result, already shaped as the
+   * `PlanResult` a `kind: "result"` answer would carry (see
+   * `ResultForm`'s `onSubmitted` doc). Turned into a turn here, the only
+   * place that owns `turns` and mints ids.
+   */
+  const handleFormSubmitted = (result: PlanResult): void => {
+    setTurns((current) => [...current, { id: nextTurnId(), role: "answer", result }]);
+  };
+
   return (
     <Stack spacing={3}>
       {turns.length === 0 ? (
         <ExampleQuestions onSelect={handleSubmit} disabled={pending} />
       ) : (
-        <TurnList turns={turns} />
+        <TurnList turns={turns} onFormSubmitted={handleFormSubmitted} />
       )}
       {error === null ? null : <Alert severity="error">{error}</Alert>}
       <QuestionForm onSubmit={handleSubmit} disabled={pending} />

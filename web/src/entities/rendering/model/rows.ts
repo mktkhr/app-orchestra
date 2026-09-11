@@ -23,8 +23,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/** Looks up one column's schema out of `fields`, when there is one. */
-function fieldSchema(
+/**
+ * Looks up one column's schema out of `fields`, when there is one.
+ *
+ * Exported so a form built from a `kind: "form"` schema (whose
+ * `properties` is the same shape as a table's `fields` - see
+ * `entities/rendering/ui/ResultForm.tsx`) can read a property's `type` and
+ * `enum` to choose which control to render, without reimplementing the
+ * narrowing this module already does for `columnTitle`/`cellText`.
+ */
+export function fieldSchema(
   fields: Fields | undefined,
   column: string,
 ): Record<string, unknown> | undefined {
@@ -67,6 +75,39 @@ export function cellText(fields: Fields | undefined, column: string, value: unkn
   }
 
   return formatCellValue(value);
+}
+
+/** One selectable value for an enum field, with its Japanese label. */
+export interface EnumOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+/**
+ * Every candidate value of an enum column/property, each paired with its
+ * `enumLabels` label (falling back to the raw value when the schema has
+ * none for it). Empty when the column is not an enum. This is the same
+ * `enumLabels` lookup `cellText` uses for a single value, generalised to the
+ * whole option list a `<Select>` needs to offer.
+ */
+export function enumOptions(fields: Fields | undefined, column: string): readonly EnumOption[] {
+  const schema = fieldSchema(fields, column);
+  const values = schema?.["enum"];
+
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const enumLabels = schema?.["enumLabels"];
+  const labels = isRecord(enumLabels) ? enumLabels : undefined;
+
+  return values
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => {
+      const label = labels?.[value];
+
+      return { value, label: typeof label === "string" && label !== "" ? label : value };
+    });
 }
 
 /**

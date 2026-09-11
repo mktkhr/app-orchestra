@@ -717,15 +717,15 @@ when the platform supplies one.
 → `Switch`, integer → numeric `TextField`), prefilled with the planner's values,
 and a submit that posts to `/api/invoke` and appends the result as a new turn.
 
-- [ ] **Step 1** Write the form test: given a form result whose schema has a
+- [x] **Step 1** Write the form test: given a form result whose schema has a
       `status` enum with labels and an initial value of `allocated`, the select
       shows the Japanese labels and `引当済` is selected. Run it, expect failure.
-- [ ] **Step 2** Implement both components.
-- [ ] **Step 3** Add the submit test: submitting posts to `/api/invoke` with the
+- [x] **Step 2** Implement both components.
+- [x] **Step 3** Add the submit test: submitting posts to `/api/invoke` with the
       edited values and appends a turn.
-- [ ] **Step 4** Web gates green. Watch `guard-duplication`: the two components
+- [x] **Step 4** Web gates green. Watch `guard-duplication`: the two components
       share shape, so extract what repeats rather than copying it.
-- [ ] **Step 5** Commit: `feat(web): render a detail card and a submit form`
+- [x] **Step 5** Commit: `feat(web): render a detail card and a submit form`
 
 **Satisfies:** AC-F-102.
 
