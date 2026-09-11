@@ -700,3 +700,42 @@ does not yet have a task to close. The model is a one-line change
 (`ORCHESTRA_LLM_MODEL` in `.air.toml`, or `ORCHESTRA_LLM_MODEL` in the
 environment for any other deployment) - swapping it requires no code change,
 which is exactly what D5's per-request model field was for.
+
+## 2026-09-11 An operationId names one operation across every service
+
+**Context.** A tool definition is named by its operationId alone
+(`services/platform/internal/usecase/tools.go`), and a tool call carries only
+that name back, so the platform resolves the service by searching the catalogue
+for it (`internal/adapter/planner/toolcall`). Two services declaring the same
+operationId therefore break twice: the model is offered two tools with one name,
+which a tool-calling API rejects and a JSON planner cannot tell apart, and a
+call that does arrive is routed to whichever service the catalogue lists first.
+
+Nothing was checking. Redocly's `operation-operationId-unique` reads one
+document at a time, and each service is generated, linted and compiled on its
+own, so the collision exists only in the platform, only at runtime, and only
+once both services are running. Task 10 recorded first-match-wins as an accepted
+limitation; that is the kind of requirement this repository enforces rather than
+writes down.
+
+**Decision.** `make guard-operation-ids` (`harness/guard/operation-ids.sh`)
+bundles every `services/*/api/openapi.yaml`, reads their operationIds, and fails
+when one name is claimed by more than one service. A duplicate inside a single
+spec stays Redocly's job.
+
+The guard is deliberately stricter than the platform strictly needs: `ToolsFor`
+excludes an endpoint that has neither a request body nor a JSON response, so the
+spec-serving `GET /openapi.yaml` never becomes a tool and could safely share a
+name. Encoding that exclusion in shell would copy a Go rule into a second place
+and let the two drift. A guard with no business logic in it is worth more than
+the names it costs.
+
+**Consequences.** It found a collision on its first run: `getSpec`, declared by
+both services, now `getInventorySpec` and `getAttendanceSpec`. The generated
+method names moved with them, which also removes a confusion the old name had -
+oapi-codegen emits its own package-level `GetSpec()` for the embedded document,
+so a service had two different `GetSpec`s in one package.
+
+Every new service pays one line of naming convention: prefix, suffix, or
+anything else that makes the name its own. The alternative was paying it in a
+planner that sometimes calls the wrong service.

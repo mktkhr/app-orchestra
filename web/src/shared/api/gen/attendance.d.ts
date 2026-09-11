@@ -15,7 +15,7 @@ export type paths = {
          * Return this service's own OpenAPI contract.
          * @description Served so the platform can fetch the contract over HTTP (it is a process, not a file on a shared disk) and build its catalogue from it.
          */
-        readonly get: operations["getSpec"];
+        readonly get: operations["getAttendanceSpec"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -114,7 +114,7 @@ export type components = {
 };
 export type $defs = Record<string, never>;
 export interface operations {
-    readonly getSpec: {
+    readonly getAttendanceSpec: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;

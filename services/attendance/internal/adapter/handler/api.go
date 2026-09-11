@@ -86,15 +86,15 @@ func (h *Records) CreateAttendanceRecord(
 	return openapi.CreateAttendanceRecord201JSONResponse(toAPIRecord(created)), nil
 }
 
-// GetSpec serves the service's own contract, rendered as YAML from the spec
+// GetAttendanceSpec serves the service's own contract, rendered as YAML from the spec
 // oapi-codegen embedded in the generated code. Rendering it from there
 // rather than from a second copy of api/openapi.yaml means the two can never
 // drift: `make guard-generated` already guarantees the embedded spec matches
 // the file on disk.
-func (h *Records) GetSpec(
+func (h *Records) GetAttendanceSpec(
 	_ context.Context,
-	_ openapi.GetSpecRequestObject,
-) (openapi.GetSpecResponseObject, error) {
+	_ openapi.GetAttendanceSpecRequestObject,
+) (openapi.GetAttendanceSpecResponseObject, error) {
 	specJSON, err := openapi.GetSpecJSON()
 	if err != nil {
 		return nil, fmt.Errorf("loading embedded spec: %w", err)
@@ -110,7 +110,7 @@ func (h *Records) GetSpec(
 		return nil, fmt.Errorf("rendering embedded spec as yaml: %w", err)
 	}
 
-	return openapi.GetSpec200ApplicationyamlResponse{
+	return openapi.GetAttendanceSpec200ApplicationyamlResponse{
 		Body:          bytes.NewReader(specYAML),
 		ContentLength: int64(len(specYAML)),
 	}, nil

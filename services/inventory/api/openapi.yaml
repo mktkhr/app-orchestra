@@ -18,7 +18,7 @@ tags:
 paths:
   /openapi.yaml:
     get:
-      operationId: getSpec
+      operationId: getInventorySpec
       summary: Return this service's own OpenAPI contract.
       description: >
         Served so the platform can fetch the contract over HTTP (it is a

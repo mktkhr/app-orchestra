@@ -110,7 +110,8 @@ func AskUserTool() Tool {
 //
 // An endpoint with neither a Response nor a RequestBody schema is excluded
 // rather than turned into a tool. This is a property of the endpoint, not a
-// name check against operation ids such as "GetSpec": an endpoint with no
+// name check against an operation id such as "GetInventorySpec": an
+// endpoint with no
 // response schema and no request body is, by construction, one Render (see
 // internal/domain/rendering.go) can never draw a component for, because
 // Render's rules all key off one of those two schemas. The one such

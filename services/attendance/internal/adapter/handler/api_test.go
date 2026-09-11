@@ -112,13 +112,13 @@ func TestRecordsCreateAttendanceRecordStoresAndReturnsRecord(t *testing.T) {
 	assert.Equal(t, "2026-06-01", created.Date)
 }
 
-func TestRecordsGetSpecServesParsableYAML(t *testing.T) {
+func TestRecordsGetAttendanceSpecServesParsableYAML(t *testing.T) {
 	h := handler.NewRecords(repository.NewMemory())
 
-	resp, err := h.GetSpec(t.Context(), openapi.GetSpecRequestObject{})
+	resp, err := h.GetAttendanceSpec(t.Context(), openapi.GetAttendanceSpecRequestObject{})
 
 	require.NoError(t, err)
-	got, ok := resp.(openapi.GetSpec200ApplicationyamlResponse)
+	got, ok := resp.(openapi.GetAttendanceSpec200ApplicationyamlResponse)
 	require.True(t, ok)
 
 	var doc map[string]any

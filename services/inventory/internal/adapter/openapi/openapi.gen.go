@@ -109,9 +109,9 @@ type ServerInterface interface {
 	// GetInventoryItem Get one stock item by id.
 	// (GET /api/inventory/items/{id})
 	GetInventoryItem(w http.ResponseWriter, r *http.Request, id string)
-	// GetSpec Return this service's own OpenAPI contract.
+	// GetInventorySpec Return this service's own OpenAPI contract.
 	// (GET /openapi.yaml)
-	GetSpec(w http.ResponseWriter, r *http.Request)
+	GetInventorySpec(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -196,11 +196,11 @@ func (siw *ServerInterfaceWrapper) GetInventoryItem(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
-// GetSpec operation middleware
-func (siw *ServerInterfaceWrapper) GetSpec(w http.ResponseWriter, r *http.Request) {
+// GetInventorySpec operation middleware
+func (siw *ServerInterfaceWrapper) GetInventorySpec(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetSpec(w, r)
+		siw.Handler.GetInventorySpec(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -330,7 +330,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/openapi.yaml", wrapper.GetSpec)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/openapi.yaml", wrapper.GetInventorySpec)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inventory/items", wrapper.ListInventoryItems)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inventory/items", wrapper.CreateInventoryItem)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inventory/items/{id}", wrapper.GetInventoryItem)
@@ -418,19 +418,19 @@ func (response GetInventoryItem404JSONResponse) VisitGetInventoryItemResponse(w 
 	return err
 }
 
-type GetSpecRequestObject struct {
+type GetInventorySpecRequestObject struct {
 }
 
-type GetSpecResponseObject interface {
-	VisitGetSpecResponse(w http.ResponseWriter) error
+type GetInventorySpecResponseObject interface {
+	VisitGetInventorySpecResponse(w http.ResponseWriter) error
 }
 
-type GetSpec200ApplicationyamlResponse struct {
+type GetInventorySpec200ApplicationyamlResponse struct {
 	Body          io.Reader
 	ContentLength int64
 }
 
-func (response GetSpec200ApplicationyamlResponse) VisitGetSpecResponse(w http.ResponseWriter) error {
+func (response GetInventorySpec200ApplicationyamlResponse) VisitGetInventorySpecResponse(w http.ResponseWriter) error {
 
 	w.Header().Set("Content-Type", "application/yaml")
 	if response.ContentLength != 0 {
@@ -456,9 +456,9 @@ type StrictServerInterface interface {
 	// GetInventoryItem Get one stock item by id.
 	// (GET /api/inventory/items/{id})
 	GetInventoryItem(ctx context.Context, request GetInventoryItemRequestObject) (GetInventoryItemResponseObject, error)
-	// GetSpec Return this service's own OpenAPI contract.
+	// GetInventorySpec Return this service's own OpenAPI contract.
 	// (GET /openapi.yaml)
-	GetSpec(ctx context.Context, request GetSpecRequestObject) (GetSpecResponseObject, error)
+	GetInventorySpec(ctx context.Context, request GetInventorySpecRequestObject) (GetInventorySpecResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -583,23 +583,23 @@ func (sh *strictHandler) GetInventoryItem(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// GetSpec operation middleware
-func (sh *strictHandler) GetSpec(w http.ResponseWriter, r *http.Request) {
-	var request GetSpecRequestObject
+// GetInventorySpec operation middleware
+func (sh *strictHandler) GetInventorySpec(w http.ResponseWriter, r *http.Request) {
+	var request GetInventorySpecRequestObject
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetSpec(ctx, request.(GetSpecRequestObject))
+		return sh.ssi.GetInventorySpec(ctx, request.(GetInventorySpecRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetSpec")
+		handler = middleware(handler, "GetInventorySpec")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetSpecResponseObject); ok {
-		if err := validResponse.VisitGetSpecResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetInventorySpecResponseObject); ok {
+		if err := validResponse.VisitGetInventorySpecResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -630,10 +630,10 @@ var swaggerSpec = []string{
 	"ezqu3hjqK+OtN52HTUl1j+wrb5TsXUQ37h5vmPsmzdeG/X+byjoY9IfxuYzrl5oE9m91AWgD+5N9mKe0",
 	"3Mqe2FJ5Axn1aLxBvM3hpdPduxD6+XVmtx5ff5vaJKo7ytuX2397YneRuNTqNo2B2J/sv7ECmn8hBiq4",
 	"3VgiULPT5pLTxhodrJtaukEMWnVpdvMp412CWi6jUYV5tlNEh2TOXOuNO7TbM0IFM+Io9T87CAxGDPqM",
-	"DNy8e/cOvC3ZOwUURkdkbQBKM6CzLn/TQLApOguLpT15B1DFcFzKLAbJFiJkzHRSEsyMzkHykLPcID4s",
-	"KBKvJYtVr7tlNqiBtSt+WJA6uDN1t4IyJ8UBoIVPDj64tc1GM33LNdaGu+28SrFCrcuPrayT4pGvw4Vd",
-	"Ml7btyD/SdYj6M5xZzhcV9+755UmE6EYi/qoPbvH/Hr5QEpZa/a9c0edkXZvizo4vxTD7WKWwcve66P6",
-	"nwEA",
+	"DNy8e/cOvC3ZOwUURkdkbQBKM6CzLn/TQLApOguLpT15B1DFcFzKLAbJFiJkzHRSEsyMzkHykLN0JXlY",
+	"UCReSx+rpnfrbVAMa3v8sCB1cGfqrgdlTooDQAufHHxwa5uWZgyX+6wNd2t6lWIFX5coW1mnySNfhwu7",
+	"ZM62r0P+k6yH0p3jznAAr753zytNJkIxFvVRe3ZPAustBCllrev3zh11Ztu9Lerg/FIMt4tZBi97r4/q",
+	"fwYA",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

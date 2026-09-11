@@ -109,9 +109,9 @@ type ServerInterface interface {
 	// GetAttendanceRecord Get one attendance record by id.
 	// (GET /api/attendance/records/{id})
 	GetAttendanceRecord(w http.ResponseWriter, r *http.Request, id string)
-	// GetSpec Return this service's own OpenAPI contract.
+	// GetAttendanceSpec Return this service's own OpenAPI contract.
 	// (GET /openapi.yaml)
-	GetSpec(w http.ResponseWriter, r *http.Request)
+	GetAttendanceSpec(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -196,11 +196,11 @@ func (siw *ServerInterfaceWrapper) GetAttendanceRecord(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
-// GetSpec operation middleware
-func (siw *ServerInterfaceWrapper) GetSpec(w http.ResponseWriter, r *http.Request) {
+// GetAttendanceSpec operation middleware
+func (siw *ServerInterfaceWrapper) GetAttendanceSpec(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetSpec(w, r)
+		siw.Handler.GetAttendanceSpec(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -330,7 +330,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/openapi.yaml", wrapper.GetSpec)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/openapi.yaml", wrapper.GetAttendanceSpec)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/attendance/records", wrapper.ListAttendanceRecords)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/attendance/records", wrapper.CreateAttendanceRecord)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/attendance/records/{id}", wrapper.GetAttendanceRecord)
@@ -418,19 +418,19 @@ func (response GetAttendanceRecord404JSONResponse) VisitGetAttendanceRecordRespo
 	return err
 }
 
-type GetSpecRequestObject struct {
+type GetAttendanceSpecRequestObject struct {
 }
 
-type GetSpecResponseObject interface {
-	VisitGetSpecResponse(w http.ResponseWriter) error
+type GetAttendanceSpecResponseObject interface {
+	VisitGetAttendanceSpecResponse(w http.ResponseWriter) error
 }
 
-type GetSpec200ApplicationyamlResponse struct {
+type GetAttendanceSpec200ApplicationyamlResponse struct {
 	Body          io.Reader
 	ContentLength int64
 }
 
-func (response GetSpec200ApplicationyamlResponse) VisitGetSpecResponse(w http.ResponseWriter) error {
+func (response GetAttendanceSpec200ApplicationyamlResponse) VisitGetAttendanceSpecResponse(w http.ResponseWriter) error {
 
 	w.Header().Set("Content-Type", "application/yaml")
 	if response.ContentLength != 0 {
@@ -456,9 +456,9 @@ type StrictServerInterface interface {
 	// GetAttendanceRecord Get one attendance record by id.
 	// (GET /api/attendance/records/{id})
 	GetAttendanceRecord(ctx context.Context, request GetAttendanceRecordRequestObject) (GetAttendanceRecordResponseObject, error)
-	// GetSpec Return this service's own OpenAPI contract.
+	// GetAttendanceSpec Return this service's own OpenAPI contract.
 	// (GET /openapi.yaml)
-	GetSpec(ctx context.Context, request GetSpecRequestObject) (GetSpecResponseObject, error)
+	GetAttendanceSpec(ctx context.Context, request GetAttendanceSpecRequestObject) (GetAttendanceSpecResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -583,23 +583,23 @@ func (sh *strictHandler) GetAttendanceRecord(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// GetSpec operation middleware
-func (sh *strictHandler) GetSpec(w http.ResponseWriter, r *http.Request) {
-	var request GetSpecRequestObject
+// GetAttendanceSpec operation middleware
+func (sh *strictHandler) GetAttendanceSpec(w http.ResponseWriter, r *http.Request) {
+	var request GetAttendanceSpecRequestObject
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetSpec(ctx, request.(GetSpecRequestObject))
+		return sh.ssi.GetAttendanceSpec(ctx, request.(GetAttendanceSpecRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetSpec")
+		handler = middleware(handler, "GetAttendanceSpec")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetSpecResponseObject); ok {
-		if err := validResponse.VisitGetSpecResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetAttendanceSpecResponseObject); ok {
+		if err := validResponse.VisitGetAttendanceSpecResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -612,28 +612,28 @@ func (sh *strictHandler) GetSpec(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"1Fc/bxvHE/0qg/39ANvAiaRjVewU23AE/4lhGwgERwhWt0Pe2ne755050YRwhRGkCZLClYsUKYIUSZMm",
-	"XYz4w9jW5whmj0dSvKNiAXaRSpS4O3/ee/N2dKJSX5TeoWNS4xNFaYaFjh9vhuCDfDBIabAlW+/UWO1B",
-	"odPMOtwJqI0+yhFQTg5UosrgSwxsMQYokEhPsRviq0wzzNAxzIJ30wQmPkBWFdqRROF5iWqsiIN1U1XX",
-	"iQr4rLIBjRo/XkY9XB70R08wZVUn6h7OHmDqg+nmfJQhTCzmhsAhGjTAHtKAmhG0A82MzmiXIoQYoduO",
-	"0Yz9ceUb4Ky9Crosc4skGS4fHBwc7Ny9u3PjxpWe3hKFRZn7OW6J3H57icDpAnsjPLUu9vv/gBM1Vv8b",
-	"rhgdLugcNqjclpObeC4LWERKmkb74N2G7R6QddMc/8so2i2aaYq5RGDNp0DfCuAXpuC2dT3lxrGSAOAn",
-	"61ToELSbYoGOQbfoBiwDkpQpbaGrCinHIBYoBVB1RGy5YilKWkJHmn2Yq0R5902q81wdbsKRqOc7Emkn",
-	"10eYR7rPXB2rd3/98u71S5W0icbq7Ys3b1/8/vbFq/ff//n+2x/Xwo/V+7+/O/3t57PVjNXpD3+c/vTm",
-	"3euXp69+VfUSkzuWuE+apZ7iBiANBNQV5+KLfiUUmsX3plsiWcaCPkwJql4iJ9zMO6po6+gqQE5aN/Hd",
-	"Em9URTFfr40wHNsUx331ws3nlpiAfJw4H9IMiYOWWFDmmic+FJBpioLROaAzpbeOZRrLXAxzqq0jHsBD",
-	"RDA+pSGVmNLwTKhBYQZfO5UotpxLG3urUvbu76tEHWOgpv7R4OpgJMj4Ep0urRqra4PR4JqQpDmL0A51",
-	"aYerdoZrfE2xh/0HyFVwBHiMYd7FAZ46P3PADQgLvAYgZPsYQufNPD2r5H6pgy6QMYDTIfgZLdyKqjzi",
-	"sqhGxMbtKDbti8YiIPsieVHqCogHix4StYxPavy424oMWcrn5bTU5BQ1yp1YtkqUmJ4at97SaPFCnnWY",
-	"qIBUekfNnHw2GjXD7RhdxD2adRp7HD4h71a7xIclitMb1X3BwZMrVBWFjv4iYXqOJUs+8zlMbM4Y0MDR",
-	"fAkX6ymdGbw6UaXvNRRjZCgczrp5NpQkj4bbKbDwYQ7EPuAA9lleErAEmshOXVPGuvx6BHM9rimbklGN",
-	"ZyDx597MPxofqx2qPmtLHCqsO0K4+pGFsE0Ezapm+laMsxK4fv5O12W6Trb5yvDEmvpfzUVv3X4S8AF2",
-	"R7swy9BFkhvqKxeNZ9Ah+hZyD8vn+kLPjhJnXzxzNfrWqE0q141gc+P+9PO+jeaForcQnajd0e5Hq6T5",
-	"B6enkHutrwI2z+TMctb4q+3o7RYyeNfDvgy2PUdzi3duMNdFvlVkDzEco2nf6eXLnGoHE+Q0i38WNIJO",
-	"GfwxBvji0aP7cNlyNBkog0+RKAHnGbSYH4J3ItpMBzRgLD29AtoZOKpsbsAyQapZ535aIUyCL8Bynynd",
-	"Qn5YYqouJJW21+3S61XFylC/LNHt3d+XjaMq0HECmuBg7+6dTVqa6WxIW12X574N0aK2zhDNibEQgiSY",
-	"YL916LqbVvyJFCGURJJEgG1/X09YBVlwh6o+XCbvvDSdZwwyzJfvRTf/YDXviwuqTk7OhXOzrMX1BQz1",
-	"Yf3PAA==",
+	"1FdNbxRHE/4rpX5fCZDGuyb4tDcHELH4CAKkyCJW1J6u3WmY6R66arysrDmgKJcoOXDikEMOUQ7JJZfc",
+	"gsKPAfw7ourZ2a+ZdbAEh5y89nbXx/M89XT5VKW+KL1Dx6RGp4rSDAsdP94MwQf5YJDSYEu23qmR2odC",
+	"p5l1uBNQG32cI6CcHKhElcGXGNhiDFAgkZ5gN8RXmWaYomOYBu8mCYx9gKwqtCOJwrMS1UgRB+smqq4T",
+	"FfBZZQMaNXq8iHq0OOiPn2DKqk7UPZw+wNQH0835KEMYW8wNgUM0aIA9pAE1I2gHmhmd0S5FCDFCtx2j",
+	"GfvjyjfAWXsVdFnmFkkyXD48PDzcuXt358aNKz29JQqLMvcz3BK5/fYSgdMF9kZ4al3s9/8Bx2qk/jdc",
+	"Mjqc0zlsULktJzfxXBQwj5Q0jfbBuw3bfSDrJjn+l1G0WzTTFHOJwJpPgb4VwC9MwW3resqNYyUBwI9X",
+	"qdAhaDfBAh2DbtENWAYkKVPaQlcVUo5BLFAKoOqY2HLFUpS0hI40+zBTifLum1TnuTrahCNRz3ck0k6u",
+	"jzGPdK9dHal3f/3y7vVLlbSJRurtizdvX/z+9sWr99//+f7bH1fCj9T7v787++3n9WpG6uyHP85+evPu",
+	"9cuzV7+qeoHJHUvcJ81ST3ADkAYC6opz/kW/EgrN4nuTLZEsY0EfpgRVL5ATbmYdVbR1dBUgJ60b+26J",
+	"N6qimK3WRhhObIqjvnrh5nNLTEA+TpwPaYbEQUssKHPNYx8KyDRFwegc0JnSW8cyjWUuhjnR1hEP4CEi",
+	"GJ/SkEpMabgWalCYwddOJYot59LG/rKU/fsHKlEnGKipf3dwdbAryPgSnS6tGqlrg93BNSFJcxahHerS",
+	"DpftDFf4mmAP+w+Qq+AI8ATDrIsDPHV+6oAbEOZ4DUDI9jGEzpt5elbJ/VIHXSBjAKdD8FOauxVVecRl",
+	"Xo2IjdtRbNoXjUVADkTyotQlEA/mPSRqEZ/U6HG3FRmylM/LaanJKWqUO7FslSgxPTVqvaXR4oU86yhR",
+	"Aan0jpo5+Wx3txlux+gi7tGs09jj8Al5t9wlPixRnN6o7gsOnlyhqih09BcJ03MsWfCZz2Bsc8aABo5n",
+	"C7hYT2ht8OpElb7XUIyRoXA47ebZUJI8Gm6nwMKHGRD7gAM4YHlJwBJoIjtxTRmr8usRzPW4pmxKRjWe",
+	"gcSfezP7aHwsd6h63ZY4VFh3hHD1IwthmwiaVc30rRjrErh+/k7XZbpOtvnK8NSa+l/NRW/dfhLwAfZ2",
+	"92CaoYskN9RXLhrPoEP0LeQels/1hZ4dJc6+eOZy9K1Rm1SuGsHmxv3p530bzXNFbyE6UXu7ex+tkuYf",
+	"nJ5C7rW+Ctg8k1PLWeOvtqO3W8jgXQ/7Mtj2HM3N37nBTBf5VpE9xHCCpn2nFy9zqh2MkdMs/lnQCDpl",
+	"8CcY4ItHj+7DZcvRZKAMPkWiBJxn0GJ+CN6JaDMd0ICx9PQKaGfguLK5AcsEqWad+0mFMA6+AMt9prSm",
+	"1YclpupComm73i7CXn0srfXLEt3+/QPZPaoCHSegCQ73797ZJKiZ04a+5XV5+NsQLX6rXNGMGAuhSoIJ",
+	"C1vHr7tzxZ9IEUxJJEkE4vb31YRVkFV3qOqjRfLOm9N50CDDfPFydPMPlpM/v6Dq5PRcODfLml+fw1Af",
+	"1f8MAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -85,15 +85,15 @@ func (h *Items) CreateInventoryItem(
 	return openapi.CreateInventoryItem201JSONResponse(toAPIItem(created)), nil
 }
 
-// GetSpec serves the service's own contract, rendered as YAML from the spec
+// GetInventorySpec serves the service's own contract, rendered as YAML from the spec
 // oapi-codegen embedded in the generated code. Rendering it from there
 // rather than from a second copy of api/openapi.yaml means the two can never
 // drift: `make guard-generated` already guarantees the embedded spec matches
 // the file on disk.
-func (h *Items) GetSpec(
+func (h *Items) GetInventorySpec(
 	_ context.Context,
-	_ openapi.GetSpecRequestObject,
-) (openapi.GetSpecResponseObject, error) {
+	_ openapi.GetInventorySpecRequestObject,
+) (openapi.GetInventorySpecResponseObject, error) {
 	specJSON, err := openapi.GetSpecJSON()
 	if err != nil {
 		return nil, fmt.Errorf("loading embedded spec: %w", err)
@@ -109,7 +109,7 @@ func (h *Items) GetSpec(
 		return nil, fmt.Errorf("rendering embedded spec as yaml: %w", err)
 	}
 
-	return openapi.GetSpec200ApplicationyamlResponse{
+	return openapi.GetInventorySpec200ApplicationyamlResponse{
 		Body:          bytes.NewReader(specYAML),
 		ContentLength: int64(len(specYAML)),
 	}, nil

@@ -81,13 +81,13 @@ func TestItemsCreateInventoryItemStoresAndReturnsItem(t *testing.T) {
 	assert.Equal(t, 7, created.Quantity)
 }
 
-func TestItemsGetSpecServesParsableYAML(t *testing.T) {
+func TestItemsGetInventorySpecServesParsableYAML(t *testing.T) {
 	h := handler.NewItems(repository.NewMemory())
 
-	resp, err := h.GetSpec(t.Context(), openapi.GetSpecRequestObject{})
+	resp, err := h.GetInventorySpec(t.Context(), openapi.GetInventorySpecRequestObject{})
 
 	require.NoError(t, err)
-	got, ok := resp.(openapi.GetSpec200ApplicationyamlResponse)
+	got, ok := resp.(openapi.GetInventorySpec200ApplicationyamlResponse)
 	require.True(t, ok)
 
 	var doc map[string]any

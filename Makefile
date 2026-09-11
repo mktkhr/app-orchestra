@@ -42,7 +42,7 @@ GENERATED := $(addsuffix /internal/adapter/openapi/openapi.gen.go,$(SERVICE_DIRS
              $(addsuffix .d.ts,$(addprefix web/src/shared/api/gen/,$(SERVICES)))
 
 .PHONY: help setup tools hooks clean services \
-        generate generate-services generate-web api-lint guard-generated guard-generated-ops \
+        generate generate-services generate-web api-lint guard-generated guard-generated-ops guard-operation-ids \
         fmt fmt-check lint test build check acceptance guard \
         services-fmt services-fmt-check services-lint services-test services-build service-run dev-platform \
         web-fmt web-fmt-check web-lint web-typecheck web-test web-build web-dev \
@@ -94,7 +94,7 @@ check: fmt-check lint test build acceptance ## Every quality gate in one target:
 
 acceptance: build acceptance-services acceptance-web acceptance-e2e acceptance-browser guard-browser ## Executable acceptance criteria (integration, e2e, browser); part of make check
 
-guard: guard-generated guard-generated-ops guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication ## Contract freshness, architecture, suppression, file-length and design-system guards
+guard: guard-generated guard-generated-ops guard-operation-ids guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication ## Contract freshness, architecture, suppression, file-length and design-system guards
 
 guard-browser: guard-a11y guard-layout ## Browser-driven quality gates (needs make build, make browsers)
 
@@ -127,6 +127,9 @@ guard-generated: generate ## Fail when generated code does not match the specs
 
 guard-generated-ops: ## Fail when a generated artifact is missing an operationId the spec declares (e.g. oapi-codegen silently dropping a 3.2 `query` operation)
 	$(Q) guard-generated-ops sh harness/guard/generated-ops.sh
+
+guard-operation-ids: ## Fail when two services declare the same operationId (a tool call carries only the name, so it must name one operation)
+	$(Q) guard-operation-ids sh harness/guard/operation-ids.sh
 
 ## ---------------------------------------------------------------- services (Go)
 services-fmt: $(GOLANGCI_LINT) ## gofmt / goimports / gci in place, every Go module

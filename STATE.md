@@ -59,10 +59,12 @@ enums labelled, every component the rule picks correct.
 guard, hook and CI job discovers services rather than naming them: a service is
 a directory under `services/` with a `go.mod`, and nothing declares the list.
 
-Two guards were added for this design: `guard-generated-ops` fails when a
+Three guards were added for this design: `guard-generated-ops` fails when a
 generated file is missing an operation id its spec declares (oapi-codegen drops
-OpenAPI 3.2 `query` operations silently), and a Redocly plugin fails a spec
-whose `enum` carries no `x-enum-labels`.
+OpenAPI 3.2 `query` operations silently), `guard-operation-ids` fails when two
+services claim the same operation id (a tool call carries only the name, so the
+name has to mean one thing), and a Redocly plugin fails a spec whose `enum`
+carries no `x-enum-labels`.
 
 **Tool definitions**, `services/platform/internal/usecase/tools.go`. `ToolsFor`
 turns a `domain.Catalog` into one `Tool` (a plain JSON-Schema map, spec-agnostic
