@@ -81,6 +81,37 @@ describe("ResultForm", () => {
     });
   });
 
+  it("carries the invoke response's fields into the reported result", async () => {
+    const user = userEvent.setup();
+    const onSubmitted = vi.fn<(result: PlanResult) => void>();
+    const fields = {
+      status: {
+        type: "string",
+        enum: ["allocated"],
+        enumLabels: { allocated: "引当済" },
+        title: "ステータス",
+      },
+    };
+
+    vi.mocked(postInvoke).mockResolvedValue({
+      component: "detail",
+      data: { status: "allocated" },
+      fields,
+    });
+
+    render(
+      <ResultForm schema={schema} initial={initial} target={target} onSubmitted={onSubmitted} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "送信" }));
+
+    expect(onSubmitted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fields,
+      }),
+    );
+  });
+
   it("shows an error and re-enables the button when the invoke call fails", async () => {
     const user = userEvent.setup();
 

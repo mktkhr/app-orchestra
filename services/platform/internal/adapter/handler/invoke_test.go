@@ -58,6 +58,57 @@ func TestPostInvokeRendersASuccessfulResult(t *testing.T) {
 	assert.Equal(t, map[string]any{"name": "棚"}, orchestrator.args)
 }
 
+func TestPostInvokeRendersAResultWithFields(t *testing.T) {
+	orchestrator := &fakeInvoker{result: usecase.Result{
+		Kind:      usecase.ResultKindResult,
+		Component: domain.ComponentDetail,
+		Data:      map[string]any{"status": "quarantined"},
+		Fields: map[string]any{
+			"status": map[string]any{
+				"type":       "string",
+				"enum":       []string{"quarantined"},
+				"enumLabels": map[string]string{"quarantined": "検品保留"},
+			},
+		},
+	}}
+	h := handler.NewInvoke(orchestrator)
+
+	resp, err := h.PostInvoke(t.Context(), openapi.PostInvokeRequestObject{
+		Body: &openapi.InvokeRequest{Service: "inventory", OperationId: "CreateInventoryItem", Args: map[string]any{"name": "棚"}},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostInvoke200JSONResponse)
+	require.True(t, ok, "expected a 200 response, got %T", resp)
+
+	require.NotNil(t, body.Fields)
+
+	status, ok := (*body.Fields)["status"].(map[string]any)
+	require.True(t, ok)
+
+	enumLabels, ok := status["enumLabels"].(map[string]string)
+	require.True(t, ok)
+	assert.Equal(t, "検品保留", enumLabels["quarantined"])
+}
+
+func TestPostInvokeRendersAResultWithNoFields(t *testing.T) {
+	orchestrator := &fakeInvoker{result: usecase.Result{
+		Kind:      usecase.ResultKindResult,
+		Component: domain.ComponentDetail,
+		Data:      map[string]any{"id": "1"},
+	}}
+	h := handler.NewInvoke(orchestrator)
+
+	resp, err := h.PostInvoke(t.Context(), openapi.PostInvokeRequestObject{
+		Body: &openapi.InvokeRequest{Service: "inventory", OperationId: "CreateInventoryItem", Args: map[string]any{"name": "棚"}},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostInvoke200JSONResponse)
+	require.True(t, ok, "expected a 200 response, got %T", resp)
+	assert.Nil(t, body.Fields)
+}
+
 func TestPostInvokeMapsEndpointNotFoundTo400(t *testing.T) {
 	orchestrator := &fakeInvoker{err: usecase.ErrEndpointNotFound}
 	h := handler.NewInvoke(orchestrator)

@@ -296,6 +296,16 @@ components:
           type: object
           description: The rendered result.
           additionalProperties: true
+        fields:
+          type: object
+          description: >
+            Per-property JSON Schema for `data`'s columns (`table`) or own
+            properties (`detail`) - the same shape as `PlanResult.fields`,
+            built the same way, so a detail turn appended after a form
+            submission shows a Japanese title and enum label exactly like a
+            `/api/plan` result does. Absent when the result has no columns
+            to describe (not an empty object).
+          additionalProperties: true
     ErrorResponse:
       type: object
       description: A machine-readable error.

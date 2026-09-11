@@ -107,6 +107,7 @@ components:
   schemas:
     RecordKind:
       type: string
+      title: 種別
       description: What kind of attendance arrangement a record represents.
       enum: [deemed, substitute, compensatory, on_call]
       x-enum-labels:
@@ -125,14 +126,17 @@ components:
       properties:
         id:
           type: string
+          title: ID
           description: The record's id.
         employee:
           type: string
+          title: 従業員名
           description: The employee's name.
         kind:
           $ref: "#/components/schemas/RecordKind"
         date:
           type: string
+          title: 対象日
           description: The date the record applies to (YYYY-MM-DD).
     RecordList:
       type: object
@@ -155,11 +159,13 @@ components:
       properties:
         employee:
           type: string
+          title: 従業員名
           description: The employee's name.
         kind:
           $ref: "#/components/schemas/RecordKind"
         date:
           type: string
+          title: 対象日
           description: The date the record applies to (YYYY-MM-DD).
     Error:
       type: object

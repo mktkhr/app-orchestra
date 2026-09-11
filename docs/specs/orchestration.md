@@ -78,7 +78,7 @@ POST /api/plan     { query, answers? }
   -> { kind: "none",   message }
 
 POST /api/invoke   { service, operationId, args }
-  -> { component, data }
+  -> { component, data, fields? }
 ```
 
 Stateless: no plan is held server-side, so there is no plan id and no expiry.
@@ -106,6 +106,13 @@ Japanese should not be shown an enum's raw English value (`quarantined`
 instead of `検品保留`), and a form's select control needs the value/label
 pairs to offer, not just the value. `fields` is absent — not an empty
 object — when the result renders as neither `table` nor `detail`.
+
+`POST /api/invoke`'s response carries the same `fields`, built the same way
+(`usecase.fieldsFor`, shared by both `Plan`'s safe-call path and `Invoke`).
+A form submission's result is exactly as much a `kind: "result"` answer as
+one `/api/plan` produced directly — the detail turn it lands in shows a
+Japanese title and enum label either way, not just the first time a table or
+detail happened to come from `/api/plan`.
 
 ## 7. User interface
 

@@ -73,18 +73,28 @@ export type webhooks = Record<string, never>;
 export type components = {
     schemas: {
         /**
+         * ステータス
          * @description Where a stock item sits in the inventory workflow.
          * @enum {string}
          */
         readonly ItemStatus: "allocated" | "staged" | "quarantined" | "consigned";
         /** @description A single stock item. */
         readonly Item: {
-            /** @description The item's id. */
+            /**
+             * ID
+             * @description The item's id.
+             */
             readonly id: string;
-            /** @description The item's name. */
+            /**
+             * 品名
+             * @description The item's name.
+             */
             readonly name: string;
             readonly status: components["schemas"]["ItemStatus"];
-            /** @description How many units are on hand. */
+            /**
+             * 数量
+             * @description How many units are on hand.
+             */
             readonly quantity: number;
         };
         /** @description A page of stock items. */
@@ -94,10 +104,16 @@ export type components = {
         };
         /** @description The fields needed to create a stock item. */
         readonly NewItem: {
-            /** @description The item's name. */
+            /**
+             * 品名
+             * @description The item's name.
+             */
             readonly name: string;
             readonly status: components["schemas"]["ItemStatus"];
-            /** @description How many units are on hand. */
+            /**
+             * 数量
+             * @description How many units are on hand.
+             */
             readonly quantity: number;
         };
         /** @description A machine-readable error. */

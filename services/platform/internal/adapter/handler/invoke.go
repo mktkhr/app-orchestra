@@ -44,10 +44,17 @@ func (h *Invoke) PostInvoke(
 		return invokeDataErrorResponse(err), nil
 	}
 
-	return openapi.PostInvoke200JSONResponse{
+	response := openapi.PostInvoke200JSONResponse{
 		Component: openapi.Component(result.Component),
 		Data:      data,
-	}, nil
+	}
+
+	if len(result.Fields) > 0 {
+		fields := result.Fields
+		response.Fields = &fields
+	}
+
+	return response, nil
 }
 
 // invokeErrorResponse maps an Orchestrator.Invoke error onto an HTTP

@@ -773,3 +773,37 @@ declares a property `title` today, so headers still show the raw key until
 a spec adds one. Every endpoint gains one more thing `Render`'s rules decide
 for it instead of the browser guessing: the UI no longer needs, and must
 never regain, its own copy of "which array property holds the rows".
+
+## 2026-09-11 Contracts carry a Japanese `title`; `/api/invoke` gains `fields`
+
+**Context.** `PlanResult.fields`'s `enumLabels` (the previous entry) fixed an
+enum's own values, but a table header or a form label is a field's _name_,
+not one of its values, and `x-enum-labels` says nothing about that: none of
+`services/inventory/api/openapi.yaml` or `services/attendance/api/openapi.yaml`
+declared a `title` on any property, so `fields[column].title` — already
+implemented and tested in `web/src/entities/rendering/model/rows.ts`'s
+`columnTitle` — always fell through to the raw key (`name`, `quantity`,
+`status`). Separately, `InvokeResult` (`services/platform/api/openapi.yaml`)
+never gained a `fields` property when `PlanResult` did: `usecase.Orchestrator
+.Invoke` already called the same `invokeAndRender` → `fieldsFor` path `call`
+does, so `usecase.Result.Fields` was populated correctly, but `handler.Invoke
+.PostInvoke` never copied it onto the wire response — so a detail turn
+appended after a form submission showed `status` as `allocated`, the one
+path Task 14 did not carry `fields` through.
+
+**Decision.** Every property a screen renders in the inventory and
+attendance contracts now carries a short Japanese `title`, alongside — not
+replacing — its existing English `description`: `title` is for the person
+looking at the screen, `description` is for the model reading the tool
+definition, and the two are kept apart on purpose. `InvokeResult` gained a
+`fields` property, the same shape as `PlanResult.fields`; `PostInvoke` now
+copies `result.Fields` onto it exactly as `PostPlan` already did, rather
+than adding a second way to build it.
+
+**Consequences.** A table, a form and a detail card now all show Japanese
+field names, not just Japanese enum values, and a detail turn built from a
+form submission is indistinguishable from one `/api/plan` produced directly
+— both carry `fields`, read through the same `columnTitle`/`cellText`. Any
+new property on these two contracts needs a `title` to show up correctly on
+screen; nothing enforces that today beyond this file recording it as the
+convention.

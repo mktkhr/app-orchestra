@@ -9,15 +9,33 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## Next
 
+1. An endpoint reaches the model only when its contract says so. Today every
+   operation a service declares becomes a tool, and `ToolsFor` drops one only
+   when its shape says nothing can draw it - which catches the spec-serving
+   endpoint by accident, not a health check, an admin call or a batch trigger
+   by intent. Add a vendor extension (`x-orchestra-expose`, default off) and
+   filter on it in `internal/adapter/specsource/http` as the catalogue is
+   built, so the tool list and `/api/invoke` cannot disagree: an unexposed
+   operation simply is not in the catalogue, and `Catalog.Find` misses it.
+
+   Filtering anywhere later leaves the mark decorative - a crafted POST to
+   `/api/invoke` reaches an operation the model was never offered.
+
+   Then the shape-based exclusion in `ToolsFor` can go: an operation marked
+   for exposure that nothing can draw is a mistake in the spec, and a guard
+   should fail on it rather than the platform dropping it quietly. The same
+   guard is where `title` becomes enforceable, since only exposed operations
+   need one.
+
 1. Finish the slice, tasks 15 and 16: the choice component and the
    end-to-end test. Then Task 11, the JSON planner behind the same
    `usecase.Planner` port - left until last because the slice is not vertical
    until the browser can draw what the platform already returns.
-2. No local model under ~20B parameters was observed to reliably choose
+1. No local model under ~20B parameters was observed to reliably choose
    `ask_user` (`DECISIONS.md`, 2026-09-11) - worth revisiting once Task 11's
    JSON planner exists, since a JSON `{"kind": "ask", ...}` object may be an
    easier target for a smaller model than a tool call is.
-3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
+1. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
    in the repository already passes under 7; only code generation does not.
    orval was measured as a replacement and rejected - it runs under TypeScript 7
    but emits the wrong shape for this product (`DECISIONS.md`, 2026-09-11).

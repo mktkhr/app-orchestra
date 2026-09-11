@@ -164,6 +164,10 @@ export type components = {
             readonly data: {
                 readonly [key: string]: unknown;
             };
+            /** @description Per-property JSON Schema for `data`'s columns (`table`) or own properties (`detail`) - the same shape as `PlanResult.fields`, built the same way, so a detail turn appended after a form submission shows a Japanese title and enum label exactly like a `/api/plan` result does. Absent when the result has no columns to describe (not an empty object). */
+            readonly fields?: {
+                readonly [key: string]: unknown;
+            };
         };
         /** @description A machine-readable error. */
         readonly ErrorResponse: {

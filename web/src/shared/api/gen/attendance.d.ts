@@ -73,18 +73,28 @@ export type webhooks = Record<string, never>;
 export type components = {
     schemas: {
         /**
+         * 種別
          * @description What kind of attendance arrangement a record represents.
          * @enum {string}
          */
         readonly RecordKind: "deemed" | "substitute" | "compensatory" | "on_call";
         /** @description A single attendance record. */
         readonly Record: {
-            /** @description The record's id. */
+            /**
+             * ID
+             * @description The record's id.
+             */
             readonly id: string;
-            /** @description The employee's name. */
+            /**
+             * 従業員名
+             * @description The employee's name.
+             */
             readonly employee: string;
             readonly kind: components["schemas"]["RecordKind"];
-            /** @description The date the record applies to (YYYY-MM-DD). */
+            /**
+             * 対象日
+             * @description The date the record applies to (YYYY-MM-DD).
+             */
             readonly date: string;
         };
         /** @description A page of attendance records. */
@@ -94,10 +104,16 @@ export type components = {
         };
         /** @description The fields needed to create an attendance record. */
         readonly NewRecord: {
-            /** @description The employee's name. */
+            /**
+             * 従業員名
+             * @description The employee's name.
+             */
             readonly employee: string;
             readonly kind: components["schemas"]["RecordKind"];
-            /** @description The date the record applies to (YYYY-MM-DD). */
+            /**
+             * 対象日
+             * @description The date the record applies to (YYYY-MM-DD).
+             */
             readonly date: string;
         };
         /** @description A machine-readable error. */

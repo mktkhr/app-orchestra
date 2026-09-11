@@ -107,6 +107,7 @@ components:
   schemas:
     ItemStatus:
       type: string
+      title: ステータス
       description: Where a stock item sits in the inventory workflow.
       enum: [allocated, staged, quarantined, consigned]
       x-enum-labels:
@@ -125,14 +126,17 @@ components:
       properties:
         id:
           type: string
+          title: ID
           description: The item's id.
         name:
           type: string
+          title: 品名
           description: The item's name.
         status:
           $ref: "#/components/schemas/ItemStatus"
         quantity:
           type: integer
+          title: 数量
           description: How many units are on hand.
     ItemList:
       type: object
@@ -155,11 +159,13 @@ components:
       properties:
         name:
           type: string
+          title: 品名
           description: The item's name.
         status:
           $ref: "#/components/schemas/ItemStatus"
         quantity:
           type: integer
+          title: 数量
           description: How many units are on hand.
     Error:
       type: object
