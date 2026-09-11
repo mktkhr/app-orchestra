@@ -370,3 +370,31 @@ the Redocly plugin and `.air.toml` are in because they live under `harness/` and
 `services/`. Adding a source tree is one line; adding a file type is nothing at
 all. Verified over every file on disk: the only ones ignored are build output,
 test artefacts and `docs/requirements.md`, which is deliberate.
+
+## 2026-09-11 The catalogue reflects the served contract, casing included
+
+**Context.** Each service answers `GET /openapi.yaml` by rendering YAML from the
+spec oapi-codegen embedded in its generated code, so the served contract can
+never drift from the code that serves it. The platform builds its catalogue from
+that document.
+
+Building the catalogue for real revealed that oapi-codegen normalises operation
+ids when it embeds: `api/openapi.yaml` on disk says `listInventoryItems`, and
+every service serves `ListInventoryItems`. Nothing else changes - descriptions,
+summaries, `x-enum-labels` and `x-ui-hint` all survive the round trip, verified
+by decoding the embedded blob with a temporary extension in place.
+
+**Decision.** Leave it. The catalogue reflects what the running service says it
+is called, and that name is the one the planner puts in its tool call and the
+one `/api/invoke` looks up. The string is chosen and consumed in the same place.
+
+**Consequences.** A contract file and the document its service serves differ in
+the casing of four identifiers. Nothing reads both: the generated TypeScript
+gives the frontend a `paths` map keyed by path, not by operation id, so no
+second spelling of the name exists in the frontend. Tests that name an operation
+id must take it from the catalogue's own vocabulary - `ListInventoryItems`, not
+`listInventoryItems` - or build their catalogue by hand.
+
+The alternative, serving `api/openapi.yaml` through `go:embed`, was rejected: it
+would make the document a service serves and the document it validates requests
+against two separate artefacts, to fix a difference in capitalisation.

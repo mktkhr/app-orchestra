@@ -101,21 +101,21 @@ that a broken connection between the two is visible rather than silent.
 `ORCHESTRA_STATIC_DIR` makes the platform serve a built frontend from `/`, which
 is what the browser gates and the end-to-end suite rely on later.
 
-- [ ] **Step 1** Write `api/openapi.yaml` with the single operation.
+- [x] **Step 1** Write `api/openapi.yaml` with the single operation.
       `make api-lint`, then `make generate`.
-- [ ] **Step 2** Write the acceptance test: the real graph from `pkg/app` behind
+- [x] **Step 2** Write the acceptance test: the real graph from `pkg/app` behind
       `httptest` answers `/api/health` with 200. Run it, expect failure.
-- [ ] **Step 3** Implement config, httpserver, handler, app, cmd until it passes.
-- [ ] **Step 4** Build the web shell and the chat page. A test asserts the page
+- [x] **Step 3** Implement config, httpserver, handler, app, cmd until it passes.
+- [x] **Step 4** Build the web shell and the chat page. A test asserts the page
       renders and shows the health result from a scripted client.
-- [ ] **Step 5** Pin air in `toolchain.mk`, install it through `make tools`, add
+- [x] **Step 5** Pin air in `toolchain.mk`, install it through `make tools`, add
       `dev-platform`. Server targets do not go through `harness/quiet.sh` - their
       output is the point.
-- [ ] **Step 6** Start both for real. `curl localhost:8080/api/health` returns
+- [x] **Step 6** Start both for real. `curl localhost:8080/api/health` returns
       the payload; the Vite port serves HTML. Record the port.
-- [ ] **Step 7** `make fmt-check services-lint services-test web-lint web-test
+- [x] **Step 7** `make fmt-check services-lint services-test web-lint web-test
 guard api-lint acceptance-services guard-coverage` — green.
-- [ ] **Step 8** Commit: `feat(platform): serve a health endpoint and a shell`
+- [x] **Step 8** Commit: `feat(platform): serve a health endpoint and a shell`
 
 ---
 
@@ -151,24 +151,24 @@ status:
 type. Fixture data holds at least two items per status so filtering is
 observable.
 
-- [ ] **Step 1** Write `api/openapi.yaml`. Every operation needs an
+- [x] **Step 1** Write `api/openapi.yaml`. Every operation needs an
       `operationId`, a `summary`, and a tag with a description (`make api-lint`
       requires them). Model the service on the layer layout above.
-- [ ] **Step 2** `make api-lint` — expect it to pass. Fix the spec until it does.
-- [ ] **Step 3** Add the module to `go.work`, run `make generate`. Confirm
+- [x] **Step 2** `make api-lint` — expect it to pass. Fix the spec until it does.
+- [x] **Step 3** Add the module to `go.work`, run `make generate`. Confirm
       `services/inventory/internal/adapter/openapi/openapi.gen.go` now declares
       `ListInventoryItems`, `GetInventoryItem`, `CreateInventoryItem`.
-- [ ] **Step 4** Write the acceptance test first: it starts the real object
+- [x] **Step 4** Write the acceptance test first: it starts the real object
       graph from `pkg/app` behind `httptest`, asks for `status=allocated`, and
       asserts only allocated items come back. Run it, expect it to fail.
-- [ ] **Step 5** Implement domain, repository, handler, app, cmd, infra until
+- [x] **Step 5** Implement domain, repository, handler, app, cmd, infra until
       that test passes.
-- [ ] **Step 6** Add a test asserting `GET /openapi.yaml` returns the embedded
+- [x] **Step 6** Add a test asserting `GET /openapi.yaml` returns the embedded
       spec and that it parses. Make it pass.
-- [ ] **Step 7** `make services-lint services-test guard-arch guard-coverage
+- [x] **Step 7** `make services-lint services-test guard-arch guard-coverage
 acceptance-services` — all green. Coverage is 90%: test the domain and the
       repository directly, not only through HTTP.
-- [ ] **Step 8** Commit: `feat(inventory): serve stock items and the contract`
+- [x] **Step 8** Commit: `feat(inventory): serve stock items and the contract`
 
 ---
 
@@ -199,8 +199,8 @@ kind:
 practice; the fixture data must contain both so a query for one does not
 accidentally match the other.
 
-- [ ] **Step 1-8** As Task 1, substituting attendance for inventory.
-- [ ] Commit: `feat(attendance): serve attendance records and the contract`
+- [x] **Step 1-8** As Task 1, substituting attendance for inventory.
+- [x] Commit: `feat(attendance): serve attendance records and the contract`
 
 ---
 
@@ -270,15 +270,15 @@ func (e *Endpoint) IsSafe() bool // GET, HEAD, QUERY
 means `form`; then an object array (directly, or as the single array-valued
 property of a wrapper object) means `table`; then an object means `detail`.
 
-- [ ] **Step 1** Write the table test for `Render` covering: hint override,
+- [x] **Step 1** Write the table test for `Render` covering: hint override,
       request body, bare object array, array wrapped in `{items: [...], total: n}`,
       single object. Run it, expect a compile failure.
-- [ ] **Step 2** Define the types above, leave `Render` returning `""`.
+- [x] **Step 2** Define the types above, leave `Render` returning `""`.
       Run: still failing, now on assertions.
-- [ ] **Step 3** Implement `Render` and `IsSafe`. Tests pass.
-- [ ] **Step 4** `make guard-coverage` — domain must reach 90%. Add cases until
+- [x] **Step 3** Implement `Render` and `IsSafe`. Tests pass.
+- [x] **Step 4** `make guard-coverage` — domain must reach 90%. Add cases until
       it does; every branch of `Render` needs one.
-- [ ] **Step 5** Commit: `feat(platform): decide the component from the schema`
+- [x] **Step 5** Commit: `feat(platform): decide the component from the schema`
 
 ---
 
@@ -307,16 +307,16 @@ The HTTP implementation reads a list of service base URLs from
 `domain.Endpoint`. `x-enum-labels` lands in `Schema.EnumLabels`;
 `x-ui-hint.component` lands in `Endpoint.UIHint`.
 
-- [ ] **Step 1** Write a test that serves a fixture spec from `httptest` and
+- [x] **Step 1** Write a test that serves a fixture spec from `httptest` and
       asserts the resulting catalogue: operation count, one endpoint's method, path,
       a parameter's enum values and its labels. Run it, expect failure.
-- [ ] **Step 2** Implement the parser and the fetcher until it passes. A
+- [x] **Step 2** Implement the parser and the fetcher until it passes. A
       service that cannot be reached fails the whole fetch — a partial catalogue
       would silently hide endpoints.
-- [ ] **Step 3** Add a test that a spec with `x-ui-hint.component: detail` on an
+- [x] **Step 3** Add a test that a spec with `x-ui-hint.component: detail` on an
       operation produces that hint. Make it pass.
-- [ ] **Step 4** `make services-lint guard-arch guard-coverage` — green.
-- [ ] **Step 5** Commit: `feat(platform): build the catalogue from running services`
+- [x] **Step 4** `make services-lint guard-arch guard-coverage` — green.
+- [x] **Step 5** Commit: `feat(platform): build the catalogue from running services`
 
 **Satisfies:** the catalogue half of AC-B-101.
 
@@ -347,6 +347,12 @@ var AskUserTool Tool                      // ask_user(question, param, options)
 An enum parameter keeps its `enum` list in the JSON Schema and appends its
 labels to that property's description as `allocated=引当済 / staged=出荷準備完了`.
 This is the only place the Japanese labels reach the model.
+
+Not every endpoint becomes a tool. Each service's `GET /openapi.yaml` is in the
+catalogue - it is an operation of the contract like any other - but it answers
+with YAML, so it has neither a request body nor a JSON response schema, and no
+component can render its result. `ToolsFor` skips any endpoint with neither, by
+that property rather than by name.
 
 - [ ] **Step 1** Write the test: a catalogue with one enum parameter produces a
       tool whose input schema carries the enum values and whose description contains

@@ -4,20 +4,17 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-_None._
+1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 4 are
+   done; Task 5 converts the catalogue into tool definitions.
 
 ## Next
 
-1. Two harness gaps the orchestration design exposed
-   (`docs/specs/orchestration.md` section 13):
-   - a guard that fails when a generated file is missing an operation id the
-     spec declares. `guard-generated` only checks freshness, so oapi-codegen
-     silently dropping a `query` operation passes it today;
-   - a Redocly rule that fails a spec where an `enum` carries no
-     `x-enum-labels`, since the model depends on those labels to map Japanese
-     to the enum value.
-2. Build the first vertical slice against `PRODUCT.md` section 5.
-3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
+1. Finish the slice, tasks 5 to 16: tool definitions, the safe path of
+   `/api/plan`, the form path, `/api/invoke`, `ask_user`, the OpenAI-compatible
+   planner and the JSON planner behind the same port, the web shell and
+   conversation, the table with its provenance and expansion, the detail and
+   form components, the choice component, and the end-to-end test.
+2. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
    in the repository already passes under 7; only code generation does not.
    orval was measured as a replacement and rejected - it runs under TypeScript 7
    but emits the wrong shape for this product (`DECISIONS.md`, 2026-09-11).
@@ -30,7 +27,8 @@ _None._
   dropped the ten that describe a product this repository does not have.
 - Rewrote `PRODUCT.md`, `STATE.md` and `TODO.md` for app-orchestra, and fixed
   the documentation drift inherited from takamai.
-- Made `.gitignore` deny by default.
+- Made `.gitignore` deny by default, then allow by path rather than by
+  extension (`DECISIONS.md`, 2026-09-11).
 - Added the Claude Code layer: `CLAUDE.md`, the permission allowlist and the
   after-edit hook.
 - Reorganised the repository into `harness/`, `services/<name>/`, `web/` and
@@ -43,3 +41,9 @@ _None._
   `toolchain.mk`. TypeScript 7 was tried and reverted (`DECISIONS.md`).
 - Designed the first vertical slice (`docs/specs/orchestration.md`) and wrote
   its acceptance criteria into `PRODUCT.md`.
+- Closed the two harness gaps the design exposed: `guard-generated-ops` fails on
+  an operation id a generated file dropped, and a Redocly rule fails an `enum`
+  with no `x-enum-labels`.
+- Built the slice's foundation: the platform's shell and health endpoint, the
+  `inventory` and `attendance` services, the domain's rendering rule, and the
+  catalogue the platform fetches from the running services.
