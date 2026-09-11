@@ -24,5 +24,16 @@ export const theme = createTheme({
         },
       },
     },
+    // MUI marks a required field with an asterisk in the label's own colour,
+    // which reads as punctuation rather than as a requirement. Set here
+    // rather than on each field, so every form the rendering rule builds
+    // says "required" the same way.
+    MuiFormLabel: {
+      styleOverrides: {
+        asterisk: ({ theme: current }) => ({
+          color: current.palette.error.main,
+        }),
+      },
+    },
   },
 });
