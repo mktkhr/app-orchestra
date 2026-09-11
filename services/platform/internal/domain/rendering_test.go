@@ -116,3 +116,37 @@ func TestRenderScalarResponseHasNoComponent(t *testing.T) {
 
 	assert.Equal(t, domain.Component(""), domain.Render(&e))
 }
+
+func TestRenderResultIgnoresTheRequestBody(t *testing.T) {
+	// The same endpoint Render draws as a form: once it has been called,
+	// the request body says nothing about the answer that came back.
+	e := domain.Endpoint{
+		RequestBody: &domain.Schema{Type: "object", Properties: map[string]domain.Schema{
+			"name": {Type: "string"},
+		}},
+		Response: &domain.Schema{Type: "object", Properties: map[string]domain.Schema{
+			"id": {Type: "string"},
+		}},
+	}
+
+	assert.Equal(t, domain.ComponentForm, domain.Render(&e))
+	assert.Equal(t, domain.ComponentDetail, domain.RenderResult(&e))
+}
+
+func TestRenderResultHintStillWins(t *testing.T) {
+	e := domain.Endpoint{
+		UIHint:      domain.ComponentTable,
+		RequestBody: &domain.Schema{Type: "object"},
+		Response:    &domain.Schema{Type: "object"},
+	}
+
+	assert.Equal(t, domain.ComponentTable, domain.RenderResult(&e))
+}
+
+func TestRenderResultWithNoResponseHasNoComponent(t *testing.T) {
+	e := domain.Endpoint{
+		RequestBody: &domain.Schema{Type: "object"},
+	}
+
+	assert.Empty(t, domain.RenderResult(&e))
+}

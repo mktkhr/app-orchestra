@@ -5,7 +5,7 @@ _Last updated: 2026-09-11_
 ## Summary
 
 **The harness is complete and the first vertical slice is under construction.**
-Eight of the seventeen tasks in `docs/plans/orchestration.md` are done: the
+Nine of the seventeen tasks in `docs/plans/orchestration.md` are done: the
 platform's scaffold, two services that answer real requests, the rendering
 rule, the catalogue the platform builds by asking those services what they
 offer, the tool definitions built from that catalogue, and three of the four
@@ -102,7 +102,12 @@ table lookup - deterministic, no I/O, the only planner that exists until Task
 implements `Invoker` by calling a configured service over HTTP, splitting a
 decision's `args` across the endpoint's path, query and request body.
 `internal/adapter/handler/plan.go` and `invoke.go` implement the generated
-`PostPlan`/`PostInvoke`; `PostInvoke` always answers 501 today (Task 8's job).
+`PostPlan`/`PostInvoke`. `Orchestrator.Invoke` is the other mouth: it looks
+the endpoint up, checks the arguments against its schema - every required
+body field present, every enum value one the enum declares - and calls it.
+It never reaches the planner, because a request to /api/invoke is a person
+pressing a button rather than a question. The permission check belongs there
+once authentication exists; the seat is marked and empty.
 
 `pkg/app.New` now takes a `Config{StaticDir, Services, PlanFixtures}` (its own
 exported types, not aliases of anything under `internal/`) and wires the whole
@@ -116,7 +121,9 @@ demo query (`"在庫を登録して"`) returns `kind: "form"` with the request b
 schema, its `required` list, the planner's values as `initial` and the
 endpoint as `target`, while inventory's row count stays at eight - the write
 was described, not performed. An unrecognised query returns `kind: "none"`;
-`POST /api/invoke` returns 501.
+`POST /api/invoke` with a create executes it and returns the created entity
+as `component: "detail"`, while an unknown operation, a missing required
+field and a value outside an enum each return 400 having called nothing.
 
 ## What does not exist yet
 

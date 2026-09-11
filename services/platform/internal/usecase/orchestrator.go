@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 )
@@ -55,6 +56,11 @@ type Result struct {
 // ErrEndpointNotFound is returned when a Decision names an operation the
 // catalogue does not have.
 var ErrEndpointNotFound = errors.New("endpoint not found in catalogue")
+
+// ErrInvalidArguments is returned when Invoke's arguments do not satisfy
+// the endpoint's schema: a required request body field is missing, or a
+// value is not one of an enum parameter's declared values.
+var ErrInvalidArguments = errors.New("invalid arguments")
 
 // ErrNotImplemented marks a Decision this deployment does not act on yet: a
 // disambiguation question, which needs the ask path of Task 9. Returned as
@@ -119,6 +125,32 @@ func (o *Orchestrator) Plan(ctx context.Context, query string, answers []Answer)
 	}
 }
 
+// Invoke executes a confirmed call: it is what POST /api/invoke drives
+// (docs/specs/orchestration.md, section 5). Unlike Plan, it never consults
+// the planner - a person has already chosen the operation and its
+// arguments by pressing a button, so there is nothing left to decide - and
+// it acts on every method, safe or not: this is the one place an unsafe
+// method actually runs, which is what keeps /api/plan's "the model cannot
+// change anything on its own" property true (D8, docs/specs/orchestration.md
+// section 2).
+//
+// TODO(auth): once authentication exists, the permission check for
+// (service, operationID) belongs here, after the catalogue lookup and
+// before validateArgs - this is the only mouth an unsafe method executes
+// through, so it is the only place that check needs to be made.
+func (o *Orchestrator) Invoke(ctx context.Context, service, operationID string, args map[string]any) (Result, error) {
+	endpoint, ok := o.catalog.Find(service, operationID)
+	if !ok {
+		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, service, operationID)
+	}
+
+	if err := validateArgs(&endpoint, args); err != nil {
+		return Result{}, err
+	}
+
+	return o.invokeAndRender(ctx, &endpoint, service, operationID, args)
+}
+
 // call resolves a DecisionCall against the catalogue: a safe endpoint is
 // invoked and rendered; an unsafe one (D8, docs/specs/orchestration.md)
 // never reaches the service at all - it comes back as a form to confirm
@@ -145,17 +177,85 @@ func (o *Orchestrator) call(ctx context.Context, decision *Decision) (Result, er
 		}, nil
 	}
 
-	data, err := o.invoker.Invoke(ctx, &endpoint, decision.Args)
+	return o.invokeAndRender(ctx, &endpoint, decision.Service, decision.OperationID, decision.Args)
+}
+
+// invokeAndRender calls endpoint with args and renders the decoded
+// response, shared by call's safe path and Invoke.
+//
+// The component is chosen by domain.RenderResult, not domain.Render: a
+// request body means "unsafe, show a form instead of calling" to an
+// endpoint that has not been called, and nothing at all to one that has.
+// By the time this function renders, the call has been made, so the answer
+// is drawn from the response schema.
+func (o *Orchestrator) invokeAndRender(
+	ctx context.Context,
+	endpoint *domain.Endpoint,
+	service, operationID string,
+	args map[string]any,
+) (Result, error) {
+	data, err := o.invoker.Invoke(ctx, endpoint, args)
 	if err != nil {
-		return Result{}, fmt.Errorf("invoking %s/%s: %w", decision.Service, decision.OperationID, err)
+		return Result{}, fmt.Errorf("invoking %s/%s: %w", service, operationID, err)
 	}
 
 	return Result{
 		Kind:        ResultKindResult,
-		Component:   domain.Render(&endpoint),
+		Component:   domain.RenderResult(endpoint),
 		Data:        data,
-		Service:     decision.Service,
-		OperationID: decision.OperationID,
-		Args:        decision.Args,
+		Service:     service,
+		OperationID: operationID,
+		Args:        args,
 	}, nil
+}
+
+// validateArgs checks args against endpoint's schema before it is called:
+// every required request body field must be present, and every enum-typed
+// parameter or body property, when given a value, must use one of its
+// declared values. This is not full JSON Schema validation - just the
+// minimum the spec calls for (docs/plans/orchestration.md, Task 8) - so a
+// wrong type or an unknown extra field is not caught here.
+func validateArgs(endpoint *domain.Endpoint, args map[string]any) error {
+	if endpoint.RequestBody != nil {
+		for _, name := range endpoint.RequestBody.Required {
+			if _, ok := args[name]; !ok {
+				return fmt.Errorf("%w: missing required field %q", ErrInvalidArguments, name)
+			}
+		}
+
+		for name, schema := range endpoint.RequestBody.Properties {
+			if err := validateEnumArg(name, &schema, args); err != nil {
+				return err
+			}
+		}
+	}
+
+	for i := range endpoint.Parameters {
+		p := &endpoint.Parameters[i]
+		if err := validateEnumArg(p.Name, &p.Schema, args); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateEnumArg checks, when schema declares an enum and args carries a
+// value for name, that the value is one of the declared ones.
+func validateEnumArg(name string, schema *domain.Schema, args map[string]any) error {
+	if len(schema.Enum) == 0 {
+		return nil
+	}
+
+	value, ok := args[name]
+	if !ok {
+		return nil
+	}
+
+	given := fmt.Sprint(value)
+	if slices.Contains(schema.Enum, given) {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %q is not a valid value for %q", ErrInvalidArguments, given, name)
 }

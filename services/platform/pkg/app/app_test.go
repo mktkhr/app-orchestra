@@ -125,7 +125,7 @@ func TestNewFailsWhenAConfiguredServiceIsUnreachable(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestNewServesInvokeAsNotImplemented(t *testing.T) {
+func TestNewServesInvokeAndRejectsAnUnknownEndpoint(t *testing.T) {
 	handler, err := app.New(app.Config{})
 	require.NoError(t, err)
 
@@ -143,5 +143,8 @@ func TestNewServesInvokeAsNotImplemented(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = resp.Body.Close() })
 
-	assert.Equal(t, http.StatusNotImplemented, resp.StatusCode)
+	// app.Config{} configures no services, so the catalogue is empty: the
+	// named operation is not in it, which is a 400 (docs/plans/orchestration.md,
+	// Task 8), not the 501 the placeholder used to answer with.
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }

@@ -478,14 +478,14 @@ arguments against the endpoint's schema, invokes, and renders. It never calls
 the planner. This is where the permission check goes when authentication
 arrives; leave the seat, do not build it.
 
-- [ ] **Step 1** Write the acceptance test: post a create to `/api/invoke`,
+- [x] **Step 1** Write the acceptance test: post a create to `/api/invoke`,
       assert the service received it and the created entity comes back rendered as
       `detail`. Run it, expect failure.
-- [ ] **Step 2** Add a test that an unknown operation id returns 400 and calls
+- [x] **Step 2** Add a test that an unknown operation id returns 400 and calls
       nothing.
-- [ ] **Step 3** Implement until both pass.
-- [ ] **Step 4** Green on the Go gates.
-- [ ] **Step 5** Commit: `feat(platform): execute a confirmed call`
+- [x] **Step 3** Implement until both pass.
+- [x] **Step 4** Green on the Go gates.
+- [x] **Step 5** Commit: `feat(platform): execute a confirmed call`
 
 **Satisfies:** AC-B-104.
 

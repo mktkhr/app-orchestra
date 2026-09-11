@@ -259,7 +259,7 @@ export interface operations {
                     readonly "application/json": components["schemas"]["InvokeResult"];
                 };
             };
-            /** @description The service or operation id is not in the catalogue. */
+            /** @description The service or operation id is not in the catalogue, or the arguments do not satisfy its schema. */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -268,8 +268,8 @@ export interface operations {
                     readonly "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Not implemented in this deployment yet. */
-            readonly 501: {
+            /** @description The call to the service failed. */
+            readonly 500: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

@@ -1,20 +1,15 @@
 package domain
 
-// Render is a pure function of an endpoint's response schema. No I/O, no
-// model: the component a result is drawn with is decided entirely from the
-// spec, per docs/specs/orchestration.md section 6.
+// Render answers what to draw for an endpoint the platform is choosing
+// between: it has not been called, and may never be. No I/O, no model; the
+// component is decided entirely from the spec, per
+// docs/specs/orchestration.md section 6.
 //
 // The rules, in order:
 //  1. Endpoint.UIHint, when set, wins outright.
 //  2. A request body means the operation is unsafe: the model's arguments
 //     become a form instead of being invoked.
-//  3. An object array — either the response itself, or the single
-//     array-valued property of a wrapper object such as
-//     {items: [...], total: n} — means a table.
-//  4. A single object means a detail view.
-//
-// A response that fits none of these (nil, or a bare scalar) renders as no
-// component at all: Render returns "".
+//  3. Otherwise the response schema decides it, as RenderResult describes.
 //
 // The parameter is a pointer, not the value shown in the plan, because
 // Endpoint is 136 bytes: golangci-lint's gocritic hugeParam check (part of
@@ -27,6 +22,31 @@ func Render(e *Endpoint) Component {
 
 	if e.RequestBody != nil {
 		return ComponentForm
+	}
+
+	return RenderResult(e)
+}
+
+// RenderResult answers what to draw for a result the endpoint has already
+// produced. It is the same rule as Render minus the form: a request body
+// says something about making the call, and the call has been made, so it
+// says nothing about the answer that came back.
+//
+// This is the rule /api/invoke renders with, and the rule Render falls
+// through to once it knows the call is safe.
+//
+// The rules, in order:
+//  1. Endpoint.UIHint, when set, wins outright.
+//  2. An object array — either the response itself, or the single
+//     array-valued property of a wrapper object such as
+//     {items: [...], total: n} — means a table.
+//  3. A single object means a detail view.
+//
+// A response that fits none of these (nil, or a bare scalar) renders as no
+// component at all: RenderResult returns "".
+func RenderResult(e *Endpoint) Component {
+	if e.UIHint != "" {
+		return e.UIHint
 	}
 
 	if isObjectArray(e.Response) {
