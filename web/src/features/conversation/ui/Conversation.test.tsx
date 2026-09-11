@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -77,5 +77,63 @@ describe("Conversation", () => {
 
     expect(await screen.findByText(/質問の送信に失敗しました/u)).toBeTruthy();
     expect(screen.getByLabelText("質問を入力")).toHaveProperty("disabled", false);
+  });
+
+  it("renders a table result paginated, with its provenance and arguments revealed on expand", async () => {
+    const user = userEvent.setup();
+    const items = Array.from({ length: 30 }, (_, index) => ({
+      id: `itm-${String(index + 1).padStart(3, "0")}`,
+    }));
+
+    vi.mocked(postPlan).mockResolvedValue({
+      kind: "result",
+      component: "table",
+      data: { items },
+      source: {
+        service: "inventory",
+        operationId: "listInventoryItems",
+        args: { status: "allocated" },
+      },
+    });
+
+    render(<Conversation />);
+
+    await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
+
+    expect(await screen.findByText("inventory / listInventoryItems")).toBeTruthy();
+    expect(await screen.findByText("itm-001")).toBeTruthy();
+    expect(screen.queryByText("itm-011")).toBeNull();
+
+    expect(screen.queryByText("status=allocated")).toBeNull();
+    await user.click(screen.getByText("引数を表示"));
+    expect(screen.getByText("status=allocated")).toBeTruthy();
+  });
+
+  it("expands a table result into a full-screen dialog and closes it back", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(postPlan).mockResolvedValue({
+      kind: "result",
+      component: "table",
+      data: { items: [{ id: "itm-001" }, { id: "itm-002" }] },
+      source: { service: "inventory", operationId: "listInventoryItems" },
+    });
+
+    render(<Conversation />);
+
+    await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
+    expect(await screen.findByText("itm-001")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "拡大表示" }));
+
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByText("itm-001")).toBeTruthy();
+
+    await user.click(within(dialog).getByRole("button", { name: "閉じる" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
   });
 });

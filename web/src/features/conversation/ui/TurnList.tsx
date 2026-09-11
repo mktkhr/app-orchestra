@@ -4,6 +4,8 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { JSX } from "react";
 
+import { Provenance, ResultTable } from "@/entities/rendering";
+
 import type { Turn } from "../model/turn";
 
 interface TurnListProps {
@@ -30,25 +32,42 @@ function TurnItem({ turn }: { readonly turn: Turn }): JSX.Element {
     );
   }
 
+  if (turn.result.kind === "none") {
+    return (
+      <Paper elevation={1} sx={{ p: 2 }}>
+        <Typography variant="overline" color="text.secondary">
+          {turn.result.kind}
+        </Typography>
+        <Typography variant="body1">{turn.result.message}</Typography>
+      </Paper>
+    );
+  }
+
+  if (
+    turn.result.kind === "result" &&
+    turn.result.component === "table" &&
+    turn.result.source !== undefined &&
+    turn.result.data !== undefined
+  ) {
+    return (
+      <Paper elevation={1} sx={{ p: 2 }}>
+        <Provenance source={turn.result.source} />
+        <ResultTable data={turn.result.data} />
+      </Paper>
+    );
+  }
+
+  // Task 14-15 plug in here: `detail` and `form` (kind "result"/"form"), and
+  // `choice` (kind "ask"). Until then this shows only what kind of answer
+  // came back.
   return (
     <Paper elevation={1} sx={{ p: 2 }}>
-      {/*
-       * Task 13-15 plug in here: a `Provenance` header (service / operationId,
-       * arguments on expand) plus the component named by turn.result.kind /
-       * turn.result.component - `table` (Task 13), `detail` and `form`
-       * (Task 14), `choice` (Task 15). Until then this shows only what kind
-       * of answer came back, and the message when there is nothing else.
-       */}
       <Typography variant="overline" color="text.secondary">
         {turn.result.kind}
       </Typography>
-      {turn.result.kind === "none" ? (
-        <Typography variant="body1">{turn.result.message}</Typography>
-      ) : (
-        <Alert severity="info" sx={{ mt: 1 }}>
-          この回答（{turn.result.kind}）の表示は後続タスクで実装されます。
-        </Alert>
-      )}
+      <Alert severity="info" sx={{ mt: 1 }}>
+        この回答（{turn.result.kind}）の表示は後続タスクで実装されます。
+      </Alert>
     </Paper>
   );
 }

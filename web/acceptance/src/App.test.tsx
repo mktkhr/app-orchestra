@@ -40,9 +40,11 @@ describe("App", () => {
     const example = screen.getByRole("button", { name: "在庫の一覧を見せて" });
     await user.click(example);
 
-    // The question becomes a turn, and the platform's answer follows it. What
-    // that answer is drawn with is Tasks 13-15; this asserts the round trip.
+    // The question becomes a turn, and the platform's answer follows it as a
+    // table (Task 13) carrying its provenance. Detail/form/choice are Tasks
+    // 14-15.
     expect(await screen.findByText("在庫の一覧を見せて")).toBeTruthy();
-    expect((await screen.findAllByText(/result/u)).length).toBeGreaterThan(0);
+    expect(await screen.findByText("inventory / ListInventoryItems")).toBeTruthy();
+    expect(await screen.findByText("itm-001")).toBeTruthy();
   });
 });

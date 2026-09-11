@@ -690,14 +690,14 @@ that opens the same rows in a full-screen MUI `Dialog`.
 Columns come from the keys of the first row; headers use the schema `title`
 when the platform supplies one.
 
-- [ ] **Step 1** Write the test: given a table result of 30 rows, the first page
+- [x] **Step 1** Write the test: given a table result of 30 rows, the first page
       renders 10, the provenance shows `inventory / listInventoryItems`, and
       expanding the arguments reveals `status=allocated`. Run it, expect failure.
-- [ ] **Step 2** Implement `Provenance` and `ResultTable`.
-- [ ] **Step 3** Add the expand test: clicking expand opens a dialog containing
+- [x] **Step 2** Implement `Provenance` and `ResultTable`.
+- [x] **Step 3** Add the expand test: clicking expand opens a dialog containing
       the same rows; closing returns.
-- [ ] **Step 4** Web gates green.
-- [ ] **Step 5** Commit: `feat(web): render a table with its provenance`
+- [x] **Step 4** Web gates green.
+- [x] **Step 5** Commit: `feat(web): render a table with its provenance`
 
 **Satisfies:** AC-F-101, AC-F-105, AC-F-106.
 

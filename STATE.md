@@ -5,7 +5,7 @@ _Last updated: 2026-09-11_
 ## Summary
 
 **The harness is complete and the first vertical slice is under construction.**
-Twelve of the seventeen tasks in `docs/plans/orchestration.md` are done: the
+Thirteen of the seventeen tasks in `docs/plans/orchestration.md` are done: the
 platform's scaffold, two services that answer real requests, the rendering
 rule, the catalogue the platform builds by asking those services what they
 offer, the tool definitions built from that catalogue, and all four answers
@@ -214,10 +214,22 @@ rather than labels for them, because an example question is there to show
 what a question may look like. Clicking one submits it; so does the form.
 Each answer becomes a turn.
 
-What a turn shows is still a placeholder naming its `kind`:
-`features/rendering` is Tasks 13 to 15, and `TurnList` marks the seat.
-Verified in the browser against the running platform: clicking the create
-example reaches the local model and comes back `kind: "form"`.
+A `table` answer is drawn: `entities/rendering` shows the rows ten to a
+page, under a header naming the service and operation that produced them and
+revealing the arguments the model chose, and an expand control opens the same
+rows full-screen. The slice sits in `entities` rather than the `features`
+the plan named, because `conversation` has to render it and Feature-Sliced
+Design forbids one feature importing another; these components draw the
+contract's own shapes, which is what `entities` is for.
+
+Rows are found the way the platform found them: the sole array-valued
+property of the response object, mirroring `soleArrayProperty` in
+`internal/domain/rendering.go`, so inventory's `items` and attendance's
+`records` both work without either name appearing in the frontend.
+
+`detail`, `form` and `choice` are still placeholders naming their kind -
+Tasks 14 and 15. Verified in the browser against the running platform and a
+local model.
 
 ## What does not exist yet
 

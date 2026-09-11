@@ -5,12 +5,12 @@ _Keep three lists. Move items, do not duplicate them._
 ## In progress
 
 1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 10 and
-   12 are done; Task 13 draws a result as a table with its provenance.
+   12 and 13 are done; Task 14 draws a detail card and a form.
 
 ## Next
 
-1. Finish the slice, tasks 13 to 16: the table with its provenance and
-   expansion, the detail and form components, the choice component, and the
+1. Finish the slice, tasks 14 to 16: the detail and form components, the
+   choice component, and the
    end-to-end test. Then Task 11, the JSON planner behind the same
    `usecase.Planner` port - left until last because the slice is not vertical
    until the browser can draw what the platform already returns.
