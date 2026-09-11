@@ -402,6 +402,12 @@ func TestAskUserToolShape(t *testing.T) {
 	properties, ok := tool.InputSchema["properties"].(map[string]any)
 	require.True(t, ok)
 	assert.Contains(t, properties, "question")
+	assert.Contains(t, properties, "service")
+	assert.Contains(t, properties, "operationId")
 	assert.Contains(t, properties, "param")
 	assert.Contains(t, properties, "options")
+
+	assert.ElementsMatch(t, []string{"question", "service", "operationId", "param", "options"},
+		tool.InputSchema["required"], "service and operationId must be required: a param name alone "+
+			"is not unique across services")
 }

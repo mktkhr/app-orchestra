@@ -473,7 +473,7 @@ the stub with a real planner; anything else answers `kind: "none"`. `cmd/api`'s
 today - a fact this decision records precisely so it is not mistaken for
 intended product behaviour later.
 
-## 2026-09-11 ask_user's options come from the catalogue, never from Decision.Options; an unknown parameter is a 500, not a silent fallback
+## 2026-09-11 An ask offers the catalogue's values, never the model's
 
 **Context.** Task 9 (`docs/plans/orchestration.md`) has `Orchestrator.Plan`
 build a `kind: "ask"` result from a `DecisionAsk`, which carries `Question`,
@@ -536,3 +536,44 @@ fixture author writes two `PlanFixture` entries for one ask/answer pair - the
 bare `Query` and the `Query`+`Answers` combination - rather than one entry
 with conditional behaviour, which keeps the stub itself free of any decision
 logic beyond the lookup.
+
+## 2026-09-11 ask_user names the operation it was stuck on
+
+**Context.** Task 9's `ask_user(question, param, options)` did not say which
+operation it was standing in for, so `optionsForParam` resolved `param`
+against the whole catalogue by name alone - a linear search returning the
+first endpoint that declared an enum with that name. This does not collide
+today because inventory's only enum parameter is `status` and attendance's
+is `kind`, but the product is meant to grow to ten services and one to two
+hundred operations (`PRODUCT.md`), where `status` or `type` colliding across
+services is close to certain. A collision means a person is shown another
+service's options for a question about theirs - the wrong values, offered
+with a straight face.
+
+**Decision.** `ask_user`'s input schema gains `service` and `operationId`,
+both required, alongside the existing `question`, `param` and `options`
+(`services/platform/internal/usecase/tools.go`). `Decision` already carried
+`Service`/`OperationID` for `DecisionCall`; a `DecisionAsk` now populates the
+same two fields with the operation the model was stuck on. `Orchestrator.ask`
+looks that endpoint up with `catalog.Find(decision.Service,
+decision.OperationID)` first - an unknown pair is `ErrEndpointNotFound`, the
+same sentinel a bad `DecisionCall` already produces - and `optionsForParam`'s
+signature changes from `(catalog domain.Catalog, name string)` to
+`(endpoint *domain.Endpoint, name string)`: it now searches one endpoint's
+parameters and request body properties, never the catalogue as a whole. A
+parameter absent from that one endpoint's enums is still `ErrUnknownParam`.
+`Decision.Options` remains untrusted, unchanged from Task 9 - the fix is
+entirely about which endpoint `param` is resolved against, not about where
+the offered values come from. `strict: true` (D10) means `operationId` is
+not itself constrained to an enum of real operation ids the way a catalogue
+parameter is, but that is no looser than `service`/`operationId` already are
+on every other tool call: `catalog.Find` is exactly the existence check a
+`DecisionCall` already relies on, so a model naming a nonexistent operation
+fails the same way here as it always has.
+
+**Consequences.** An ask about one service's `status` can never surface
+another service's `status` values, however many services and operations the
+catalogue grows to hold. Every `ask_user` caller - the stub planner's table
+via `pkg/app.PlanFixture` (already had `Service`/`OperationID`, unused by an
+ask fixture until now) and, later, the real planner adapters of Task 10/11 -
+must supply the operation a `DecisionAsk` names, not only its parameter.

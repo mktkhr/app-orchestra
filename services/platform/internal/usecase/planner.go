@@ -32,7 +32,13 @@ type Answer struct {
 type Decision struct {
 	Kind DecisionKind
 
-	// Populated when Kind is DecisionCall.
+	// Populated when Kind is DecisionCall or DecisionAsk. For DecisionAsk,
+	// this is the operation the model was stuck on - the one it would have
+	// called instead of ask_user, had the parameter's value been clear -
+	// and it is what optionsForParam (orchestrator.go) uses to find the
+	// one endpoint decision.Param belongs to: a parameter name such as
+	// "status" or "type" is not unique across a catalogue of many
+	// services, so the operation must be named alongside it.
 	Service     string
 	OperationID string
 	Args        map[string]any

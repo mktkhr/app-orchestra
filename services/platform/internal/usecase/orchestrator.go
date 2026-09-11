@@ -68,14 +68,14 @@ var ErrInvalidArguments = errors.New("invalid arguments")
 // can distinguish "nothing fits" from "this isn't built yet".
 var ErrNotImplemented = errors.New("not implemented")
 
-// ErrUnknownParam is returned when a DecisionAsk names a parameter the
-// catalogue does not declare as an enum anywhere. A Decision is ultimately
-// produced by a model (docs/plans/orchestration.md Task 9), which can name
-// a parameter that does not exist or is not an enum, so a disambiguation
-// question is only ever answered from the catalogue's own declared
-// values (see optionsForParam) - never by trusting Decision.Options,
-// which the same model filled in and which may list values that do not
-// exist.
+// ErrUnknownParam is returned when a DecisionAsk names a parameter its own
+// (service, operationId) endpoint does not declare as an enum. A Decision
+// is ultimately produced by a model (docs/plans/orchestration.md Task 9),
+// which can name a parameter that does not exist or is not an enum on that
+// endpoint, so a disambiguation question is only ever answered from the
+// catalogue's own declared values for that one endpoint (see
+// optionsForParam) - never by trusting Decision.Options, which the same
+// model filled in and which may list values that do not exist.
 var ErrUnknownParam = errors.New("parameter not found in catalogue")
 
 // messageNoEndpoint is the message a ResultKindNone result carries: the
@@ -197,13 +197,27 @@ func (o *Orchestrator) call(ctx context.Context, decision *Decision) (Result, er
 // not the model's own Decision, is the source of truth for what a person
 // is offered to pick from.
 //
+// The endpoint is looked up from decision.Service and decision.OperationID
+// - the operation the model was stuck on when it reached for ask_user
+// instead - and decision.Param is only ever resolved against that one
+// endpoint. A parameter name such as "status" or "type" is not unique
+// across a catalogue of many services (docs/specs/orchestration.md, D11),
+// so searching the whole catalogue by name alone can surface another
+// service's enum entirely; naming the operation is what keeps the search
+// inside the one endpoint the question is actually about.
+//
 // decision is a pointer for the same reason call's is: golangci-lint's
 // gocritic hugeParam check on Decision's 112 bytes (see
 // harness/quality/go/golangci.yml).
 func (o *Orchestrator) ask(decision *Decision) (Result, error) {
-	options, ok := optionsForParam(o.catalog, decision.Param)
+	endpoint, ok := o.catalog.Find(decision.Service, decision.OperationID)
 	if !ok {
-		return Result{}, fmt.Errorf("%w: %q", ErrUnknownParam, decision.Param)
+		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, decision.Service, decision.OperationID)
+	}
+
+	options, ok := optionsForParam(&endpoint, decision.Param)
+	if !ok {
+		return Result{}, fmt.Errorf("%w: %q on %s/%s", ErrUnknownParam, decision.Param, decision.Service, decision.OperationID)
 	}
 
 	return Result{
@@ -214,33 +228,36 @@ func (o *Orchestrator) ask(decision *Decision) (Result, error) {
 	}, nil
 }
 
-// optionsForParam searches every endpoint's parameters and, for an unsafe
-// endpoint, its request body's own properties, for the first one named
-// name that declares an enum, and builds the options a person is offered
-// from that schema's Enum and EnumLabels.
+// optionsForParam searches one endpoint's parameters and, for an unsafe
+// endpoint, its request body's own properties, for the one named name that
+// declares an enum, and builds the options a person is offered from that
+// schema's Enum and EnumLabels.
 //
 // The catalogue is authoritative here rather than Decision.Options: a
 // Decision is ultimately produced by a model (docs/plans/orchestration.md
 // Task 9), which can name candidate values that are not real, so an ask
 // result must only ever offer values the catalogue itself declares for
-// that parameter. The second return value is false when no endpoint
-// declares name as an enum at all, which Plan reports as ErrUnknownParam
-// rather than guessing or falling back to the model's own list.
-func optionsForParam(catalog domain.Catalog, name string) ([]domain.Option, bool) {
-	for i := range catalog.Endpoints {
-		e := &catalog.Endpoints[i]
-
-		for j := range e.Parameters {
-			p := &e.Parameters[j]
-			if p.Name == name && len(p.Schema.Enum) > 0 {
-				return optionsFromSchema(&p.Schema), true
-			}
+// that parameter - and only for the one endpoint decision named, not
+// whichever endpoint elsewhere in the catalogue happens to share the
+// parameter's name. The second return value is false when this endpoint
+// does not declare name as an enum at all, which Plan reports as
+// ErrUnknownParam rather than guessing or falling back to the model's own
+// list.
+//
+// endpoint is a pointer for the same gocritic hugeParam reason as call's
+// and ask's decision parameter (domain.Endpoint is 136 bytes; see
+// harness/quality/go/golangci.yml).
+func optionsForParam(endpoint *domain.Endpoint, name string) ([]domain.Option, bool) {
+	for i := range endpoint.Parameters {
+		p := &endpoint.Parameters[i]
+		if p.Name == name && len(p.Schema.Enum) > 0 {
+			return optionsFromSchema(&p.Schema), true
 		}
+	}
 
-		if e.RequestBody != nil && e.RequestBody.Type == domain.SchemaTypeObject {
-			if schema, ok := e.RequestBody.Properties[name]; ok && len(schema.Enum) > 0 {
-				return optionsFromSchema(&schema), true
-			}
+	if endpoint.RequestBody != nil && endpoint.RequestBody.Type == domain.SchemaTypeObject {
+		if schema, ok := endpoint.RequestBody.Properties[name]; ok && len(schema.Enum) > 0 {
+			return optionsFromSchema(&schema), true
 		}
 	}
 

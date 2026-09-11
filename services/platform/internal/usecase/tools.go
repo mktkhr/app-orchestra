@@ -41,6 +41,18 @@ type Tool struct {
 const askUserDescription = "Call this when the question does not tell you which value to use for an " +
 	"enum parameter. It hands the choice back to the person instead of guessing."
 
+// askUserServiceDescription and askUserOperationIDDescription explain why
+// ask_user must name the operation it is standing in for: a parameter name
+// such as "status" or "type" is not unique across a catalogue of many
+// services, so naming the parameter alone is not enough to know which
+// endpoint's enum the person is being asked about.
+const (
+	askUserServiceDescription = "The service that owns the operation you were about to call before " +
+		"the parameter's value stopped you - the same service name that tool would have used."
+	askUserOperationIDDescription = "The operation id of the call you were about to make before the " +
+		"parameter's value stopped you - i.e. the tool you would have called instead of ask_user."
+)
+
 // AskUserTool is one further tool, always present, not derived from any
 // service's spec (docs/specs/orchestration.md, section 8): it lets the
 // model say "I cannot tell which value you mean" and hand the choice back
@@ -61,6 +73,14 @@ func AskUserTool() Tool {
 					keyType:        domain.SchemaTypeString,
 					keyDescription: "The question to show the person, in Japanese.",
 				},
+				"service": map[string]any{
+					keyType:        domain.SchemaTypeString,
+					keyDescription: askUserServiceDescription,
+				},
+				"operationId": map[string]any{
+					keyType:        domain.SchemaTypeString,
+					keyDescription: askUserOperationIDDescription,
+				},
 				"param": map[string]any{
 					keyType:        domain.SchemaTypeString,
 					keyDescription: "The name of the parameter the answer will fill in.",
@@ -78,7 +98,7 @@ func AskUserTool() Tool {
 					keyDescription: "The candidate values, each with its Japanese label, for the person to pick from.",
 				},
 			},
-			keyRequired: []string{"question", "param", "options"},
+			keyRequired: []string{"question", "service", "operationId", "param", "options"},
 		},
 		Strict: true,
 	}

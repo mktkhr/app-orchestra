@@ -173,9 +173,11 @@ func catalogWithStatusEnum() domain.Catalog {
 
 func TestPlanAskDecisionReturnsOptionsFromTheCatalogue(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{
-		Kind:     usecase.DecisionAsk,
-		Question: "どのステータスですか？",
-		Param:    "status",
+		Kind:        usecase.DecisionAsk,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Question:    "どのステータスですか？",
+		Param:       "status",
 		// The catalogue, not this fictitious option a model might have
 		// invented, must win: see optionsForParam.
 		Options: []domain.Option{{Value: "bogus", Label: "でたらめ"}},
@@ -208,7 +210,9 @@ func TestPlanAskDecisionFillsInAMissingLabelDefensively(t *testing.T) {
 		},
 	}
 
-	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionAsk, Param: "status"}}
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "inventory", OperationID: "ListInventoryItems", Param: "status",
+	}}
 	orchestrator := usecase.NewOrchestrator(c, planner, &fakeInvoker{})
 
 	result, err := orchestrator.Plan(t.Context(), "在庫の一覧を見せて", nil)
@@ -218,7 +222,9 @@ func TestPlanAskDecisionFillsInAMissingLabelDefensively(t *testing.T) {
 }
 
 func TestPlanAskDecisionForAnUnknownParamFails(t *testing.T) {
-	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionAsk, Param: "no-such-param"}}
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "inventory", OperationID: "ListInventoryItems", Param: "no-such-param",
+	}}
 	invoker := &fakeInvoker{}
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker)
@@ -228,6 +234,93 @@ func TestPlanAskDecisionForAnUnknownParamFails(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrUnknownParam)
 	assert.Zero(t, invoker.calls)
+}
+
+func TestPlanAskDecisionForAnUnknownEndpointFails(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "inventory", OperationID: "NoSuchOperation", Param: "status",
+	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker)
+
+	_, err := orchestrator.Plan(t.Context(), "検品保留の在庫を見せて", nil)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
+	assert.Zero(t, invoker.calls)
+}
+
+// TestPlanAskDecisionResolvesTheSameParamNameOnItsOwnService drives the
+// design hole this fix closes: "status" is not unique across a catalogue
+// of many services. Two endpoints, on two different services, each
+// declare a "status" enum parameter with disjoint values; an ask decision
+// naming one service's operation must only ever offer that service's
+// values, never the other service's, even though the parameter name alone
+// cannot tell them apart.
+func TestPlanAskDecisionResolvesTheSameParamNameOnItsOwnService(t *testing.T) {
+	catalog := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "ListInventoryItems",
+			Method:      domain.MethodGet,
+			Path:        "/api/inventory/items",
+			Response:    &domain.Schema{Type: domain.SchemaTypeObject},
+			Parameters: []domain.Parameter{{
+				Name: "status",
+				Schema: domain.Schema{
+					Type:       domain.SchemaTypeString,
+					Enum:       []string{"allocated", "quarantined"},
+					EnumLabels: map[string]string{"allocated": "引当済", "quarantined": "検品保留"},
+				},
+			}},
+		},
+		{
+			Service:     "attendance",
+			OperationID: "ListAttendanceRecords",
+			Method:      domain.MethodGet,
+			Path:        "/api/attendance/records",
+			Response:    &domain.Schema{Type: domain.SchemaTypeObject},
+			Parameters: []domain.Parameter{{
+				Name: "status",
+				Schema: domain.Schema{
+					Type:       domain.SchemaTypeString,
+					Enum:       []string{"present", "absent"},
+					EnumLabels: map[string]string{"present": "出勤", "absent": "欠勤"},
+				},
+			}},
+		},
+	}}
+
+	invoker := &fakeInvoker{}
+
+	inventoryPlanner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "inventory", OperationID: "ListInventoryItems",
+		Question: "どのステータスですか？", Param: "status",
+	}}
+	inventoryOrchestrator := usecase.NewOrchestrator(catalog, inventoryPlanner, invoker)
+
+	inventoryResult, err := inventoryOrchestrator.Plan(t.Context(), "在庫のステータスは？", nil)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []domain.Option{
+		{Value: "allocated", Label: "引当済"},
+		{Value: "quarantined", Label: "検品保留"},
+	}, inventoryResult.Options, "an ask naming the inventory operation must only offer inventory's own values")
+
+	attendancePlanner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "attendance", OperationID: "ListAttendanceRecords",
+		Question: "どのステータスですか？", Param: "status",
+	}}
+	attendanceOrchestrator := usecase.NewOrchestrator(catalog, attendancePlanner, invoker)
+
+	attendanceResult, err := attendanceOrchestrator.Plan(t.Context(), "勤怠のステータスは？", nil)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []domain.Option{
+		{Value: "present", Label: "出勤"},
+		{Value: "absent", Label: "欠勤"},
+	}, attendanceResult.Options, "an ask naming the attendance operation must only offer attendance's own values")
+
+	assert.Zero(t, invoker.calls, "an ask decision must never call a service")
 }
 
 func TestPlanCallToUnknownEndpointFails(t *testing.T) {

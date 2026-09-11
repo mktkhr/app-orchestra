@@ -92,10 +92,15 @@ call nothing at all) and `DecisionNone` (`kind: "none"` with a fixed Japanese
 message). `DecisionAsk` (Task 9) is now built too: `Orchestrator.ask` renders
 `kind: "ask"` carrying the question, the parameter name and its options - never
 from `Decision.Options` directly. Because a `Decision` is ultimately produced
-by a model, its own list of candidate values cannot be trusted to exist;
-`optionsForParam` instead searches the catalogue's own endpoints for a
-parameter or request body property named `decision.Param` that declares an
-enum, and builds the options from that schema's `Enum` and `EnumLabels`. A
+by a model, its own list of candidate values cannot be trusted to exist; `ask`
+first resolves `decision.Service`/`decision.OperationID` against the
+catalogue (`ErrEndpointNotFound` if that pair does not exist - `ask_user`
+names its operation for exactly this reason, DECISIONS.md 2026-09-11), then
+`optionsForParam` searches only that one endpoint's parameters and request
+body properties for one named `decision.Param` that declares an enum, and
+builds the options from that schema's `Enum` and `EnumLabels`. Resolving
+`param` within its own endpoint, not the whole catalogue, is what keeps a
+parameter name such as `status` from colliding across services. A
 param the catalogue does not recognise as an enum returns
 `usecase.ErrUnknownParam` (a 500) rather than falling back to the model's own
 list. A `DecisionKind` the switch does not recognise at all still returns

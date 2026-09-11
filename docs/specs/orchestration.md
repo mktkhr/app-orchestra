@@ -147,8 +147,15 @@ the answer against the endpoint's parameter schema itself and retries once.
 `ask_user` is one further tool, always present, not derived from any spec:
 
 ```
-ask_user(question: string, param: string, options: [{ value, label }])
+ask_user(question: string, service: string, operationId: string, param: string, options: [{ value, label }])
 ```
+
+`service` and `operationId` name the operation the model was stuck on - the
+one it would have called instead of `ask_user`, had the parameter's value
+been clear. They are required because a parameter name such as `status` or
+`type` is not unique across a catalogue of many services: without naming the
+operation, resolving `param` against the catalogue could surface another
+service's enum entirely.
 
 ## 9. Error handling
 

@@ -41,12 +41,15 @@ type Answer struct {
 // today - see defaultPlanFixtures, which New falls back to when
 // PlanFixtures is empty.
 //
-// Ask, when true, builds a DecisionAsk carrying Question and Param instead
-// of a call; Service, OperationID and Args are unused for it. The
-// candidate options themselves are never set here - Orchestrator.Plan
-// looks them up from the catalogue (docs/plans/orchestration.md, Task 9),
-// not from the fixture - so a fixture cannot hand out an option the
-// catalogue would not.
+// Ask, when true, builds a DecisionAsk carrying Question and Param, plus
+// Service and OperationID naming the operation the ask stands in for -
+// Args is unused for it. Service and OperationID matter for an ask
+// fixture, not just a call one: they are how Orchestrator.ask finds the
+// one endpoint Param belongs to, since a parameter name such as "status"
+// is not unique across services. The candidate options themselves are
+// never set here - Orchestrator.Plan looks them up from that endpoint
+// (docs/plans/orchestration.md, Task 9), not from the fixture - so a
+// fixture cannot hand out an option the catalogue would not.
 type PlanFixture struct {
 	Query   string
 	Answers []Answer
@@ -153,7 +156,13 @@ func toStubTable(fixtures []PlanFixture) map[stubplanner.Key]usecase.Decision {
 // ask fixture carries no options of its own.
 func toDecision(f *PlanFixture) usecase.Decision {
 	if f.Ask {
-		return usecase.Decision{Kind: usecase.DecisionAsk, Question: f.Question, Param: f.Param}
+		return usecase.Decision{
+			Kind:        usecase.DecisionAsk,
+			Service:     f.Service,
+			OperationID: f.OperationID,
+			Question:    f.Question,
+			Param:       f.Param,
+		}
 	}
 
 	return usecase.Decision{
@@ -185,13 +194,14 @@ func planFixtures(configured []PlanFixture) []PlanFixture {
 	return defaultPlanFixtures()
 }
 
-// serviceInventory and paramStatus name the inventory service and its
-// "status" parameter, each repeated across several fixtures below
-// (goconst, part of the fixed harness policy, wants a repeated literal
-// named once).
+// serviceInventory, opListInventoryItems and paramStatus name the inventory
+// service, its list operation and its "status" parameter, each repeated
+// across several fixtures below (goconst, part of the fixed harness
+// policy, wants a repeated literal named once).
 const (
-	serviceInventory = "inventory"
-	paramStatus      = "status"
+	serviceInventory     = "inventory"
+	opListInventoryItems = "ListInventoryItems"
+	paramStatus          = "status"
 )
 
 // defaultPlanFixtures is the demo table the running platform answers with
@@ -206,7 +216,7 @@ func defaultPlanFixtures() []PlanFixture {
 		{
 			Query:       "在庫の一覧を見せて",
 			Service:     serviceInventory,
-			OperationID: "ListInventoryItems",
+			OperationID: opListInventoryItems,
 		},
 		{
 			Query:       "勤怠記録の一覧を見せて",
@@ -223,17 +233,22 @@ func defaultPlanFixtures() []PlanFixture {
 			// "破損" (damaged) names no ItemStatus value: a disambiguation
 			// question comes back naming the "status" parameter, with its
 			// options built from the inventory catalogue's own enum (D11,
-			// docs/specs/orchestration.md), not listed here.
-			Query:    "破損した在庫を見せて",
-			Ask:      true,
-			Question: "「破損」に近いステータスはどれですか？",
-			Param:    paramStatus,
+			// docs/specs/orchestration.md), not listed here. Service and
+			// OperationID name the operation the ask stands in for -
+			// ListInventoryItems's own "status" parameter - since "status"
+			// alone is not unique across services.
+			Query:       "破損した在庫を見せて",
+			Ask:         true,
+			Question:    "「破損」に近いステータスはどれですか？",
+			Param:       paramStatus,
+			Service:     serviceInventory,
+			OperationID: opListInventoryItems,
 		},
 		{
 			Query:       "破損した在庫を見せて",
 			Answers:     []Answer{{Param: paramStatus, Value: "quarantined"}},
 			Service:     serviceInventory,
-			OperationID: "ListInventoryItems",
+			OperationID: opListInventoryItems,
 			Args:        map[string]any{paramStatus: "quarantined"},
 		},
 	}

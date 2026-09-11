@@ -341,8 +341,13 @@ type Tool struct {
 }
 
 func ToolsFor(c domain.Catalog) []Tool   // one per endpoint, plus AskUserTool
-var AskUserTool Tool                      // ask_user(question, param, options)
+var AskUserTool Tool                      // ask_user(question, service, operationId, param, options)
 ```
+
+`service` and `operationId` are required alongside `param`: a parameter name
+such as `status` is not unique across services, so `ask_user` must name the
+operation it stands in for - the one the model would have called instead -
+for the catalogue lookup to resolve to the right endpoint's enum.
 
 An enum parameter keeps its `enum` list in the JSON Schema and appends its
 labels to that property's description as `allocated=引当済 / staged=出荷準備完了`.

@@ -323,7 +323,14 @@ func TestPlanAskDecisionListsCatalogueOptionsAndCallsNoService(t *testing.T) {
 	handler, err := app.New(app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 		PlanFixtures: []app.PlanFixture{
-			{Query: "破損した在庫を見せて", Ask: true, Question: "どのステータスですか？", Param: "status"},
+			{
+				Query:       "破損した在庫を見せて",
+				Ask:         true,
+				Question:    "どのステータスですか？",
+				Param:       "status",
+				Service:     "inventory",
+				OperationID: "ListInventoryItems",
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -358,7 +365,14 @@ func TestPlanResubmittedWithAnswersReachesThePlannerAndProducesAResult(t *testin
 	handler, err := app.New(app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 		PlanFixtures: []app.PlanFixture{
-			{Query: "破損した在庫を見せて", Ask: true, Question: "どのステータスですか？", Param: "status"},
+			{
+				Query:       "破損した在庫を見せて",
+				Ask:         true,
+				Question:    "どのステータスですか？",
+				Param:       "status",
+				Service:     "inventory",
+				OperationID: "ListInventoryItems",
+			},
 			{
 				Query:       "破損した在庫を見せて",
 				Answers:     []app.Answer{{Param: "status", Value: "quarantined"}},
