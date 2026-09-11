@@ -17,6 +17,8 @@ paths:
       summary: Return this service's own OpenAPI contract.
       tags:
         - system
+      # Deliberately unmarked: the platform's own contract-fetching route,
+      # never shown to a model. Also exercises the default-false case.
       responses:
         "200":
           description: The service's OpenAPI document, as YAML.
@@ -30,6 +32,7 @@ paths:
       summary: List widgets, optionally filtered by status.
       tags:
         - widgets
+      x-orchestra-expose: true
       parameters:
         - name: status
           in: query
@@ -49,6 +52,7 @@ paths:
       summary: Create a widget.
       tags:
         - widgets
+      x-orchestra-expose: true
       requestBody:
         required: true
         content:
@@ -68,6 +72,7 @@ paths:
       summary: Get one widget by id.
       tags:
         - widgets
+      x-orchestra-expose: true
       x-ui-hint:
         component: detail
       parameters:
@@ -80,6 +85,64 @@ paths:
       responses:
         "200":
           description: The requested widget.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+  /widgets/export:
+    get:
+      operationId: exportWidgets
+      summary: Export every widget as a YAML dump.
+      tags:
+        - widgets
+      # Exposed, but answers YAML rather than JSON — exercises
+      # convertResponse's nil-schema path for an operation the catalogue
+      # actually carries (unlike getSpec, which never reaches it).
+      x-orchestra-expose: true
+      responses:
+        "200":
+          description: A YAML dump of every widget.
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /widgets/hidden:
+    get:
+      operationId: getHiddenWidget
+      summary: Not marked at all; must not reach the catalogue.
+      tags:
+        - widgets
+      responses:
+        "200":
+          description: The hidden widget.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+  /widgets/off:
+    get:
+      operationId: getOffWidget
+      summary: Explicitly marked false; must not reach the catalogue.
+      tags:
+        - widgets
+      x-orchestra-expose: false
+      responses:
+        "200":
+          description: The off widget.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+  /widgets/bad:
+    get:
+      operationId: getBadWidget
+      summary: Marked with a non-boolean value; must not reach the catalogue.
+      tags:
+        - widgets
+      x-orchestra-expose: "true"
+      responses:
+        "200":
+          description: The bad widget.
           content:
             application/json:
               schema:

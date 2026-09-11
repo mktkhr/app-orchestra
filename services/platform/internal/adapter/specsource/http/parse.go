@@ -13,17 +13,20 @@ import (
 // The vendor extensions the catalogue reads out of a service's contract.
 // x-enum-labels carries the Japanese label for each enum value (the only
 // route by which the model learns it); x-ui-hint.component overrides the
-// component the rendering rule would otherwise pick.
+// component the rendering rule would otherwise pick; x-orchestra-expose
+// marks an operation as one the platform may show to the model and answer
+// at /api/invoke (see extExpose below).
 const (
 	extEnumLabels = "x-enum-labels"
 	extUIHint     = "x-ui-hint"
+	extExpose     = "x-orchestra-expose"
 )
 
 // jsonMediaType is the only content type the catalogue looks for in a
-// request body or response: every operation in these contracts speaks JSON
-// except GET /openapi.yaml, which speaks YAML and therefore has no schema a
-// component can render — parseSpec includes that operation in the
-// catalogue with a nil Response, which is exactly what it is.
+// request body or response: every operation these contracts expose speaks
+// JSON. GET /openapi.yaml speaks YAML instead, which is one reason (not
+// having a JSON schema to render) it is never marked x-orchestra-expose,
+// and so never reaches parseSpec's endpoints slice at all.
 const jsonMediaType = "application/json"
 
 // parseSpec parses one service's OpenAPI document and converts every
@@ -50,6 +53,10 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 
 		for _, method := range sortedMethods(item.Operations()) {
 			op := item.Operations()[method]
+
+			if !isExposed(op.Extensions) {
+				continue
+			}
 
 			endpoints = append(endpoints, domain.Endpoint{
 				Service:     service,
@@ -243,6 +250,23 @@ func toStringMap(v any) map[string]string {
 	}
 
 	return out
+}
+
+// isExposed reads x-orchestra-expose off an operation's extensions. Only
+// `true` counts as exposed: absent, `false`, or any non-boolean value (a
+// typo such as a quoted `"true"`) all mean the operation stays out of the
+// catalogue. The default is closed rather than open on purpose — a service
+// the operator has not yet reviewed is invisible until someone marks an
+// operation, not exposed until someone remembers to hide it.
+func isExposed(extensions map[string]any) bool {
+	raw, ok := extensions[extExpose]
+	if !ok {
+		return false
+	}
+
+	exposed, ok := raw.(bool)
+
+	return ok && exposed
 }
 
 // uiHint reads x-ui-hint.component off an operation's extensions.

@@ -807,3 +807,43 @@ form submission is indistinguishable from one `/api/plan` produced directly
 new property on these two contracts needs a `title` to show up correctly on
 screen; nothing enforces that today beyond this file recording it as the
 convention.
+
+## 2026-09-11 x-orchestra-expose gates the catalogue; ToolsFor drops its shape-based filter
+
+**Context.** Every operation a service's contract declared became a tool:
+`usecase.ToolsFor` excluded one only when its shape had neither a Response
+nor a RequestBody schema, which happened to catch `GET /openapi.yaml` but
+was never a rule about what should reach the model — a health check, an
+internal admin call, a batch trigger, a webhook receiver, all had a
+renderable shape and all passed straight through. `/api/invoke` read the
+same catalogue `ToolsFor` built tools from, but nothing tied the two
+together: an exclusion inside `ToolsFor` alone would have left `/api/invoke`
+still willing to call an operation the model was never offered — a person
+with a browser console could reach it directly, making the mark decorative.
+
+**Decision.** A new vendor extension, `x-orchestra-expose` (boolean,
+default `false`), marks an operation as one the platform may show the model
+and answer at `/api/invoke`. It is read exactly once, in
+`internal/adapter/specsource/http.parseSpec`, as `domain.Endpoint`s are
+built from a service's spec — before `ToolsFor` and `Catalog.Find` both read
+`domain.Catalog.Endpoints`, not after either of them. An unexposed operation
+is not filtered later; it is simply never in the catalogue, so
+`ErrEndpointNotFound` (400) is what `/api/invoke` returns for it, identical
+to an operation id that does not exist. The default is `false`, not `true`:
+a service nobody has reviewed yet should be invisible by construction, not
+exposed until someone remembers to hide the parts that should not be. Any
+value other than the literal boolean `true` — absent, `false`, a quoted
+`"true"` — counts as unexposed; a typo fails closed. `ToolsFor`'s
+shape-based exclusion is deleted along with this: once exposure is a
+declared intent, an operation marked exposed that nothing can render is a
+spec mistake, and silently dropping it would hide that mistake instead of
+surfacing it. `harness/guard/exposed-ops.sh` fails the build on exactly that
+case, and on a service that marks nothing exposed at all.
+
+**Consequences.** `services/inventory/api/openapi.yaml` and
+`services/attendance/api/openapi.yaml` mark their three catalogue operations
+(list, create, get) `x-orchestra-expose: true`; `GET /openapi.yaml` in both,
+and the platform's own contract (never fetched by `specsource/http` at
+all — see `harness/guard/exposed-ops.sh`), carry no mark. Adding an
+operation to either service now defaults to invisible until someone opts it
+in, which is the point: `docs/specs/orchestration.md` D13, section 8.

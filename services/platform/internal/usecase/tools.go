@@ -106,28 +106,25 @@ func AskUserTool() Tool {
 }
 
 // ToolsFor converts a catalogue into the tool definitions a planner offers
-// the model: one per endpoint that can produce something a component can
-// render, plus AskUserTool.
+// the model: one per endpoint the catalogue carries, plus AskUserTool.
 //
-// An endpoint with neither a Response nor a RequestBody schema is excluded
-// rather than turned into a tool. This is a property of the endpoint, not a
-// name check against an operation id such as "GetInventorySpec": an
-// endpoint with no
-// response schema and no request body is, by construction, one Render (see
-// internal/domain/rendering.go) can never draw a component for, because
-// Render's rules all key off one of those two schemas. The one such
-// endpoint every generated service carries is `GET /openapi.yaml`, which
-// returns its own contract as raw YAML rather than a domain.Schema — asking
-// the model to choose it would be offering a tool whose result the browser
-// could never show.
+// Every endpoint here is already one the operator marked
+// x-orchestra-expose: true (internal/adapter/specsource/http.parseSpec) —
+// that is the only filter the catalogue applies, and it is applied once,
+// before ToolsFor and Catalog.Find both read the same c.Endpoints, so the
+// tool list offered to the model and the operations /api/invoke will
+// answer can never disagree (docs/specs/orchestration.md, section 8;
+// DECISIONS.md). ToolsFor itself no longer excludes an endpoint by the
+// shape of its schemas: an exposed endpoint with neither a Response nor a
+// RequestBody schema — one Render (internal/domain/rendering.go) could
+// never draw a component for — is a mistake in the spec, not a case to
+// silently drop. harness/guard/exposed-ops.sh catches it before it reaches
+// here.
 func ToolsFor(c domain.Catalog) []Tool {
 	tools := make([]Tool, 0, len(c.Endpoints)+1)
 
 	for i := range c.Endpoints {
 		e := &c.Endpoints[i]
-		if e.Response == nil && e.RequestBody == nil {
-			continue
-		}
 
 		tools = append(tools, Tool{
 			Name:        e.OperationID,

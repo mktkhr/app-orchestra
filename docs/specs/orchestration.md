@@ -22,6 +22,7 @@ it. Nothing about the rendering is decided by a model.
 | **D10** | Enum parameters carry Japanese labels (`x-enum-labels`) and are sent to the model with `strict: true`, so a value outside the enum cannot be returned at all.                                                                                                                                                                                                                                               |
 | **D11** | An `ask_user` tool lets the model say "I cannot tell which value you mean" and hand the choice back to the person.                                                                                                                                                                                                                                                                                          |
 | **D12** | The shell is `AppBar` + `Drawer` + `List` from Material UI directly. Results render inline in the conversation; a table can be expanded to a full-screen modal. Every result carries its provenance.                                                                                                                                                                                                        |
+| **D13** | An operation reaches the model only when its contract marks it `x-orchestra-expose: true` (default off). The mark is read once, in `specsource/http`, as the catalogue is built - not later, in `ToolsFor` or at `/api/invoke` - so the tool list and the operations `/api/invoke` will answer can never disagree, and a crafted POST cannot reach an operation the model was never offered.                |
 
 ## 3. Architecture
 
@@ -45,8 +46,9 @@ service under `services/`.
 ## 4. Data flow
 
 1. **Startup.** The platform GETs `/openapi.yaml` from each configured service,
-   builds the `Catalog`, and converts every operation into one tool definition.
-   Enum parameters carry their `x-enum-labels` in the parameter description.
+   builds the `Catalog` from only the operations marked `x-orchestra-expose`
+   (D13), and converts each into one tool definition. Enum parameters carry
+   their `x-enum-labels` in the parameter description.
 2. The browser posts the question to `POST /api/plan`.
 3. **One LLM call.** Tools (the whole catalogue, cache-friendly because it sits
    at the front of the prompt) plus the question, with `strict: true`.
@@ -146,6 +148,22 @@ provenance header shared by all four.
 
 ## 8. Catalogue and tool definitions
 
+A service's operation only reaches the catalogue at all when its contract
+marks it `x-orchestra-expose: true` (default off, D13); everything else -
+a health check, an internal admin call, a batch trigger, `GET
+/openapi.yaml` itself - is dropped in `specsource/http` before a
+`domain.Endpoint` for it ever exists. This is the only filter: it runs
+once, at the same place `Catalog.Find` and `ToolsFor` both read from
+afterwards, so the tool list offered to the model and the operations
+`/api/invoke` will actually answer cannot drift apart. Filtering later
+(inside `ToolsFor`, or inside the `/api/invoke` handler) would leave the
+mark decorative - a POST straight to `/api/invoke` would still reach an
+operation the model was never shown. An operation marked exposed that no
+component could ever render (no request body, no 2xx JSON response) is a
+mistake in the spec, not a shape to drop quietly; `harness/guard/
+exposed-ops.sh` fails the build on it, and on a service that exposes
+nothing at all.
+
 One operation becomes one tool. The tool name is the operation id; the
 description is the operation summary; the input schema is built from the
 parameters and the request body.
@@ -236,3 +254,6 @@ they belong: `AC-B-101` to `AC-B-106` for the platform, `AC-F-101` to
   of a QUERY operation passes it.
 - A Redocly rule that fails a spec where an `enum` has no `x-enum-labels`, so
   the labels the model depends on cannot be forgotten.
+- A guard (`harness/guard/exposed-ops.sh`) that fails a spec where an
+  `x-orchestra-expose: true` operation cannot be rendered by any component,
+  or a service marks nothing exposed at all.

@@ -48,12 +48,18 @@ means `table`, an object means `detail`.
 
 **The catalogue**, `services/platform/internal/adapter/specsource/http` behind
 the `usecase.SpecSource` port. It reads `ORCHESTRA_SERVICES` (`name=url` pairs),
-fetches each service's `/openapi.yaml`, and converts every operation into a
-`domain.Endpoint`, carrying `x-enum-labels` through to `Schema.EnumLabels` -
-the only route by which the Japanese label for an enum value reaches the model.
-A service that cannot be reached fails the whole fetch rather than yielding a
-partial catalogue. Verified against both services running: eight endpoints, both
-enums labelled, every component the rule picks correct.
+fetches each service's `/openapi.yaml`, and converts every operation marked
+`x-orchestra-expose: true` (default off - an unmarked, falsely-marked, or
+non-boolean-marked operation is dropped, not carried through as something
+`ToolsFor` might later exclude) into a `domain.Endpoint`, carrying
+`x-enum-labels` through to `Schema.EnumLabels` - the only route by which the
+Japanese label for an enum value reaches the model. A service that cannot be
+reached fails the whole fetch rather than yielding a partial catalogue.
+Verified against both services running: six exposed endpoints (both services'
+`GET /openapi.yaml` unmarked and excluded), both enums labelled, every
+component the rule picks correct; a POST to `/api/invoke` naming an unexposed
+operation id (`GetInventorySpec`) returns 400, identical to an operation id
+that does not exist.
 
 **The harness**, imported from takamai and renamed (`DECISIONS.md`,
 2026-09-10). `harness/` holds all of it - `quality/` (policy), `guard/`
@@ -61,20 +67,26 @@ enums labelled, every component the rule picks correct.
 guard, hook and CI job discovers services rather than naming them: a service is
 a directory under `services/` with a `go.mod`, and nothing declares the list.
 
-Three guards were added for this design: `guard-generated-ops` fails when a
+Four guards were added for this design: `guard-generated-ops` fails when a
 generated file is missing an operation id its spec declares (oapi-codegen drops
 OpenAPI 3.2 `query` operations silently), `guard-operation-ids` fails when two
 services claim the same operation id (a tool call carries only the name, so the
-name has to mean one thing), and a Redocly plugin fails a spec whose `enum`
+name has to mean one thing), `guard-exposed-ops` fails when an
+`x-orchestra-expose: true` operation cannot be rendered by any component or a
+service exposes nothing at all, and a Redocly plugin fails a spec whose `enum`
 carries no `x-enum-labels`.
 
 **Tool definitions**, `services/platform/internal/usecase/tools.go`. `ToolsFor`
 turns a `domain.Catalog` into one `Tool` (a plain JSON-Schema map, spec-agnostic
 so both the tool-calling and JSON planners of Task 10/11 can render it their
-own way) per endpoint that has a request body or a response schema, plus the
-fixed `AskUserTool`. An enum parameter's Japanese labels are appended to its
-property description (`allocated=引当済 / staged=出荷準備完了`) - the only route
-by which they reach a model.
+own way) per endpoint the catalogue carries, plus the fixed `AskUserTool`.
+It no longer excludes an endpoint by the shape of its schemas - that filter
+moved upstream, into `specsource/http.parseSpec`'s `x-orchestra-expose` check
+(`DECISIONS.md`, 2026-09-11), which is also why `ToolsFor` and `/api/invoke`
+(`Catalog.Find`) can never disagree about which operations exist. An enum
+parameter's Japanese labels are appended to its property description
+(`allocated=引当済 / staged=出荷準備完了`) - the only route by which they reach a
+model.
 
 **The safe path of `/api/plan`.** `services/platform/internal/usecase/planner.go`
 and `orchestrator.go` add the ports and types Task 6 calls for:

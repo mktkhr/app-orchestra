@@ -41,6 +41,7 @@ paths:
         query parameter narrows the result to items in that status.
       tags:
         - items
+      x-orchestra-expose: true
       parameters:
         - name: status
           in: query
@@ -63,6 +64,7 @@ paths:
         assigned by the service.
       tags:
         - items
+      x-orchestra-expose: true
       requestBody:
         required: true
         content:
@@ -83,6 +85,7 @@ paths:
       description: Returns a single stock item, or 404 when the id is unknown.
       tags:
         - items
+      x-orchestra-expose: true
       parameters:
         - name: id
           in: path

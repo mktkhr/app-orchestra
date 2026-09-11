@@ -41,6 +41,7 @@ paths:
         kind query parameter narrows the result to records of that kind.
       tags:
         - records
+      x-orchestra-expose: true
       parameters:
         - name: kind
           in: query
@@ -63,6 +64,7 @@ paths:
         is assigned by the service.
       tags:
         - records
+      x-orchestra-expose: true
       requestBody:
         required: true
         content:
@@ -83,6 +85,7 @@ paths:
       description: Returns a single attendance record, or 404 when the id is unknown.
       tags:
         - records
+      x-orchestra-expose: true
       parameters:
         - name: id
           in: path

@@ -42,7 +42,7 @@ GENERATED := $(addsuffix /internal/adapter/openapi/openapi.gen.go,$(SERVICE_DIRS
              $(addsuffix .d.ts,$(addprefix web/src/shared/api/gen/,$(SERVICES)))
 
 .PHONY: help setup tools hooks clean services \
-        generate generate-services generate-web api-lint guard-generated guard-generated-ops guard-operation-ids \
+        generate generate-services generate-web api-lint guard-generated guard-generated-ops guard-operation-ids guard-exposed-ops \
         fmt fmt-check lint test build check acceptance guard \
         services-fmt services-fmt-check services-lint services-test services-build service-run dev-platform \
         web-fmt web-fmt-check web-lint web-typecheck web-test web-build web-dev \
@@ -94,7 +94,7 @@ check: fmt-check lint test build acceptance ## Every quality gate in one target:
 
 acceptance: build acceptance-services acceptance-web acceptance-e2e acceptance-browser guard-browser ## Executable acceptance criteria (integration, e2e, browser); part of make check
 
-guard: guard-generated guard-generated-ops guard-operation-ids guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication ## Contract freshness, architecture, suppression, file-length and design-system guards
+guard: guard-generated guard-generated-ops guard-operation-ids guard-exposed-ops guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication ## Contract freshness, architecture, suppression, file-length and design-system guards
 
 guard-browser: guard-a11y guard-layout ## Browser-driven quality gates (needs make build, make browsers)
 
@@ -130,6 +130,9 @@ guard-generated-ops: ## Fail when a generated artifact is missing an operationId
 
 guard-operation-ids: ## Fail when two services declare the same operationId (a tool call carries only the name, so it must name one operation)
 	$(Q) guard-operation-ids sh harness/guard/operation-ids.sh
+
+guard-exposed-ops: ## Fail when an x-orchestra-expose: true operation is unrenderable, or a service exposes nothing
+	$(Q) guard-exposed-ops sh harness/guard/exposed-ops.sh
 
 ## ---------------------------------------------------------------- services (Go)
 services-fmt: $(GOLANGCI_LINT) ## gofmt / goimports / gci in place, every Go module

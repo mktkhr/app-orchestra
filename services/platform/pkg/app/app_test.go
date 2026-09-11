@@ -42,6 +42,7 @@ paths:
     get:
       operationId: ListWidgets
       summary: List widgets.
+      x-orchestra-expose: true
       responses:
         "200":
           description: ok

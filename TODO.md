@@ -9,24 +9,10 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## Next
 
-1. An endpoint reaches the model only when its contract says so. Today every
-   operation a service declares becomes a tool, and `ToolsFor` drops one only
-   when its shape says nothing can draw it - which catches the spec-serving
-   endpoint by accident, not a health check, an admin call or a batch trigger
-   by intent. Add a vendor extension (`x-orchestra-expose`, default off) and
-   filter on it in `internal/adapter/specsource/http` as the catalogue is
-   built, so the tool list and `/api/invoke` cannot disagree: an unexposed
-   operation simply is not in the catalogue, and `Catalog.Find` misses it.
-
-   Filtering anywhere later leaves the mark decorative - a crafted POST to
-   `/api/invoke` reaches an operation the model was never offered.
-
-   Then the shape-based exclusion in `ToolsFor` can go: an operation marked
-   for exposure that nothing can draw is a mistake in the spec, and a guard
-   should fail on it rather than the platform dropping it quietly. The same
-   guard is where `title` becomes enforceable, since only exposed operations
-   need one.
-
+1. `harness/guard/exposed-ops.sh` is the natural place to also require
+   `title` on every property an exposed operation's schema describes, since
+   only an exposed operation's fields are ever shown on screen. Deliberately
+   left for a separate decision (`DECISIONS.md`, 2026-09-11).
 1. Finish the slice, tasks 15 and 16: the choice component and the
    end-to-end test. Then Task 11, the JSON planner behind the same
    `usecase.Planner` port - left until last because the slice is not vertical
@@ -86,3 +72,14 @@ _Keep three lists. Move items, do not duplicate them._
   deleted `defaultPlanFixtures` now that a real planner exists. Measured four
   local models against the same tool definitions and set `qwen3.5-9b-q8` as
   the default (`DECISIONS.md`, three entries, 2026-09-11).
+- Added the public mark: `x-orchestra-expose` (default off), read once in
+  `internal/adapter/specsource/http.parseSpec` as the catalogue is built, so
+  `ToolsFor` and `/api/invoke` read the same filtered set and can never
+  disagree. Deleted `ToolsFor`'s shape-based exclusion now that exposure is
+  a declared intent. Marked `listInventoryItems`/`createInventoryItem`/
+  `getInventoryItem` and their attendance equivalents exposed; left both
+  services' `GET /openapi.yaml` and the platform's own contract unmarked.
+  Added `harness/guard/exposed-ops.sh` (`make guard-exposed-ops`), which
+  fails on an exposed operation nothing can render, or a service exposing
+  nothing at all (`DECISIONS.md`, 2026-09-11;
+  `docs/specs/orchestration.md` D13).

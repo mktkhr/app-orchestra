@@ -28,6 +28,7 @@ paths:
     get:
       operationId: ListInventoryItems
       summary: List stock items.
+      x-orchestra-expose: true
       parameters:
         - name: status
           in: query
@@ -63,6 +64,7 @@ const inventorySpecWithCreate = inventorySpec + `
     post:
       operationId: CreateInventoryItem
       summary: Create a stock item.
+      x-orchestra-expose: true
       requestBody:
         required: true
         content:
@@ -86,6 +88,25 @@ const inventorySpecWithCreate = inventorySpec + `
                 type: object
 `
 
+// inventorySpecWithUnexposedOp is inventorySpecWithCreate plus one further
+// operation carrying no x-orchestra-expose mark at all, used to drive
+// Task 17's acceptance criterion: an operation the catalogue never
+// exposed must be unreachable through /api/invoke, exactly as if it did
+// not exist.
+const inventorySpecWithUnexposedOp = inventorySpecWithCreate + `
+  /api/inventory/internal/reset:
+    post:
+      operationId: ResetInventoryInternal
+      summary: Reset the service's in-memory store. Not exposed to the model.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+`
+
 const attendanceSpec = `
 openapi: 3.0.3
 info:
@@ -96,6 +117,7 @@ paths:
     get:
       operationId: ListAttendanceRecords
       summary: List attendance records.
+      x-orchestra-expose: true
       responses:
         "200":
           description: ok

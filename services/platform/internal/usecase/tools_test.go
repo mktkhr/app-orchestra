@@ -61,27 +61,19 @@ func catalogWithEnumParameter() domain.Catalog {
 			Summary:     "在庫アイテムを取得する",
 			Response:    &domain.Schema{Type: domain.SchemaTypeObject},
 		},
-		{
-			// GetSpec: returns only the service's own OpenAPI document as
-			// YAML. Neither a request body nor a response schema is
-			// modelled for it, because no component can render an
-			// arbitrary YAML blob. ToolsFor must exclude it.
-			Service:     "inventory",
-			OperationID: "GetSpec",
-			Method:      domain.MethodGet,
-			Path:        "/openapi.yaml",
-			Summary:     "このサービスのOpenAPI契約を返す",
-		},
 	}}
 }
 
-func TestToolsForBuildsOneToolPerRenderableEndpointPlusAskUser(t *testing.T) {
+func TestToolsForBuildsOneToolPerCatalogueEndpointPlusAskUser(t *testing.T) {
 	c := catalogWithEnumParameter()
 
 	tools := usecase.ToolsFor(c)
 
-	// 3 renderable endpoints (ListInventoryItems, CreateInventoryItem,
-	// GetInventoryItem) + ask_user. GetSpec is excluded.
+	// 3 catalogue endpoints (ListInventoryItems, CreateInventoryItem,
+	// GetInventoryItem) + ask_user. The catalogue never carries an
+	// unexposed operation such as GetSpec in the first place — that filter
+	// runs once, in specsource/http.parseSpec, before ToolsFor ever sees
+	// c.Endpoints.
 	require.Len(t, tools, 4)
 
 	names := make([]string, 0, len(tools))
@@ -91,7 +83,6 @@ func TestToolsForBuildsOneToolPerRenderableEndpointPlusAskUser(t *testing.T) {
 	assert.Contains(t, names, "ListInventoryItems")
 	assert.Contains(t, names, "CreateInventoryItem")
 	assert.Contains(t, names, "GetInventoryItem")
-	assert.NotContains(t, names, "GetSpec")
 
 	askUserCount := 0
 	for _, name := range names {
@@ -102,23 +93,30 @@ func TestToolsForBuildsOneToolPerRenderableEndpointPlusAskUser(t *testing.T) {
 	assert.Equal(t, 1, askUserCount, "ask_user must be present exactly once")
 }
 
-func TestToolsForExcludesEndpointsWithNoResponseAndNoRequestBody(t *testing.T) {
+func TestToolsForDoesNotExcludeAnEndpointWithNoResponseAndNoRequestBody(t *testing.T) {
+	// Whether an endpoint can be rendered is no longer ToolsFor's business:
+	// only x-orchestra-expose (enforced upstream, in specsource/http and
+	// harness/guard/exposed-ops.sh) decides whether an endpoint reaches the
+	// catalogue at all. A catalogue endpoint with neither schema still
+	// becomes a tool here — a spec bug for the guard to catch, not
+	// something ToolsFor silently drops.
 	c := domain.Catalog{Endpoints: []domain.Endpoint{
 		{
 			Service:     "inventory",
-			OperationID: "GetSpec",
+			OperationID: "PingInventory",
 			Method:      domain.MethodGet,
-			Path:        "/openapi.yaml",
-			Summary:     "returns this service's own contract",
-			// Response and RequestBody both nil: nothing to render.
+			Path:        "/api/inventory/ping",
+			Summary:     "returns nothing a component can render",
+			// Response and RequestBody both nil.
 		},
 	}}
 
 	tools := usecase.ToolsFor(c)
 
-	// Only ask_user remains.
-	require.Len(t, tools, 1)
-	assert.Equal(t, "ask_user", tools[0].Name)
+	require.Len(t, tools, 2)
+	names := []string{tools[0].Name, tools[1].Name}
+	assert.Contains(t, names, "PingInventory")
+	assert.Contains(t, names, "ask_user")
 }
 
 func TestToolsForSetsStrictTrue(t *testing.T) {

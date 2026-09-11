@@ -49,7 +49,10 @@ func TestFetchBuildsCatalogueFromFixtureSpec(t *testing.T) {
 	catalog, err := source.Fetch(context.Background())
 
 	require.NoError(t, err)
-	assert.Len(t, catalog.Endpoints, 4, "getSpec, listWidgets, createWidget, getWidget")
+	assert.Len(t, catalog.Endpoints, 4,
+		"listWidgets, createWidget, getWidget, exportWidgets: every x-orchestra-expose: true operation, "+
+			"and no other — getSpec, getHiddenWidget, getOffWidget and getBadWidget are all unmarked or "+
+			"marked false/non-boolean")
 
 	list, ok := catalog.Find("fixture", "listWidgets")
 	require.True(t, ok)
@@ -140,9 +143,34 @@ func TestFetchOmitsResponseForNonJSONContent(t *testing.T) {
 	catalog, err := source.Fetch(context.Background())
 	require.NoError(t, err)
 
-	spec, ok := catalog.Find("fixture", "getSpec")
-	require.True(t, ok)
-	assert.Nil(t, spec.Response, "the spec endpoint answers YAML, which has no JSON schema to render")
+	export, ok := catalog.Find("fixture", "exportWidgets")
+	require.True(t, ok, "exportWidgets is x-orchestra-expose: true, so it must reach the catalogue")
+	assert.Nil(t, export.Response, "exportWidgets answers YAML, which has no JSON schema to render")
+}
+
+func TestFetchExcludesOperationsNotMarkedExposed(t *testing.T) {
+	server := fixtureServer(t)
+	defer server.Close()
+
+	source := specsourcehttp.New(
+		[]specsourcehttp.Service{{Name: "fixture", URL: server.URL}},
+		nil,
+	)
+
+	catalog, err := source.Fetch(context.Background())
+	require.NoError(t, err)
+
+	_, ok := catalog.Find("fixture", "getSpec")
+	assert.False(t, ok, "an operation with no x-orchestra-expose at all must default to unexposed")
+
+	_, ok = catalog.Find("fixture", "getHiddenWidget")
+	assert.False(t, ok, "an operation with no x-orchestra-expose at all must default to unexposed")
+
+	_, ok = catalog.Find("fixture", "getOffWidget")
+	assert.False(t, ok, "x-orchestra-expose: false must be treated as unexposed")
+
+	_, ok = catalog.Find("fixture", "getBadWidget")
+	assert.False(t, ok, "a non-boolean x-orchestra-expose value must be treated as unexposed")
 }
 
 func TestFetchFailsWhenAnyServiceIsUnreachable(t *testing.T) {
@@ -213,5 +241,5 @@ func TestFetchTrimsTrailingSlashFromBaseURL(t *testing.T) {
 	catalog, err := source.Fetch(context.Background())
 
 	require.NoError(t, err)
-	assert.Len(t, catalog.Endpoints, 4)
+	assert.Len(t, catalog.Endpoints, 4, "listWidgets, createWidget, getWidget, exportWidgets")
 }
