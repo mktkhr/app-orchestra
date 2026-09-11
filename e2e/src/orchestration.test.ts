@@ -1,5 +1,8 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { mkdtempSync } from "node:fs";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
@@ -187,12 +190,19 @@ beforeAll(async () => {
     { query: "在庫の一覧を見せて", service: "inventory", operationId: "ListInventoryItems" },
   ];
 
+  // A file in its own temporary directory, per docs/specs/workspaces.md
+  // section 6: this suite must not see workspaces another suite wrote, and
+  // ORCHESTRA_DB_PATH has no default (internal/infra/config.ErrMissingDBPath)
+  // for the platform to fall back to instead.
+  const dbPath = join(mkdtempSync(join(tmpdir(), "orchestra-e2e-")), "workspaces.db");
+
   const platformProcess = startBinary("../services/platform/bin/api", {
     ORCHESTRA_PORT: String(platformPort),
     ORCHESTRA_SERVICES:
       `inventory=http://127.0.0.1:${inventoryPort},` +
       `attendance=http://127.0.0.1:${attendancePort}`,
     ORCHESTRA_PLAN_FIXTURES: JSON.stringify(planFixtures),
+    ORCHESTRA_DB_PATH: dbPath,
   });
 
   platform = { process: platformProcess, port: platformPort };

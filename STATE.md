@@ -4,8 +4,17 @@ _Last updated: 2026-09-11_
 
 ## Summary
 
-**The first vertical slice is done, all seventeen tasks. `make check` is
-fully green.** The platform's scaffold, two services that answer real
+**The first vertical slice is done, all seventeen tasks.** The second,
+`docs/plans/workspaces.md`, is starting: Task 0 (storage) is done -
+`internal/domain/workspace.go`, `internal/usecase/workspaces.go`'s
+`WorkspaceStore` port, and its SQLite implementation in
+`internal/adapter/repository/sqlite` (`modernc.org/sqlite`, no HTTP yet).
+`ORCHESTRA_DB_PATH` is now required - see `TODO.md` for the one harness
+browser config this broke (a protected path the agent cannot fix) and
+`DECISIONS.md`, 2026-09-11, for the rest. `make -k check` is green except
+for `guard-a11y`/`guard-layout`.
+
+The platform's scaffold, two services that answer real
 requests, the rendering rule, the catalogue the platform builds by asking
 those services what they offer, the tool definitions built from that
 catalogue, all four answers `/api/plan` can give - a rendered result, a

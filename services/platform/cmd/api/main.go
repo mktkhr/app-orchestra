@@ -25,6 +25,7 @@ func main() {
 		Services:     toAppServices(cfg.Services),
 		LLM:          app.LLM{BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, Mode: cfg.LLMMode},
 		PlanFixtures: toAppPlanFixtures(cfg.PlanFixtures),
+		DBPath:       cfg.DBPath,
 	})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))

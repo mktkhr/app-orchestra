@@ -15,6 +15,7 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jsonmode"
 	stubplanner "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/stub"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/toolcall"
+	sqlitestore "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/repository/sqlite"
 	specsourcehttp "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/specsource/http"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/infra/httpserver"
@@ -124,6 +125,15 @@ type Config struct {
 	// 2026-09-11): once a real planner exists, answering with two
 	// hard-coded Japanese questions is no longer the honest default.
 	PlanFixtures []PlanFixture
+	// DBPath is the SQLite file workspaces are kept in
+	// (docs/specs/workspaces.md, W3). Empty skips building the workspace
+	// store entirely, which is what every test in this package that
+	// predates workspaces does; cmd/api always sets it, because
+	// internal/infra/config.Load refuses to start without
+	// ORCHESTRA_DB_PATH (config.ErrMissingDBPath) - the empty case here
+	// exists for this package's own tests, not for production silently
+	// doing without storage.
+	DBPath string
 }
 
 // New builds the platform's http.Handler. Acceptance tests and cmd/api
@@ -150,6 +160,10 @@ func build(
 	catalog, err := specsourcehttp.New(toSpecSourceServices(cfg.Services), nil).Fetch(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("building the catalogue: %w", err)
+	}
+
+	if dbErr := checkWorkspaceStore(cfg.DBPath); dbErr != nil {
+		return nil, dbErr
 	}
 
 	planner, err := newPlanner(cfg, catalog)
@@ -240,6 +254,34 @@ func toUsecaseAnswers(answers []Answer) []usecase.Answer {
 	}
 
 	return out
+}
+
+// checkWorkspaceStore opens and immediately closes the workspace store at
+// dbPath, so a bad ORCHESTRA_DB_PATH (an unwritable directory, say) fails
+// startup here rather than on the first request that touches it - the
+// same reason newPlanner's catalogue fetch happens eagerly, above. An
+// empty dbPath skips the check entirely: see Config.DBPath's doc comment
+// for who leaves it empty and why that is fine.
+//
+// docs/plans/workspaces.md, Task 0 stops here - nothing yet keeps the
+// store open or hands it to a handler, because nothing in this task
+// speaks HTTP. Task 1 replaces this open-then-close with an open-and-keep
+// once a handler exists to give it to.
+func checkWorkspaceStore(dbPath string) error {
+	if dbPath == "" {
+		return nil
+	}
+
+	store, err := sqlitestore.New(dbPath)
+	if err != nil {
+		return fmt.Errorf("opening the workspace store: %w", err)
+	}
+
+	if err := store.Close(); err != nil {
+		return fmt.Errorf("closing the workspace store: %w", err)
+	}
+
+	return nil
 }
 
 // newPlanner selects the platform's usecase.Planner from cfg: the

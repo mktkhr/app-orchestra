@@ -1212,3 +1212,81 @@ The two service specs were missing exactly one `title` each:
 in turn (an unrenderable exposed operation, a service with none exposed, a
 drawn property with no `title`) and confirming the guard names exactly what
 is wrong, then restoring. `make check` stays green.
+
+## 2026-09-11 Workspaces Task 0: IDs, the JSON boundary, and a required `ORCHESTRA_DB_PATH`
+
+**Context.** `docs/plans/workspaces.md` Task 0 asks for a SQLite-backed
+`usecase.WorkspaceStore`, storing `domain.Workspace`/`domain.Panel` (section
+3 of `docs/specs/workspaces.md`), with three things left to the implementer:
+how IDs are generated (deterministically testable), where `Panel.Args`
+(`map[string]any`) is converted to and from JSON given `domain` and
+`usecase` may import nothing but the standard library and never
+`encoding/json` (`harness/quality/go/golangci.yml`, depguard), and what
+happens when `ORCHESTRA_DB_PATH` is unset.
+
+**Decision.** IDs: `crypto/rand.Text()` (Go 1.24+), which has no error
+return - unlike reading `crypto/rand.Reader` directly - so `Create` and
+`AddPanel` never carry an unreachable-in-tests error branch for it.
+Deterministic testing does not mean a fixed ID: every test captures what
+`Create`/`AddPanel` returns and asserts a later read echoes the same value
+back, never a hard-coded string.
+
+JSON: only `internal/adapter/repository/sqlite` marshals/unmarshals `Args`
+
+- `json.Marshal` on write (defaulting a nil map to `map[string]any{}` first,
+  so a panel with no args round-trips as `{}`, not `null`), `json.Unmarshal`
+  on read. `domain.Panel.Args` stays `map[string]any` all the way through
+  `usecase`, exactly like `domain.Endpoint`'s schema-less counterparts.
+
+`ORCHESTRA_DB_PATH`: `internal/infra/config.Load` returns
+`ErrMissingDBPath` when it is unset or empty - `os.LookupEnv`, not
+`os.Getenv`, so "unset" and "set to empty" are both rejected the same way.
+No default, per the plan: "a platform that silently forgets is worse than
+one that will not start." `pkg/app.Config.DBPath`, one layer in, stays
+optional though - empty skips `pkg/app.checkWorkspaceStore` entirely - so
+every `pkg/app` test written before workspaces (which builds `Config`
+directly, never through `config.Load`) keeps passing unmodified;
+`cmd/api` always has a non-empty one, because it will already have failed
+in `config.Load` otherwise.
+
+`WorkspaceStore.AddPanel(ctx, workspaceID string, p *domain.Panel)` takes a
+pointer, not the value the plan's pseudocode shows - `domain.Panel` is 112
+bytes, and `gocritic`'s `hugeParam` check rejects passing it by value, the
+same reason `pkg/app.Config` (also 112 bytes) is already a pointer where an
+earlier plan showed a value. The interface and its one implementation
+(`internal/adapter/repository/sqlite.Store.AddPanel`) must agree exactly -
+Go's structural typing leaves no way to keep the interface itself at a
+value type.
+
+`internal/adapter/repository/sqlite.Store.Delete` runs both `DELETE`s in a
+transaction; a failing one calls `rollbackAndWrap(tx, cause)`, which returns
+`errors.Join(cause, tx.Rollback())` rather than a `defer tx.Rollback()` that
+discards the error - `errcheck`'s `check-blank: true` flags
+`_ = tx.Rollback()`, correctly, since `Rollback` (unlike `Close`) is not
+covered by errcheck's default exclusions. `errors.Join(cause, nil)` is just
+`cause`, so the common case (rollback succeeds) reads the same as it would
+unwrapped, and the whole function is one statement - no branch that only
+the rare "rollback itself failed" case would reach and a test could not.
+`Store.Close` similarly returns `errors.Join(s.db.Close())` rather than an
+`if err != nil { return fmt.Errorf(...) }`, for the same reason and because
+a bare `return s.db.Close()` is an unwrapped external error (`wrapcheck`).
+
+**Consequences.** 91.5% statement coverage in
+`internal/adapter/repository/sqlite` (guard minimum 90%), reached largely by
+opening a second, raw `database/sql` connection to the same file in tests to
+put the database into shapes the `Store`'s own API can never produce itself
+(a dropped table, a row with malformed JSON) - the only way to exercise a
+database error path without a fake driver. `TestStorePersistsAcrossOpens`
+proves AC-W-105's storage half: a second `Store` opened on the same
+`t.TempDir()` file sees the workspace and panel the first one wrote.
+
+Making `ORCHESTRA_DB_PATH` required broke two harness-owned browser gates
+that were not part of this task's file list and cannot be edited
+(`harness/quality/browser/playwright.config.ts` starts
+`services/platform/bin/api` without it): `guard-a11y` and `guard-layout`.
+`e2e/playwright.config.ts` and `e2e/src/orchestration.test.ts` - both
+unprotected - were updated to set it (a file in a fresh `mkdtempSync`
+directory each run, so no suite sees another's workspaces), which keeps
+`acceptance-e2e` and `acceptance-browser` green. The harness file needs the
+same one-line addition, but that is a protected path change this agent is
+not authorised to make; see `TODO.md`.

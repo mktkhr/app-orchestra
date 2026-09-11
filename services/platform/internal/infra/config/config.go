@@ -27,6 +27,14 @@ var ErrInvalidServiceEntry = errors.New("invalid ORCHESTRA_SERVICES entry, want 
 // run the wrong planner.
 var ErrInvalidLLMMode = errors.New("invalid ORCHESTRA_LLM_MODE, want toolcall or json")
 
+// ErrMissingDBPath is returned when ORCHESTRA_DB_PATH is unset. Workspaces
+// live in the SQLite file it names (docs/specs/workspaces.md, W3); a
+// platform that started anyway would keep every workspace in a file
+// nobody chose, and forget it silently on the next restart onto a
+// different default. Failing startup is the honest alternative
+// (docs/plans/workspaces.md, Task 0, Step 3).
+var ErrMissingDBPath = errors.New("ORCHESTRA_DB_PATH is required")
+
 // The two values ORCHESTRA_LLM_MODE accepts: which of the two
 // usecase.Planner adapters (internal/adapter/planner/toolcall,
 // internal/adapter/planner/jsonmode) pkg/app.newPlanner selects when an LLM
@@ -105,6 +113,9 @@ type Config struct {
 	// never call a real LLM, and this is how the built product is
 	// exercised without one.
 	PlanFixtures []PlanFixture
+	// DBPath is the SQLite file workspaces are kept in, read from
+	// ORCHESTRA_DB_PATH. Required: see ErrMissingDBPath.
+	DBPath string
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
@@ -140,6 +151,13 @@ func Load() (Config, error) {
 	}
 
 	cfg.PlanFixtures = fixtures
+
+	dbPath, ok := os.LookupEnv("ORCHESTRA_DB_PATH")
+	if !ok || dbPath == "" {
+		return Config{}, ErrMissingDBPath
+	}
+
+	cfg.DBPath = dbPath
 
 	raw, ok := os.LookupEnv("ORCHESTRA_PORT")
 	if !ok || raw == "" {

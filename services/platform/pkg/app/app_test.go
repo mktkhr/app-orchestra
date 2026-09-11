@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -264,6 +265,29 @@ func TestNewRejectsAnUnknownLLMMode(t *testing.T) {
 
 func TestNewFailsWhenAConfiguredServiceIsUnreachable(t *testing.T) {
 	_, err := app.New(&app.Config{Services: []app.Service{{Name: "gone", URL: "http://127.0.0.1:0"}}})
+
+	require.Error(t, err)
+}
+
+// TestNewOpensTheWorkspaceStoreWhenDBPathIsSet is docs/plans/workspaces.md
+// Task 0's "wire the store into pkg/app": a valid ORCHESTRA_DB_PATH lets
+// the platform start.
+func TestNewOpensTheWorkspaceStoreWhenDBPathIsSet(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "workspaces.db")
+
+	_, err := app.New(&app.Config{DBPath: dbPath})
+
+	require.NoError(t, err)
+}
+
+// TestNewFailsWhenTheWorkspaceStoreCannotBeOpened is the other half: a bad
+// path - one whose directory does not exist - fails startup instead of
+// starting a platform that will forget its workspaces the moment someone
+// tries to save one.
+func TestNewFailsWhenTheWorkspaceStoreCannotBeOpened(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "missing-directory", "workspaces.db")
+
+	_, err := app.New(&app.Config{DBPath: dbPath})
 
 	require.Error(t, err)
 }

@@ -10,6 +10,7 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_PORT", "")
 	t.Setenv("ORCHESTRA_STATIC_DIR", "")
 
@@ -21,6 +22,7 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadReadsPortAndStaticDir(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_PORT", "9090")
 	t.Setenv("ORCHESTRA_STATIC_DIR", "/var/www")
 
@@ -32,6 +34,7 @@ func TestLoadReadsPortAndStaticDir(t *testing.T) {
 }
 
 func TestLoadRejectsInvalidPort(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_PORT", "not-a-number")
 
 	_, err := config.Load()
@@ -40,6 +43,7 @@ func TestLoadRejectsInvalidPort(t *testing.T) {
 }
 
 func TestLoadParsesServices(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv(
 		"ORCHESTRA_SERVICES",
 		"inventory=http://localhost:8081,attendance=http://localhost:8082",
@@ -55,6 +59,7 @@ func TestLoadParsesServices(t *testing.T) {
 }
 
 func TestLoadServicesDefaultsToEmpty(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_SERVICES", "")
 
 	cfg, err := config.Load()
@@ -64,6 +69,7 @@ func TestLoadServicesDefaultsToEmpty(t *testing.T) {
 }
 
 func TestLoadRejectsMalformedServiceEntry(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_SERVICES", "inventory-without-equals-sign")
 
 	_, err := config.Load()
@@ -72,6 +78,7 @@ func TestLoadRejectsMalformedServiceEntry(t *testing.T) {
 }
 
 func TestLoadRejectsServiceEntryWithEmptyName(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_SERVICES", "=http://localhost:8081")
 
 	_, err := config.Load()
@@ -80,6 +87,7 @@ func TestLoadRejectsServiceEntryWithEmptyName(t *testing.T) {
 }
 
 func TestLoadPlanFixturesDefaultsToEmpty(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_PLAN_FIXTURES", "")
 
 	cfg, err := config.Load()
@@ -89,6 +97,7 @@ func TestLoadPlanFixturesDefaultsToEmpty(t *testing.T) {
 }
 
 func TestLoadParsesPlanFixtures(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv(
 		"ORCHESTRA_PLAN_FIXTURES",
 		`[{"query":"在庫の一覧を見せて","service":"inventory","operationId":"ListInventoryItems"},`+
@@ -119,6 +128,7 @@ func TestLoadParsesPlanFixtures(t *testing.T) {
 }
 
 func TestLoadRejectsMalformedPlanFixtures(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_PLAN_FIXTURES", "not-json")
 
 	_, err := config.Load()
@@ -127,6 +137,7 @@ func TestLoadRejectsMalformedPlanFixtures(t *testing.T) {
 }
 
 func TestLoadLLMSettingsDefaultToEmpty(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_LLM_BASE_URL", "")
 	t.Setenv("ORCHESTRA_LLM_API_KEY", "")
 	t.Setenv("ORCHESTRA_LLM_MODEL", "")
@@ -140,6 +151,7 @@ func TestLoadLLMSettingsDefaultToEmpty(t *testing.T) {
 }
 
 func TestLoadReadsLLMSettings(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_LLM_BASE_URL", "http://localhost:11435/v1")
 	t.Setenv("ORCHESTRA_LLM_API_KEY", "test-key")
 	t.Setenv("ORCHESTRA_LLM_MODEL", "gemma4-26b-a4b-qat")
@@ -153,6 +165,7 @@ func TestLoadReadsLLMSettings(t *testing.T) {
 }
 
 func TestLoadLLMModeDefaultsToToolCall(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_LLM_MODE", "")
 
 	cfg, err := config.Load()
@@ -162,6 +175,7 @@ func TestLoadLLMModeDefaultsToToolCall(t *testing.T) {
 }
 
 func TestLoadReadsLLMModeJSON(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_LLM_MODE", "json")
 
 	cfg, err := config.Load()
@@ -171,10 +185,33 @@ func TestLoadReadsLLMModeJSON(t *testing.T) {
 }
 
 func TestLoadRejectsAnUnknownLLMMode(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_LLM_MODE", "not-a-real-mode")
 
 	_, err := config.Load()
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, config.ErrInvalidLLMMode)
+}
+
+func TestLoadReadsDBPath(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/var/lib/orchestra/workspaces.db")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "/var/lib/orchestra/workspaces.db", cfg.DBPath)
+}
+
+// TestLoadRejectsMissingDBPath is the point of ORCHESTRA_DB_PATH having no
+// default (docs/plans/workspaces.md, Task 0, Step 3): a platform that
+// silently forgets where its workspaces live is worse than one that
+// refuses to start.
+func TestLoadRejectsMissingDBPath(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrMissingDBPath)
 }

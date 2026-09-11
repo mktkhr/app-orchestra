@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { defineConfig, devices } from "@playwright/test";
 
 /**
@@ -10,6 +14,12 @@ import { defineConfig, devices } from "@playwright/test";
  * Run through `make guard-a11y`, which is part of `make check`.
  */
 const port = 18081;
+
+// The platform requires a database and will not start without one being
+// named. These gates measure a screen rather than what is on it, so the file
+// is a scratch one outside the repository - a fresh directory each run, left
+// for the operating system to sweep up.
+const databasePath = join(mkdtempSync(join(tmpdir(), "orchestra-guard-")), "orchestra.db");
 
 export default defineConfig({
   testDir: ".",
@@ -36,6 +46,7 @@ export default defineConfig({
     env: {
       ORCHESTRA_PORT: String(port),
       ORCHESTRA_STATIC_DIR: "../../../web/dist",
+      ORCHESTRA_DB_PATH: databasePath,
     },
   },
 });

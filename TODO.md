@@ -4,21 +4,56 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. The first vertical slice, `docs/plans/orchestration.md`, is complete: all
-   seventeen tasks, `make check` fully green, including `acceptance-e2e`,
-   `acceptance-browser`, `guard-browser` and (Task 11) the JSON planner.
-   Nothing from the plan remains; the slice is done and what follows is
-   whatever comes after it (not yet planned).
+1. The second vertical slice, `docs/plans/workspaces.md`. Task 0 (storage) is
+   done - see Done below. Task 1 (the workspace endpoints) is next.
+2. **Blocker for a fully green `make check`, discovered doing Task 0**:
+   `harness/quality/browser/playwright.config.ts` (protected; the agent may
+   not edit it) starts `services/platform/bin/api` without
+   `ORCHESTRA_DB_PATH`, which `internal/infra/config.Load` now requires
+   (`ErrMissingDBPath` - `docs/plans/workspaces.md`, Task 0, Step 3: "an
+   unset path is an error, not a default"). `guard-a11y` and `guard-layout`
+   both fail as a result; every other `make check` target is green,
+   including `acceptance-e2e` and `acceptance-browser`, whose own configs
+   (`e2e/src/orchestration.test.ts`, `e2e/playwright.config.ts`, both
+   unprotected) were updated to set it. The fix is one line - add
+   `ORCHESTRA_DB_PATH: <a path in a temp dir>` to that file's `webServer.env`
+   - but needs a human to apply it under a PR carrying the "harness" label
+     (`.github/workflows/ci.yml`'s `harness-protection` job); no in-bounds
+     workaround exists. Until then, `make check` (no `-k`) stops at
+     `guard-a11y`; `make -k check` shows nothing else failing.
 
 ## Next
 
-1. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
+1. `docs/plans/workspaces.md`, Task 1: the workspace endpoints
+   (`POST /api/workspaces` and friends), against Task 0's store.
+2. Once Task 1 lands (or sooner, with the "harness" label), fix the blocker
+   above.
+3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
    in the repository already passes under 7; only code generation does not.
    orval was measured as a replacement and rejected - it runs under TypeScript 7
    but emits the wrong shape for this product (`DECISIONS.md`, 2026-09-11).
 
 ## Done
 
+- `docs/plans/workspaces.md`, Task 0: workspaces have somewhere to live.
+  `internal/domain/workspace.go` (`Workspace`, `Panel`, stdlib only);
+  `internal/usecase/workspaces.go` (`WorkspaceStore` port); the SQLite
+  implementation in `internal/adapter/repository/sqlite` (`modernc.org/sqlite`,
+  pure Go, schema embedded via `go:embed` and applied at open, every
+  statement `IF NOT EXISTS`); `ORCHESTRA_DB_PATH` in `internal/infra/config`,
+  required, no default (`config.ErrMissingDBPath`); wired into `pkg/app.New`
+  as a startup-time open-then-close check (`checkWorkspaceStore`) since
+  nothing speaks HTTP to workspaces yet. IDs are `crypto/rand.Text()`
+  (Go 1.24+, no error return), tests never assert a specific one - they
+  capture what `Create`/`AddPanel` return and check reads echo it back.
+  `Args` (`map[string]any`) is JSON only inside the sqlite adapter -
+  `encoding/json` may not reach `domain` or `usecase` (depguard) - marshalled
+  on write, unmarshalled on read. `WorkspaceStore.AddPanel` takes `*domain.Panel`,
+  not the value shown in the plan's pseudocode, for the same `gocritic`
+  hugeParam reason `pkg/app.Config` is already a pointer (112 bytes each).
+  91.5% package coverage (`t.TempDir()`, plus a second store opened on the
+  same file proving persistence - AC-W-105's storage half). See the blocker
+  above and `DECISIONS.md`, 2026-09-11.
 - `harness/guard/exposed-ops.sh` now also requires `title` on every property
   an exposed operation actually draws on screen (response fields, an object
   request body's fields, and parameters - `ask` can degrade any exposed
