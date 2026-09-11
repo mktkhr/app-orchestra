@@ -35,6 +35,20 @@ type Config struct {
 	// Services lists the microservices the catalogue is built from, read
 	// from ORCHESTRA_SERVICES.
 	Services []Service
+	// LLMBaseURL is the OpenAI-compatible endpoint the tool-calling planner
+	// (internal/adapter/planner/toolcall) talks to, read from
+	// ORCHESTRA_LLM_BASE_URL. Empty means no real planner is configured:
+	// pkg/app falls back to the stub planner in that case.
+	LLMBaseURL string
+	// LLMAPIKey is sent as that endpoint's bearer token, read from
+	// ORCHESTRA_LLM_API_KEY. A local runtime such as llama-swap does not
+	// check it, so it may be left empty.
+	LLMAPIKey string
+	// LLMModel is the model named in every request to that endpoint, read
+	// from ORCHESTRA_LLM_MODEL - naming a different model is how a
+	// different backend gets used behind a router such as llama-swap (D5,
+	// docs/specs/orchestration.md).
+	LLMModel string
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
@@ -43,8 +57,11 @@ type Config struct {
 // service is configured.
 func Load() (Config, error) {
 	cfg := Config{
-		Port:      defaultPort,
-		StaticDir: os.Getenv("ORCHESTRA_STATIC_DIR"),
+		Port:       defaultPort,
+		StaticDir:  os.Getenv("ORCHESTRA_STATIC_DIR"),
+		LLMBaseURL: os.Getenv("ORCHESTRA_LLM_BASE_URL"),
+		LLMAPIKey:  os.Getenv("ORCHESTRA_LLM_API_KEY"),
+		LLMModel:   os.Getenv("ORCHESTRA_LLM_MODEL"),
 	}
 
 	services, err := parseServices(os.Getenv("ORCHESTRA_SERVICES"))

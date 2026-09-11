@@ -20,7 +20,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler, err := app.New(app.Config{StaticDir: cfg.StaticDir, Services: toAppServices(cfg.Services)})
+	handler, err := app.New(&app.Config{
+		StaticDir: cfg.StaticDir,
+		Services:  toAppServices(cfg.Services),
+		LLM:       app.LLM{BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel},
+	})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))
 		os.Exit(1)

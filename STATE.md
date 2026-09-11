@@ -5,12 +5,18 @@ _Last updated: 2026-09-11_
 ## Summary
 
 **The harness is complete and the first vertical slice is under construction.**
-Ten of the seventeen tasks in `docs/plans/orchestration.md` are done: the
+Eleven of the seventeen tasks in `docs/plans/orchestration.md` are done: the
 platform's scaffold, two services that answer real requests, the rendering
 rule, the catalogue the platform builds by asking those services what they
 offer, the tool definitions built from that catalogue, and all four answers
 `/api/plan` can give: a rendered result, a form, a disambiguation question,
-and no match.
+and no match - decided by a real model over an OpenAI-compatible endpoint.
+
+The whole backend half of the slice now runs end to end. A question in
+Japanese reaches a local model, the model picks one operation out of the
+catalogue and fills its arguments, and the platform calls the service and
+says what to draw with the answer. Nothing in the path is hard-coded: the
+services declare their own contracts, and the model is told about them.
 
 Every gate of `make check` passes except `acceptance-e2e`, which has no test
 files: the end-to-end suite is Task 16. Until then the honest statement is that
@@ -162,12 +168,53 @@ the running platform: the bare query returns `kind: "ask"` with all four
 with the answer it returns `kind: "result"`, `component: "table"`, only the
 quarantined rows.
 
+Task 10 replaced the stub's hard-coded default with a real planner:
+`internal/adapter/planner/chat` is an OpenAI-compatible chat-completions
+transport (`Client.Complete`, httptest-only in `make check`), and
+`internal/adapter/planner/toolcall` implements `usecase.Planner` over it,
+sending `usecase.ToolsFor(catalog)` as `tools` and mapping the one tool call
+back onto a `Decision` - `ask_user` to `DecisionAsk`, any other name to
+`DecisionCall` with its `Service` resolved from the catalogue by operation id
+(first match wins on a collision, `DECISIONS.md`), no call to `DecisionNone`.
+A previous ask's answers are folded into the user turn's own text (there is
+no stored conversation - one call per request, D8). Each tool's schema is
+shaped for strict mode per tool (`additionalProperties: false` always;
+`strict: true` only when every declared property is required), rather than
+sent as `usecase.ToolsFor` emits it (`DECISIONS.md`, two entries). A live
+test against a real endpoint exists and `t.Skip()`s unless
+`ORCHESTRA_LIVE_LLM=1` - confirmed skipped by default.
+
+`pkg/app.Config` gained `LLM{BaseURL, APIKey, Model}` (read from
+`ORCHESTRA_LLM_BASE_URL`/`ORCHESTRA_LLM_API_KEY`/`ORCHESTRA_LLM_MODEL` by
+`internal/infra/config`); `newPlanner` selects the tool-calling planner when
+`LLM.BaseURL` is set and falls back to the stub over `PlanFixtures` otherwise.
+`defaultPlanFixtures()` is deleted - an empty `PlanFixtures` with no LLM
+configured now means every question comes back `kind: "none"`, not two
+hard-coded Japanese questions. `services/platform/.air.toml`'s `full_bin` now
+also sets `ORCHESTRA_LLM_BASE_URL=http://localhost:11435/v1` (llama-swap) and
+`ORCHESTRA_LLM_MODEL=qwen3.5-9b-q8`, the default local model
+(`DECISIONS.md`: the only one of four measured that neither fabricates an
+unrequested filter nor drops a requested one).
+
+Verified live (a temporary instance on a spare port, so the running
+`make dev-platform` process and its port were never touched) against
+`qwen3.5-9b-q8`: `検品保留の在庫を見せて` → `ListInventoryItems {"status":"quarantined"}`,
+table, 3 rows; `みなし労働の勤怠を見せて` → `ListAttendanceRecords {"kind":"deemed"}`,
+table; `在庫を登録して。名前はテスト品、数量は5、引当済で` → `kind: "form"` with the
+parsed values as `initial`; `今日の天気は？` → `kind: "none"`; `在庫を全部見せて` →
+`ListInventoryItems` called with **no** `args` at all - confirming this model
+does not invent a filter when none was asked for.
+
 ## What does not exist yet
 
-Tasks 10 to 16 of `docs/plans/orchestration.md`: the two planner adapters
-(tool-calling and JSON) that replace the stub with a real model, and the whole
-of `web/src` beyond the shell. `make check` is green because the guards report
-on the code that is there, not because the product is finished.
+Task 11 of `docs/plans/orchestration.md`, the JSON planner for models without
+tool calling, and Tasks 12-16, the whole of `web/src` beyond the shell.
+`ask_user` is implemented and unit-tested (a fixed tool-call fixture maps to
+`DecisionAsk`), but no local model under about 20B parameters was observed to
+choose it reliably live - `qwen3.5-9b-q8` picked it 1 run in 5 against a
+genuinely ambiguous query, guessing a value the other 4 (`DECISIONS.md`).
+`make check` is green because the guards report on the code that is there,
+not because the product is finished.
 
 ## Known gaps in the harness
 

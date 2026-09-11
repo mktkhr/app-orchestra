@@ -14,7 +14,15 @@ entrypoint = ["./tmp/api"]
 # told where the services are. These are the two services' own default ports
 # (`make service-run SERVICE=inventory` and `SERVICE=attendance`), so
 # `make dev-platform` answers real questions with no further configuration.
-full_bin = "ORCHESTRA_SERVICES=inventory=http://localhost:8081,attendance=http://localhost:8082 ./tmp/api"
+# The tool-calling planner (internal/adapter/planner/toolcall) is used once
+# ORCHESTRA_LLM_BASE_URL is set - here, llama-swap's OpenAI-compatible port
+# (started separately, not by this harness) - and falls back to the stub
+# (an empty table, so every question comes back as "none") when it is not.
+# qwen3.5-9b-q8 is the default model: measured against gemma4-26b-a4b-qat,
+# gpt-oss-20b and qwen38-27b-iq3s with the same tool definitions, it is the
+# only one of the four that neither invents an unrequested filter nor drops
+# a requested one (DECISIONS.md, 2026-09-11).
+full_bin = "ORCHESTRA_SERVICES=inventory=http://localhost:8081,attendance=http://localhost:8082 ORCHESTRA_LLM_BASE_URL=http://localhost:11435/v1 ORCHESTRA_LLM_MODEL=qwen3.5-9b-q8 ./tmp/api"
 include_ext = ["go"]
 exclude_dir = ["tmp", "bin", "acceptance"]
 delay = 200

@@ -46,7 +46,7 @@ func TestInvokeReachesTheServiceAndRendersTheCreatedEntityAsDetail(t *testing.T)
 		`{"id":"1","name":"検証用","status":"quarantined"}`)
 	attendance := newFixtureService(t, attendanceSpec, "/api/attendance/records", `{"items":[]}`)
 
-	handler, err := app.New(app.Config{
+	handler, err := app.New(&app.Config{
 		Services: []app.Service{
 			{Name: "inventory", URL: inventory.server.URL},
 			{Name: "attendance", URL: attendance.server.URL},
@@ -76,7 +76,7 @@ func TestInvokeReachesTheServiceAndRendersTheCreatedEntityAsDetail(t *testing.T)
 func TestInvokeUnknownOperationReturns400AndCallsNoService(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpecWithCreate, "/api/inventory/items/create", `{}`)
 
-	handler, err := app.New(app.Config{
+	handler, err := app.New(&app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 	})
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestInvokeUnknownOperationReturns400AndCallsNoService(t *testing.T) {
 func TestInvokeMissingRequiredArgumentReturns400AndCallsNoService(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpecWithCreate, "/api/inventory/items/create", `{}`)
 
-	handler, err := app.New(app.Config{
+	handler, err := app.New(&app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 	})
 	require.NoError(t, err)

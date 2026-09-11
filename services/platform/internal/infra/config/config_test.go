@@ -78,3 +78,29 @@ func TestLoadRejectsServiceEntryWithEmptyName(t *testing.T) {
 
 	require.Error(t, err)
 }
+
+func TestLoadLLMSettingsDefaultToEmpty(t *testing.T) {
+	t.Setenv("ORCHESTRA_LLM_BASE_URL", "")
+	t.Setenv("ORCHESTRA_LLM_API_KEY", "")
+	t.Setenv("ORCHESTRA_LLM_MODEL", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Empty(t, cfg.LLMBaseURL)
+	assert.Empty(t, cfg.LLMAPIKey)
+	assert.Empty(t, cfg.LLMModel)
+}
+
+func TestLoadReadsLLMSettings(t *testing.T) {
+	t.Setenv("ORCHESTRA_LLM_BASE_URL", "http://localhost:11435/v1")
+	t.Setenv("ORCHESTRA_LLM_API_KEY", "test-key")
+	t.Setenv("ORCHESTRA_LLM_MODEL", "gemma4-26b-a4b-qat")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "http://localhost:11435/v1", cfg.LLMBaseURL)
+	assert.Equal(t, "test-key", cfg.LLMAPIKey)
+	assert.Equal(t, "gemma4-26b-a4b-qat", cfg.LLMModel)
+}

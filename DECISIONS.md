@@ -577,3 +577,126 @@ catalogue grows to hold. Every `ask_user` caller - the stub planner's table
 via `pkg/app.PlanFixture` (already had `Service`/`OperationID`, unused by an
 ask fixture until now) and, later, the real planner adapters of Task 10/11 -
 must supply the operation a `DecisionAsk` names, not only its parameter.
+
+## 2026-09-11 A tool is strict only when every property it declares is required
+
+**Context.** `usecase.Tool.Strict` is always `true` (D10), but `usecase.ToolsFor`
+deliberately emits a plain JSON Schema with no `additionalProperties` and a
+`required` list that only names the properties an endpoint's OpenAPI contract
+actually requires - `ListInventoryItems`'s optional `status` filter is the
+example (`internal/usecase/tools.go`). OpenAI's strict function calling
+requires `additionalProperties: false` on every object _and_ every declared
+property to be listed as required, so sending that schema with `strict: true`
+verbatim is not valid strict mode for an endpoint with any optional
+parameter - `status` would have to be both declared and, dishonestly,
+`required`.
+
+**Decision.** `internal/adapter/planner/toolcall/planner.go`'s `shapeTool`
+adds `additionalProperties: false` to every object schema unconditionally -
+top level, `items`, and every `properties` entry - regardless of whether the
+tool ends up strict, since forbidding an invented extra argument is harmless
+on every backend this adapter targets today (verified by hand against
+llama-swap, which does not enforce strict mode at all) and is exactly the
+harmless half of strict mode when a backend does enforce it. Whether a given
+tool is sent with `strict: true` or `strict: false` is decided per tool by
+`everyPropertyRequired`: strict only when the (already-shaped) schema's
+`required` list names every one of its top-level `properties`. `CreateInventoryItem`
+and `ask_user` qualify (every field their input schema declares is required);
+`ListInventoryItems` does not, because `status` is optional. The alternative
+the plan raised - widening an optional property's type to include `null` so
+it can stay both `required` and strict - was rejected: it would require the
+model to pass `status: null` explicitly to mean "no filter", which no
+prompt in this codebase asks for and no model was observed to do, whereas
+`strict: false` for that one tool costs nothing against llama.cpp-family
+backends and is honest about what the schema actually promises.
+
+**Consequences.** Every tool's `additionalProperties` is `false`; `strict` is
+computed per tool, not copied from `usecase.Tool.Strict`, and a tool
+gains or loses strictness automatically as its schema's required set changes
+
+- no adapter code has to be updated by hand when a service adds or removes an
+  optional filter. `internal/adapter/planner/jsonmode` (Task 11) does not use
+  this shaping at all, by design: it has no `strict` mode to satisfy, and
+  `usecase.ToolsFor`'s unshaped output is what it needs instead (see the doc
+  comment on `Tool.Strict` in `internal/usecase/tools.go`).
+
+## 2026-09-11 An operation id that names two services picks the first catalogue match
+
+**Context.** A tool call in the OpenAI wire format carries only a function
+name - `usecase.ToolsFor` names each tool after its operation id alone, never
+qualified by service (`Name: e.OperationID`, `internal/usecase/tools.go`), so
+nothing in the request or the response says which service a `DecisionCall`'s
+operation belongs to. `internal/adapter/planner/toolcall.Planner` has to
+resolve that itself, by searching the catalogue it was built with
+(`resolveService` in `planner.go`). Every operation id in this product's
+catalogue is unique today (`ListInventoryItems` vs. `ListAttendanceRecords`,
+not a bare `List`), but nothing enforces that as more services are added.
+
+**Decision.** `resolveService` returns the service of the _first_ endpoint in
+`catalog.Endpoints` whose operation id matches - deterministic, because the
+catalogue is built by iterating configured services in a fixed order
+(`internal/adapter/specsource/http`), but not necessarily correct if two
+services ever do collide. An operation id present in no endpoint at all is a
+harder failure: `Plan` returns `ErrUnknownOperation` rather than guessing,
+since there is no catalogue entry to fall back to. Rejected alternatives:
+failing the whole `Plan` call on any ambiguity (this would make the planner
+brittle to a naming collision the catalogue's own author caused, not the
+model), and threading the tool's originating service through the wire
+format (the OpenAI chat-completions tool-call shape has no field for it, and
+inventing one is not portable to any other endpoint speaking the same
+protocol).
+
+**Consequences.** Keeping operation ids unique across the whole catalogue is
+now a real correctness requirement for this planner, not just a stylistic
+one - a future service must not reuse another's operation id, or a person
+could silently see the wrong service's data. This is judged acceptable
+because the alternative (qualifying every tool name with its service) makes
+every tool name longer and uglier for every model, to guard against a
+collision that a naming convention already avoids. `docs/plans/orchestration.md`
+Task 11's JSON planner, which puts `service` and `operationId` in the same
+JSON object the model returns, does not have this problem at all - see its
+own mapping code once it exists.
+
+## 2026-09-11 qwen3.5-9b-q8 is the default local model for the tool-calling planner
+
+**Context.** No local model under about 20B parameters was observed to
+reliably choose `ask_user` for an ambiguous enum value ("破損した在庫はある？"
+against `qwen3.5-9b-q8` picked `ask_user` only 1 run in 5, guessing
+`{"status":"quarantined"}` the other 4). Given that, the choice of default
+model was made on a different, more decisive axis instead: what a model does
+with a parameter the question does not mention at all. Four models were
+measured against the same tool definitions and the same unfiltered question
+("在庫を全部見せて"), five runs each: `gpt-oss-20b` invented a nonexistent
+filter in `args` on 5 of 5 runs - the result silently misses rows the person
+never asked to exclude, and nothing in the response says so. `gemma4-26b-a4b-qat`
+never invents a filter, but was separately observed to drop a filter the
+question _did_ specify ("破損した在庫はある？" calling `ListInventoryItems {}`
+instead of asking or filtering). `qwen3.5-9b-q8` and `qwen38-27b-iq3s` both
+returned empty `args` on 5 of 5 unfiltered runs - neither fabricates nor
+drops.
+
+**Decision.** `services/platform/.air.toml`'s `full_bin` sets
+`ORCHESTRA_LLM_MODEL=qwen3.5-9b-q8` as the platform's default local model.
+Between the two models that pass the no-fabrication test, `qwen3.5-9b-q8` (9B)
+is preferred over `qwen38-27b-iq3s` (27B) purely on footprint: this machine
+has 16GB of VRAM, and the smaller model loads faster and leaves headroom
+(measured at 12.9GB resident, ~3GB free) without a measured behavioural cost
+against the larger one. Of the three ways a local tool-calling model was
+observed to fail on this catalogue - fabricating a filter, dropping one, or
+guessing at an ambiguous value instead of asking - fabrication is treated as
+disqualifying and the other two are not: a fabricated filter changes the
+answer while looking exactly like a correct one, which the person has no way
+to notice from the response alone, whereas a dropped filter or a guessed
+value is at least visible in `source.args` next to the question that was
+asked.
+
+**Consequences.** The default answers `検品保留の在庫を見せて` /
+`みなし労働の勤怠を見せて` / `在庫を全部見せて` correctly and returns `kind: "form"`
+/ `kind: "none"` for a create and an out-of-catalogue question respectively -
+all verified live against the running platform. It does not reliably use
+`ask_user`; a question with a genuinely ambiguous enum value is more likely to
+be silently guessed than asked about, which is a real gap `docs/plans/orchestration.md`
+does not yet have a task to close. The model is a one-line change
+(`ORCHESTRA_LLM_MODEL` in `.air.toml`, or `ORCHESTRA_LLM_MODEL` in the
+environment for any other deployment) - swapping it requires no code change,
+which is exactly what D5's per-request model field was for.

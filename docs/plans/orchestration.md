@@ -569,18 +569,18 @@ for that tool. Decide which when the transport is written and record it in
 `DECISIONS.md`; `ToolsFor` deliberately emits the plain schema, because the JSON
 planner in Task 11 needs it unshaped.
 
-- [ ] **Step 1** Write the transport test against `httptest`: assert the request
+- [x] **Step 1** Write the transport test against `httptest`: assert the request
       body carries the model, the messages and the tools, and that a canned
       response decodes. Run it, expect failure.
-- [ ] **Step 2** Implement `chat.Client`. Test passes.
-- [ ] **Step 3** Write the mapping test for `toolcall.Planner` with a canned
+- [x] **Step 2** Implement `chat.Client`. Test passes.
+- [x] **Step 3** Write the mapping test for `toolcall.Planner` with a canned
       tool-call response as a fixture — no network. Assert operation id and
       arguments land in `Decision`, and that an `ask_user` call maps to `ask`. Run
       it, expect failure.
-- [ ] **Step 4** Implement the planner. Tests pass.
-- [ ] **Step 5** Write the live test. It must `t.Skip()` unless
+- [x] **Step 4** Implement the planner. Tests pass.
+- [x] **Step 5** Write the live test. It must `t.Skip()` unless
       `ORCHESTRA_LIVE_LLM=1`. Confirm with `go test -v` that it skips by default.
-- [ ] **Step 6** Wire adapter selection in `pkg/app` from configuration: the
+- [x] **Step 6** Wire adapter selection in `pkg/app` from configuration: the
       stub unless a base URL is configured. Delete `defaultPlanFixtures` in the
       same step - the two hard-coded Japanese questions exist only so the
       platform answers something before a real planner exists
@@ -588,9 +588,9 @@ planner in Task 11 needs it unshaped.
       `make dev-platform` must still work afterwards, which means
       `services/platform/.air.toml` needs the LLM's base URL alongside the
       service list it already carries.
-- [ ] **Step 7** `make services-lint services-test guard-arch guard-coverage`
+- [x] **Step 7** `make services-lint services-test guard-arch guard-coverage`
       green, and the test output shows the live test skipped.
-- [ ] **Step 8** Commit: `feat(platform): plan through an OpenAI-compatible endpoint`
+- [x] **Step 8** Commit: `feat(platform): plan through an OpenAI-compatible endpoint`
 
 ---
 

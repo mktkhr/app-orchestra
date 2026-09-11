@@ -4,17 +4,20 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 9 are
-   done; Task 10 builds the OpenAI-compatible transport and the tool-calling
-   planner.
+1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 10 are
+   done; Task 11 builds the JSON planner for models without tool calling.
 
 ## Next
 
-1. Finish the slice, tasks 10 to 16: the
-   OpenAI-compatible planner and the JSON planner behind the same port, the web
-   shell and conversation, the table with its provenance and expansion, the
-   detail and form components, the choice component, and the end-to-end test.
-2. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
+1. Finish the slice, tasks 11 to 16: the JSON planner behind the same
+   `usecase.Planner` port, the web shell and conversation, the table with its
+   provenance and expansion, the detail and form components, the choice
+   component, and the end-to-end test.
+2. No local model under ~20B parameters was observed to reliably choose
+   `ask_user` (`DECISIONS.md`, 2026-09-11) - worth revisiting once Task 11's
+   JSON planner exists, since a JSON `{"kind": "ask", ...}` object may be an
+   easier target for a smaller model than a tool call is.
+3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
    in the repository already passes under 7; only code generation does not.
    orval was measured as a replacement and rejected - it runs under TypeScript 7
    but emits the wrong shape for this product (`DECISIONS.md`, 2026-09-11).
@@ -59,3 +62,9 @@ _Keep three lists. Move items, do not duplicate them._
   catalogue's own enum, never from a Decision's own (model-supplied) options;
   the stub planner routes on `{query, answers}` so a re-posted answer reaches
   a different decision (`DECISIONS.md`, 2026-09-11).
+- Built the OpenAI-compatible chat transport (`internal/adapter/planner/chat`)
+  and the tool-calling planner (`internal/adapter/planner/toolcall`), wired
+  `pkg/app` to select it whenever `ORCHESTRA_LLM_BASE_URL` is configured, and
+  deleted `defaultPlanFixtures` now that a real planner exists. Measured four
+  local models against the same tool definitions and set `qwen3.5-9b-q8` as
+  the default (`DECISIONS.md`, three entries, 2026-09-11).

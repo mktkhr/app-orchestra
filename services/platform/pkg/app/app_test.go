@@ -14,7 +14,7 @@ import (
 )
 
 func TestNewServesHealth(t *testing.T) {
-	handler, err := app.New(app.Config{})
+	handler, err := app.New(&app.Config{})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)
@@ -86,7 +86,7 @@ func fixtureService(t *testing.T) *httptest.Server {
 func TestNewWiresThePlanFixtureThroughToAResult(t *testing.T) {
 	fixture := fixtureService(t)
 
-	handler, err := app.New(app.Config{
+	handler, err := app.New(&app.Config{
 		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
 		PlanFixtures: []app.PlanFixture{
 			{Query: "widgets please", Service: "fixture", OperationID: "ListWidgets"},
@@ -119,14 +119,82 @@ func TestNewWiresThePlanFixtureThroughToAResult(t *testing.T) {
 	assert.Equal(t, "table", body.Component)
 }
 
+// fixtureChatServer answers every chat-completions request with a tool
+// call naming ListWidgets, regardless of what tools or messages it was
+// sent - just enough to prove app.New wires the tool-calling planner in
+// when Config.LLM.BaseURL is set, not to test the planner's own mapping
+// (internal/adapter/planner/toolcall has that).
+func fixtureChatServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	const response = `{
+    "choices": [{
+      "finish_reason": "tool_calls",
+      "message": {
+        "role": "assistant",
+        "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "ListWidgets", "arguments": "{}"}}]
+      }
+    }]
+  }`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(response)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+func TestNewWithLLMBaseURLConfiguredUsesTheToolCallingPlanner(t *testing.T) {
+	fixture := fixtureService(t)
+	chatServer := fixtureChatServer(t)
+
+	handler, err := app.New(&app.Config{
+		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:      app.LLM{BaseURL: chatServer.URL, Model: "test-model"},
+		// PlanFixtures is deliberately left empty: if the stub were chosen
+		// instead of the tool-calling planner, "widgets please" would come
+		// back as ResultKindNone, not the table this test asserts.
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Kind      string `json:"kind"`
+		Component string `json:"component"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "result", body.Kind)
+	assert.Equal(t, "table", body.Component)
+}
+
 func TestNewFailsWhenAConfiguredServiceIsUnreachable(t *testing.T) {
-	_, err := app.New(app.Config{Services: []app.Service{{Name: "gone", URL: "http://127.0.0.1:0"}}})
+	_, err := app.New(&app.Config{Services: []app.Service{{Name: "gone", URL: "http://127.0.0.1:0"}}})
 
 	require.Error(t, err)
 }
 
 func TestNewServesInvokeAndRejectsAnUnknownEndpoint(t *testing.T) {
-	handler, err := app.New(app.Config{})
+	handler, err := app.New(&app.Config{})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)

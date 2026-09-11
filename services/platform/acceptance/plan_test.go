@@ -214,7 +214,7 @@ func TestPlanSafeCallReachesTheServiceAndRendersATable(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[{"id":"1"}]}`)
 	attendance := newFixtureService(t, attendanceSpec, "/api/attendance/records", `{"items":[]}`)
 
-	handler, err := app.New(app.Config{
+	handler, err := app.New(&app.Config{
 		Services: []app.Service{
 			{Name: "inventory", URL: inventory.server.URL},
 			{Name: "attendance", URL: attendance.server.URL},
@@ -246,7 +246,7 @@ func TestPlanUnsafeCallReturnsAFormAndNeverReachesTheService(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpecWithCreate, "/api/inventory/items/create", `{}`)
 	attendance := newFixtureService(t, attendanceSpec, "/api/attendance/records", `{"items":[]}`)
 
-	handler, err := app.New(app.Config{
+	handler, err := app.New(&app.Config{
 		Services: []app.Service{
 			{Name: "inventory", URL: inventory.server.URL},
 			{Name: "attendance", URL: attendance.server.URL},
@@ -294,7 +294,7 @@ func TestPlanUnsafeCallReturnsAFormAndNeverReachesTheService(t *testing.T) {
 func TestPlanNoneCallsNoServiceAndReportsAMessage(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[]}`)
 
-	handler, err := app.New(app.Config{
+	handler, err := app.New(&app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 		// A query the table (default or configured) does not recognise
 		// answers DecisionNone (see internal/adapter/planner/stub).
@@ -320,7 +320,7 @@ func TestPlanNoneCallsNoServiceAndReportsAMessage(t *testing.T) {
 func TestPlanAskDecisionListsCatalogueOptionsAndCallsNoService(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[]}`)
 
-	handler, err := app.New(app.Config{
+	handler, err := app.New(&app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 		PlanFixtures: []app.PlanFixture{
 			{
@@ -362,7 +362,7 @@ func TestPlanAskDecisionListsCatalogueOptionsAndCallsNoService(t *testing.T) {
 func TestPlanResubmittedWithAnswersReachesThePlannerAndProducesAResult(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[{"id":"itm-1","status":"quarantined"}]}`)
 
-	handler, err := app.New(app.Config{
+	handler, err := app.New(&app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 		PlanFixtures: []app.PlanFixture{
 			{

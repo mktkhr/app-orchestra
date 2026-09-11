@@ -10,8 +10,11 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/handler"
 	invokerhttp "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/invoker/http"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
 	stubplanner "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/stub"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/toolcall"
 	specsourcehttp "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/specsource/http"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/infra/httpserver"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
@@ -36,10 +39,9 @@ type Answer struct {
 // PlanFixture is one entry of the stub planner's table
 // (internal/adapter/planner/stub): a question - together with the answers,
 // if any, it was resubmitted with - mapped to the Decision it should
-// produce. The stub is the only Planner that exists until Task 10 adds a
-// real one, so this is also how the running platform answers a question
-// today - see defaultPlanFixtures, which New falls back to when
-// PlanFixtures is empty.
+// produce. Used only when Config.LLM.BaseURL is empty (see newPlanner) - the
+// running platform answers through the real, tool-calling planner
+// (internal/adapter/planner/toolcall) once ORCHESTRA_LLM_BASE_URL is set.
 //
 // Ask, when true, builds a DecisionAsk carrying Question and Param, plus
 // Service and OperationID naming the operation the ask stands in for -
@@ -63,6 +65,18 @@ type PlanFixture struct {
 	Args        map[string]any
 }
 
+// LLM configures the tool-calling planner
+// (internal/adapter/planner/toolcall) that talks to a real,
+// OpenAI-compatible model. It mirrors config.Config's own
+// LLMBaseURL/LLMAPIKey/LLMModel fields for the same reason Service mirrors
+// config.Service: pkg/app's one public package should not force its own
+// callers to depend on internal/infra/config's types.
+type LLM struct {
+	BaseURL string
+	APIKey  string
+	Model   string
+}
+
 // Config is everything New needs to wire the platform's object graph.
 type Config struct {
 	// StaticDir, when non-empty, is served at "/" as the built frontend.
@@ -71,10 +85,18 @@ type Config struct {
 	// one's /openapi.yaml at startup and calls its operations at request
 	// time. No service configured means an empty catalogue.
 	Services []Service
-	// PlanFixtures configures the stub planner. Empty - production's
-	// default - falls back to defaultPlanFixtures, a small demo table so
-	// the platform answers something without ever calling a real LLM
-	// (make check's global constraint, docs/plans/orchestration.md).
+	// LLM configures the real, tool-calling planner. An empty BaseURL -
+	// production's default until an operator sets ORCHESTRA_LLM_BASE_URL -
+	// falls back to the stub planner over PlanFixtures instead (see
+	// newPlanner): `make check` must never call a real LLM
+	// (docs/plans/orchestration.md, global constraints), and nothing that
+	// builds a Config for a test sets this field.
+	LLM LLM
+	// PlanFixtures configures the stub planner, used only when LLM.BaseURL
+	// is empty. Empty means every question comes back as ResultKindNone -
+	// there is no longer a hard-coded demo table (DECISIONS.md,
+	// 2026-09-11): once a real planner exists, answering with two
+	// hard-coded Japanese questions is no longer the honest default.
 	PlanFixtures []PlanFixture
 }
 
@@ -82,7 +104,13 @@ type Config struct {
 // both go through this one function, so both exercise the same object
 // graph; neither needs to see internal/, which is the point of pkg/app
 // being the only public package.
-func New(cfg Config) (http.Handler, error) {
+//
+// cfg is a pointer, not the value shown in the plan, because Config is 112
+// bytes: golangci-lint's gocritic hugeParam check (part of the fixed
+// harness policy, see harness/quality/go/golangci.yml) rejects passing it
+// by value once LLM was added to it - the same reason domain.Endpoint and
+// usecase.Decision take a pointer.
+func New(cfg *Config) (http.Handler, error) {
 	return build(cfg, httpserver.NewRouter)
 }
 
@@ -90,7 +118,7 @@ func New(cfg Config) (http.Handler, error) {
 // path - which httpserver.NewRouter cannot exercise with a valid, embedded
 // spec - stays under test here.
 func build(
-	cfg Config,
+	cfg *Config,
 	newRouter func(openapi.StrictServerInterface, string) (http.Handler, error),
 ) (http.Handler, error) {
 	catalog, err := specsourcehttp.New(toSpecSourceServices(cfg.Services), nil).Fetch(context.Background())
@@ -98,7 +126,7 @@ func build(
 		return nil, fmt.Errorf("building the catalogue: %w", err)
 	}
 
-	planner := stubplanner.New(toStubTable(planFixtures(cfg.PlanFixtures)), &usecase.Decision{Kind: usecase.DecisionNone})
+	planner := newPlanner(cfg, catalog)
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker)
 
@@ -184,72 +212,21 @@ func toUsecaseAnswers(answers []Answer) []usecase.Answer {
 	return out
 }
 
-// planFixtures returns configured unchanged when it names at least one
-// fixture, and defaultPlanFixtures() otherwise.
-func planFixtures(configured []PlanFixture) []PlanFixture {
-	if len(configured) > 0 {
-		return configured
+// newPlanner selects the platform's usecase.Planner from cfg: the
+// tool-calling adapter (internal/adapter/planner/toolcall) when an LLM
+// base URL is configured, the stub over PlanFixtures otherwise.
+//
+// The stub is not just a test double here - it is production's fallback
+// whenever no LLM is configured, which is why `make check`'s tests that
+// build a Config with no LLM field set (every one of them; see
+// app_test.go) never call a real one: they simply exercise this same
+// fallback path.
+func newPlanner(cfg *Config, catalog domain.Catalog) usecase.Planner {
+	if cfg.LLM.BaseURL == "" {
+		return stubplanner.New(toStubTable(cfg.PlanFixtures), &usecase.Decision{Kind: usecase.DecisionNone})
 	}
 
-	return defaultPlanFixtures()
-}
+	client := chat.New(chat.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model})
 
-// serviceInventory, opListInventoryItems and paramStatus name the inventory
-// service, its list operation and its "status" parameter, each repeated
-// across several fixtures below (goconst, part of the fixed harness
-// policy, wants a repeated literal named once).
-const (
-	serviceInventory     = "inventory"
-	opListInventoryItems = "ListInventoryItems"
-	paramStatus          = "status"
-)
-
-// defaultPlanFixtures is the demo table the running platform answers with
-// when Config.PlanFixtures is empty (production's case, until Task 10
-// replaces the stub with a real planner): one fixed Japanese question maps
-// to one safe list call per dummy service, so a person can see a rendered
-// result end to end without hand-wiring anything. See
-// docs/plans/orchestration.md Task 6 and STATE.md for how this is verified
-// against the services running on localhost.
-func defaultPlanFixtures() []PlanFixture {
-	return []PlanFixture{
-		{
-			Query:       "在庫の一覧を見せて",
-			Service:     serviceInventory,
-			OperationID: opListInventoryItems,
-		},
-		{
-			Query:       "勤怠記録の一覧を見せて",
-			Service:     "attendance",
-			OperationID: "ListAttendanceRecords",
-		},
-		{
-			Query:       "在庫を登録して",
-			Service:     serviceInventory,
-			OperationID: "CreateInventoryItem",
-			Args:        map[string]any{"name": "デモ棚卸資産", paramStatus: "allocated", "quantity": 1},
-		},
-		{
-			// "破損" (damaged) names no ItemStatus value: a disambiguation
-			// question comes back naming the "status" parameter, with its
-			// options built from the inventory catalogue's own enum (D11,
-			// docs/specs/orchestration.md), not listed here. Service and
-			// OperationID name the operation the ask stands in for -
-			// ListInventoryItems's own "status" parameter - since "status"
-			// alone is not unique across services.
-			Query:       "破損した在庫を見せて",
-			Ask:         true,
-			Question:    "「破損」に近いステータスはどれですか？",
-			Param:       paramStatus,
-			Service:     serviceInventory,
-			OperationID: opListInventoryItems,
-		},
-		{
-			Query:       "破損した在庫を見せて",
-			Answers:     []Answer{{Param: paramStatus, Value: "quarantined"}},
-			Service:     serviceInventory,
-			OperationID: opListInventoryItems,
-			Args:        map[string]any{paramStatus: "quarantined"},
-		},
-	}
+	return toolcall.New(client, catalog)
 }
