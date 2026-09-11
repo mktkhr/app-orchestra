@@ -12,16 +12,16 @@ it. Nothing about the rendering is decided by a model.
 
 ## 2. Decisions taken here
 
-|         | Decision                                                                                                                                                                                       |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **D5**  | The LLM is reached through a `Planner` port in `usecase`. Tool use (function calling) is the first adapter. Swapping provider, or dropping to plain text, is an adapter change.                |
-| **D6**  | The platform fetches each service's contract over HTTP from `GET /openapi.yaml`. Services are processes, not files on a shared disk.                                                           |
-| **D7**  | `x-ui-hint.component` exists but only as an override. The rendering rule reads the response schema; the hint wins when present.                                                                |
-| **D8**  | The API result never goes back to the LLM. One request is one LLM call.                                                                                                                        |
-| **D9**  | The component is chosen by the Go platform, not by the browser. The rule lives in `domain` as a pure function.                                                                                 |
-| **D10** | Enum parameters carry Japanese labels (`x-enum-labels`) and are sent to the model with `strict: true`, so a value outside the enum cannot be returned at all.                                  |
-| **D11** | An `ask_user` tool lets the model say "I cannot tell which value you mean" and hand the choice back to the person.                                                                             |
-| **D12** | The screen is a Toolpad Core `DashboardLayout` from the start. Results render inline in the conversation; a table can be expanded to a full-screen modal. Every result carries its provenance. |
+|         | Decision                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **D5**  | The LLM is reached through a `Planner` port in `usecase`. The transport is an OpenAI-compatible chat endpoint - llama.cpp behind llama-swap, vLLM, LM Studio and the hosted providers all speak it - and the model is named per request, so switching model switches backend. Two adapters implement the port: one using tool calling, one asking for JSON in the prompt for models that cannot call tools. |
+| **D6**  | The platform fetches each service's contract over HTTP from `GET /openapi.yaml`. Services are processes, not files on a shared disk.                                                                                                                                                                                                                                                                        |
+| **D7**  | `x-ui-hint.component` exists but only as an override. The rendering rule reads the response schema; the hint wins when present.                                                                                                                                                                                                                                                                             |
+| **D8**  | The API result never goes back to the LLM. One request is one LLM call.                                                                                                                                                                                                                                                                                                                                     |
+| **D9**  | The component is chosen by the Go platform, not by the browser. The rule lives in `domain` as a pure function.                                                                                                                                                                                                                                                                                              |
+| **D10** | Enum parameters carry Japanese labels (`x-enum-labels`) and are sent to the model with `strict: true`, so a value outside the enum cannot be returned at all.                                                                                                                                                                                                                                               |
+| **D11** | An `ask_user` tool lets the model say "I cannot tell which value you mean" and hand the choice back to the person.                                                                                                                                                                                                                                                                                          |
+| **D12** | The screen is a Toolpad Core `DashboardLayout` from the start. Results render inline in the conversation; a table can be expanded to a full-screen modal. Every result carries its provenance.                                                                                                                                                                                                              |
 
 ## 3. Architecture
 
@@ -135,6 +135,12 @@ An enum parameter is emitted with its `enum` list intact and its Japanese labels
 appended to the description, e.g. `allocated=引当済 / staged=出荷準備完了`. With
 `strict: true` the model cannot answer with a value outside the list, so an
 invented status is structurally impossible rather than merely unlikely.
+
+Models that cannot call tools get the same catalogue as text in the prompt and
+answer with JSON. The schema of that JSON is the tool definition by another
+name, so the catalogue is built once and rendered two ways; only the adapter
+differs. `strict: true` has no equivalent there, so the JSON adapter validates
+the answer against the endpoint's parameter schema itself and retries once.
 
 `ask_user` is one further tool, always present, not derived from any spec:
 
