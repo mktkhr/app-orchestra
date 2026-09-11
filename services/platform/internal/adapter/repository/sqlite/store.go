@@ -39,6 +39,22 @@ type Store struct {
 // EXISTS"), so New is safe to call every time the platform starts - there
 // is no migration tool to run first (section 6).
 func New(path string) (*Store, error) {
+	db, err := openDB(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Store{db: db}, nil
+}
+
+// openDB opens (creating, if needed) the SQLite file at path and applies
+// the embedded schema - every table this package knows about, not just the
+// ones the caller is about to use, since the schema is idempotent and
+// there is only one file (docs/specs/auth.md, section 10: "the accounts
+// are rows in the file the workspaces already use"). Shared by every store
+// type in this package (Store, Users, Sessions, Permissions) so the "open,
+// set the connection limit, apply the schema" sequence is written once.
+func openDB(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
@@ -52,7 +68,7 @@ func New(path string) (*Store, error) {
 		return nil, fmt.Errorf("applying schema to %s: %w", path, err)
 	}
 
-	return &Store{db: db}, nil
+	return db, nil
 }
 
 // Close releases the underlying database connection. errors.Join, not a

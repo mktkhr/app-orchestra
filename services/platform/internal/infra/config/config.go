@@ -35,6 +35,14 @@ var ErrInvalidLLMMode = errors.New("invalid ORCHESTRA_LLM_MODE, want toolcall or
 // (docs/plans/workspaces.md, Task 0, Step 3).
 var ErrMissingDBPath = errors.New("ORCHESTRA_DB_PATH is required")
 
+// ErrMissingAdminPassword is returned when ORCHESTRA_ADMIN_PASSWORD is
+// unset or empty. The first admin account is seeded from it
+// (docs/specs/auth.md, section 3); a default password would be a way of
+// having no password at all while appearing to, the same reasoning
+// ErrMissingDBPath already applies to ORCHESTRA_DB_PATH
+// (docs/plans/auth.md, Task 0, Step 3).
+var ErrMissingAdminPassword = errors.New("ORCHESTRA_ADMIN_PASSWORD is required")
+
 // The two values ORCHESTRA_LLM_MODE accepts: which of the two
 // usecase.Planner adapters (internal/adapter/planner/toolcall,
 // internal/adapter/planner/jsonmode) pkg/app.newPlanner selects when an LLM
@@ -116,6 +124,9 @@ type Config struct {
 	// DBPath is the SQLite file workspaces are kept in, read from
 	// ORCHESTRA_DB_PATH. Required: see ErrMissingDBPath.
 	DBPath string
+	// AdminPassword seeds the first admin account, read from
+	// ORCHESTRA_ADMIN_PASSWORD. Required: see ErrMissingAdminPassword.
+	AdminPassword string
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
@@ -158,6 +169,13 @@ func Load() (Config, error) {
 	}
 
 	cfg.DBPath = dbPath
+
+	adminPassword, ok := os.LookupEnv("ORCHESTRA_ADMIN_PASSWORD")
+	if !ok || adminPassword == "" {
+		return Config{}, ErrMissingAdminPassword
+	}
+
+	cfg.AdminPassword = adminPassword
 
 	raw, ok := os.LookupEnv("ORCHESTRA_PORT")
 	if !ok || raw == "" {

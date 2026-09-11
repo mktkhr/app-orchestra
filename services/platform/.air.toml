@@ -29,7 +29,12 @@ entrypoint = ["./tmp/api"]
 # a long-lived, non-package application file (XDG_STATE_HOME's default), so
 # a workspace saved here survives both a rebuild and a restart of air itself
 # (docs/specs/workspaces.md, AC-W-105) without living inside version control.
-full_bin = "ORCHESTRA_SERVICES=inventory=http://localhost:8081,attendance=http://localhost:8082 ORCHESTRA_LLM_BASE_URL=http://localhost:11435/v1 ORCHESTRA_LLM_MODEL=qwen3.5-9b-q8 ORCHESTRA_DB_PATH=/home/takahiro/.local/state/app-orchestra/workspaces.db ./tmp/api"
+# ORCHESTRA_ADMIN_PASSWORD has no default (internal/infra/config.ErrMissingAdminPassword,
+# docs/specs/auth.md, section 3): the platform refuses to start without one,
+# so a hot-reloading dev server needs one too. This value is for local
+# development only - it seeds the admin account once, the first time
+# ORCHESTRA_DB_PATH's file is created, and is not read again afterwards.
+full_bin = "ORCHESTRA_SERVICES=inventory=http://localhost:8081,attendance=http://localhost:8082 ORCHESTRA_LLM_BASE_URL=http://localhost:11435/v1 ORCHESTRA_LLM_MODEL=qwen3.5-9b-q8 ORCHESTRA_DB_PATH=/home/takahiro/.local/state/app-orchestra/workspaces.db ORCHESTRA_ADMIN_PASSWORD=dev-only-admin-password ./tmp/api"
 include_ext = ["go"]
 exclude_dir = ["tmp", "bin", "acceptance"]
 delay = 200

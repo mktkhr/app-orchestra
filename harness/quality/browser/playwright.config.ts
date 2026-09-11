@@ -47,6 +47,11 @@ export default defineConfig({
       ORCHESTRA_PORT: String(port),
       ORCHESTRA_STATIC_DIR: "../../../web/dist",
       ORCHESTRA_DB_PATH: databasePath,
+      // ORCHESTRA_ADMIN_PASSWORD has no default either
+      // (internal/infra/config.ErrMissingAdminPassword) - these gates
+      // measure a screen rather than what is on it, so a fixed value is
+      // fine.
+      ORCHESTRA_ADMIN_PASSWORD: "guard-admin-password",
     },
   },
 });

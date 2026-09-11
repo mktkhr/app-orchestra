@@ -4,17 +4,29 @@ _Last updated: 2026-09-11_
 
 ## Summary
 
-**Both vertical slices are done.** `docs/plans/orchestration.md`'s seventeen
-tasks, and now `docs/plans/workspaces.md`'s eight (Task 0 through Task 7):
-an answer worth keeping can be kept. A result in the chat can be saved to a
+**Both vertical slices are done, and the third (authentication and
+authorisation) has its first task.** `docs/plans/orchestration.md`'s
+seventeen tasks, `docs/plans/workspaces.md`'s eight, and now
+`docs/plans/auth.md`'s Task 0: accounts, sessions and permissions exist in
+the same SQLite file workspaces already use. `internal/adapter/auth/local`
+checks a name and password against argon2id-hashed rows and seeds the first
+admin, once, from `ORCHESTRA_ADMIN_PASSWORD` (now required at startup, the
+same as `ORCHESTRA_DB_PATH`); `internal/adapter/repository/sqlite`'s
+`Sessions` and `Permissions` types implement `usecase.SessionStore` and
+`usecase.PermissionStore`. Nothing routes to any of this over HTTP yet -
+that is `docs/plans/auth.md` Task 2 onward - so a person cannot sign in yet
+and the catalogue does not filter by permission yet (Task 1). `make check`
+is fully green.
+
+An answer worth keeping can be kept. A result in the chat can be saved to a
 workspace as a panel - service, operation id, arguments, component, title -
 and opening the workspace re-runs every panel through the same
 `/api/invoke` the chat uses, drawing each answer with the same components.
 Workspaces live in a SQLite file (`modernc.org/sqlite`, `ORCHESTRA_DB_PATH`,
 required) and survive a restart of the platform process, proven at the
-process level, not just in memory. `make check` is fully green, and every
-criterion in `docs/specs/workspaces.md` section 10 (AC-W-101 through
-AC-W-106) has a test that runs in CI.
+process level, not just in memory. Every criterion in
+`docs/specs/workspaces.md` section 10 (AC-W-101 through AC-W-106) has a
+test that runs in CI.
 
 The platform's scaffold, two services that answer real
 requests, the rendering rule, the catalogue the platform builds by asking
@@ -467,7 +479,50 @@ process-level suite duplicates rather than imports
 `orchestration.test.ts`'s helpers, and why the browser journey reopens the
 workspace with a real page reload.
 
+**`docs/plans/auth.md` Task 0 (accounts, sessions and permissions exist).**
+`internal/domain/user.go` adds `Role` (`admin`/`user`), `User` and
+`Permission` - pure data, no logic, standard library only.
+`internal/usecase/auth.go` adds the three ports the plan specifies
+(`Authenticator`, `SessionStore`, `PermissionStore`), interfaces only, no
+`net/http`/`encoding/json`/`golang.org/x/crypto` in this layer.
+`internal/adapter/repository/sqlite` gains three tables (`users`,
+`sessions`, `permissions`) in the same embedded `schema.sql`, and three new
+store types - `Users`, `Sessions`, `Permissions` - each independently
+openable over the same file path. They are separate Go types from the
+existing `Store` (not new methods on it) because `usecase.SessionStore.Delete`
+and `Store`'s own workspace-deleting `Delete` would otherwise be two
+methods of the same name on the same receiver, which Go does not allow;
+`openDB` (factored out of `Store.New`) is the one place that opens a
+connection and applies the schema, shared by all four types.
+`internal/adapter/auth/local` implements `Authenticator`: argon2id (64 MiB,
+t=1, p=4, 32-byte key - OWASP's argon2id baseline for a single server with
+no secondary defence, RFC 9106 §4) over `sqlite.Users`, encoded as a PHC
+string (`$argon2id$v=...$m=...,t=...,p=...$salt$hash`) so a hash carries
+its own parameters. `local.New` seeds the first admin - name `"admin"`,
+from `ORCHESTRA_ADMIN_PASSWORD` - exactly once: `sqlite.Users.SeedAdminIfNone`
+checks `COUNT(*) FROM users` and inserts only when it is zero, so a restart
+against a database that already has accounts never overwrites one.
+`ORCHESTRA_ADMIN_PASSWORD` is now required at startup, refused empty or
+unset the same way `ORCHESTRA_DB_PATH` is (`internal/infra/config`); the
+seeding call lives in `pkg/app.build` (`seedAdmin`, skipped when `DBPath`
+is empty, mirroring `newWorkspaceHandler`) - nothing consumes the resulting
+`Authenticator` yet, since no HTTP handler exists before Task 2, so the
+function returns only its error. Verified live, not just in the test
+suite: `services/platform/bin/api` started twice against the same
+`ORCHESTRA_DB_PATH` file with different `ORCHESTRA_ADMIN_PASSWORD` values
+the second time - the admin seeded on the first run is still the one whose
+original password authenticates. No HTTP in this task (`docs/plans/auth.md`
+says so explicitly); a person still cannot sign in, and the catalogue does
+not yet filter by permission (`docs/plans/auth.md` Task 1).
+
 ## What does not exist yet
+
+Everything past `docs/plans/auth.md` Task 0: the catalogue does not narrow
+to a person yet (Task 1, the `TODO(auth)` in `Orchestrator.Invoke` and
+`stubOwner` in `usecase/workspaces.go` are both still there), there is no
+`/api/session` or `/api/users` (Tasks 2-3), and no sign-in screen or admin
+screen (Tasks 4-5) - a person cannot sign in, and every workspace is still
+read and written as `stubOwner`.
 
 Nothing from `docs/plans/orchestration.md`'s first vertical slice or
 `docs/plans/workspaces.md`'s second; all twenty-five tasks between them are

@@ -203,6 +203,10 @@ beforeAll(async () => {
       `attendance=http://127.0.0.1:${attendancePort}`,
     ORCHESTRA_PLAN_FIXTURES: JSON.stringify(planFixtures),
     ORCHESTRA_DB_PATH: dbPath,
+    // ORCHESTRA_ADMIN_PASSWORD has no default either
+    // (internal/infra/config.ErrMissingAdminPassword) - a fixed value is
+    // fine here, since this suite does not yet sign in (that is Task 6).
+    ORCHESTRA_ADMIN_PASSWORD: "e2e-admin-password",
   });
 
   platform = { process: platformProcess, port: platformPort };

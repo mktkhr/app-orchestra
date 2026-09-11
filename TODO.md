@@ -4,21 +4,34 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-Nothing. Both vertical slices (`docs/plans/orchestration.md`,
-`docs/plans/workspaces.md`) are done, and `make check` is fully green.
+`docs/plans/auth.md`, the third subproject. Task 0 (accounts, sessions and
+permissions exist) is done and `make check` is fully green. Next:
+
+- **Task 1** - the catalogue narrows to a person: `Catalog.For(permissions)`,
+  thread `*domain.User` through `Orchestrator.Plan`/`Invoke` and every
+  `Workspaces` method, delete the `TODO(auth)` comment and `stubOwner`.
+- **Task 2** - `POST`/`DELETE`/`GET /api/session` and the middleware that
+  resolves a cookie into a user for every other route.
+- **Task 3** - the admin's endpoints (`GET /api/users`,
+  `GET`/`PUT /api/users/{id}/permissions`).
+- **Task 4** - the sign-in screen.
+- **Task 5** - the admin's screen (grant/revoke per service).
+- **Task 6** - end to end: the existing e2e suites sign in, and the full
+  journey (grant a service, ask a question, see it answered from only that
+  service) gets a test.
+
+Task 1 needs only Task 0 and touches no HTTP, so it can run beside Task 2.
 
 ## Next
 
-Everything remaining sits outside the two vertical slices:
+Everything remaining sits outside the two vertical slices and outside
+`docs/plans/auth.md`'s own tasks above:
 
-1. Authentication and authorisation. Workspaces carry an owner column
-   filled with the stub user (W6, `docs/specs/workspaces.md`); nothing
-   currently checks who is asking.
-2. Multi-turn conversational context. Today's planner makes one call per
+1. Multi-turn conversational context. Today's planner makes one call per
    request (D8); nothing remembers a prior turn across a `/api/plan` call.
-3. A genre/domain layer above individual services - grouping services by
+2. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat.
-4. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,

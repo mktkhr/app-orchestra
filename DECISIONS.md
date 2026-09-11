@@ -1330,3 +1330,67 @@ platform process onto the array `afterAll` cleans up - the first is
 stopped inline, mid-test, and `stop`'s `once("exit", ...)` listener never
 fires for a process that has already exited by the time it is attached,
 which hung the suite for the full hook timeout before this was noticed.
+
+## 2026-09-11 Auth Task 0: three store types instead of three methods on one, and where the admin gets seeded
+
+**Context.** `docs/plans/auth.md` Task 0 asks for `usecase.SessionStore` and
+`usecase.PermissionStore`, implemented by `internal/adapter/repository/sqlite`
+alongside the existing `WorkspaceStore` implementation - the same package,
+the same SQLite file. `usecase.SessionStore` names a method `Delete(ctx,
+token string) error`; the existing `Store` (workspaces) already has a
+`Delete(ctx, id string) error` of its own. Go does not allow two methods of
+the same name on one receiver, so `Store` itself cannot implement both
+`WorkspaceStore` and `SessionStore` no matter how the file is organised.
+
+Separately: `local.New` (the admin-seeding entry point) is called from
+`pkg/app.build`, but nothing in the object graph consumes the
+`Authenticator`, `SessionStore` or `PermissionStore` it could hand back
+until Task 2 wires `/api/session` - `docs/plans/auth.md` says explicitly
+that Task 0 has no HTTP. A Go local variable that is never read is a
+compile error, not a lint warning, so `build` cannot simply construct and
+discard these values by name.
+
+**Decision.** Three new types in the `sqlite` package - `Users`, `Sessions`,
+`Permissions` - each with its own `New(path string)`, distinct from `Store`.
+`openDB` (the "open, set the connection limit, apply the schema" sequence,
+previously inlined in `Store.New`) is factored out and shared by all four
+constructors, so each type still opens its own `*sql.DB` against the same
+file path rather than sharing one connection object - simpler than plumbing
+a shared handle through four constructors, and modernc.org/sqlite already
+serialises writes at the file level regardless (see `Store`'s own doc
+comment on `maxOpenConns`). `Users.SeedAdminIfNone` generates the admin's id
+itself (via the package's existing `newID`, unexported, so only this
+package can call it) rather than taking one as a parameter - keeping id
+generation in one place, the same as every other row this package creates.
+
+`pkg/app.seedAdmin` is a small function called from `build`, right after
+`newWorkspaceHandler`, that opens `sqlite.Users` and calls `local.New` -
+returning only the error. It exists purely for the side effect of having
+accounts ready once a person can sign in in Task 2; nothing keeps the
+`*local.Authenticator` it builds, because nothing yet has anywhere to put
+it. `AdminPassword` on `pkg/app.Config` mirrors `DBPath`'s own optionality
+(empty skips seeding) rather than being independently required at this
+layer - `internal/infra/config.Load` is the one seam that enforces
+`ORCHESTRA_ADMIN_PASSWORD` non-empty, the same as it already does for
+`ORCHESTRA_DB_PATH`.
+
+argon2id parameters (64 MiB, t=1, p=4, 32-byte output) come from OWASP's
+password-storage cheat sheet's argon2id baseline, which RFC 9106 §4
+recommends for the same profile this platform is in: a single server with
+no secondary defence (no separate pepper, no rate-limiting hardware). Not
+argon2's own package-level defaults, which target interactive key
+derivation rather than a password store. Salt comes from `crypto/rand.Text()`
+(Go 1.24+, no error return), the same source `sqlite.newID` already uses,
+rather than `crypto/rand.Read` into a byte slice - one less error path to
+handle or test, for the same amount of entropy.
+
+**Consequences.** `local.Authenticator`, `sqlite.Sessions` and
+`sqlite.Permissions` are all fully implemented and unit-tested against a
+real SQLite file (`t.TempDir()`), but nothing routes an HTTP request to any
+of them yet - `docs/plans/auth.md` Task 2 is what will change `seedAdmin`'s
+shape, most likely into something that keeps the `Authenticator` and hands
+it to a new session handler instead of discarding it. Verified live outside
+the test suite too: `services/platform/bin/api` started twice against the
+same `ORCHESTRA_DB_PATH` file with two different `ORCHESTRA_ADMIN_PASSWORD`
+values on the two runs - the admin seeded on the first run is still there,
+under its first password, on the second.

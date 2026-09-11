@@ -275,9 +275,20 @@ func TestNewFailsWhenAConfiguredServiceIsUnreachable(t *testing.T) {
 func TestNewOpensTheWorkspaceStoreWhenDBPathIsSet(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "workspaces.db")
 
-	_, err := app.New(&app.Config{DBPath: dbPath})
+	_, err := app.New(&app.Config{DBPath: dbPath, AdminPassword: "correct horse battery staple"})
 
 	require.NoError(t, err)
+}
+
+// TestNewSeedsTheAdminAccountWhenDBPathIsSet is docs/plans/auth.md, Task 0:
+// a valid ORCHESTRA_ADMIN_PASSWORD lets the platform seed its first admin
+// at startup.
+func TestNewSeedsTheAdminAccountWhenDBPathIsSet(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "workspaces.db")
+
+	_, err := app.New(&app.Config{DBPath: dbPath, AdminPassword: ""})
+
+	require.Error(t, err)
 }
 
 // TestNewFailsWhenTheWorkspaceStoreCannotBeOpened is the other half: a bad
@@ -287,7 +298,7 @@ func TestNewOpensTheWorkspaceStoreWhenDBPathIsSet(t *testing.T) {
 func TestNewFailsWhenTheWorkspaceStoreCannotBeOpened(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "missing-directory", "workspaces.db")
 
-	_, err := app.New(&app.Config{DBPath: dbPath})
+	_, err := app.New(&app.Config{DBPath: dbPath, AdminPassword: "correct horse battery staple"})
 
 	require.Error(t, err)
 }

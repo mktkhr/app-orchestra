@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/auth/local"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/handler"
 	invokerhttp "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/invoker/http"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
@@ -134,7 +135,20 @@ type Config struct {
 	// exists for this package's own tests, not for production silently
 	// doing without storage.
 	DBPath string
+	// AdminPassword seeds the first admin account, once, in the file named
+	// by DBPath (docs/specs/auth.md, section 3). Ignored when DBPath is
+	// empty, the same as DBPath's own doc comment explains - and required
+	// to be non-empty whenever DBPath is set, since cmd/api always sets
+	// both together (internal/infra/config.Load refuses to start without
+	// ORCHESTRA_ADMIN_PASSWORD either).
+	AdminPassword string
 }
+
+// adminUserName is the name the first admin account is seeded under
+// (docs/specs/auth.md, section 3). Fixed rather than configurable: nothing
+// asks for a different one, and a person signs in with it the same way
+// every time.
+const adminUserName = "admin"
 
 // New builds the platform's http.Handler. Acceptance tests and cmd/api
 // both go through this one function, so both exercise the same object
@@ -165,6 +179,10 @@ func build(
 	workspaceHandler, err := newWorkspaceHandler(cfg.DBPath, catalog)
 	if err != nil {
 		return nil, err
+	}
+
+	if seedErr := seedAdmin(cfg.DBPath, cfg.AdminPassword); seedErr != nil {
+		return nil, seedErr
 	}
 
 	planner, err := newPlanner(cfg, catalog)
@@ -281,6 +299,38 @@ func newWorkspaceHandler(dbPath string, catalog domain.Catalog) (*handler.Worksp
 	}
 
 	return handler.NewWorkspace(usecase.NewWorkspaces(store, catalog)), nil
+}
+
+// seedAdmin opens the accounts table in the SQLite file at dbPath and
+// seeds the first admin from adminPassword when none exists yet
+// (docs/specs/auth.md, section 3; docs/plans/auth.md, Task 0, Step 3) - so
+// a bad ORCHESTRA_ADMIN_PASSWORD fails startup here, the same reason
+// newWorkspaceHandler's store open and newPlanner's catalogue fetch do,
+// above.
+//
+// Nothing in this package routes a request to the result yet - Task 2
+// wires the session endpoints that will - so seedAdmin returns only the
+// error: it exists purely for the side effect of having accounts ready
+// once a person can sign in.
+//
+// Skipped when dbPath is empty, mirroring newWorkspaceHandler: every
+// caller that leaves it empty never drives an authenticated request
+// either (this package's own tests, predating auth).
+func seedAdmin(dbPath, adminPassword string) error {
+	if dbPath == "" {
+		return nil
+	}
+
+	users, err := sqlitestore.NewUsers(dbPath)
+	if err != nil {
+		return fmt.Errorf("opening the user store: %w", err)
+	}
+
+	if _, err := local.New(context.Background(), users, adminUserName, adminPassword); err != nil {
+		return fmt.Errorf("seeding the admin account: %w", err)
+	}
+
+	return nil
 }
 
 // newPlanner selects the platform's usecase.Planner from cfg: the

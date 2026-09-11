@@ -57,8 +57,9 @@ func newWorkspaceTestApp(t *testing.T, withUnexposed bool) *httptest.Server {
 	dbPath := filepath.Join(t.TempDir(), "workspaces.db")
 
 	handler, err := app.New(&app.Config{
-		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
-		DBPath:   dbPath,
+		Services:      []app.Service{{Name: "inventory", URL: inventory.server.URL}},
+		DBPath:        dbPath,
+		AdminPassword: "correct horse battery staple",
 	})
 	require.NoError(t, err)
 
