@@ -1143,3 +1143,32 @@ schema library happens to produce. `jsonmode.Planner`'s enum validation
 separately, with `httptest` fixtures (`planner_test.go`), and never needed
 against the live model in these dozen runs - the ordered schema alone was
 enough to stop the corruption that would have triggered them.
+
+## 2026-09-11 The JSON planner asks where the tool-calling one guesses
+
+**Context.** `DECISIONS.md` recorded that no local model under about 20B
+parameters was observed to reliably choose `ask_user` through tool calling:
+`qwen3.5-9b-q8` guessed a status instead, four runs in five. `TODO.md` asked
+whether a JSON object shaped `{"kind": "ask", ...}` is an easier target for a
+small model than a tool call is, and Task 11's live questions were never
+ambiguous enough to answer it.
+
+**Decision.** Measured, five runs each, same model, the two planners side by
+side:
+
+| question             | tool calling                                       | JSON       |
+| -------------------- | -------------------------------------------------- | ---------- |
+| 破損した在庫はある？ | guessed `quarantined` 4/5, `list_capabilities` 1/5 | `none` 5/5 |
+| あやしい在庫を見せて | `ask` 2/5, guessed 3/5                             | `ask` 4/5  |
+
+The JSON planner reaches `ask` where the value genuinely maps to nothing
+(あやしい - "suspicious", which no status means), and answers `none` where
+the tool-calling one talks itself into a guess (破損 - "damaged", which
+検品保留 nearly means).
+
+**Consequences.** Neither is right about 破損: one filters by a status the
+person did not ask for, the other refuses a question it could have asked
+about. But the JSON planner fails towards saying nothing rather than towards
+saying something wrong, and a wrong filter is the failure a person cannot
+see. Nothing changes in the code; this is what the two adapters do, recorded
+so the next person choosing between them is choosing with numbers.

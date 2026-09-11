@@ -16,18 +16,16 @@ _Keep three lists. Move items, do not duplicate them._
    `title` on every property an exposed operation's schema describes, since
    only an exposed operation's fields are ever shown on screen. Deliberately
    left for a separate decision (`DECISIONS.md`, 2026-09-11).
-1. No local model under ~20B parameters was observed to reliably choose
-   `ask_user` through the tool-calling planner (`DECISIONS.md`, 2026-09-11).
-   Not yet re-measured against the JSON planner's `{"kind": "ask", ...}`
-   shape, which may be an easier target for a smaller model than a tool call
-   is - none of the questions exercised live for Task 11 were ambiguous
-   enough to reach it.
 1. Move to TypeScript 7 once `openapi-typescript` supports it. Everything else
    in the repository already passes under 7; only code generation does not.
    orval was measured as a replacement and rejected - it runs under TypeScript 7
    but emits the wrong shape for this product (`DECISIONS.md`, 2026-09-11).
 
 ## Done
+
+- Measured the two planners against the same ambiguous questions: the JSON
+  planner reaches `ask` where the tool-calling one guesses, and answers
+  `none` where it talks itself into a guess (`DECISIONS.md`, 2026-09-11).
 
 - Imported the repository harness from takamai at HEAD, renamed every
   identifier, and removed all product code (`DECISIONS.md`, 2026-09-10).
