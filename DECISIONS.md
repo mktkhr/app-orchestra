@@ -314,3 +314,59 @@ type-aware rules nothing to narrow, so every value reads as `any`. Both are
 switched off for `harness/quality/redocly/*.js` alone, next to the existing
 exemption that lets Vite configs be default exports for the same reason: the
 tool decides the shape, not the author.
+
+## 2026-09-11 Toolpad Core adopted, then dropped
+
+**Context.** The first design named Toolpad Core as the shell, reasoning that
+workspaces would need a navigation frame later and that retrofitting one is
+expensive. The scaffold was built on it. The browser then showed the app name
+sitting off-centre in the header, and the console explained why: `React does not
+recognize the 'justifyContent' prop on a DOM element`, four times, from Material
+UI `Stack` elements inside Toolpad's own header.
+
+`@toolpad/core@0.16.0` is the latest release and its peer range for
+`@mui/material` is `^7.0.0`. This repository is on `^9.4.0`. MUI 9's `Stack` no
+longer turns those props into styles, so Toolpad emits them as DOM attributes
+and the layout they were meant to produce never happens. No Toolpad release
+supports MUI 8 or 9, and the gap has been widening: 0.13 accepted MUI 6, 0.14
+onwards only 7.
+
+**Decision.** Drop it. The shell is `AppBar` + `Drawer` + `List` from Material
+UI directly. What Toolpad supplied here was a layout frame, and that frame is
+tens of lines of MUI.
+
+**Consequences.** The alternative was holding Material UI two majors back to
+keep one dependency, which is the wrong trade for a frame this thin - and the
+MUI 9 pin was inherited from takamai rather than chosen, so nothing here argued
+for it either. Moving now cost little because the shell was all that existed;
+after workspaces it would not have been. The 44px minimum touch target that
+`harness/quality/browser/layout.spec.ts` enforces stays in the theme: it was
+added for Toolpad's 40px icon buttons but MUI's own default is the same 40px, so
+it is still load-bearing.
+
+## 2026-09-11 .gitignore allows by path, not by extension
+
+**Context.** The deny-by-default `.gitignore` of 2026-09-10 allowed files by
+extension: any `.md`, any `.yml`, any `.json`, wherever it sat. That reads like
+deny-by-default and behaves like the opposite. Three holes had already been
+patched by hand - `tmp/`, `scratch/`, and then `.playwright-mcp/`, which a
+browser tool created at the repository root and whose `page-*.yml` was tracked
+until `make fmt-check` tripped over it. Each patch was reactive, and the list
+would have kept growing: every tool that writes a file writes it somewhere new.
+
+Two more exceptions had accumulated for the opposite reason. A Redocly plugin
+must be JavaScript, and `.js` was not a tracked extension, so it needed naming
+individually; air's config is TOML, same story.
+
+**Decision.** Allow by path. Section 3 names the trees the repository is made of
+(`harness/`, `services/`, `web/`, `e2e/`, `docs/`, `.github/`, `.claude/`),
+section 4 names the root-level files, and section 5 lists what stays out even
+inside an allowed tree - build output, caches, test artefacts.
+
+**Consequences.** An unknown directory is out from the start rather than in
+until someone notices. All three hand-patched holes and both individual file
+exceptions disappeared: `.playwright-mcp/` is out because nothing allows it, and
+the Redocly plugin and `.air.toml` are in because they live under `harness/` and
+`services/`. Adding a source tree is one line; adding a file type is nothing at
+all. Verified over every file on disk: the only ones ignored are build output,
+test artefacts and `docs/requirements.md`, which is deliberate.

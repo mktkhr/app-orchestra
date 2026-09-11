@@ -1,13 +1,15 @@
-# Deny by default: a file enters the index only because a rule below names it.
+# Deny by default: a file enters the index only because a rule below names the
+# tree it lives in, or names the file itself.
 #
-# The usual shape of this file is the opposite - track everything, list the
-# junk - and it fails in one direction only: whatever nobody thought to list
-# gets committed. Build output, caches, downloaded browsers, an agent's
-# scratch file and a stray secret all arrive the same way, and they arrive
-# silently. Denying first means the failure lands on the other side: something
-# that should be tracked is not, which `git status` shows and a build catches.
+# An earlier version of this allowed by extension - any .md, any .yml, wherever
+# it sat. That reads like deny-by-default and behaves like the opposite: tooling
+# dropped a .playwright-mcp/page-*.yml at the root and it was tracked, a note in
+# tmp/ would have been tracked, and the list of directories to plug grew every
+# time something new wrote a file. Naming the trees instead means an unknown
+# directory is out from the start and nothing has to be plugged.
 #
-# To add a file type, add it to section 3. To add one file, add it to section 4.
+# To add a source tree, add it to section 3. To add a root-level file, add it to
+# section 4. To keep something out of a tree that is otherwise in, section 5.
 
 # --- 1. deny everything -----------------------------------------------------
 *
@@ -16,14 +18,38 @@
 # Without this, git never looks inside a directory and no rule below can match.
 !*/
 
-# --- 3. directories that never enter the index ------------------------------
-# A file inside an excluded directory cannot be re-included, so these hold
-# regardless of the allow rules that follow.
-/.cache/
-/.tools/
-/.vite/
-/coverage/
-/services/*/bin/
+# --- 3. the trees this repository is made of --------------------------------
+!/.claude/**
+!/.github/**
+!/docs/**
+!/e2e/**
+!/harness/**
+!/services/**
+!/web/**
+
+# --- 4. root-level files, by name -------------------------------------------
+!/.gitignore
+!/AGENTS.md
+!/CLAUDE.md
+!/DECISIONS.md
+!/Makefile
+!/PRODUCT.md
+!/README.md
+!/STATE.md
+!/TODO.md
+!/go.work
+!/go.work.sum
+!/package.json
+!/pnpm-lock.yaml
+!/pnpm-workspace.yaml
+!/redocly.yaml
+!/tsconfig.base.json
+!/tsconfig.json
+!/vite.config.ts
+
+# --- 5. what never enters, even inside an allowed tree ----------------------
+# A file under an excluded directory cannot be re-included, so these hold
+# regardless of section 3.
 **/node_modules/
 **/dist/
 **/test-results/
@@ -31,56 +57,18 @@
 **/blob-report/
 **/sessions/
 **/users/
-# Scratch space. The allow rules below are extension based, so a note left
-# in one of these would otherwise be tracked for being Markdown.
-/tmp/
-/scratch/
-/.scratch/
-
-# --- 4. tracked file types --------------------------------------------------
-!*.go
-!*.mod
-!*.sum
-!*.work
-!*.ts
-!*.tsx
-!*.css
-!*.html
-!*.json
-!*.md
-!*.mk
-!*.sh
-!*.txt
-!*.yaml
-!*.yml
-!*.allow
-
-# --- 5. tracked files named individually ------------------------------------
-# No extension, or an extension that is not tracked wholesale.
-!/Makefile
-# Git hooks have no extension by design - git looks them up by name. The
-# directory exists only to hold them, so everything in it is tracked.
-!/harness/githooks/*
-# Redocly loads a custom plugin as JS, not TypeScript; .js is not tracked
-# wholesale (the rest of the workspace writes TypeScript), so this one file
-# is named individually.
-!/harness/quality/redocly/enum-labels.js
-!/.gitignore
-!/.npmrc
-!/.env
-
-# --- 6. exceptions inside the allowed types ---------------------------------
-# Local environment overrides are per-machine; only the committed .env above
-# is shared (it holds NO_COLOR=1, see DECISIONS.md).
-/.env.*
-!/.env.example
+**/coverage/
+/services/*/bin/
+/services/*/tmp/
+# `go build` drops the binary next to its source and it has no extension.
+/harness/guard/archcheck/archcheck
 *.tsbuildinfo
+*.test
+
 # The brainstorming notes that preceded PRODUCT.md. Kept on disk for reference,
 # not tracked: their decisions are already in PRODUCT.md, in English, and a
 # second copy would go stale.
 /docs/requirements.md
+
 # Per-developer Claude Code overrides; the shared config is .claude/settings.json.
 /.claude/settings.local.json
-# Compiled Go test binaries (`go test -c`) have no extension and would
-# otherwise fall through section 5 only if named there - listed for clarity.
-*.test
