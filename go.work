@@ -3,6 +3,8 @@ go 1.27.1
 use (
 	./harness/gen
 	./harness/guard/archcheck
+	./services/attendance
+	./services/attendance/acceptance
 	./services/inventory
 	./services/inventory/acceptance
 	./services/platform

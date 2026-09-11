@@ -1,0 +1,172 @@
+openapi: 3.0.3
+info:
+  title: Attendance API
+  version: 0.1.0
+  description: >
+    Dummy attendance service: attendance records. Exists so the orchestration
+    platform has a real endpoint to plan against. See
+    docs/specs/orchestration.md.
+servers:
+  - url: /
+    description: The attendance service serves its own API and its own contract.
+security: []
+tags:
+  - name: records
+    description: Attendance records held by the attendance service.
+  - name: system
+    description: The service's own contract.
+paths:
+  /openapi.yaml:
+    get:
+      operationId: getSpec
+      summary: Return this service's own OpenAPI contract.
+      description: >
+        Served so the platform can fetch the contract over HTTP (it is a
+        process, not a file on a shared disk) and build its catalogue from it.
+      tags:
+        - system
+      responses:
+        "200":
+          description: The service's OpenAPI document, as YAML.
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /api/attendance/records:
+    get:
+      operationId: listAttendanceRecords
+      summary: List attendance records, optionally filtered by kind.
+      description: >
+        Returns every attendance record known to the service. The optional
+        kind query parameter narrows the result to records of that kind.
+      tags:
+        - records
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          description: Restrict the result to records of this kind.
+          schema:
+            $ref: "#/components/schemas/RecordKind"
+      responses:
+        "200":
+          description: The matching attendance records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordList"
+    post:
+      operationId: createAttendanceRecord
+      summary: Create an attendance record.
+      description: >
+        Adds a new attendance record to the service's in-memory store. Its id
+        is assigned by the service.
+      tags:
+        - records
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewRecord"
+      responses:
+        "201":
+          description: The created attendance record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Record"
+  /api/attendance/records/{id}:
+    get:
+      operationId: getAttendanceRecord
+      summary: Get one attendance record by id.
+      description: Returns a single attendance record, or 404 when the id is unknown.
+      tags:
+        - records
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The record's id.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The requested attendance record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Record"
+        "404":
+          description: No record exists with this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    RecordKind:
+      type: string
+      description: What kind of attendance arrangement a record represents.
+      enum: [deemed, substitute, compensatory, on_call]
+      x-enum-labels:
+        deemed: みなし労働
+        substitute: 振替休日
+        compensatory: 代休
+        on_call: 待機
+    Record:
+      type: object
+      description: A single attendance record.
+      required:
+        - id
+        - employee
+        - kind
+        - date
+      properties:
+        id:
+          type: string
+          description: The record's id.
+        employee:
+          type: string
+          description: The employee's name.
+        kind:
+          $ref: "#/components/schemas/RecordKind"
+        date:
+          type: string
+          description: The date the record applies to (YYYY-MM-DD).
+    RecordList:
+      type: object
+      description: A page of attendance records.
+      required:
+        - records
+      properties:
+        records:
+          type: array
+          description: The matching attendance records.
+          items:
+            $ref: "#/components/schemas/Record"
+    NewRecord:
+      type: object
+      description: The fields needed to create an attendance record.
+      required:
+        - employee
+        - kind
+        - date
+      properties:
+        employee:
+          type: string
+          description: The employee's name.
+        kind:
+          $ref: "#/components/schemas/RecordKind"
+        date:
+          type: string
+          description: The date the record applies to (YYYY-MM-DD).
+    Error:
+      type: object
+      description: A machine-readable error.
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: What went wrong, for humans.
