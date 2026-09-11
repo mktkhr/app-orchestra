@@ -84,3 +84,68 @@ export async function postInvoke(request: InvokeRequest): Promise<InvokeResult> 
 
   return data;
 }
+
+/**
+ * The body of a successful GET /api/workspaces: every row the stub owner
+ * has, most recently created last.
+ *
+ * openapi-fetch's own `MethodResponse`, not `components["schemas"]` mapped
+ * over an array: for an array response the two are structurally close but
+ * not identical types, the same gap `PlanResult` above works around for
+ * `exactOptionalPropertyTypes`. This is the shape the client actually
+ * produces.
+ */
+export type WorkspacesList = MethodResponse<typeof client, "get", "/api/workspaces">;
+
+/** One row of `WorkspacesList` - no panel data, only a count. */
+export type WorkspaceSummary = WorkspacesList[number];
+
+/** Calls GET /api/workspaces and returns the stub owner's workspaces. */
+export async function listWorkspaces(): Promise<WorkspacesList> {
+  // See the comment on getHealth above: fetch is read at call time on purpose.
+  const { data, error } = await client.GET("/api/workspaces", { fetch: globalThis.fetch });
+
+  if (error !== undefined) {
+    throw new Error("GET /api/workspaces failed");
+  }
+
+  return data;
+}
+
+/** A new, empty workspace to create. */
+export type CreateWorkspaceRequest = components["schemas"]["CreateWorkspaceRequest"];
+
+/** The body of a successful POST /api/workspaces. See the comment on PlanResult above. */
+export type WorkspaceCreated = MethodResponse<typeof client, "post", "/api/workspaces">;
+
+/** Calls POST /api/workspaces and returns the workspace just created. */
+export async function createWorkspace(request: CreateWorkspaceRequest): Promise<WorkspaceCreated> {
+  // See the comment on getHealth above: fetch is read at call time on purpose.
+  const { data, error } = await client.POST("/api/workspaces", {
+    body: request,
+    fetch: globalThis.fetch,
+  });
+
+  if (error !== undefined) {
+    throw new Error("POST /api/workspaces failed");
+  }
+
+  return data;
+}
+
+/**
+ * Calls DELETE /api/workspaces/{id}. Deleting a workspace that does not exist
+ * is not an error (docs/specs/workspaces.md section 5): the end state is the
+ * same either way, so this only rejects on a transport failure.
+ */
+export async function deleteWorkspace(id: string): Promise<void> {
+  // See the comment on getHealth above: fetch is read at call time on purpose.
+  const { error } = await client.DELETE("/api/workspaces/{id}", {
+    params: { path: { id } },
+    fetch: globalThis.fetch,
+  });
+
+  if (error !== undefined) {
+    throw new Error("DELETE /api/workspaces/{id} failed");
+  }
+}

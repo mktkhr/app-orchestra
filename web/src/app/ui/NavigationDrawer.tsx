@@ -1,12 +1,12 @@
-import ChatIcon from "@mui/icons-material/Chat";
+import Divider from "@mui/material/Divider";
 import Drawer from "@mui/material/Drawer";
 import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
-import ListItemButton from "@mui/material/ListItemButton";
-import ListItemIcon from "@mui/material/ListItemIcon";
-import ListItemText from "@mui/material/ListItemText";
 import Toolbar from "@mui/material/Toolbar";
 import type { JSX } from "react";
+
+import { WorkspaceList } from "@/features/workspaces";
+
+import { ChatNavItem } from "./ChatNavItem";
 
 export const DRAWER_WIDTH = 240;
 
@@ -23,7 +23,7 @@ interface NavigationDrawerProps {
   readonly onClose: () => void;
 }
 
-/** The application's left navigation. One entry today: チャット. */
+/** The application's left navigation: チャット, then every workspace. */
 export function NavigationDrawer({ open, beside, onClose }: NavigationDrawerProps): JSX.Element {
   return (
     <Drawer
@@ -38,15 +38,10 @@ export function NavigationDrawer({ open, beside, onClose }: NavigationDrawerProp
     >
       <Toolbar />
       <List>
-        <ListItem disablePadding>
-          <ListItemButton component="a" href="#chat" onClick={onClose}>
-            <ListItemIcon>
-              <ChatIcon />
-            </ListItemIcon>
-            <ListItemText primary="チャット" />
-          </ListItemButton>
-        </ListItem>
+        <ChatNavItem onClick={onClose} />
       </List>
+      <Divider />
+      <WorkspaceList onNavigate={onClose} />
     </Drawer>
   );
 }
