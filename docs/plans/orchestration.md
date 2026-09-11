@@ -208,8 +208,8 @@ accidentally match the other.
 
 **Files:**
 
-- Create: `services/platform/internal/domain/{catalog,call,rendering}.go`
-  and their tests
+- Create: `services/platform/internal/domain/{catalog,rendering}.go` and their
+  tests
 - Modify: `go.work` (platform is already a module)
 
 **Produces:**
@@ -256,9 +256,14 @@ type Catalog struct{ Endpoints []Endpoint }
 func (c Catalog) Find(service, operationID string) (Endpoint, bool)
 
 // Render is a pure function. No I/O, no model.
-func Render(e Endpoint) Component
+func Render(e *Endpoint) Component
 
-func (e Endpoint) IsSafe() bool // GET, HEAD, QUERY
+func (e *Endpoint) IsSafe() bool // GET, HEAD, QUERY
+
+// Pointers because `Endpoint` is large enough that gocritic's hugeParam
+// rejects passing it by value. The HTTP method names are local constants:
+// usestdlibvars wants net/http's, and depguard forbids net/http in domain.
+// QUERY has no stdlib constant in any case.
 ```
 
 `Render` rules, in order: the endpoint's `UIHint` when set; then a request body
