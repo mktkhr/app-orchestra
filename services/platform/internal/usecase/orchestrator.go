@@ -90,15 +90,19 @@ const messageNoEndpoint = "その質問に答えられる操作が見つかり�
 // Decision over the catalogue's tools and, for a safe call, invokes it and
 // renders the result (docs/specs/orchestration.md, section 4).
 type Orchestrator struct {
-	catalog domain.Catalog
-	planner Planner
-	invoker Invoker
+	catalog     domain.Catalog
+	planner     Planner
+	invoker     Invoker
+	permissions PermissionStore
 }
 
-// NewOrchestrator builds an Orchestrator over the given catalogue, planner
-// and invoker.
-func NewOrchestrator(catalog domain.Catalog, planner Planner, invoker Invoker) *Orchestrator {
-	return &Orchestrator{catalog: catalog, planner: planner, invoker: invoker}
+// NewOrchestrator builds an Orchestrator over the given catalogue, planner,
+// invoker and permission store. permissions is read once per request, by
+// catalogFor, to narrow catalog down to what the calling person may call
+// (docs/specs/auth.md, section 5) - never consulted for an admin, who holds
+// every permission implicitly (docs/specs/auth.md, section 4).
+func NewOrchestrator(catalog domain.Catalog, planner Planner, invoker Invoker, permissions PermissionStore) *Orchestrator {
+	return &Orchestrator{catalog: catalog, planner: planner, invoker: invoker, permissions: permissions}
 }
 
 // Plan turns a question (plus any answers to a previous ask) into a
@@ -106,8 +110,19 @@ func NewOrchestrator(catalog domain.Catalog, planner Planner, invoker Invoker) *
 // a form to confirm, an ask decision comes back as a disambiguation
 // question built from the catalogue (see ask), and none reports that
 // nothing fits.
-func (o *Orchestrator) Plan(ctx context.Context, query string, answers []Answer) (Result, error) {
-	tools := ToolsFor(o.catalog)
+//
+// user is not context.Context because a value in a context is one a
+// caller can forget to put there, and the failure that produces is a
+// permission check that silently passes; an argument cannot be forgotten,
+// because the code does not compile without it (docs/specs/auth.md,
+// section 5, A6).
+func (o *Orchestrator) Plan(ctx context.Context, user *domain.User, query string, answers []Answer) (Result, error) {
+	catalog, err := o.catalogFor(ctx, user)
+	if err != nil {
+		return Result{}, err
+	}
+
+	tools := ToolsFor(catalog)
 
 	decision, err := o.planner.Plan(ctx, query, answers, tools)
 	if err != nil {
@@ -118,11 +133,11 @@ func (o *Orchestrator) Plan(ctx context.Context, query string, answers []Answer)
 	case DecisionNone:
 		return Result{Kind: ResultKindNone, Message: messageNoEndpoint}, nil
 	case DecisionCall:
-		return o.call(ctx, &decision)
+		return o.call(ctx, catalog, &decision)
 	case DecisionAsk:
-		return o.ask(&decision)
+		return o.ask(catalog, &decision)
 	case DecisionListCapabilities:
-		return o.listCapabilities(&decision), nil
+		return o.listCapabilities(catalog, &decision), nil
 	default:
 		return Result{}, fmt.Errorf("%w: unknown decision kind %q", ErrNotImplemented, decision.Kind)
 	}
@@ -137,12 +152,18 @@ func (o *Orchestrator) Plan(ctx context.Context, query string, answers []Answer)
 // change anything on its own" property true (D8, docs/specs/orchestration.md
 // section 2).
 //
-// TODO(auth): once authentication exists, the permission check for
-// (service, operationID) belongs here, after the catalogue lookup and
-// before validateArgs - this is the only mouth an unsafe method executes
-// through, so it is the only place that check needs to be made.
-func (o *Orchestrator) Invoke(ctx context.Context, service, operationID string, args map[string]any) (Result, error) {
-	endpoint, ok := o.catalog.Find(service, operationID)
+// The catalogue lookup is against catalogFor(ctx, user), not o.catalog: an
+// operation the person may not call is not found here any more than an
+// operation that does not exist at all is (docs/specs/auth.md, section 5;
+// AC-A-104) - the same ErrEndpointNotFound, so a 403 never tells anybody
+// what exists.
+func (o *Orchestrator) Invoke(ctx context.Context, user *domain.User, service, operationID string, args map[string]any) (Result, error) {
+	catalog, err := o.catalogFor(ctx, user)
+	if err != nil {
+		return Result{}, err
+	}
+
+	endpoint, ok := catalog.Find(service, operationID)
 	if !ok {
 		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, service, operationID)
 	}
@@ -152,6 +173,32 @@ func (o *Orchestrator) Invoke(ctx context.Context, service, operationID string, 
 	}
 
 	return o.invokeAndRender(ctx, &endpoint, service, operationID, args)
+}
+
+// catalogFor narrows o.catalog to what user may call: the whole catalogue
+// for an admin (docs/specs/auth.md, section 4 - "that is the whole of what
+// the role buys" is about permissions, not this exception, but the row
+// count it would otherwise take is exactly what seeding every permission
+// for every admin would cost), or domain.Catalog.For(permissions) for
+// anybody else.
+//
+// This is the one seat docs/specs/auth.md section 5 names: Plan and Invoke
+// each call catalogFor exactly once, and pass the result to every helper
+// that reads the catalogue for that request (call, ask, listCapabilities,
+// Find) - so the tool list a planner is offered and the operation
+// /api/invoke will run are read from the same narrowed value and cannot
+// disagree.
+func (o *Orchestrator) catalogFor(ctx context.Context, user *domain.User) (domain.Catalog, error) {
+	if user.Role == domain.RoleAdmin {
+		return o.catalog, nil
+	}
+
+	permissions, err := o.permissions.For(ctx, user.ID)
+	if err != nil {
+		return domain.Catalog{}, fmt.Errorf("reading permissions for %s: %w", user.ID, err)
+	}
+
+	return o.catalog.For(permissions), nil
 }
 
 // call resolves a DecisionCall against the catalogue: a safe endpoint is
@@ -165,8 +212,8 @@ func (o *Orchestrator) Invoke(ctx context.Context, service, operationID string, 
 // bytes: golangci-lint's gocritic hugeParam check (part of the fixed
 // harness policy, see harness/quality/go/golangci.yml) rejects passing it
 // by value.
-func (o *Orchestrator) call(ctx context.Context, decision *Decision) (Result, error) {
-	endpoint, ok := o.catalog.Find(decision.Service, decision.OperationID)
+func (o *Orchestrator) call(ctx context.Context, catalog domain.Catalog, decision *Decision) (Result, error) {
+	endpoint, ok := catalog.Find(decision.Service, decision.OperationID)
 	if !ok {
 		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, decision.Service, decision.OperationID)
 	}
@@ -218,8 +265,8 @@ func (o *Orchestrator) call(ctx context.Context, decision *Decision) (Result, er
 // decision is a pointer for the same reason call's is: golangci-lint's
 // gocritic hugeParam check on Decision's 112 bytes (see
 // harness/quality/go/golangci.yml).
-func (o *Orchestrator) ask(decision *Decision) (Result, error) {
-	endpoint, ok := o.catalog.Find(decision.Service, decision.OperationID)
+func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, error) {
+	endpoint, ok := catalog.Find(decision.Service, decision.OperationID)
 	if !ok {
 		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, decision.Service, decision.OperationID)
 	}
@@ -320,13 +367,17 @@ func capabilitiesFields() map[string]any {
 //
 // decision is a pointer for the same gocritic hugeParam reason as call's
 // and ask's (Decision is 112 bytes; see harness/quality/go/golangci.yml).
-func (o *Orchestrator) listCapabilities(decision *Decision) Result {
+// catalog is the caller's already-narrowed catalogue (see catalogFor), the
+// same reason call and ask take it rather than reading o.catalog: "what
+// can this do" must answer from what the asking person may call, not from
+// everything the platform has.
+func (o *Orchestrator) listCapabilities(catalog domain.Catalog, decision *Decision) Result {
 	return Result{
 		Kind:        ResultKindResult,
 		Service:     "platform",
 		OperationID: "list_capabilities",
 		Component:   domain.ComponentTable,
-		Data:        map[string]any{"items": capabilitiesItems(o.catalog, decision.Service)},
+		Data:        map[string]any{"items": capabilitiesItems(catalog, decision.Service)},
 		Fields:      capabilitiesFields(),
 	}
 }

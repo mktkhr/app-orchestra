@@ -56,9 +56,9 @@ func invokeCatalog() domain.Catalog {
 
 func TestInvokeCallsTheServiceAndRendersDetailEvenThoughTheEndpointHasARequestBody(t *testing.T) {
 	invoker := &fakeInvoker{data: map[string]any{"id": "1", "name": "新しい棚", "status": "allocated"}}
-	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker)
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Invoke(t.Context(), "inventory", "CreateInventoryItem",
+	result, err := orchestrator.Invoke(t.Context(), adminUser(), "inventory", "CreateInventoryItem",
 		map[string]any{"name": "新しい棚", "status": "allocated"})
 
 	require.NoError(t, err)
@@ -81,9 +81,9 @@ func TestInvokeCallsTheServiceAndRendersDetailEvenThoughTheEndpointHasARequestBo
 func TestInvokeNeverCallsThePlanner(t *testing.T) {
 	planner := &fakePlanner{}
 	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
-	orchestrator := usecase.NewOrchestrator(invokeCatalog(), planner, invoker)
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Invoke(t.Context(), "inventory", "ListInventoryItems", nil)
+	_, err := orchestrator.Invoke(t.Context(), adminUser(), "inventory", "ListInventoryItems", nil)
 
 	require.NoError(t, err)
 	assert.Empty(t, planner.query, "Invoke must never consult the planner")
@@ -91,9 +91,9 @@ func TestInvokeNeverCallsThePlanner(t *testing.T) {
 
 func TestInvokeUnknownEndpointFailsAndCallsNothing(t *testing.T) {
 	invoker := &fakeInvoker{}
-	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker)
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Invoke(t.Context(), "inventory", "NoSuchOperation", map[string]any{})
+	_, err := orchestrator.Invoke(t.Context(), adminUser(), "inventory", "NoSuchOperation", map[string]any{})
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
@@ -102,9 +102,9 @@ func TestInvokeUnknownEndpointFailsAndCallsNothing(t *testing.T) {
 
 func TestInvokeRejectsAMissingRequiredBodyField(t *testing.T) {
 	invoker := &fakeInvoker{}
-	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker)
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Invoke(t.Context(), "inventory", "CreateInventoryItemStrict",
+	_, err := orchestrator.Invoke(t.Context(), adminUser(), "inventory", "CreateInventoryItemStrict",
 		map[string]any{"name": "棚"})
 
 	require.Error(t, err)
@@ -114,9 +114,9 @@ func TestInvokeRejectsAMissingRequiredBodyField(t *testing.T) {
 
 func TestInvokeRejectsAnOutOfEnumBodyValue(t *testing.T) {
 	invoker := &fakeInvoker{}
-	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker)
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Invoke(t.Context(), "inventory", "CreateInventoryItemStrict",
+	_, err := orchestrator.Invoke(t.Context(), adminUser(), "inventory", "CreateInventoryItemStrict",
 		map[string]any{"name": "棚", "status": "nonexistent"})
 
 	require.Error(t, err)
@@ -126,9 +126,9 @@ func TestInvokeRejectsAnOutOfEnumBodyValue(t *testing.T) {
 
 func TestInvokeRejectsAnOutOfEnumQueryParameter(t *testing.T) {
 	invoker := &fakeInvoker{}
-	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker)
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Invoke(t.Context(), "inventory", "ListInventoryItemsByStatus",
+	_, err := orchestrator.Invoke(t.Context(), adminUser(), "inventory", "ListInventoryItemsByStatus",
 		map[string]any{"status": "nonexistent"})
 
 	require.Error(t, err)
@@ -138,9 +138,9 @@ func TestInvokeRejectsAnOutOfEnumQueryParameter(t *testing.T) {
 
 func TestInvokeAcceptsAValidEnumQueryParameter(t *testing.T) {
 	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
-	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker)
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Invoke(t.Context(), "inventory", "ListInventoryItemsByStatus",
+	_, err := orchestrator.Invoke(t.Context(), adminUser(), "inventory", "ListInventoryItemsByStatus",
 		map[string]any{"status": "allocated"})
 
 	require.NoError(t, err)
@@ -150,12 +150,66 @@ func TestInvokeAcceptsAValidEnumQueryParameter(t *testing.T) {
 func TestInvokeWrapsAnInvokerError(t *testing.T) {
 	boom := errors.New("service unreachable")
 	invoker := &fakeInvoker{err: boom}
-	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker)
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Invoke(t.Context(), "inventory", "ListInventoryItems", nil)
+	_, err := orchestrator.Invoke(t.Context(), adminUser(), "inventory", "ListInventoryItems", nil)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, boom)
 	require.NotErrorIs(t, err, usecase.ErrEndpointNotFound)
 	require.NotErrorIs(t, err, usecase.ErrInvalidArguments)
+}
+
+// TestInvokeRefusesAnOperationTheUserMayNotCallWithTheSameErrorAsUnknown
+// is AC-A-104: a person who may call ListInventoryItems but not
+// CreateInventoryItem gets exactly the error an unknown operation would -
+// ErrEndpointNotFound, not a distinct "forbidden" sentinel - because
+// telling the two apart would let a 403 answer "does this exist?" for an
+// operation the person was never offered in the first place
+// (docs/specs/auth.md, section 5).
+func TestInvokeRefusesAnOperationTheUserMayNotCallWithTheSameErrorAsUnknown(t *testing.T) {
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+	permissions := &fakePermissionStore{
+		permissions: []domain.Permission{{Service: "inventory", OperationID: "ListInventoryItems"}},
+	}
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, permissions)
+
+	_, err := orchestrator.Invoke(t.Context(), regularUser(), "inventory", "CreateInventoryItem",
+		map[string]any{"name": "棚", "status": "allocated"})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
+	assert.Zero(t, invoker.calls, "an operation the person may not call must never reach the service")
+	assert.Equal(t, "user-1", permissions.userID, "Invoke must read the calling user's own permissions")
+}
+
+// TestInvokeAllowsAnOperationTheUserMayCall proves the narrowing is not
+// simply "deny everything for a non-admin": the one operation
+// fakePermissionStore actually names for regularUser still goes through.
+func TestInvokeAllowsAnOperationTheUserMayCall(t *testing.T) {
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+	permissions := &fakePermissionStore{
+		permissions: []domain.Permission{{Service: "inventory", OperationID: "ListInventoryItems"}},
+	}
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, permissions)
+
+	_, err := orchestrator.Invoke(t.Context(), regularUser(), "inventory", "ListInventoryItems", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, invoker.calls)
+}
+
+// TestInvokeAsAdminNeverConsultsThePermissionStore proves admin's access
+// comes from the role, not from rows (docs/specs/auth.md, section 4): an
+// admin can call an operation even though the permission store behind
+// them holds nothing.
+func TestInvokeAsAdminNeverConsultsThePermissionStore(t *testing.T) {
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+	permissions := &fakePermissionStore{}
+	orchestrator := usecase.NewOrchestrator(invokeCatalog(), &fakePlanner{}, invoker, permissions)
+
+	_, err := orchestrator.Invoke(t.Context(), adminUser(), "inventory", "ListInventoryItems", nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, permissions.userID, "an admin's access must never depend on a call to PermissionStore.For")
 }

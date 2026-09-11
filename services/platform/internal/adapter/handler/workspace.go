@@ -15,12 +15,12 @@ import (
 // *usecase.Workspaces. An interface here, rather than the concrete type,
 // keeps this handler's test doubles simple (see planner in plan.go).
 type workspaces interface {
-	List(ctx context.Context) ([]domain.Workspace, error)
-	Get(ctx context.Context, id string) (domain.Workspace, bool, error)
-	Create(ctx context.Context, name string) (domain.Workspace, error)
-	Delete(ctx context.Context, id string) error
-	AddPanel(ctx context.Context, workspaceID string, p *domain.Panel) (domain.Panel, error)
-	DeletePanel(ctx context.Context, workspaceID, panelID string) error
+	List(ctx context.Context, user *domain.User) ([]domain.Workspace, error)
+	Get(ctx context.Context, user *domain.User, id string) (domain.Workspace, bool, error)
+	Create(ctx context.Context, user *domain.User, name string) (domain.Workspace, error)
+	Delete(ctx context.Context, user *domain.User, id string) error
+	AddPanel(ctx context.Context, user *domain.User, workspaceID string, p *domain.Panel) (domain.Panel, error)
+	DeletePanel(ctx context.Context, user *domain.User, workspaceID, panelID string) error
 }
 
 // Workspace implements the "workspaces" tag of the generated strict server
@@ -40,7 +40,7 @@ func (h *Workspace) ListWorkspaces(
 	ctx context.Context,
 	_ openapi.ListWorkspacesRequestObject,
 ) (openapi.ListWorkspacesResponseObject, error) {
-	list, err := h.workspaces.List(ctx)
+	list, err := h.workspaces.List(ctx, currentUser(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("listing workspaces: %w", err)
 	}
@@ -58,7 +58,7 @@ func (h *Workspace) CreateWorkspace(
 	ctx context.Context,
 	request openapi.CreateWorkspaceRequestObject,
 ) (openapi.CreateWorkspaceResponseObject, error) {
-	ws, err := h.workspaces.Create(ctx, request.Body.Name)
+	ws, err := h.workspaces.Create(ctx, currentUser(ctx), request.Body.Name)
 	if err != nil {
 		return nil, fmt.Errorf("creating a workspace: %w", err)
 	}
@@ -74,7 +74,7 @@ func (h *Workspace) GetWorkspace(
 	ctx context.Context,
 	request openapi.GetWorkspaceRequestObject,
 ) (openapi.GetWorkspaceResponseObject, error) {
-	ws, ok, err := h.workspaces.Get(ctx, request.Id)
+	ws, ok, err := h.workspaces.Get(ctx, currentUser(ctx), request.Id)
 	if err != nil {
 		return nil, fmt.Errorf("reading a workspace: %w", err)
 	}
@@ -93,7 +93,7 @@ func (h *Workspace) DeleteWorkspace(
 	ctx context.Context,
 	request openapi.DeleteWorkspaceRequestObject,
 ) (openapi.DeleteWorkspaceResponseObject, error) {
-	if err := h.workspaces.Delete(ctx, request.Id); err != nil {
+	if err := h.workspaces.Delete(ctx, currentUser(ctx), request.Id); err != nil {
 		return nil, fmt.Errorf("deleting a workspace: %w", err)
 	}
 
@@ -109,7 +109,7 @@ func (h *Workspace) AddPanel(
 	ctx context.Context,
 	request openapi.AddPanelRequestObject,
 ) (openapi.AddPanelResponseObject, error) {
-	panel, err := h.workspaces.AddPanel(ctx, request.Id, toDomainPanel(request.Id, request.Body))
+	panel, err := h.workspaces.AddPanel(ctx, currentUser(ctx), request.Id, toDomainPanel(request.Id, request.Body))
 	if err != nil {
 		if resp, ok := addPanelErrorResponse(err); ok {
 			return resp, nil
@@ -125,8 +125,11 @@ func (h *Workspace) AddPanel(
 // fault for onto their HTTP status: naming an operation the catalogue
 // does not expose (400, usecase.ErrEndpointNotFound - the same sentinel
 // Invoke returns, see invoke.go's invokeErrorResponse) and naming a
-// workspace that does not exist (404, sqlitestore.ErrWorkspaceNotFound).
-// Its second return value is false for anything else - a genuine storage
+// workspace that does not exist, or that belongs to somebody else (404,
+// usecase.ErrWorkspaceNotFound - the usecase's own ownership check, see
+// Workspaces.AddPanel - or sqlitestore.ErrWorkspaceNotFound, still
+// possible from the store's own foreign-key check underneath it). Its
+// second return value is false for anything else - a genuine storage
 // failure - which the caller reports as an error instead, the same way
 // ListWorkspaces, GetWorkspace, DeleteWorkspace and DeletePanel already
 // do for their own store errors: openapi.NewStrictHandler renders any
@@ -137,7 +140,7 @@ func addPanelErrorResponse(err error) (openapi.AddPanelResponseObject, bool) {
 		return openapi.AddPanel400JSONResponse{Message: err.Error()}, true
 	}
 
-	if errors.Is(err, sqlitestore.ErrWorkspaceNotFound) {
+	if errors.Is(err, usecase.ErrWorkspaceNotFound) || errors.Is(err, sqlitestore.ErrWorkspaceNotFound) {
 		return openapi.AddPanel404JSONResponse{Message: err.Error()}, true
 	}
 
@@ -151,7 +154,7 @@ func (h *Workspace) DeletePanel(
 	ctx context.Context,
 	request openapi.DeletePanelRequestObject,
 ) (openapi.DeletePanelResponseObject, error) {
-	if err := h.workspaces.DeletePanel(ctx, request.Id, request.PanelId); err != nil {
+	if err := h.workspaces.DeletePanel(ctx, currentUser(ctx), request.Id, request.PanelId); err != nil {
 		return nil, fmt.Errorf("deleting a panel: %w", err)
 	}
 

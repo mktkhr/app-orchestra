@@ -115,6 +115,39 @@ type Catalog struct {
 	Endpoints []Endpoint
 }
 
+// For returns the subset of c whose endpoints permissions names: an
+// endpoint is kept only when some permission's (Service, OperationID)
+// matches it exactly (docs/specs/auth.md, section 4, A3). No permissions
+// at all yields an empty catalogue, not the whole one - a person with no
+// rows may call nothing, and an admin never reaches this method at all
+// (docs/specs/auth.md, section 4): the caller decides that, not For.
+//
+// This is the filter docs/specs/auth.md section 5 draws as the single
+// point both the tool list and /api/invoke read from - it is applied
+// once, by the caller, and its result is handed to both ToolsFor and
+// Find so the two can never disagree.
+//
+// Pure: For touches nothing but its own arguments, as every function in
+// this package must (harness/quality/go/golangci.yml, depguard forbids
+// this package from importing anything beyond the standard library).
+func (c Catalog) For(permissions []Permission) Catalog {
+	allowed := make(map[Permission]struct{}, len(permissions))
+	for _, p := range permissions {
+		allowed[p] = struct{}{}
+	}
+
+	endpoints := make([]Endpoint, 0, len(c.Endpoints))
+
+	for i := range c.Endpoints {
+		key := Permission{Service: c.Endpoints[i].Service, OperationID: c.Endpoints[i].OperationID}
+		if _, ok := allowed[key]; ok {
+			endpoints = append(endpoints, c.Endpoints[i])
+		}
+	}
+
+	return Catalog{Endpoints: endpoints}
+}
+
 // Find looks up the endpoint with the given service and operation id.
 func (c Catalog) Find(service, operationID string) (Endpoint, bool) {
 	for i := range c.Endpoints {

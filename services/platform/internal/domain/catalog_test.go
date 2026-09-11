@@ -61,3 +61,57 @@ func TestCatalogFindOnEmptyCatalog(t *testing.T) {
 
 	assert.False(t, ok)
 }
+
+// twoServiceCatalog is a catalogue of two services, three operations
+// total, used by TestCatalogForNarrowsToTheNamedOperation to prove For
+// keeps exactly what permissions name and drops everything else - both
+// the sibling operation in the same service and the whole other service.
+func twoServiceCatalog() domain.Catalog {
+	return domain.Catalog{Endpoints: []domain.Endpoint{
+		{Service: "inventory", OperationID: "ListInventoryItems"},
+		{Service: "inventory", OperationID: "CreateInventoryItem"},
+		{Service: "attendance", OperationID: "ListAttendanceRecords"},
+	}}
+}
+
+func TestCatalogForNarrowsToTheNamedOperation(t *testing.T) {
+	c := twoServiceCatalog()
+
+	narrowed := c.For([]domain.Permission{{Service: "inventory", OperationID: "ListInventoryItems"}})
+
+	assert.Len(t, narrowed.Endpoints, 1, "narrowed catalogue must hold exactly one endpoint")
+	assert.Equal(t, "inventory", narrowed.Endpoints[0].Service)
+	assert.Equal(t, "ListInventoryItems", narrowed.Endpoints[0].OperationID)
+
+	_, ok := narrowed.Find("inventory", "CreateInventoryItem")
+	assert.False(t, ok, "For must drop a sibling operation of the same service the permission did not name")
+
+	_, ok = narrowed.Find("attendance", "ListAttendanceRecords")
+	assert.False(t, ok, "For must drop an operation from a service the permission did not name")
+
+	found, ok := narrowed.Find("inventory", "ListInventoryItems")
+	assert.True(t, ok)
+	assert.Equal(t, "ListInventoryItems", found.OperationID)
+}
+
+func TestCatalogForWithNoPermissionsYieldsAnEmptyCatalog(t *testing.T) {
+	c := twoServiceCatalog()
+
+	narrowed := c.For(nil)
+
+	assert.Empty(t, narrowed.Endpoints)
+}
+
+func TestCatalogForKeepsEveryPermittedOperation(t *testing.T) {
+	c := twoServiceCatalog()
+
+	narrowed := c.For([]domain.Permission{
+		{Service: "inventory", OperationID: "ListInventoryItems"},
+		{Service: "attendance", OperationID: "ListAttendanceRecords"},
+	})
+
+	assert.Len(t, narrowed.Endpoints, 2)
+
+	_, ok := narrowed.Find("inventory", "CreateInventoryItem")
+	assert.False(t, ok)
+}

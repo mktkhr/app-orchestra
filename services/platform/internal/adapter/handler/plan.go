@@ -22,7 +22,7 @@ var errUnrenderableData = errors.New("result data is not a JSON object")
 // *usecase.Orchestrator. An interface here, rather than the concrete type,
 // keeps this handler's test doubles simple.
 type planner interface {
-	Plan(ctx context.Context, query string, answers []usecase.Answer) (usecase.Result, error)
+	Plan(ctx context.Context, user *domain.User, query string, answers []usecase.Answer) (usecase.Result, error)
 }
 
 // Plan implements the "plan" tag of the generated strict server interface:
@@ -42,7 +42,7 @@ func (h *Plan) PostPlan(
 	ctx context.Context,
 	request openapi.PostPlanRequestObject,
 ) (openapi.PostPlanResponseObject, error) {
-	result, err := h.orchestrator.Plan(ctx, request.Body.Query, toAnswers(request.Body.Answers))
+	result, err := h.orchestrator.Plan(ctx, currentUser(ctx), request.Body.Query, toAnswers(request.Body.Answers))
 	if err != nil {
 		return planErrorResponse(err), nil
 	}

@@ -22,12 +22,19 @@ type fakeInvoker struct {
 	result usecase.Result
 	err    error
 
+	user        *domain.User
 	service     string
 	operationID string
 	args        map[string]any
 }
 
-func (f *fakeInvoker) Invoke(_ context.Context, service, operationID string, args map[string]any) (usecase.Result, error) {
+func (f *fakeInvoker) Invoke(
+	_ context.Context,
+	user *domain.User,
+	service, operationID string,
+	args map[string]any,
+) (usecase.Result, error) {
+	f.user = user
 	f.service = service
 	f.operationID = operationID
 	f.args = args

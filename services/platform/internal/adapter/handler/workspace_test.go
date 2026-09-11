@@ -43,34 +43,39 @@ type fakeWorkspaces struct {
 	deletePanelPnlID string
 }
 
-func (f *fakeWorkspaces) List(context.Context) ([]domain.Workspace, error) {
+func (f *fakeWorkspaces) List(context.Context, *domain.User) ([]domain.Workspace, error) {
 	return f.listResult, f.listErr
 }
 
-func (f *fakeWorkspaces) Get(_ context.Context, _ string) (domain.Workspace, bool, error) {
+func (f *fakeWorkspaces) Get(_ context.Context, _ *domain.User, _ string) (domain.Workspace, bool, error) {
 	return f.getResult, f.getFound, f.getErr
 }
 
-func (f *fakeWorkspaces) Create(_ context.Context, name string) (domain.Workspace, error) {
+func (f *fakeWorkspaces) Create(_ context.Context, _ *domain.User, name string) (domain.Workspace, error) {
 	f.createName = name
 
 	return f.createResult, f.createErr
 }
 
-func (f *fakeWorkspaces) Delete(_ context.Context, id string) error {
+func (f *fakeWorkspaces) Delete(_ context.Context, _ *domain.User, id string) error {
 	f.deletedID = id
 
 	return f.deleteErr
 }
 
-func (f *fakeWorkspaces) AddPanel(_ context.Context, workspaceID string, p *domain.Panel) (domain.Panel, error) {
+func (f *fakeWorkspaces) AddPanel(
+	_ context.Context,
+	_ *domain.User,
+	workspaceID string,
+	p *domain.Panel,
+) (domain.Panel, error) {
 	f.addPanelWSID = workspaceID
 	f.addPanelIn = p
 
 	return f.addPanelResult, f.addPanelErr
 }
 
-func (f *fakeWorkspaces) DeletePanel(_ context.Context, workspaceID, panelID string) error {
+func (f *fakeWorkspaces) DeletePanel(_ context.Context, _ *domain.User, workspaceID, panelID string) error {
 	f.deletePanelWSID = workspaceID
 	f.deletePanelPnlID = panelID
 

@@ -190,8 +190,17 @@ func build(
 		return nil, err
 	}
 
+	var permissions usecase.PermissionStore
+
+	if cfg.DBPath != "" {
+		permissions, err = newPermissionStore(cfg.DBPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
-	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker)
+	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions)
 
 	api := handler.NewAPI(handler.NewHealth(), handler.NewPlan(orchestrator), handler.NewInvoke(orchestrator), workspaceHandler)
 
@@ -299,6 +308,23 @@ func newWorkspaceHandler(dbPath string, catalog domain.Catalog) (*handler.Worksp
 	}
 
 	return handler.NewWorkspace(usecase.NewWorkspaces(store, catalog)), nil
+}
+
+// newPermissionStore opens the permissions table in the SQLite file at
+// dbPath, the same file newWorkspaceHandler and seedAdmin open their own
+// tables in, so a bad ORCHESTRA_DB_PATH fails startup here too, for the
+// same reason. Only called by build when cfg.DBPath is non-empty -
+// Orchestrator.catalogFor never calls a nil store, because every caller
+// that leaves DBPath empty is this package's own pre-auth tests, which -
+// like newWorkspaceHandler's own nil case - never exercise a non-admin
+// request either.
+func newPermissionStore(dbPath string) (usecase.PermissionStore, error) {
+	store, err := sqlitestore.NewPermissions(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening the permission store: %w", err)
+	}
+
+	return store, nil
 }
 
 // seedAdmin opens the accounts table in the SQLite file at dbPath and

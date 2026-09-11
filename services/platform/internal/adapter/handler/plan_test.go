@@ -21,11 +21,18 @@ type fakeOrchestrator struct {
 	result usecase.Result
 	err    error
 
+	user    *domain.User
 	query   string
 	answers []usecase.Answer
 }
 
-func (f *fakeOrchestrator) Plan(_ context.Context, query string, answers []usecase.Answer) (usecase.Result, error) {
+func (f *fakeOrchestrator) Plan(
+	_ context.Context,
+	user *domain.User,
+	query string,
+	answers []usecase.Answer,
+) (usecase.Result, error) {
+	f.user = user
 	f.query = query
 	f.answers = answers
 

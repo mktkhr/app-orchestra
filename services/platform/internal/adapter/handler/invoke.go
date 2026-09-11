@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
@@ -12,7 +13,7 @@ import (
 // *usecase.Orchestrator. An interface here, rather than the concrete type,
 // keeps this handler's test doubles simple (see planner in plan.go).
 type invoker interface {
-	Invoke(ctx context.Context, service, operationID string, args map[string]any) (usecase.Result, error)
+	Invoke(ctx context.Context, user *domain.User, service, operationID string, args map[string]any) (usecase.Result, error)
 }
 
 // Invoke implements the "invoke" tag of the generated strict server
@@ -34,7 +35,7 @@ func (h *Invoke) PostInvoke(
 	ctx context.Context,
 	request openapi.PostInvokeRequestObject,
 ) (openapi.PostInvokeResponseObject, error) {
-	result, err := h.orchestrator.Invoke(ctx, request.Body.Service, request.Body.OperationId, request.Body.Args)
+	result, err := h.orchestrator.Invoke(ctx, currentUser(ctx), request.Body.Service, request.Body.OperationId, request.Body.Args)
 	if err != nil {
 		return invokeErrorResponse(err), nil
 	}
