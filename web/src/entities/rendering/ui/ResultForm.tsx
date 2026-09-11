@@ -8,7 +8,7 @@ import { postInvoke, type PlanResult } from "@/shared/api/client";
 
 import { fieldEntries } from "../model/fieldEntries";
 import { fieldSchema, type Fields } from "../model/rows";
-import { useSubmission } from "../model/useSubmission";
+import { useSubmission } from "@/shared/lib/useSubmission";
 import { ResultFormField } from "./ResultFormField";
 
 type Target = NonNullable<PlanResult["target"]>;

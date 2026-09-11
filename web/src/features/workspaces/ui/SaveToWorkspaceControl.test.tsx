@@ -125,4 +125,28 @@ describe("SaveToWorkspaceControl", () => {
     expect(await screen.findByText(/送信に失敗しました/u)).toBeTruthy();
     expect(screen.queryByText(/に保存しました/u)).toBeNull();
   });
+
+  it("defaults the picker to the given workspace instead of the first one loaded", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(listWorkspaces).mockResolvedValue([
+      { id: "ws-1", name: "在庫ボード", panelCount: 0 },
+      { id: "ws-2", name: "出勤ダッシュボード", panelCount: 0 },
+    ]);
+
+    render(
+      <SaveToWorkspaceControl
+        source={source}
+        component="table"
+        defaultTitle="在庫の一覧を見せて"
+        defaultWorkspaceId="ws-2"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ワークスペースに保存" }));
+
+    const picker = await screen.findByRole("combobox", { name: "保存先のワークスペース" });
+
+    expect(picker).toHaveProperty("textContent", "出勤ダッシュボード");
+  });
 });

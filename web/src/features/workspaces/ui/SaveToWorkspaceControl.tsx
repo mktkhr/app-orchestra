@@ -17,6 +17,13 @@ interface SaveToWorkspaceControlProps {
   readonly component: Component;
   /** The question that produced this result - the title's default, editable before saving. */
   readonly defaultTitle: string;
+  /**
+   * Which workspace to preselect, when the caller already sits on one -
+   * asking from inside a workspace (`docs/plans/workspaces.md` Task 6)
+   * defaults the picker to that workspace rather than the first one
+   * loaded. Omitted from the chat screen, where no workspace is current.
+   */
+  readonly defaultWorkspaceId?: string | undefined;
 }
 
 /**
@@ -27,17 +34,14 @@ interface SaveToWorkspaceControlProps {
  * with, to `POST /api/workspaces/{id}/panels`. Nothing is derived from the
  * result's data; a panel is a saved call, not a saved answer (W2).
  *
- * Lives in entities/rendering, not features/workspaces: `TurnList`
- * (`features/conversation`) already imports this slice for `ResultForm`/
- * `ResultChoice`, and Feature-Sliced Design forbids one feature from
- * importing a sibling feature - `features/conversation` cannot reach into
- * `features/workspaces`. `entities/rendering` cannot either: entities sits
- * below features, and importing `features/workspaces` from here would be
- * an import pointing upward, which `make guard-fsd` forbids regardless of
- * sibling rules. So `useSaveToWorkspace` calls `shared/api/client`'s
- * `listWorkspaces`/`createWorkspace`/`addPanel` directly, the same way
- * `ResultForm` calls `postInvoke` directly instead of routing through a
- * feature above it.
+ * Lives in features/workspaces, not entities/rendering: creating a
+ * workspace and adding a panel to one are workspaces' actions, not a
+ * rendering concern. `features/conversation` cannot import this slice
+ * directly (Feature-Sliced Design forbids one feature importing a sibling),
+ * so `TurnList`/`Conversation` (`features/conversation`) take a
+ * `renderSaveControl` slot instead and never name this component; the page
+ * that composes both features (`widgets/conversation`) is what plugs this
+ * control into that slot.
  *
  * State and the save itself live in `useSaveToWorkspace`; this component is
  * only the three things it can show - the button, the open form, or the
@@ -47,8 +51,9 @@ export function SaveToWorkspaceControl({
   source,
   component,
   defaultTitle,
+  defaultWorkspaceId,
 }: SaveToWorkspaceControlProps): JSX.Element {
-  const state = useSaveToWorkspace(source, component, defaultTitle);
+  const state = useSaveToWorkspace(source, component, defaultTitle, defaultWorkspaceId);
 
   if (state.savedName !== null) {
     return <SavedNotice name={state.savedName} />;

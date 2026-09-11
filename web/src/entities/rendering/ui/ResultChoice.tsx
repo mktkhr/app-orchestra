@@ -7,7 +7,7 @@ import { useRef, useState, type JSX } from "react";
 import { postPlan, type PlanResult } from "@/shared/api/client";
 
 import type { EnumOption } from "../model/rows";
-import { useSubmission } from "../model/useSubmission";
+import { useSubmission } from "@/shared/lib/useSubmission";
 
 type Options = NonNullable<PlanResult["options"]>;
 

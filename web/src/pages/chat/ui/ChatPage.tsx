@@ -2,7 +2,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { JSX } from "react";
 
-import { Conversation } from "@/features/conversation";
+import { ConversationPanel } from "@/widgets/conversation";
 
 /** The chat screen: title plus the conversation (turn list, question input, welcome state). */
 export function ChatPage(): JSX.Element {
@@ -11,7 +11,7 @@ export function ChatPage(): JSX.Element {
       <Typography variant="h5" component="h1">
         チャット
       </Typography>
-      <Conversation />
+      <ConversationPanel />
     </Stack>
   );
 }

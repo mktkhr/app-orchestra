@@ -2,18 +2,23 @@ import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 
-import {
-  Provenance,
-  RenderedResult,
-  ResultChoice,
-  ResultForm,
-  SaveToWorkspaceControl,
-} from "@/entities/rendering";
-import type { PlanResult } from "@/shared/api/client";
+import { Provenance, RenderedResult, ResultChoice, ResultForm } from "@/entities/rendering";
+import type { Component, PlanResult } from "@/shared/api/client";
 
 import type { Turn } from "../model/turn";
+
+/**
+ * What a `table`/`detail` result answer needs the save control drawn with -
+ * exactly the provenance and widget it is already showing, plus the
+ * question that produced it as the title's default.
+ */
+export interface SaveControlSlotProps {
+  readonly source: NonNullable<PlanResult["source"]>;
+  readonly component: Component;
+  readonly defaultTitle: string;
+}
 
 interface TurnListProps {
   readonly turns: readonly Turn[];
@@ -24,10 +29,24 @@ interface TurnListProps {
    * into `features/conversation` for the `Turn` type or `setTurns` itself.
    */
   readonly onFormSubmitted: (result: PlanResult) => void;
+  /**
+   * Draws a result turn's "save to a workspace" control. Left as a slot,
+   * rather than this list importing `SaveToWorkspaceControl` itself,
+   * because that control lives in `features/workspaces` and
+   * `features/conversation` cannot import a sibling feature
+   * (`make guard-fsd`). The page that owns both features
+   * (`widgets/conversation`) supplies the slot; undefined draws no control
+   * at all, which is what `Conversation`'s own tests render without.
+   */
+  readonly renderSaveControl?: ((props: SaveControlSlotProps) => ReactNode) | undefined;
 }
 
 /** The conversation's turns, in order: a question, then the answer to it. */
-export function TurnList({ turns, onFormSubmitted }: TurnListProps): JSX.Element {
+export function TurnList({
+  turns,
+  onFormSubmitted,
+  renderSaveControl,
+}: TurnListProps): JSX.Element {
   return (
     <Stack spacing={2}>
       {turns.map((turn, index) => (
@@ -36,6 +55,7 @@ export function TurnList({ turns, onFormSubmitted }: TurnListProps): JSX.Element
           turn={turn}
           nearestQuestion={nearestQuestion(turns, index)}
           onFormSubmitted={onFormSubmitted}
+          renderSaveControl={renderSaveControl}
         />
       ))}
     </Stack>
@@ -74,12 +94,14 @@ interface TurnItemProps {
   readonly turn: Turn;
   readonly nearestQuestion: string;
   readonly onFormSubmitted: (result: PlanResult) => void;
+  readonly renderSaveControl?: ((props: SaveControlSlotProps) => ReactNode) | undefined;
 }
 
 function TurnItem({
   turn,
   nearestQuestion: question,
   onFormSubmitted,
+  renderSaveControl,
 }: TurnItemProps): JSX.Element {
   if (turn.role === "question") {
     return (
@@ -90,7 +112,12 @@ function TurnItem({
   }
 
   return (
-    <AnswerResult result={turn.result} originalQuery={question} onFormSubmitted={onFormSubmitted} />
+    <AnswerResult
+      result={turn.result}
+      originalQuery={question}
+      onFormSubmitted={onFormSubmitted}
+      renderSaveControl={renderSaveControl}
+    />
   );
 }
 
@@ -98,6 +125,7 @@ interface AnswerResultProps {
   readonly result: PlanResult;
   readonly originalQuery: string;
   readonly onFormSubmitted: (result: PlanResult) => void;
+  readonly renderSaveControl?: ((props: SaveControlSlotProps) => ReactNode) | undefined;
 }
 
 /**
@@ -106,7 +134,12 @@ interface AnswerResultProps {
  * form, choice, and the fallback - stays a small `if`, not one function
  * long enough to trip `max-lines-per-function`.
  */
-function AnswerResult({ result, originalQuery, onFormSubmitted }: AnswerResultProps): JSX.Element {
+function AnswerResult({
+  result,
+  originalQuery,
+  onFormSubmitted,
+  renderSaveControl,
+}: AnswerResultProps): JSX.Element {
   if (result.kind === "none") {
     return (
       <Paper elevation={1} sx={{ p: 2 }}>
@@ -119,7 +152,7 @@ function AnswerResult({ result, originalQuery, onFormSubmitted }: AnswerResultPr
   }
 
   if (result.kind === "result") {
-    const rendered = renderResultAnswer(result, originalQuery);
+    const rendered = renderResultAnswer(result, originalQuery, renderSaveControl);
 
     if (rendered !== null) {
       return rendered;
@@ -181,22 +214,26 @@ function AnswerResult({ result, originalQuery, onFormSubmitted }: AnswerResultPr
  * what either widget needs, so the caller falls through to `AnswerResult`'s
  * own generic fallback instead of this one duplicating it.
  *
- * Each branch also offers `SaveToWorkspaceControl` (AC-W-101) whenever the
- * result carries a `source` to save - a `table` result always does; a
+ * Each branch also draws the `renderSaveControl` slot (AC-W-101) whenever
+ * the result carries a `source` to save - a `table` result always does; a
  * `detail` result only sometimes does, the same condition `Provenance`
- * above it already checks.
+ * above it already checks. Nothing is drawn there when no slot was given.
  */
-function renderResultAnswer(result: PlanResult, originalQuery: string): JSX.Element | null {
+function renderResultAnswer(
+  result: PlanResult,
+  originalQuery: string,
+  renderSaveControl?: (props: SaveControlSlotProps) => ReactNode,
+): JSX.Element | null {
   if (result.component === "table" && result.source !== undefined && result.data !== undefined) {
     return (
       <Paper elevation={1} sx={{ p: 2 }}>
         <Provenance source={result.source} />
         <RenderedResult component={result.component} data={result.data} fields={result.fields} />
-        <SaveToWorkspaceControl
-          source={result.source}
-          component={result.component}
-          defaultTitle={originalQuery}
-        />
+        {renderSaveControl?.({
+          source: result.source,
+          component: result.component,
+          defaultTitle: originalQuery,
+        })}
       </Paper>
     );
   }
@@ -206,13 +243,13 @@ function renderResultAnswer(result: PlanResult, originalQuery: string): JSX.Elem
       <Paper elevation={1} sx={{ p: 2 }}>
         {result.source === undefined ? null : <Provenance source={result.source} />}
         <RenderedResult component={result.component} data={result.data} fields={result.fields} />
-        {result.source === undefined ? null : (
-          <SaveToWorkspaceControl
-            source={result.source}
-            component={result.component}
-            defaultTitle={originalQuery}
-          />
-        )}
+        {result.source === undefined
+          ? null
+          : renderSaveControl?.({
+              source: result.source,
+              component: result.component,
+              defaultTitle: originalQuery,
+            })}
       </Paper>
     );
   }
