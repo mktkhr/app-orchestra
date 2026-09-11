@@ -8,6 +8,7 @@ import { postInvoke, type PlanResult } from "@/shared/api/client";
 
 import { fieldEntries } from "../model/fieldEntries";
 import { fieldSchema, type Fields } from "../model/rows";
+import { useSubmission } from "../model/useSubmission";
 import { ResultFormField } from "./ResultFormField";
 
 type Target = NonNullable<PlanResult["target"]>;
@@ -94,18 +95,14 @@ export function ResultForm({ schema, initial, target, onSubmitted }: ResultFormP
 
     return seed;
   });
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { submitting, error, run } = useSubmission();
 
   const setValue = (key: string, value: unknown): void => {
     setValues((current) => ({ ...current, [key]: value }));
   };
 
-  const submit = async (): Promise<void> => {
-    setError(null);
-    setSubmitting(true);
-
-    try {
+  const submit = (): Promise<void> =>
+    run(async () => {
       const result = await postInvoke({
         service: target.service,
         operationId: target.operationId,
@@ -122,12 +119,7 @@ export function ResultForm({ schema, initial, target, onSubmitted }: ResultFormP
         ...(result.fields === undefined ? {} : { fields: result.fields }),
         source: { service: target.service, operationId: target.operationId, args: values },
       });
-    } catch {
-      setError("送信に失敗しました。時間をおいて試してください。");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    });
 
   const handleSubmit = (event: SyntheticEvent<HTMLFormElement>): void => {
     event.preventDefault();

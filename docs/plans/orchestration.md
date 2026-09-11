@@ -743,12 +743,12 @@ and a submit that posts to `/api/invoke` and appends the result as a new turn.
 showing its Japanese label. Choosing one re-posts the original question to
 `/api/plan` with `answers: [{param, value}]` appended.
 
-- [ ] **Step 1** Write the test: an ask result with four options renders all
+- [x] **Step 1** Write the test: an ask result with four options renders all
       four labels; clicking one posts the original question plus that answer. Run
       it, expect failure.
-- [ ] **Step 2** Implement.
-- [ ] **Step 3** Web gates green.
-- [ ] **Step 4** Commit: `feat(web): let the user resolve an ambiguous value`
+- [x] **Step 2** Implement.
+- [x] **Step 3** Web gates green.
+- [x] **Step 4** Commit: `feat(web): let the user resolve an ambiguous value`
 
 **Satisfies:** AC-F-103.
 

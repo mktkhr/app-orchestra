@@ -5,12 +5,14 @@ _Last updated: 2026-09-11_
 ## Summary
 
 **The harness is complete and the first vertical slice is under construction.**
-Fourteen of the seventeen tasks in `docs/plans/orchestration.md` are done: the
+Fifteen of the seventeen tasks in `docs/plans/orchestration.md` are done: the
 platform's scaffold, two services that answer real requests, the rendering
 rule, the catalogue the platform builds by asking those services what they
 offer, the tool definitions built from that catalogue, and all four answers
 `/api/plan` can give: a rendered result, a form, a disambiguation question,
-and no match - decided by a real model over an OpenAI-compatible endpoint.
+and no match - decided by a real model over an OpenAI-compatible endpoint. The
+browser now draws all four of the platform's `kind`s, including the choice an
+`ask` offers (Task 15).
 
 The whole backend half of the slice now runs end to end. A question in
 Japanese reaches a local model, the model picks one operation out of the
@@ -253,17 +255,70 @@ label and posting the value, a switch for a boolean, a numeric field for an
 integer - prefilled with what the planner chose, and submitting posts to
 `/api/invoke` and appends what comes back as another turn.
 
-`choice` is the last placeholder - Task 15. Verified in the browser against the running platform and a
-local model.
+**`choice`** (Task 15), `web/src/entities/rendering/ui/ResultChoice.tsx`: for
+`kind: "ask"`, the planner's disambiguation question plus one MUI `Button`
+per option showing its Japanese label. Picking one re-posts `/api/plan` with
+the _original_ query (what the person typed, not `PlanResult.question`,
+which is the planner's own prompt) alongside `answers: [{param, value}]`, and
+reports whatever comes back through the same `onFormSubmitted`/`onSubmitted`
+path `ResultForm` already uses to turn a follow-up response into a new turn.
+
+The original query has no home on `Turn` itself - an `ask` answer turn does
+not carry a copy of what the person typed, and threading a `query` field
+through every producer of an answer turn (including `ResultForm`'s
+`/api/invoke` path, which has no query to give) would mean one more thing
+each of them has to remember. `TurnList` instead walks the turn array
+backward from an `ask` turn's own index to the nearest preceding `role:
+"question"` turn - correct even after a choice has already been answered
+once, since the turn immediately before a second `ask` may be another
+answer, not the question.
+
+Double-submission is guarded by a `useRef` flag set the instant a click is
+accepted and cleared once the request settles - not by React's `submitting`
+state, which is a render behind the event and let two clicks landing before
+a re-render both through in testing. The option row is visually locked (`
+opacity`/`pointerEvents: none` in `sx`) once an answer is chosen - in flight
+or already answered - rather than through MUI's `disabled` prop: a disabled
+`contained` `Button` has no border of its own and fails `make
+guard-layout`'s WCAG 1.4.11 contrast check at rest (measured), the same
+constraint `ResultForm`'s submit button already works around. The chosen
+option stays visible afterwards, drawn `contained` against its `outlined`
+siblings, rather than being hidden or disabled further, because the answer
+it produced appears as a new turn right below it.
+
+`ResultForm` and `ResultChoice` share the submit-and-report shape - one
+async call turned into `submitting`/`error` state and the same Japanese
+failure message - through a new `entities/rendering/model/useSubmission.ts`
+hook, pulled out to keep `guard-duplication` from flagging the two `try`/
+`catch`/`finally` blocks as one repeated structure.
+
+`PlanResult.options` (and any other concrete array-of-object property
+`openapi-fetch`'s `MethodResponse` mapping produces) type-checks with its own
+prototype methods (`.map`, `.filter`, ...) as `{}` - calling them directly on
+it is a compile error, not just an unsafe read. `ResultChoice` reads it the
+same defensive way `ResultForm`/`rows.ts` already read a schema whose
+declared shape cannot simply be trusted (`Array.isArray` + a `Record<string,
+unknown>` narrow, rather than iterating the generated type's own methods).
+
+Verified live against `http://100.75.74.118:5173/` (Tailscale) and the
+running `qwen3.5-9b-q8`: of five attempts at `破損した在庫はある？`, four had
+the model guess a status on its own (`ListInventoryItems` with no args, or
+with `status: quarantined` directly - confirming `DECISIONS.md`'s prior
+measurement), and the fifth produced `kind: "ask"` with all four labelled
+options; picking 検品保留 re-posted the original query with the answer and
+appended a new table turn filtered to the two quarantined items. Fixed
+against this behaviour in `Conversation.test.tsx` regardless of what any
+particular live run does.
 
 ## What does not exist yet
 
 Task 11 of `docs/plans/orchestration.md`, the JSON planner for models without
-tool calling, and Tasks 12-16, the whole of `web/src` beyond the shell.
+tool calling, and Task 16, the end-to-end suite.
 `ask_user` is implemented and unit-tested (a fixed tool-call fixture maps to
 `DecisionAsk`), but no local model under about 20B parameters was observed to
-choose it reliably live - `qwen3.5-9b-q8` picked it 1 run in 5 against a
-genuinely ambiguous query, guessing a value the other 4 (`DECISIONS.md`).
+choose it reliably live - `qwen3.5-9b-q8` picked it roughly 1 run in 5 against
+a genuinely ambiguous query, guessing a value the rest of the time
+(`DECISIONS.md`).
 `make check` is green because the guards report on the code that is there,
 not because the product is finished.
 

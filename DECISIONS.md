@@ -847,3 +847,56 @@ and the platform's own contract (never fetched by `specsource/http` at
 all — see `harness/guard/exposed-ops.sh`), carry no mark. Adding an
 operation to either service now defaults to invisible until someone opts it
 in, which is the point: `docs/specs/orchestration.md` D13, section 8.
+
+## 2026-09-11 ResultChoice finds its original query by walking the turn list, not by carrying it
+
+**Context.** Task 15's `ResultChoice` (AC-F-103) resubmits `/api/plan` with
+the person's original question alongside the chosen `answers`, but a
+`kind: "ask"` `PlanResult` carries no copy of it — `PlanResult.question` is
+the planner's own disambiguation prompt ("「破損」に近いステータスはどれですか？"),
+not what the person typed. The obvious fix, a `query` field on
+`AnswerTurn`, would need every producer of an answer turn to remember to set
+it, including `ResultForm`'s `/api/invoke` submission path, which has no
+query to give at all.
+
+**Decision.** `TurnList` derives the original query at render time by
+walking `turns` backward from an `ask` turn's own index to the nearest
+preceding `role: "question"` turn, rather than storing it on the turn.
+Walking backward instead of reading `turns[index - 1]` directly matters once
+a choice has already been answered once: the turn immediately before a
+second `ask` may be another answer turn, not the question, and the nearest
+_question_ is still the one `/api/plan` needs back.
+
+Separately, `PlanResult.options` — the one place a schema-declared
+array-of-objects property reaches the browser through openapi-fetch's
+`MethodResponse` mapping — type-checks with every one of its own prototype
+methods (`.map`, `.filter`, `.flatMap`, ...) as `{}`; calling them directly
+is a compile error, not an unsafe read. `ResultChoice` reads it the same
+defensive way `ResultForm`/`rows.ts` already read a schema property whose
+declared type cannot be trusted as-is: `Array.isArray` (which narrows via
+its own `any[]` signature, sidestepping the broken methods) followed by a
+`Record<string, unknown>` guard per element.
+
+The option row locks against a second click through a `useRef` flag set the
+instant a click is accepted, not through the `submitting` state `useSubmission`
+(new: `entities/rendering/model/useSubmission.ts`, extracted out of
+`ResultForm` to keep the two components' `try`/`catch`/`finally` from
+tripping `guard-duplication`) already exposes for the row's visual lock —
+`submitting` lags one render behind the click, which measurably let two
+fast clicks both reach `postPlan` in testing. The chosen option is drawn
+`contained` against its `outlined` siblings rather than disabled through
+MUI's `disabled` prop: a disabled `contained` `Button` has no border of its
+own and fails `make guard-layout`'s WCAG 1.4.11 contrast check at rest
+(measured), so the lock is `opacity`/`pointerEvents: none` on the row via
+`sx` instead.
+
+**Consequences.** `Turn`/`AnswerTurn` (`features/conversation/model/turn.ts`)
+stays unchanged — nothing needs to remember a query it does not have.
+`TurnList.tsx` grew a `nearestQuestion` helper and an `AnswerResult`
+component split out of `TurnItem` to stay under `max-lines-per-function`
+once the fifth `kind`/`component` branch (`ask`) was added. Verified live
+against `http://100.75.74.118:5173/` and `qwen3.5-9b-q8`: 1 `ask` in 5
+attempts at `破損した在庫はある？` (the other 4 guessed a status directly,
+matching the measurement above), picking an option correctly re-posted the
+original query and appended a filtered table turn. Fixed independently of
+that variance in `Conversation.test.tsx`.

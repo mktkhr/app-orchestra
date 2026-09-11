@@ -5,7 +5,8 @@ _Keep three lists. Move items, do not duplicate them._
 ## In progress
 
 1. The first vertical slice, `docs/plans/orchestration.md`. Tasks 0 to 10 and
-   12 to 14 are done; Task 15 draws the choice an ask offers.
+   12 to 15 are done; Task 16 (the end-to-end suite) is the one step left in
+   the slice.
 
 ## Next
 
@@ -13,10 +14,10 @@ _Keep three lists. Move items, do not duplicate them._
    `title` on every property an exposed operation's schema describes, since
    only an exposed operation's fields are ever shown on screen. Deliberately
    left for a separate decision (`DECISIONS.md`, 2026-09-11).
-1. Finish the slice, tasks 15 and 16: the choice component and the
-   end-to-end test. Then Task 11, the JSON planner behind the same
-   `usecase.Planner` port - left until last because the slice is not vertical
-   until the browser can draw what the platform already returns.
+1. Finish the slice, Task 16: the end-to-end test. Then Task 11, the JSON
+   planner behind the same `usecase.Planner` port - left until last because
+   the slice was not vertical until the browser could draw everything the
+   platform already returns (now true as of Task 15).
 1. No local model under ~20B parameters was observed to reliably choose
    `ask_user` (`DECISIONS.md`, 2026-09-11) - worth revisiting once Task 11's
    JSON planner exists, since a JSON `{"kind": "ask", ...}` object may be an
@@ -83,3 +84,12 @@ _Keep three lists. Move items, do not duplicate them._
   fails on an exposed operation nothing can render, or a service exposing
   nothing at all (`DECISIONS.md`, 2026-09-11;
   `docs/specs/orchestration.md` D13).
+- Built `choice` (Task 15): `entities/rendering/ui/ResultChoice.tsx` renders
+  a `kind: "ask"` answer's question and Japanese-labelled options, re-posts
+  `/api/plan` with the original query (found by walking `TurnList`'s turn
+  array back to the nearest question turn) and the chosen answer, and wires
+  the result into `TurnList` in place of the last placeholder. Extracted
+  `entities/rendering/model/useSubmission.ts` out of `ResultForm` so the two
+  components' submit/error handling is written once. Verified live: 1 `ask`
+  in 5 attempts against `qwen3.5-9b-q8` (matching the prior measurement),
+  fixed in `Conversation.test.tsx` regardless.

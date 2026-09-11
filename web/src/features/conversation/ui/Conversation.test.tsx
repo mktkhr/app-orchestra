@@ -136,4 +136,46 @@ describe("Conversation", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
   });
+
+  it("renders an ask result as choices and resolves the picked answer into a new turn", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(postPlan).mockResolvedValueOnce({
+      kind: "ask",
+      question: "「破損」に近いステータスはどれですか？",
+      param: "status",
+      options: [
+        { value: "allocated", label: "引当済" },
+        { value: "staged", label: "出荷準備完了" },
+        { value: "quarantined", label: "検品保留" },
+        { value: "consigned", label: "預託在庫" },
+      ],
+    });
+
+    render(<Conversation />);
+
+    await user.click(screen.getByRole("button", { name: "破損した在庫はある？" }));
+
+    expect(await screen.findByText("「破損」に近いステータスはどれですか？")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "検品保留" })).toBeTruthy();
+
+    vi.mocked(postPlan).mockResolvedValueOnce({
+      kind: "result",
+      component: "table",
+      data: { items: [{ id: "itm-001", status: "quarantined" }] },
+      source: {
+        service: "inventory",
+        operationId: "listInventoryItems",
+        args: { status: "quarantined" },
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: "検品保留" }));
+
+    expect(postPlan).toHaveBeenLastCalledWith({
+      query: "破損した在庫はある？",
+      answers: [{ param: "status", value: "quarantined" }],
+    });
+    expect(await screen.findByText("itm-001")).toBeTruthy();
+  });
 });
