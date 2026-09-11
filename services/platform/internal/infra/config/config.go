@@ -5,13 +5,26 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // defaultPort is used when ORCHESTRA_PORT is unset.
 const defaultPort = 8080
+
+// ErrInvalidServiceEntry is wrapped into the error returned when
+// ORCHESTRA_SERVICES contains an entry that is not "name=url".
+var ErrInvalidServiceEntry = errors.New("invalid ORCHESTRA_SERVICES entry, want name=url")
+
+// Service is one entry of ORCHESTRA_SERVICES: a service's name and the base
+// URL its /openapi.yaml is fetched from.
+type Service struct {
+	Name string
+	URL  string
+}
 
 // Config is the platform's runtime configuration.
 type Config struct {
@@ -19,16 +32,27 @@ type Config struct {
 	Port int
 	// StaticDir, when non-empty, is served at "/" as the built frontend.
 	StaticDir string
+	// Services lists the microservices the catalogue is built from, read
+	// from ORCHESTRA_SERVICES.
+	Services []Service
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
 // when unset; ORCHESTRA_STATIC_DIR defaults to empty, which means no static
-// assets are served.
+// assets are served. ORCHESTRA_SERVICES defaults to empty, which means no
+// service is configured.
 func Load() (Config, error) {
 	cfg := Config{
 		Port:      defaultPort,
 		StaticDir: os.Getenv("ORCHESTRA_STATIC_DIR"),
 	}
+
+	services, err := parseServices(os.Getenv("ORCHESTRA_SERVICES"))
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.Services = services
 
 	raw, ok := os.LookupEnv("ORCHESTRA_PORT")
 	if !ok || raw == "" {
@@ -43,4 +67,34 @@ func Load() (Config, error) {
 	cfg.Port = port
 
 	return cfg, nil
+}
+
+// parseServices reads ORCHESTRA_SERVICES: a comma-separated list of
+// "name=url" pairs, e.g.
+// "inventory=http://localhost:8081,attendance=http://localhost:8082". An
+// empty string yields no services rather than an error, so the platform
+// still starts (with an empty catalogue) when nothing is configured.
+func parseServices(raw string) ([]Service, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+
+	entries := strings.Split(raw, ",")
+	services := make([]Service, 0, len(entries))
+
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		name, url, ok := strings.Cut(entry, "=")
+		if !ok || name == "" || url == "" {
+			return nil, fmt.Errorf("%w: %q", ErrInvalidServiceEntry, entry)
+		}
+
+		services = append(services, Service{Name: name, URL: url})
+	}
+
+	return services, nil
 }

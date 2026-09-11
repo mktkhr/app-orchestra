@@ -1,0 +1,132 @@
+openapi: 3.0.3
+info:
+  title: Fixture API
+  version: 0.1.0
+  description: A minimal contract used only to test the catalogue converter.
+servers:
+  - url: /
+tags:
+  - name: widgets
+    description: Fixture widgets.
+  - name: system
+    description: The service's own contract.
+paths:
+  /openapi.yaml:
+    get:
+      operationId: getSpec
+      summary: Return this service's own OpenAPI contract.
+      tags:
+        - system
+      responses:
+        "200":
+          description: The service's OpenAPI document, as YAML.
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /widgets:
+    get:
+      operationId: listWidgets
+      summary: List widgets, optionally filtered by status.
+      tags:
+        - widgets
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Restrict the result to widgets in this status.
+          schema:
+            $ref: "#/components/schemas/WidgetStatus"
+      responses:
+        "200":
+          description: The matching widgets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WidgetList"
+    post:
+      operationId: createWidget
+      summary: Create a widget.
+      tags:
+        - widgets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewWidget"
+      responses:
+        "201":
+          description: The created widget.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+  /widgets/{id}:
+    get:
+      operationId: getWidget
+      summary: Get one widget by id.
+      tags:
+        - widgets
+      x-ui-hint:
+        component: detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The widget's id.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The requested widget.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+components:
+  schemas:
+    WidgetStatus:
+      type: string
+      description: Where a widget sits in its workflow.
+      enum: [allocated, staged, quarantined, consigned]
+      x-enum-labels:
+        allocated: 引当済
+        staged: 出荷準備完了
+        quarantined: 検品保留
+        consigned: 預託在庫
+    Widget:
+      type: object
+      description: A single widget.
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/WidgetStatus"
+    WidgetList:
+      type: object
+      description: A page of widgets.
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Widget"
+    NewWidget:
+      type: object
+      description: The fields needed to create a widget.
+      required:
+        - name
+        - status
+      properties:
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/WidgetStatus"

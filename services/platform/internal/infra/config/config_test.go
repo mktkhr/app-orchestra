@@ -38,3 +38,43 @@ func TestLoadRejectsInvalidPort(t *testing.T) {
 
 	require.Error(t, err)
 }
+
+func TestLoadParsesServices(t *testing.T) {
+	t.Setenv(
+		"ORCHESTRA_SERVICES",
+		"inventory=http://localhost:8081,attendance=http://localhost:8082",
+	)
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, []config.Service{
+		{Name: "inventory", URL: "http://localhost:8081"},
+		{Name: "attendance", URL: "http://localhost:8082"},
+	}, cfg.Services)
+}
+
+func TestLoadServicesDefaultsToEmpty(t *testing.T) {
+	t.Setenv("ORCHESTRA_SERVICES", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Services)
+}
+
+func TestLoadRejectsMalformedServiceEntry(t *testing.T) {
+	t.Setenv("ORCHESTRA_SERVICES", "inventory-without-equals-sign")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+}
+
+func TestLoadRejectsServiceEntryWithEmptyName(t *testing.T) {
+	t.Setenv("ORCHESTRA_SERVICES", "=http://localhost:8081")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+}
