@@ -30,3 +30,17 @@ func TestRunReturnsNilAfterShutdown(t *testing.T) {
 
 	require.NoError(t, httpserver.Run(server))
 }
+
+func TestNewServerAllowsAnAnswerToOutlastAModelCall(t *testing.T) {
+	// POST /api/plan asks a model inside the request, and the planner's own
+	// budget for that call is 120s (internal/adapter/planner/chat). A write
+	// timeout below it kills the response while the platform is still
+	// waiting for the answer, and the browser sees a dropped connection
+	// rather than a timeout.
+	server := httpserver.NewServer(8080, http.NotFoundHandler())
+
+	assert.Greater(t, server.WriteTimeout, 120*time.Second,
+		"the write timeout must outlast one model call")
+	assert.Less(t, server.ReadTimeout, server.WriteTimeout,
+		"reading a question is not what takes the time")
+}
