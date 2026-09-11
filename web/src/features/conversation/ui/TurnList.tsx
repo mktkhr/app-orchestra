@@ -4,7 +4,13 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { JSX } from "react";
 
-import { Provenance, RenderedResult, ResultChoice, ResultForm } from "@/entities/rendering";
+import {
+  Provenance,
+  RenderedResult,
+  ResultChoice,
+  ResultForm,
+  SaveToWorkspaceControl,
+} from "@/entities/rendering";
 import type { PlanResult } from "@/shared/api/client";
 
 import type { Turn } from "../model/turn";
@@ -112,27 +118,12 @@ function AnswerResult({ result, originalQuery, onFormSubmitted }: AnswerResultPr
     );
   }
 
-  if (
-    result.kind === "result" &&
-    result.component === "table" &&
-    result.source !== undefined &&
-    result.data !== undefined
-  ) {
-    return (
-      <Paper elevation={1} sx={{ p: 2 }}>
-        <Provenance source={result.source} />
-        <RenderedResult component={result.component} data={result.data} fields={result.fields} />
-      </Paper>
-    );
-  }
+  if (result.kind === "result") {
+    const rendered = renderResultAnswer(result, originalQuery);
 
-  if (result.kind === "result" && result.component === "detail" && result.data !== undefined) {
-    return (
-      <Paper elevation={1} sx={{ p: 2 }}>
-        {result.source === undefined ? null : <Provenance source={result.source} />}
-        <RenderedResult component={result.component} data={result.data} fields={result.fields} />
-      </Paper>
-    );
+    if (rendered !== null) {
+      return rendered;
+    }
   }
 
   if (result.kind === "form" && result.schema !== undefined && result.target !== undefined) {
@@ -180,4 +171,51 @@ function AnswerResult({ result, originalQuery, onFormSubmitted }: AnswerResultPr
       </Alert>
     </Paper>
   );
+}
+
+/**
+ * The `kind: "result"` branches of `AnswerResult` - `table` and `detail` -
+ * split into their own function so `AnswerResult` stays under
+ * `max-lines-per-function`. Returns null for a `component`/`data`
+ * combination this deployment's contract allows but that carries none of
+ * what either widget needs, so the caller falls through to `AnswerResult`'s
+ * own generic fallback instead of this one duplicating it.
+ *
+ * Each branch also offers `SaveToWorkspaceControl` (AC-W-101) whenever the
+ * result carries a `source` to save - a `table` result always does; a
+ * `detail` result only sometimes does, the same condition `Provenance`
+ * above it already checks.
+ */
+function renderResultAnswer(result: PlanResult, originalQuery: string): JSX.Element | null {
+  if (result.component === "table" && result.source !== undefined && result.data !== undefined) {
+    return (
+      <Paper elevation={1} sx={{ p: 2 }}>
+        <Provenance source={result.source} />
+        <RenderedResult component={result.component} data={result.data} fields={result.fields} />
+        <SaveToWorkspaceControl
+          source={result.source}
+          component={result.component}
+          defaultTitle={originalQuery}
+        />
+      </Paper>
+    );
+  }
+
+  if (result.component === "detail" && result.data !== undefined) {
+    return (
+      <Paper elevation={1} sx={{ p: 2 }}>
+        {result.source === undefined ? null : <Provenance source={result.source} />}
+        <RenderedResult component={result.component} data={result.data} fields={result.fields} />
+        {result.source === undefined ? null : (
+          <SaveToWorkspaceControl
+            source={result.source}
+            component={result.component}
+            defaultTitle={originalQuery}
+          />
+        )}
+      </Paper>
+    );
+  }
+
+  return null;
 }

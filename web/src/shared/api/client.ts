@@ -195,3 +195,34 @@ export async function deleteWorkspace(id: string): Promise<void> {
     throw new Error("DELETE /api/workspaces/{id} failed");
   }
 }
+
+/**
+ * A call to save as a new panel: everything a plan result's `source` and
+ * `component` already carry, plus a title a person can edit
+ * (docs/specs/workspaces.md section 3). Nothing here is derived - the
+ * caller copies `source.service`/`source.operationId`/`source.args` and the
+ * result's own `component` straight through.
+ */
+export type AddPanelRequest = components["schemas"]["CreatePanelRequest"];
+
+/** The body of a successful POST /api/workspaces/{id}/panels. See the comment on PlanResult above. */
+export type PanelCreated = MethodResponse<typeof client, "post", "/api/workspaces/{id}/panels">;
+
+/** Calls POST /api/workspaces/{id}/panels and returns the panel just saved. */
+export async function addPanel(
+  workspaceId: string,
+  request: AddPanelRequest,
+): Promise<PanelCreated> {
+  // See the comment on getHealth above: fetch is read at call time on purpose.
+  const { data, error } = await client.POST("/api/workspaces/{id}/panels", {
+    params: { path: { id: workspaceId } },
+    body: request,
+    fetch: globalThis.fetch,
+  });
+
+  if (error !== undefined) {
+    throw new Error("POST /api/workspaces/{id}/panels failed");
+  }
+
+  return data;
+}
