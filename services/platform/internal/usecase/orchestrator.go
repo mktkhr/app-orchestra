@@ -290,13 +290,7 @@ func (o *Orchestrator) call(ctx context.Context, catalog domain.Catalog, decisio
 	}
 
 	if !endpoint.IsSafe() {
-		return Result{
-			Kind:        ResultKindForm,
-			Service:     decision.Service,
-			OperationID: decision.OperationID,
-			Schema:      inputSchemaFor(&endpoint),
-			Initial:     decision.Args,
-		}, nil
+		return formFor(&endpoint, decision), nil
 	}
 
 	return o.invokeAndRender(ctx, &endpoint, decision.Service, decision.OperationID, decision.Args)
@@ -353,24 +347,12 @@ func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, 
 	}
 
 	if !endpoint.IsSafe() {
-		return Result{
-			Kind:        ResultKindForm,
-			Service:     decision.Service,
-			OperationID: decision.OperationID,
-			Schema:      inputSchemaFor(&endpoint),
-			Initial:     decision.Args,
-		}, nil
+		return formFor(&endpoint, decision), nil
 	}
 
 	options, ok := optionsForParam(&endpoint, decision.Param)
 	if !ok {
-		return Result{
-			Kind:        ResultKindForm,
-			Service:     decision.Service,
-			OperationID: decision.OperationID,
-			Schema:      inputSchemaFor(&endpoint),
-			Initial:     decision.Args,
-		}, nil
+		return formFor(&endpoint, decision), nil
 	}
 
 	return Result{
@@ -379,6 +361,30 @@ func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, 
 		Param:    decision.Param,
 		Options:  options,
 	}, nil
+}
+
+// formFor builds the form the platform hands a person instead of running
+// something: the endpoint's whole argument schema, and whatever arguments
+// the model did manage to fill in as its initial values.
+//
+// All three places that produce one are the same idea, which is why they
+// share this function rather than each writing the literal out. Two of them
+// are the same rule twice over - an unsafe operation is answered by its
+// form, whether the model tried to call it (call) or reached for ask_user
+// on an argument it could not fill (ask), because D8 says the model never
+// runs an unsafe operation at all and a person pressing the button is what
+// does (docs/specs/orchestration.md, section 8b). The third is D11's own
+// degradation: a safe operation whose stuck argument has no enum has no
+// list of values to offer, and letting the person type it is what a form
+// is for.
+func formFor(endpoint *domain.Endpoint, decision *Decision) Result {
+	return Result{
+		Kind:        ResultKindForm,
+		Service:     decision.Service,
+		OperationID: decision.OperationID,
+		Schema:      inputSchemaFor(endpoint),
+		Initial:     decision.Args,
+	}
 }
 
 // optionsForParam searches one endpoint's parameters for the one named
