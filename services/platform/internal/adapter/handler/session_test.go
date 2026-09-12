@@ -66,7 +66,7 @@ func TestPostSessionSetsAnHTTPOnlyCookieAndReturnsTheUser(t *testing.T) {
 	auth := &fakeAuthenticator{user: domain.User{ID: "usr-1", Name: "admin", Role: domain.RoleAdmin}, ok: true}
 	sessions := &fakeSessions{createToken: "sess-token"}
 
-	h := handler.NewSession(auth, sessions)
+	h := handler.NewSession(auth, sessions, true)
 
 	resp, err := h.PostSession(t.Context(), openapi.PostSessionRequestObject{
 		Body: &openapi.SignInRequest{Name: "admin", Password: "correct horse battery staple"},
@@ -104,7 +104,7 @@ func TestPostSessionReturns401AndSetsNoCookieForAWrongPassword(t *testing.T) {
 	auth := &fakeAuthenticator{ok: false}
 	sessions := &fakeSessions{}
 
-	h := handler.NewSession(auth, sessions)
+	h := handler.NewSession(auth, sessions, true)
 
 	resp, err := h.PostSession(t.Context(), openapi.PostSessionRequestObject{
 		Body: &openapi.SignInRequest{Name: "admin", Password: "wrong"},
@@ -125,7 +125,7 @@ func TestPostSessionReturns401AndSetsNoCookieForAWrongPassword(t *testing.T) {
 func TestPostSessionWrapsAnAuthenticatorError(t *testing.T) {
 	boom := errors.New("boom")
 	auth := &fakeAuthenticator{err: boom}
-	h := handler.NewSession(auth, &fakeSessions{})
+	h := handler.NewSession(auth, &fakeSessions{}, true)
 
 	_, err := h.PostSession(t.Context(), openapi.PostSessionRequestObject{
 		Body: &openapi.SignInRequest{Name: "admin", Password: "x"},
@@ -138,7 +138,7 @@ func TestPostSessionWrapsASessionStoreError(t *testing.T) {
 	boom := errors.New("boom")
 	auth := &fakeAuthenticator{user: domain.User{ID: "usr-1"}, ok: true}
 	sessions := &fakeSessions{createErr: boom}
-	h := handler.NewSession(auth, sessions)
+	h := handler.NewSession(auth, sessions, true)
 
 	_, err := h.PostSession(t.Context(), openapi.PostSessionRequestObject{
 		Body: &openapi.SignInRequest{Name: "admin", Password: "x"},
@@ -148,7 +148,7 @@ func TestPostSessionWrapsASessionStoreError(t *testing.T) {
 }
 
 func TestPostSessionFailsWithoutAnAuthenticatorOrSessionStore(t *testing.T) {
-	h := handler.NewSession(nil, nil)
+	h := handler.NewSession(nil, nil, true)
 
 	_, err := h.PostSession(t.Context(), openapi.PostSessionRequestObject{
 		Body: &openapi.SignInRequest{Name: "admin", Password: "x"},
@@ -158,7 +158,7 @@ func TestPostSessionFailsWithoutAnAuthenticatorOrSessionStore(t *testing.T) {
 }
 
 func TestGetSessionReturnsTheCurrentUser(t *testing.T) {
-	h := handler.NewSession(nil, nil)
+	h := handler.NewSession(nil, nil, true)
 	ctx := handler.WithUser(t.Context(), &domain.User{ID: "usr-1", Name: "admin", Role: domain.RoleAdmin})
 
 	resp, err := h.GetSession(ctx, openapi.GetSessionRequestObject{})
@@ -167,7 +167,7 @@ func TestGetSessionReturnsTheCurrentUser(t *testing.T) {
 }
 
 func TestGetSessionReturns401WhenNobodyIsSignedIn(t *testing.T) {
-	h := handler.NewSession(nil, nil)
+	h := handler.NewSession(nil, nil, true)
 
 	resp, err := h.GetSession(t.Context(), openapi.GetSessionRequestObject{})
 	require.NoError(t, err)
@@ -176,7 +176,7 @@ func TestGetSessionReturns401WhenNobodyIsSignedIn(t *testing.T) {
 
 func TestDeleteSessionEndsTheSessionNamedByTheCookieAndClearsIt(t *testing.T) {
 	sessions := &fakeSessions{}
-	h := handler.NewSession(nil, sessions)
+	h := handler.NewSession(nil, sessions, true)
 	ctx := handler.WithSessionToken(t.Context(), "sess-token")
 
 	resp, err := h.DeleteSession(ctx, openapi.DeleteSessionRequestObject{})
@@ -197,7 +197,7 @@ func TestDeleteSessionEndsTheSessionNamedByTheCookieAndClearsIt(t *testing.T) {
 
 func TestDeleteSessionWithNoCookieCallsTheStoreNoTimes(t *testing.T) {
 	sessions := &fakeSessions{}
-	h := handler.NewSession(nil, sessions)
+	h := handler.NewSession(nil, sessions, true)
 
 	_, err := h.DeleteSession(t.Context(), openapi.DeleteSessionRequestObject{})
 	require.NoError(t, err)
@@ -207,7 +207,7 @@ func TestDeleteSessionWithNoCookieCallsTheStoreNoTimes(t *testing.T) {
 func TestDeleteSessionWrapsAStoreError(t *testing.T) {
 	boom := errors.New("boom")
 	sessions := &fakeSessions{deleteErr: boom}
-	h := handler.NewSession(nil, sessions)
+	h := handler.NewSession(nil, sessions, true)
 	ctx := handler.WithSessionToken(t.Context(), "sess-token")
 
 	_, err := h.DeleteSession(ctx, openapi.DeleteSessionRequestObject{})
@@ -216,7 +216,7 @@ func TestDeleteSessionWrapsAStoreError(t *testing.T) {
 }
 
 func TestDeleteSessionFailsWithoutASessionStore(t *testing.T) {
-	h := handler.NewSession(nil, nil)
+	h := handler.NewSession(nil, nil, true)
 
 	_, err := h.DeleteSession(t.Context(), openapi.DeleteSessionRequestObject{})
 	require.Error(t, err)

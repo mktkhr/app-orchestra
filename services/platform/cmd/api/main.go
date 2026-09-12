@@ -26,6 +26,7 @@ func main() {
 		LLM:           app.LLM{BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, Mode: cfg.LLMMode},
 		PlanFixtures:  toAppPlanFixtures(cfg.PlanFixtures),
 		DBPath:        cfg.DBPath,
+		SecureCookie:  cfg.SecureCookie,
 		AdminPassword: cfg.AdminPassword,
 	})
 	if err != nil {

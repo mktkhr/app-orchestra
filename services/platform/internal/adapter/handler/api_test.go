@@ -11,7 +11,7 @@ import (
 
 func TestNewAPIComposesEveryTag(t *testing.T) {
 	api := handler.NewAPI(
-		handler.NewHealth(), handler.NewSession(nil, nil), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil),
+		handler.NewHealth(), handler.NewSession(nil, nil, true), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil),
 		handler.NewUsers(nil),
 	)
 

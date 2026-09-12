@@ -146,6 +146,10 @@ type Config struct {
 	// rule itself, rather than trusting every other caller to have gone
 	// through config.Load first.
 	DBPath string
+	// SecureCookie is the Secure attribute of the session cookie. See
+	// internal/infra/config.Config.SecureCookie for what turning it off
+	// means and when it is the right thing to do.
+	SecureCookie bool
 	// AdminPassword seeds the first admin account, once, in the file named
 	// by DBPath (docs/specs/auth.md, section 3). Required whenever New is
 	// called at all, since DBPath now always is too - cmd/api always sets
@@ -243,7 +247,7 @@ func build(
 
 	api := handler.NewAPI(
 		handler.NewHealth(),
-		handler.NewSession(authenticator, sessions),
+		handler.NewSession(authenticator, sessions, cfg.SecureCookie),
 		handler.NewPlan(orchestrator),
 		handler.NewInvoke(orchestrator),
 		workspaceHandler,

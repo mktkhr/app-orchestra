@@ -127,6 +127,17 @@ type Config struct {
 	// AdminPassword seeds the first admin account, read from
 	// ORCHESTRA_ADMIN_PASSWORD. Required: see ErrMissingAdminPassword.
 	AdminPassword string
+	// SecureCookie is the Secure attribute of the session cookie, read
+	// from ORCHESTRA_SECURE_COOKIE and true unless that says "false".
+	//
+	// A browser decides where a cookie may go by the scheme it sees. Over
+	// a link that is encrypted but not TLS - a Tailscale address, which is
+	// how this is actually looked at - a Secure cookie is stored by
+	// nobody, and signing in appears to work and then does not. Turning it
+	// off says that the scheme is http and something other than TLS is
+	// keeping the wire honest. Anything anybody else can reach wants TLS
+	// and this left alone.
+	SecureCookie bool
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
@@ -135,11 +146,12 @@ type Config struct {
 // service is configured.
 func Load() (Config, error) {
 	cfg := Config{
-		Port:       defaultPort,
-		StaticDir:  os.Getenv("ORCHESTRA_STATIC_DIR"),
-		LLMBaseURL: os.Getenv("ORCHESTRA_LLM_BASE_URL"),
-		LLMAPIKey:  os.Getenv("ORCHESTRA_LLM_API_KEY"),
-		LLMModel:   os.Getenv("ORCHESTRA_LLM_MODEL"),
+		Port:         defaultPort,
+		SecureCookie: os.Getenv("ORCHESTRA_SECURE_COOKIE") != "false",
+		StaticDir:    os.Getenv("ORCHESTRA_STATIC_DIR"),
+		LLMBaseURL:   os.Getenv("ORCHESTRA_LLM_BASE_URL"),
+		LLMAPIKey:    os.Getenv("ORCHESTRA_LLM_API_KEY"),
+		LLMModel:     os.Getenv("ORCHESTRA_LLM_MODEL"),
 	}
 
 	mode, err := parseLLMMode(os.Getenv("ORCHESTRA_LLM_MODE"))

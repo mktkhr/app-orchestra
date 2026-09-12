@@ -55,13 +55,17 @@ type sessionStore interface {
 type Session struct {
 	authenticator authenticator
 	sessions      sessionStore
+	// secureCookie is the Secure attribute of the cookies this handler
+	// sets and clears. See sessionCookie's doc comment for why it is a
+	// setting rather than always true.
+	secureCookie bool
 }
 
 // NewSession builds the /api/session handler over auth and sessions.
 // Either may be nil - see ErrSessionsUnavailable - for the same reason
 // NewWorkspace(nil) is a valid handler over no store.
-func NewSession(auth authenticator, sessions sessionStore) *Session {
-	return &Session{authenticator: auth, sessions: sessions}
+func NewSession(auth authenticator, sessions sessionStore, secureCookie bool) *Session {
+	return &Session{authenticator: auth, sessions: sessions, secureCookie: secureCookie}
 }
 
 // PostSession implements POST /api/session: checks the name and password
@@ -92,7 +96,7 @@ func (h *Session) PostSession(
 		return nil, fmt.Errorf("starting a session: %w", err)
 	}
 
-	return signInResponse{user: toAPIUser(&user), token: token}, nil
+	return signInResponse{user: toAPIUser(&user), token: token, secure: h.secureCookie}, nil
 }
 
 // GetSession implements GET /api/session: the signed-in user, from
@@ -129,7 +133,7 @@ func (h *Session) DeleteSession(
 		}
 	}
 
-	return signOutResponse{}, nil
+	return signOutResponse{secure: h.secureCookie}, nil
 }
 
 // toAPIUser converts one domain.User into the wire User.
@@ -145,13 +149,14 @@ func toAPIUser(user *domain.User) openapi.User {
 // way to also touch a response header, and a cookie is the entire point
 // of this response.
 type signInResponse struct {
-	user  openapi.User
-	token string
+	user   openapi.User
+	token  string
+	secure bool
 }
 
 // VisitPostSessionResponse implements openapi.PostSessionResponseObject.
 func (r signInResponse) VisitPostSessionResponse(w http.ResponseWriter) error {
-	http.SetCookie(w, sessionCookie(r.token, sessionCookieMaxAge))
+	http.SetCookie(w, sessionCookie(r.token, sessionCookieMaxAge, r.secure))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -166,11 +171,11 @@ func (r signInResponse) VisitPostSessionResponse(w http.ResponseWriter) error {
 // whether or not it named a still-valid session. See signInResponse's own
 // doc comment for why this is not the generated
 // openapi.DeleteSession204Response.
-type signOutResponse struct{}
+type signOutResponse struct{ secure bool }
 
 // VisitDeleteSessionResponse implements openapi.DeleteSessionResponseObject.
-func (signOutResponse) VisitDeleteSessionResponse(w http.ResponseWriter) error {
-	http.SetCookie(w, expiredSessionCookie())
+func (r signOutResponse) VisitDeleteSessionResponse(w http.ResponseWriter) error {
+	http.SetCookie(w, expiredSessionCookie(r.secure))
 	w.WriteHeader(http.StatusNoContent)
 
 	return nil
@@ -181,12 +186,12 @@ func (signOutResponse) VisitDeleteSessionResponse(w http.ResponseWriter) error {
 // way to ask for "Max-Age: 0", i.e. delete now), rather than
 // sessionCookie's positive TTL. Secure: true for the same reason
 // sessionCookie sets it - see that function's own doc comment.
-func expiredSessionCookie() *http.Cookie {
-	return &http.Cookie{
+func expiredSessionCookie(secure bool) *http.Cookie {
+	return &http.Cookie{ //nolint:gosec // Secure is a setting; see sessionCookie
 		Name:     SessionCookieName,
 		Value:    "",
 		Path:     "/",
-		Secure:   true,
+		Secure:   secure,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
@@ -200,24 +205,24 @@ func expiredSessionCookie() *http.Cookie {
 // http.Cookie.MaxAge takes seconds, not a duration, which is why this
 // helper exists rather than every caller converting it inline.
 //
-// Secure: true unconditionally, not only when the request arrived over
-// TLS - gosec's own insecure-cookie check (G124, part of the fixed harness
-// policy) requires it to be a literal true, and every place this platform
-// runs today (make check's own httptest servers, harness/quality/browser's
-// Playwright guard, and a developer on localhost or a loopback address) is
-// one net/http/cookiejar and every browser already treat as a secure
-// origin regardless of scheme (see cookiejar's own secureMatch). Reaching
-// the platform at a non-loopback, non-HTTPS address - the Tailscale
-// address docs/plans/workspaces.md's global constraints ask a browser
-// check to use - is real, but nothing signs in through a browser yet
-// (Task 4); TLS termination is this project's answer when that changes,
-// not a weaker cookie.
-func sessionCookie(token string, maxAge time.Duration) *http.Cookie {
-	return &http.Cookie{
+// Secure is settable because a browser decides where a cookie may go by
+// the scheme it sees, and the scheme is not always what protects the link.
+// Reached over Tailscale - which is how this is actually looked at, and
+// what the plans ask a browser check to use - the address is plain HTTP
+// and not a loopback one, so a Secure cookie is stored by nobody and
+// signing in appears to work and then does not. The link is WireGuard
+// underneath; the browser has no way to know that.
+//
+// So it defaults to true and an operator turns it off, saying in the one
+// place that records such things that they know the scheme is http and
+// have another reason to trust the wire. TLS termination is still the
+// answer for anything anybody else can reach.
+func sessionCookie(token string, maxAge time.Duration, secure bool) *http.Cookie {
+	return &http.Cookie{ //nolint:gosec // Secure is a setting; see this function's doc comment
 		Name:     SessionCookieName,
 		Value:    token,
 		Path:     "/",
-		Secure:   true,
+		Secure:   secure,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(maxAge.Seconds()),

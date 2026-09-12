@@ -5,3 +5,12 @@
 
 # gosec G304: the file path is the constant policy location, not user input.
 harness/guard/archcheck/main.go :: //nolint :: raw, err := os.ReadFile(file) //nolint:gosec // the policy path is a constant
+
+# gosec G124: the Secure attribute is a setting, not a constant. A browser
+# decides where a cookie may go by the scheme it sees, and over a link that
+# is encrypted but not TLS - Tailscale, which is how this is looked at - a
+# Secure cookie is stored by nobody. It defaults to true; turning it off is
+# an operator saying they know the scheme is http and something else keeps
+# the wire honest. See the function's own doc comment.
+services/platform/internal/adapter/handler/session.go :: //nolint :: return &http.Cookie{ //nolint:gosec // Secure is a setting; see sessionCookie
+services/platform/internal/adapter/handler/session.go :: //nolint :: return &http.Cookie{ //nolint:gosec // Secure is a setting; see this function's doc comment
