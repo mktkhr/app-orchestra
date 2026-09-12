@@ -12,19 +12,18 @@ it. Nothing about the rendering is decided by a model.
 
 ## 2. Decisions taken here
 
-|         | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **D5**  | The LLM is reached through a `Planner` port in `usecase`. The transport is an OpenAI-compatible chat endpoint - llama.cpp behind llama-swap, vLLM, LM Studio and the hosted providers all speak it - and the model is named per request, so switching model switches backend. Two adapters implement the port: one using tool calling, one asking for JSON in the prompt for models that cannot call tools.                                                                                                                                                                                                                                                                                                                     |
-| **D6**  | The platform fetches each service's contract over HTTP from `GET /openapi.yaml`. Services are processes, not files on a shared disk.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **D7**  | `x-ui-hint.component` exists but only as an override. The rendering rule reads the response schema; the hint wins when present.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| **D8**  | The API result never goes back to the LLM. One request is one LLM call. Both still hold with multi-turn context (`docs/specs/context.md`): what goes back on the next request is the earlier question and the decision made for it - service, operation, arguments - never a row of the answer, and rendering that conversation into the prompt is part of the same one call, not a second one.                                                                                                                                                                                                                                                                                                                                 |
-| **D9**  | The component is chosen by the Go platform, not by the browser. The rule lives in `domain` as a pure function.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **D10** | Enum parameters carry Japanese labels (`x-enum-labels`) and are sent to the model with `strict: true`, so a value outside the enum cannot be returned at all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| **D11** | An `ask_user` tool lets the model say "I cannot tell which value you mean" and hand the choice back to the person, by picking from that parameter's declared enum values. In practice the model also reaches for `ask_user` when a required parameter has no enum at all - a free-text field it was never told a value for. There is nothing to pick from in that case, so it degrades to the same form an unsafe call already produces (carrying the endpoint's whole argument schema and whatever arguments the model did fill in), rather than an error: the model was still asking a genuine question, just through a tool shaped for an enum it did not have.                                                              |
-| **D12** | The shell is `AppBar` + `Drawer` + `List` from Material UI directly. Results render inline in the conversation; a table can be expanded to a full-screen modal. Every result carries its provenance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **D13** | An operation reaches the model only when its contract marks it `x-orchestra-expose: true` (default off). The mark is read once, in `specsource/http`, as the catalogue is built - not later, in `ToolsFor` or at `/api/invoke` - so the tool list and the operations `/api/invoke` will answer can never disagree, and a crafted POST cannot reach an operation the model was never offered.                                                                                                                                                                                                                                                                                                                                    |
-| **D14** | `list_capabilities` is a further built-in tool, alongside `ask_user`, that answers "what can this do?" from the catalogue itself rather than from the model's own description of it - the same reasoning as D8, applied to a question about the catalogue instead of a question about one service's data.                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **D15** | An optional enum parameter on a safe operation is offered to the model as _required_, carrying one value its contract does not have: `__all__`, labelled すべて. Leaving a filter out and asking for everything then look different to the model, where before they were the same answer. This is measured, not assumed (`DECISIONS.md`): the failure it closes is the model dropping a filter word it could not match and returning every row, which a person reads as the answer to the question they asked. The synthetic value never leaves the platform - the orchestrator strips it before an argument is validated or a call is made - so no service's contract changes and `__all__` appears in no result's provenance. |
+|         | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **D5**  | The LLM is reached through a `Planner` port in `usecase`. The transport is an OpenAI-compatible chat endpoint - llama.cpp behind llama-swap, vLLM, LM Studio and the hosted providers all speak it - and the model is named per request, so switching model switches backend. Two adapters implement the port: one using tool calling, one asking for JSON in the prompt for models that cannot call tools.                                                                                                                                                                                                                                                        |
+| **D6**  | The platform fetches each service's contract over HTTP from `GET /openapi.yaml`. Services are processes, not files on a shared disk.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **D7**  | `x-ui-hint.component` exists but only as an override. The rendering rule reads the response schema; the hint wins when present.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **D8**  | The API result never goes back to the LLM. One request is one LLM call. Both still hold with multi-turn context (`docs/specs/context.md`): what goes back on the next request is the earlier question and the decision made for it - service, operation, arguments - never a row of the answer, and rendering that conversation into the prompt is part of the same one call, not a second one.                                                                                                                                                                                                                                                                    |
+| **D9**  | The component is chosen by the Go platform, not by the browser. The rule lives in `domain` as a pure function.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **D10** | Enum parameters carry Japanese labels (`x-enum-labels`) and are sent to the model with `strict: true`, so a value outside the enum cannot be returned at all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **D11** | An `ask_user` tool lets the model say "I cannot tell which value you mean" and hand the choice back to the person, by picking from that parameter's declared enum values. In practice the model also reaches for `ask_user` when a required parameter has no enum at all - a free-text field it was never told a value for. There is nothing to pick from in that case, so it degrades to the same form an unsafe call already produces (carrying the endpoint's whole argument schema and whatever arguments the model did fill in), rather than an error: the model was still asking a genuine question, just through a tool shaped for an enum it did not have. |
+| **D12** | The shell is `AppBar` + `Drawer` + `List` from Material UI directly. Results render inline in the conversation; a table can be expanded to a full-screen modal. Every result carries its provenance.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **D13** | An operation reaches the model only when its contract marks it `x-orchestra-expose: true` (default off). The mark is read once, in `specsource/http`, as the catalogue is built - not later, in `ToolsFor` or at `/api/invoke` - so the tool list and the operations `/api/invoke` will answer can never disagree, and a crafted POST cannot reach an operation the model was never offered.                                                                                                                                                                                                                                                                       |
+| **D14** | `list_capabilities` is a further built-in tool, alongside `ask_user`, that answers "what can this do?" from the catalogue itself rather than from the model's own description of it - the same reasoning as D8, applied to a question about the catalogue instead of a question about one service's data.                                                                                                                                                                                                                                                                                                                                                          |
 
 ## 3. Architecture
 
@@ -215,98 +214,6 @@ the way an endpoint's own declared enum values are; the tool's description
 tells the model to use one of the service names it already sees elsewhere in
 the catalogue. A `service` that matches nothing in the catalogue renders as
 a table with zero rows, not a silent fallback to every service's operations.
-
-### 8a. Asking for everything is an answer
-
-A list operation's filter is optional in its contract, and that is correct:
-`GET /api/inventory/items` with no `status` returns every item, and every item
-is a thing a person asks for. But an optional parameter gives the model two
-ways to say nothing, and they are the same answer to the schema and different
-answers to a person. 在庫を全部見せて means leave it out. 破損した在庫はある？
-also leaves it out, whenever the model cannot match 破損 against any declared
-status - and the person is handed every row, presented as the answer to a
-question about one kind of row. Nothing on the screen says a filter went
-missing.
-
-That is measured rather than supposed. On the default model it happened in 4
-of 5 runs by hand, and the eval corpus puts it at 18 of 30 for inventory and 9
-of 10 for attendance, where 有給 has no near neighbour among みなし労働 /
-振替休日 / 代休 / 待機 for the model to guess at instead (`DECISIONS.md`,
-`docs/specs/eval.md`). The worse number is the telling one: the model is not
-guessing badly, it is declining to answer in the one way the schema lets it
-decline silently.
-
-So the fix is not a list of words to watch for - a list would have to be
-written in Japanese, per service, and would be wrong the first time somebody
-added a status. It is to take away the option of saying nothing. On a safe
-operation, an enum parameter is offered to the model as required, and its enum
-carries one value the contract does not: `__all__`. Omitting is then not a
-legal answer at all, and the model has exactly three left - name a declared
-value, name `__all__`, or reach for `ask_user` (D11). The silent drop has no
-shape to take.
-
-How strong that last sentence is depends on the transport enforcing it. For
-the tool-calling planner it is literal: `strict: true` (D10) has the model's
-answer checked against the schema before it is an answer at all, so a missing
-required parameter is not a reply this platform can receive. The JSON planner
-has no equivalent, as section 8 already says of `strict: true` generally - it
-reads the catalogue as prose and replies with JSON, so it is offered `__all__`
-and accepts it, but nothing structural stops it omitting the parameter the way
-it always could; its own validate-and-retry is what stands in the way. The
-asymmetry belongs to the transport, not to this decision, and it is the same
-one D10 has always lived with.
-
-`__all__` is a request for every row, which is what an absent filter already
-meant, so the platform removes it rather than passing it on: the argument is
-stripped after the catalogue lookup and before anything is validated or
-called, which is also before a result's provenance is built - `source.args`
-reads `{}`, exactly as it did when the model omitted the parameter. A service
-never learns the value exists, and a workspace panel saved from such a result
-holds no `__all__` to replay.
-
-Safe operations only, and parameters only - never a request body's own
-properties. A create's `status` is a field of the thing being created, and
-"all" is not a status an item can be in.
-
-**Measured, and it did not work.** The reasoning above predicted that taking
-away the silent-omission option would push the model toward `ask_user`
-instead. Measured before/after against the eval corpus on `qwen3.5-9b-q8`:
-
-```
-                          before          after
-no-enum-value             18/30 reject    20/30 reject     (n=30 noise band measured at 16-19)
-no-enum-value-attendance   9/10 reject     5/10 reject     (n=10 noise band is 0.40 wide - not decisive)
-no-enum-value (accept)    10/30           5/30
-every other case          10/10 accept    10/10 accept     (no side effects at all)
-```
-
-`no-enum-value`'s reject rate did not move outside its own noise band, and
-`no-enum-value-attendance`'s band is too wide at n=10 to call its move
-decisive either way. What did move is the accept rate, cleanly: 10/30 down
-to 5/30. The mechanism changed as predicted - the model stopped omitting the
-parameter - but what it says instead, roughly half the time, is `__all__`,
-and the person is handed the same screen either way: every row, presented
-as the answer to a question about one kind of row. Naming `__all__` is a
-call to the same tool the model was already reaching for; `ask_user` is a
-different tool, and got called _less_ often, not more. **This section's
-fix, as shipped, does not reduce the defect it was built for** - it
-changed which silent-drop the model performs, not whether one happens.
-
-The value tried next: `__all__`'s description now tells the model when it
-is, and is not, the right answer -
-`usecase.syntheticAllInstruction`, appended in `usecase.WithSyntheticAll`
-(`internal/usecase/tools.go`) to whatever description the parameter already
-carries, before its enum labels, so the rendered text reads as one
-sentence-then-labels string:
-
-    __all__ は利用者が全件を求めたときだけ選ぶこと。利用者が挙げた語がどの値にも当てはまらないときは __all__ を選ばず、ask_user で聞き返すこと。
-
-Both planners render it: the tool-calling planner through the same property
-description `schemaToJSONSchema`/`describe` already build (D5's enum-label
-suffix), and the JSON planner through `renderParam`, which previously never
-surfaced a schema's `Description` in its rendered catalogue text at all and
-now does. If this does not move the accept-rate number, D15 is reverted -
-see `DECISIONS.md`'s 2026-09-12 entry for the numbers and what happens next.
 
 ## 9. Error handling
 

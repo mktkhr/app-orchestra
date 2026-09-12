@@ -2000,3 +2000,43 @@ output. If that description does not move the accept-rate number, **D15 is
 reverted**: the synthetic `__all__` value, its stripping, and both
 planners' handling of it come back out, and the silent-omission case goes
 back to being handled some other way (a fresh decision, not this one).
+
+**Third measurement, and withdrawal.** The instruction did not move the
+number either:
+
+```
+                       before D15   D15      D15 + instruction
+no-enum-value reject     18/30      20/30    16/30    (n=30 noise band measured at 16-19)
+no-enum-value accept     10/30       5/30    10/30    (observed range 7-11)
+attendance    reject      9/10       5/10     8/10    (n=10, band 0.40 wide - not decisive)
+every other case         10/10      10/10    10/10    (no side effects, throughout)
+```
+
+The instruction brought the accept rate back to where it started (10/30,
+recovering from the 5/30 the unqualified value caused) and left the reject
+rate exactly where it was before D15 ever landed - inside the same noise
+band, with the same third case (`attendance`) too coarse at n=10 to read
+either way. Three measurements land on the same conclusion: adding the
+value moves the accept rate around and never touches the reject rate. **D15
+is reverted** - the synthetic `__all__` value, `stripSyntheticAll`,
+`isEnumParam`, `EnumParamGetsSyntheticAll`, `WithSyntheticAll`, and both
+planners' handling of it, along with section 8a of
+`docs/specs/orchestration.md`, are removed. The one piece that survives is
+independent of D15: `jsonmode.renderParam` now renders a parameter's own
+`Description`, a real gap the D15 work happened to find.
+
+What this failed experiment establishes: `ask_user` is a separate tool
+competing with the operation's own tool, not a fallback the model reaches
+for only when it has run out of other options. Adding a value to an
+operation's own enum makes calling that operation _easier_, and every time
+it got easier, `ask_user` got called _less_ - the accept rate is what moved,
+in both directions, exactly in step with whether `__all__` was offered
+unqualified or qualified. The reject rate never moved because the defect
+those cases measure - the model returning every row when it cannot match a
+filter word at all - was never actually about the enum lacking a value for
+"everything"; it is about which tool the model reaches for when a word
+matches nothing, and `__all__` never changed that choice. A future attempt
+at this defect has to change the competition between `ask_user` and the
+operation's own tool - through the tool's own description, through
+`ask_user`'s own description, or through the decision procedure itself -
+not add another value to the enum.

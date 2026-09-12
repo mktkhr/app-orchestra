@@ -353,17 +353,14 @@ func TestPlanShapesToolsWithAdditionalPropertiesFalseAndPerToolStrict(t *testing
 		byName[name] = fn
 	}
 
-	// ListInventoryItems declares "status" as an optional enum parameter on
-	// a safe (GET) endpoint, so D15 (docs/specs/orchestration.md, section
-	// 8a) offers it to the model as required, with the synthetic __all__
-	// value added - which is exactly what lets this tool be strict: every
-	// property it declares is now required, so there is no missing-value
-	// gap left for shapeTool's everyPropertyRequired to find (see
-	// DECISIONS.md and the doc comment on shapeTool).
+	// ListInventoryItems declares "status" as optional (fixtureCatalog has
+	// no Required on that Parameter), so it cannot be strict without
+	// inventing a required list the model was never told about - see
+	// DECISIONS.md and the doc comment on shapeTool.
 	listParams, ok := byName["ListInventoryItems"]["parameters"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, false, listParams["additionalProperties"])
-	assert.Equal(t, true, byName["ListInventoryItems"]["strict"])
+	assert.Equal(t, false, byName["ListInventoryItems"]["strict"])
 
 	// CreateInventoryItem requires every property it declares, so it stays
 	// strict.

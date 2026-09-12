@@ -274,28 +274,11 @@ func validateArgs(e *domain.Endpoint, args map[string]any) error {
 // for a tool's InputSchema (internal/usecase/tools.go), read here from
 // domain.Endpoint directly instead, since that is what validateArgs and
 // renderCatalog both already have in hand.
-//
-// A safe endpoint's own optional enum parameter is carried with
-// domain.EnumAllValue already added to its Enum (usecase.WithSyntheticAll)
-// - the same D15 treatment usecase.inputSchemaFor gives it
-// (docs/specs/orchestration.md, section 8a) - since this planner renders
-// its own catalogue text from these schemas rather than from
-// usecase.ToolsFor's, and must offer the model the same synthetic value.
-// Only ever endpoint parameters, never a request body's own properties
-// (mirrors usecase.EnumParamGetsSyntheticAll exactly).
 func argSchemas(e *domain.Endpoint) map[string]domain.Schema {
 	out := make(map[string]domain.Schema, len(e.Parameters))
 
-	safe := e.IsSafe()
-
 	for i := range e.Parameters {
 		p := &e.Parameters[i]
-
-		if usecase.EnumParamGetsSyntheticAll(safe, p) {
-			out[p.Name] = usecase.WithSyntheticAll(&p.Schema)
-			continue
-		}
-
 		out[p.Name] = p.Schema
 	}
 
@@ -454,12 +437,10 @@ func renderCatalog(catalog domain.Catalog) string {
 	return b.String()
 }
 
-// renderParam writes one parameter's line: its name, JSON Schema type,
-// when it declares one, its enum values with their Japanese labels, and -
-// when the schema carries one, such as the D15 instruction
-// usecase.WithSyntheticAll appends - its own Description text. Without
-// this, a Description added upstream (usecase.WithSyntheticAll,
-// internal/usecase/tools.go) would reach the tool-calling planner's
+// renderParam writes one parameter's line: its name, JSON Schema type, when
+// it declares one, its enum values with their Japanese labels, and - when
+// the schema's contract declares one - its own Description text. Without
+// this, a parameter's Description would reach the tool-calling planner's
 // property description but never this planner's prompt at all, since
 // nothing else here reads schema.Description.
 func renderParam(b *strings.Builder, name string, schema *domain.Schema) {

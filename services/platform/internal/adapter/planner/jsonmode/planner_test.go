@@ -17,14 +17,6 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
-// syntheticAllInstructionText is usecase.syntheticAllInstruction,
-// duplicated verbatim here (an external _test package cannot see the
-// unexported const): the text this session's negative measurement
-// (DECISIONS.md, 2026-09-12) added to tell the model when __all__ is, and
-// is not, the right answer.
-const syntheticAllInstructionText = "__all__ は利用者が全件を求めたときだけ選ぶこと。" +
-	"利用者が挙げた語がどの値にも当てはまらないときは __all__ を選ばず、ask_user で聞き返すこと。"
-
 // fixtureCatalog mirrors toolcall's own fixture (planner_test.go in the
 // sibling package): one safe list operation with an enum parameter, one
 // unsafe create, so both the happy path and the enum-validation path have
@@ -151,44 +143,12 @@ func TestPlanMapsAValidCallJSONObjectOntoADecisionCall(t *testing.T) {
 	assert.Equal(t, map[string]any{"status": "quarantined"}, decision.Args)
 }
 
-// TestPlanRendersTheSyntheticAllValueForAnOptionalEnumParameterOnASafeEndpoint
-// pins D15 (docs/specs/orchestration.md, section 8a) on this planner's own
-// catalogue rendering: this planner builds its own text from
-// domain.Endpoint directly rather than from usecase.ToolsFor's schemas
-// (see argSchemas' own doc comment), so it needs its own proof that it
-// still offers the synthetic __all__ value, labelled すべて, for
-// ListInventoryItems' optional "status" enum parameter.
-func TestPlanRendersTheSyntheticAllValueForAnOptionalEnumParameterOnASafeEndpoint(t *testing.T) {
-	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
-
-	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog()))
-	require.NoError(t, err)
-
-	messages, ok := fixture.requests[0]["messages"].([]any)
-	require.True(t, ok)
-
-	system, ok := messages[0].(map[string]any)
-	require.True(t, ok)
-
-	content, ok := system["content"].(string)
-	require.True(t, ok)
-	assert.Contains(t, content, domain.EnumAllValue+"="+domain.EnumAllLabel)
-
-	// This experiment (docs/specs/orchestration.md section 8a; DECISIONS.md
-	// 2026-09-12): the instruction that tells the model when __all__ is,
-	// and is not, the right answer must reach this planner's own rendered
-	// catalogue text too, not only usecase.ToolsFor's property description
-	// - this planner builds its own text from domain.Endpoint directly
-	// (renderParam), so it needs its own proof.
-	assert.Contains(t, content, syntheticAllInstructionText)
-}
-
-// TestPlanDoesNotRenderTheInstructionForARequiredEnumParameter pins the
-// other half of this experiment on this planner's own rendering: a
-// parameter that never gets the synthetic value at all (here, one already
-// required) must not carry its instruction in the rendered catalogue
-// either.
-func TestPlanDoesNotRenderTheInstructionForARequiredEnumParameter(t *testing.T) {
+// TestPlanRendersAParameterSDescriptionInTheCatalogueText pins a real bug:
+// renderParam never rendered a parameter's Description at all, so this
+// planner's rendered catalogue text silently dropped an operation's own
+// explanatory text. A parameter with a plain Description (no enum
+// involved) must have that text reach the system prompt.
+func TestPlanRendersAParameterSDescriptionInTheCatalogueText(t *testing.T) {
 	catalog := domain.Catalog{Endpoints: []domain.Endpoint{
 		{
 			Service:     "attendance",
@@ -198,8 +158,11 @@ func TestPlanDoesNotRenderTheInstructionForARequiredEnumParameter(t *testing.T) 
 			Summary:     "List attendance records.",
 			Parameters: []domain.Parameter{
 				{
-					Name: "kind", In: "query", Required: true,
-					Schema: domain.Schema{Type: domain.SchemaTypeString, Enum: []string{"deemed", "substitute"}},
+					Name: "from", In: "query",
+					Schema: domain.Schema{
+						Type:        domain.SchemaTypeString,
+						Description: "The earliest date to include, inclusive, as YYYY-MM-DD.",
+					},
 				},
 			},
 			Response: &domain.Schema{Type: domain.SchemaTypeArray, Items: &domain.Schema{Type: domain.SchemaTypeObject}},
@@ -219,24 +182,8 @@ func TestPlanDoesNotRenderTheInstructionForARequiredEnumParameter(t *testing.T) 
 
 	content, ok := system["content"].(string)
 	require.True(t, ok)
-	assert.NotContains(t, content, syntheticAllInstructionText,
-		"a required parameter never gets the synthetic value, so it must never carry its instruction either")
-}
-
-// TestPlanAcceptsTheSyntheticAllValueAsAValidCallArgument proves the other
-// half: a "call" answer naming __all__ for that same parameter is accepted
-// by validateArgs rather than rejected as an out-of-enum value - the
-// orchestrator, not this planner, is what strips it (D15).
-func TestPlanAcceptsTheSyntheticAllValueAsAValidCallArgument(t *testing.T) {
-	fixture := newPlanner(t, fixtureCatalog(), chatContent(t,
-		`{"kind":"call","service":"inventory","operationId":"ListInventoryItems","args":{"status":"__all__"}}`,
-	))
-
-	decision, err := fixture.planner.Plan(context.Background(), "破損した在庫はある？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
-	require.NoError(t, err)
-
-	assert.Equal(t, usecase.DecisionCall, decision.Kind)
-	assert.Equal(t, domain.EnumAllValue, decision.Args["status"])
+	assert.Contains(t, content, "The earliest date to include, inclusive, as YYYY-MM-DD.",
+		"a parameter's own contract Description must reach the rendered catalogue text")
 }
 
 func TestPlanMapsAskKindOntoADecisionAsk(t *testing.T) {

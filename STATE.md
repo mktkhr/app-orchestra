@@ -700,50 +700,37 @@ What remains is a genre/domain layer above individual services, and the
 move to TypeScript 7 once `openapi-typescript` supports it (see "Known gaps
 in the harness" below).
 
-**D15 - asking for everything is a thing the model must say.** An optional
-enum parameter on a safe endpoint (`domain.Endpoint.IsSafe()`) is now
-offered to the model as _required_, its enum carrying one synthetic value
-its contract does not, `domain.EnumAllValue` (`__all__`), labelled
-`domain.EnumAllLabel` (すべて) the same way every other enum value is
-(`usecase.EnumParamGetsSyntheticAll`/`usecase.WithSyntheticAll`,
-`internal/usecase/tools.go`). Omitting the parameter is no longer a legal
-answer, closing the failure the eval corpus measured directly: on
-`qwen3.5-9b-q8`, `no-enum-value` (破損した在庫はある？) silently dropped the
-filter and returned every row 18 of 30 runs, `no-enum-value-attendance`
-(有給の勤怠はある？) 9 of 10. The synthetic value never reaches a service or
-a result's provenance - `usecase.stripSyntheticAll`
-(`internal/usecase/orchestrator.go`) strips it after the catalogue lookup
-and before validation, the call, or `source.args` are built, on both `call`
-(the planner path) and `Invoke`. Only `e.Parameters`, never a request
-body's own properties, and only for a parameter the contract already
-leaves optional; `domain.Catalog` itself and the `ask_user` path never see
-the synthetic value, since building the emitted JSON Schema copies the
-schema rather than mutating it. Both planners needed the fix, for the
-reason `docs/specs/context.md` M5 already established (the catalogue is
-built once, rendered two ways): `toolcall` inherited it for free from
-`usecase.ToolsFor`; `jsonmode` renders its own catalogue text and needed
-its own call into the same exported helpers (`argSchemas`,
-`internal/adapter/planner/jsonmode/planner.go`) - see `DECISIONS.md`,
-2026-09-12, for the one gap this left in `jsonmode` (no structural
-"required" enforcement exists there at all, for any parameter, so `__all__`
-is offered and accepted but omission is not otherwise closed for that
-transport).
+**D15 - asking for everything is a thing the model must say - tried and
+withdrawn.** An optional enum parameter on a safe endpoint was offered to
+the model as required, with a synthetic `__all__` value appended, to close
+a defect the eval corpus measures directly: on `qwen3.5-9b-q8`,
+`no-enum-value` (破損した在庫はある？, a filter word matching no enum value)
+silently drops the filter and returns every row. Measured three times -
+plain, then with an instruction added to `__all__`'s description telling
+the model when it is and is not the right answer:
 
-**The before/after eval measurement came back, and D15 did not close the
-failure.** `no-enum-value`'s reject rate (18/30 -> 20/30) sits inside its
-own noise band; `no-enum-value-attendance`'s move (9/10 -> 5/10) is not
-decisive at n=10. What moved cleanly is the accept rate, 10/30 -> 5/30: the
-model stopped omitting the parameter, as designed, but names `__all__`
-instead about half the time, and the person sees the same screen either
-way - every row, presented as one kind of row's answer. The reading
-(`DECISIONS.md`, 2026-09-12 correction) is that `__all__` competes with
-`ask_user` rather than reinforcing it. Currently being tried: a
-description on `__all__` telling the model when it is, and is not, the
-right answer (`usecase.syntheticAllInstruction`, appended by
-`usecase.WithSyntheticAll`), reaching both planners - `toolcall` through
-the property description, `jsonmode` through `renderParam`, which now
-renders a schema's `Description` at all, something it never did before. If
-this does not move the accept-rate number, D15 is reverted.
+```
+                       before D15   D15      D15 + instruction
+no-enum-value reject     18/30      20/30    16/30    (n=30 noise band measured at 16-19)
+no-enum-value accept     10/30       5/30    10/30    (observed range 7-11)
+attendance    reject      9/10       5/10     8/10    (n=10, band 0.40 wide - not decisive)
+every other case         10/10      10/10    10/10    (no side effects, throughout)
+```
+
+The reject rate never moved outside its own noise band, in either version;
+only the accept rate moved, and only because `__all__` competes with
+`ask_user` as a way to answer a call the model was already going to make -
+adding a value to the operation's own enum made calling that operation
+easier, not harder, which made `ask_user` rarer, not more likely. **D15 is
+reverted** (`DECISIONS.md`, 2026-09-12, final entry): the synthetic value,
+its stripping, and both planners' handling of it are gone. The defect
+itself is open again - see TODO.md - and a future attempt has to change the
+competition between `ask_user` and the operation's own tool, not the enum.
+
+One piece survives, independent of D15: `jsonmode.renderParam`
+(`internal/adapter/planner/jsonmode/planner.go`) now renders a parameter's
+own contract `Description` in the rendered catalogue text, which it never
+did before this work found the gap.
 
 ## Known gaps in the harness
 

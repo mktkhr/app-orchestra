@@ -1,7 +1,6 @@
 package usecase
 
 import (
-	"maps"
 	"sort"
 	"strings"
 
@@ -209,21 +208,12 @@ func inputSchemaFor(e *domain.Endpoint) map[string]any {
 	properties := map[string]any{}
 
 	required := make([]string, 0, len(e.Parameters))
-	safe := e.IsSafe()
 
 	for i := range e.Parameters {
 		// Indexed rather than ranged: Parameter is 136 bytes, and
 		// gocritic's rangeValCopy (part of the fixed harness policy)
 		// rejects copying it per iteration.
 		p := &e.Parameters[i]
-
-		if EnumParamGetsSyntheticAll(safe, p) {
-			withAll := WithSyntheticAll(&p.Schema)
-			properties[p.Name] = schemaToJSONSchema(&withAll)
-			required = append(required, p.Name)
-
-			continue
-		}
 
 		properties[p.Name] = schemaToJSONSchema(&p.Schema)
 
@@ -366,63 +356,6 @@ func enumLabels(enum []string, labels map[string]string) string {
 	}
 
 	return strings.Join(parts, " / ")
-}
-
-// EnumParamGetsSyntheticAll reports whether p should be offered to the
-// model as required, with domain.EnumAllValue added to its enum (D15,
-// docs/specs/orchestration.md section 8a): a safe endpoint's optional enum
-// parameter, and no other case. Exported so both planners that read a
-// catalogue's schemas agree on when the synthetic value applies instead of
-// each deciding separately: internal/adapter/planner/toolcall's tools come
-// straight from ToolsFor/inputSchemaFor, but
-// internal/adapter/planner/jsonmode renders its own catalogue text
-// directly from domain.Endpoint and must reach the same answer.
-//
-// p is a pointer, not the value: domain.Parameter is large enough that
-// gocritic's hugeParam check (harness/quality/go/golangci.yml) rejects
-// copying it per call.
-func EnumParamGetsSyntheticAll(safe bool, p *domain.Parameter) bool {
-	return safe && !p.Required && len(p.Schema.Enum) > 0
-}
-
-// syntheticAllInstruction tells the model when the synthetic
-// domain.EnumAllValue (D15) is and is not the right answer: it competes
-// with ask_user (calling a list tool is easier than calling a different
-// tool), and the measurement in DECISIONS.md's 2026-09-12 entry found the
-// unqualified value made that competition worse, not better - this is the
-// one lever tried before reverting D15.
-const syntheticAllInstruction = "__all__ は利用者が全件を求めたときだけ選ぶこと。" +
-	"利用者が挙げた語がどの値にも当てはまらないときは __all__ を選ばず、ask_user で聞き返すこと。"
-
-// WithSyntheticAll returns a copy of s with domain.EnumAllValue appended to
-// Enum, labelled domain.EnumAllLabel in EnumLabels, and
-// syntheticAllInstruction appended to Description (joined the same way
-// describe joins a description to its enum labels: a single space, and
-// only when the description is not empty already) so the model reads one
-// coherent sentence-then-labels string rather than finding the instruction
-// buried mid-way. It never mutates s: s is the domain.Schema held by
-// domain.Catalog, which Catalog.Find and the ask_user path both read, and
-// neither may ever see the synthetic value (D15).
-func WithSyntheticAll(s *domain.Schema) domain.Schema {
-	enum := make([]string, len(s.Enum)+1)
-	copy(enum, s.Enum)
-	enum[len(s.Enum)] = domain.EnumAllValue
-
-	labels := make(map[string]string, len(s.EnumLabels)+1)
-	maps.Copy(labels, s.EnumLabels)
-	labels[domain.EnumAllValue] = domain.EnumAllLabel
-
-	out := *s
-	out.Enum = enum
-	out.EnumLabels = labels
-
-	if out.Description == "" {
-		out.Description = syntheticAllInstruction
-	} else {
-		out.Description = out.Description + " " + syntheticAllInstruction
-	}
-
-	return out
 }
 
 // enumLabelsMap builds the structured value->label map schemaToJSONSchema

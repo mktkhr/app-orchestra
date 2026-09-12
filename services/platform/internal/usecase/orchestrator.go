@@ -219,61 +219,11 @@ func (o *Orchestrator) Invoke(ctx context.Context, user *domain.User, service, o
 		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, service, operationID)
 	}
 
-	args = stripSyntheticAll(&endpoint, args)
-
 	if err := validateArgs(&endpoint, args); err != nil {
 		return Result{}, err
 	}
 
 	return o.invokeAndRender(ctx, &endpoint, service, operationID, args)
-}
-
-// stripSyntheticAll removes any argument named after one of endpoint's own
-// enum parameters whose value is domain.EnumAllValue - the synthetic value
-// D15 (docs/specs/orchestration.md, section 8a) adds to a safe endpoint's
-// optional enum parameter so the model must say it rather than omit the
-// parameter. It is called after the catalogue lookup and before validation,
-// the call, or the result's provenance are built, on both paths that reach
-// a service (call's safe branch and Invoke) - so a service never learns the
-// value exists, source.args reads {} exactly as it did when the model
-// omitted the parameter, and a workspace panel saved from the result holds
-// no __all__ to replay.
-//
-// args itself is never mutated: it may be decision.Args, which the caller
-// (call, for an unsafe endpoint) also uses as a form's Initial values, and
-// mutating a shared map out from under that use would be a surprise a
-// reader of either call site should never have to rule out.
-func stripSyntheticAll(endpoint *domain.Endpoint, args map[string]any) map[string]any {
-	if len(args) == 0 {
-		return args
-	}
-
-	stripped := make(map[string]any, len(args))
-
-	for name, value := range args {
-		if value == domain.EnumAllValue && isEnumParam(endpoint, name) {
-			continue
-		}
-
-		stripped[name] = value
-	}
-
-	return stripped
-}
-
-// isEnumParam reports whether name is one of endpoint's own parameters (not
-// a request body property - D15 never offers the synthetic value there)
-// that declares an enum, which is the only kind of argument
-// stripSyntheticAll ever removes.
-func isEnumParam(endpoint *domain.Endpoint, name string) bool {
-	for i := range endpoint.Parameters {
-		p := &endpoint.Parameters[i]
-		if p.Name == name && len(p.Schema.Enum) > 0 {
-			return true
-		}
-	}
-
-	return false
 }
 
 // truncateTurns keeps the most recent window entries of turns, oldest
@@ -349,9 +299,7 @@ func (o *Orchestrator) call(ctx context.Context, catalog domain.Catalog, decisio
 		}, nil
 	}
 
-	args := stripSyntheticAll(&endpoint, decision.Args)
-
-	return o.invokeAndRender(ctx, &endpoint, decision.Service, decision.OperationID, args)
+	return o.invokeAndRender(ctx, &endpoint, decision.Service, decision.OperationID, decision.Args)
 }
 
 // ask resolves a DecisionAsk into a ResultKindAsk, or degrades it into a
