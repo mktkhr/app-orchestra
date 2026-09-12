@@ -4,20 +4,18 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-Nothing. `docs/plans/orchestration.md`, `docs/plans/workspaces.md` and
-`docs/plans/auth.md` are all closed - every task, every acceptance
-criterion in `docs/specs/*.md` section 9/10 has a test that runs in CI, and
-`make check` (not `-k`) is fully green.
+Nothing. `docs/plans/orchestration.md`, `docs/plans/workspaces.md`,
+`docs/plans/auth.md` and `docs/plans/context.md` are all closed - every
+task, every acceptance criterion in `docs/specs/*.md` section 8/9/10 has a
+test that runs in CI, and `make check` (not `-k`) is fully green.
 
 ## Next
 
-Everything remaining sits outside all three subprojects above:
+Everything remaining sits outside all four subprojects above:
 
-1. Multi-turn conversational context. Today's planner makes one call per
-   request (D8); nothing remembers a prior turn across a `/api/plan` call.
-2. A genre/domain layer above individual services - grouping services by
+1. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat.
-3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+2. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
@@ -25,6 +23,30 @@ Everything remaining sits outside all three subprojects above:
 
 ## Done
 
+- `docs/plans/context.md`, Task 4: end to end - closes the multi-turn
+  context subproject. `e2e/src/context.test.ts` proves AC-M-101 at the
+  process level against the built platform: ask about inventory (or
+  attendance), then ask the exact same service-less follow-up wording, and
+  land back on the same service - and with no turns at all, the same
+  wording answers `kind: "none"`. `e2e/browser/context.spec.ts` proves the
+  same journey in headless Chromium. Both fix the follow-up's answer
+  through `internal/adapter/planner/stub`, extended to key its table on the
+  conversation too: `stub.Key` gained a `Turns` field
+  (`stub.TurnsKey([]usecase.Turn) string`, `service/operationId` pairs,
+  order-dependent, joined by `|`), so the very same `Query` can map to two
+  different fixture rows depending on what came before it - the stub still
+  performs no reasoning over turns, only a table lookup, so `make check`
+  still never calls a real LLM. `pkg/app.PlanFixture` and
+  `internal/infra/config.PlanFixture` both gained `Turns []TurnFixture`
+  (`{service, operationId}`) to carry this through `ORCHESTRA_PLAN_FIXTURES`.
+  D8 (`docs/specs/orchestration.md`) now says explicitly that a follow-up's
+  question and decision go back on the next request, never a row of the
+  answer, and that rendering them is still part of the same one LLM call.
+  A real model's own ability to do this was measured by hand, not asserted
+  by a test - five follow-ups against `qwen3.5-9b-q8`, 5/5 stayed on the
+  right service - recorded in `DECISIONS.md`, 2026-09-12 ("qwen3.5-9b-q8
+  carries a follow-up's context, measured by hand"). See `STATE.md` for the
+  whole subproject's summary (Tasks 0-4).
 - `docs/plans/auth.md`, Task 6: end to end. Every existing e2e/browser
   suite now signs in first; `e2e/src/auth.test.ts` proves AC-A-103,
   AC-A-104 and AC-A-105 at the process level (grant one service, ask a

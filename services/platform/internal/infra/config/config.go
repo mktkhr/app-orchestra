@@ -81,12 +81,20 @@ type Answer struct {
 	Value string `json:"value"`
 }
 
+// TurnFixture is one entry of PlanFixture.Turns, decoded straight into the
+// shape pkg/app.TurnFixture takes.
+type TurnFixture struct {
+	Service     string `json:"service"`
+	OperationID string `json:"operationId"`
+}
+
 // PlanFixture is one entry of ORCHESTRA_PLAN_FIXTURES, decoded straight
 // into the shape pkg/app.PlanFixture takes - see that type's doc comment
 // for what each field means.
 type PlanFixture struct {
-	Query   string   `json:"query"`
-	Answers []Answer `json:"answers"`
+	Query   string        `json:"query"`
+	Answers []Answer      `json:"answers"`
+	Turns   []TurnFixture `json:"turns"`
 
 	Ask      bool   `json:"ask"`
 	Question string `json:"question"`

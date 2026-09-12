@@ -1682,3 +1682,53 @@ be wrong elsewhere.
 It is also the second time a live check caught what the test suite could not,
 after the fifteen-second write timeout. A mocked transport proves the bytes are
 assembled; only a model proves they are accepted.
+
+## 2026-09-12 qwen3.5-9b-q8 carries a follow-up's context, measured by hand
+
+**Context.** `docs/plans/context.md` Task 4, Step 3: `make check` never calls a
+real LLM (`internal/adapter/planner/stub` answers every test and every
+`acceptance-e2e`/`acceptance-browser` fixture), so AC-M-101 - a follow-up
+question naming no service is answered from the service the previous one used
+
+- has no automated proof against an actual model. It can only be measured by
+  hand against the platform already running under `make dev-platform` (port
+  8080, `qwen3.5-9b-q8` via llama-swap on 11435), the same way the planner
+  comparisons in this file's earlier entries were.
+
+Five `POST /api/plan` calls were made against the running platform, each
+carrying one earlier turn (`{"service": "inventory", "operationId":
+"ListInventoryItems"}`, from having just asked "在庫の一覧を見せて") and a
+follow-up phrased to give the model no service clue at all: "他にはある？"
+("anything else?" - no item name, no status word, nothing an operation's
+description could match on its own).
+
+**Decision.** No code change - this is a measurement, recorded because
+`docs/plans/context.md` asks for one, not a fix. The result: **5/5** stayed on
+the inventory service the previous turn named. Four of the five resolved
+outright (`kind: "result"`, `source: {service: "inventory", operationId:
+"ListInventoryItems"}`); the fifth came back as `kind: "ask"` for the `status`
+parameter, with a question in Japanese about which _inventory_ status to
+show - still routed to the right service and the right operation, just short
+one argument the model judged genuinely missing. None of the five degraded to
+`list_capabilities` or answered from `attendance`, the wrong-service failure
+`docs/plans/orchestration.md`'s own planner comparisons had seen on a
+context-free question with this same model.
+
+A second, easier phrasing ("検品保留のものだけ見せて", which names an enum
+label - "quarantined" - that only `inventory`'s `status` property has) was
+tried first and went 5/5 to a clean `result` every time; it is a weaker test
+of context specifically, since the wording alone narrows the service, so the
+harder, clue-free phrasing above is the one this entry counts.
+
+**Consequences.** `qwen3.5-9b-q8` carries a one-turn conversation well enough
+for AC-M-101's own example (a follow-up after an inventory question) to work
+in production, without inventing a service or falling back to
+`list_capabilities` the way the leaner comparisons in this file's earlier
+entries warned it could on a context-free question. This is a finding about
+today's model, not a guarantee: a longer conversation, a follow-up further
+from ORCHESTRA_CONTEXT_TURNS's edge, or a different model swapped in later
+each want their own measurement here rather than an assumption borrowed from
+this one. The platform's own part - carrying `turns` from the wire to the
+prompt untouched - is what `e2e/src/context.test.ts` and
+`e2e/browser/context.spec.ts` fix with the stub planner instead, since that
+part does not need a model to be right.

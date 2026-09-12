@@ -86,6 +86,48 @@ func TestPlanRoutesOnAnswersToADifferentDecision(t *testing.T) {
 	assert.Equal(t, call, got)
 }
 
+// TestPlanRoutesOnTurnsToADifferentDecision drives Task 4's fixture need: a
+// follow-up question phrased with no service name is the same Query either
+// way, and only the conversation before it says which service it means.
+func TestPlanRoutesOnTurnsToADifferentDecision(t *testing.T) {
+	fromInventory := []usecase.Turn{
+		{Question: "在庫の一覧を見せて", Kind: usecase.ResultKindResult, Service: "inventory", OperationID: "ListInventoryItems"},
+	}
+	fromAttendance := []usecase.Turn{
+		{Question: "出勤記録を見せて", Kind: usecase.ResultKindResult, Service: "attendance", OperationID: "ListAttendanceRecords"},
+	}
+	wantInventory := usecase.Decision{Kind: usecase.DecisionCall, Service: "inventory", OperationID: "ListInventoryItems"}
+	wantAttendance := usecase.Decision{Kind: usecase.DecisionCall, Service: "attendance", OperationID: "ListAttendanceRecords"}
+
+	p := stub.New(map[stub.Key]usecase.Decision{
+		{Query: "検品保留のものは？", Turns: stub.TurnsKey(fromInventory)}:  wantInventory,
+		{Query: "検品保留のものは？", Turns: stub.TurnsKey(fromAttendance)}: wantAttendance,
+	}, &usecase.Decision{Kind: usecase.DecisionNone})
+
+	got, err := p.Plan(t.Context(), "検品保留のものは？", nil, fromInventory, nil)
+	require.NoError(t, err)
+	assert.Equal(t, wantInventory, got)
+
+	got, err = p.Plan(t.Context(), "検品保留のものは？", nil, fromAttendance, nil)
+	require.NoError(t, err)
+	assert.Equal(t, wantAttendance, got)
+}
+
+func TestTurnsKeyIsOrderDependentAndEmptyForNoTurns(t *testing.T) {
+	a := []usecase.Turn{
+		{Service: "inventory", OperationID: "ListInventoryItems"},
+		{Service: "attendance", OperationID: "ListAttendanceRecords"},
+	}
+	b := []usecase.Turn{
+		{Service: "attendance", OperationID: "ListAttendanceRecords"},
+		{Service: "inventory", OperationID: "ListInventoryItems"},
+	}
+
+	assert.NotEqual(t, stub.TurnsKey(a), stub.TurnsKey(b))
+	assert.NotEmpty(t, stub.TurnsKey(a))
+	assert.Empty(t, stub.TurnsKey(nil))
+}
+
 func TestAnswersKeyIsOrderIndependent(t *testing.T) {
 	a := []usecase.Answer{{Param: "status", Value: "allocated"}, {Param: "quantity", Value: "1"}}
 	b := []usecase.Answer{{Param: "quantity", Value: "1"}, {Param: "status", Value: "allocated"}}

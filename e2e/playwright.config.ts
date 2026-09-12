@@ -32,6 +32,16 @@ const platformPort = 18080;
 
 const planFixtures = [
   { query: "在庫の一覧を見せて", service: "inventory", operationId: "ListInventoryItems" },
+  // Answered only when it follows a turn that resolved to inventory - the
+  // stub's Key now carries the conversation too (docs/plans/context.md,
+  // Task 4), so `context.spec.ts` can drive a follow-up question that names
+  // no service and still land back on the same one.
+  {
+    query: "検品保留のものだけ見せて",
+    turns: [{ service: "inventory", operationId: "ListInventoryItems" }],
+    service: "inventory",
+    operationId: "ListInventoryItems",
+  },
 ];
 
 // A file in its own temporary directory, per docs/specs/workspaces.md

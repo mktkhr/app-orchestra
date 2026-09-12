@@ -40,11 +40,22 @@ type Answer struct {
 	Value string
 }
 
+// TurnFixture is one entry of PlanFixture.Turns: the service and operation
+// an earlier turn in the conversation resolved to. Only what
+// internal/adapter/planner/stub.TurnsKey actually reads - a fixture keys a
+// conversation by which service it was about, not by the wording of an
+// earlier question (docs/plans/context.md, Task 4).
+type TurnFixture struct {
+	Service     string
+	OperationID string
+}
+
 // PlanFixture is one entry of the stub planner's table
 // (internal/adapter/planner/stub): a question - together with the answers,
-// if any, it was resubmitted with - mapped to the Decision it should
-// produce. Used only when Config.LLM.BaseURL is empty (see newPlanner) - the
-// running platform answers through the real, tool-calling planner
+// if any, it was resubmitted with, and the conversation, if any, it was
+// asked alongside - mapped to the Decision it should produce. Used only
+// when Config.LLM.BaseURL is empty (see newPlanner) - the running platform
+// answers through the real, tool-calling planner
 // (internal/adapter/planner/toolcall) once ORCHESTRA_LLM_BASE_URL is set.
 //
 // Ask, when true, builds a DecisionAsk carrying Question and Param, plus
@@ -56,9 +67,15 @@ type Answer struct {
 // never set here - Orchestrator.Plan looks them up from that endpoint
 // (docs/plans/orchestration.md, Task 9), not from the fixture - so a
 // fixture cannot hand out an option the catalogue would not.
+//
+// Turns lets the same Query resolve differently depending on what came
+// before it - the fixture-table equivalent of a follow-up question phrased
+// with no service name (AC-M-101). Empty means what it always meant: a
+// question with no conversation before it.
 type PlanFixture struct {
 	Query   string
 	Answers []Answer
+	Turns   []TurnFixture
 
 	Ask      bool
 	Question string
@@ -298,18 +315,34 @@ func toInvokerServices(services []Service) []invokerhttp.Service {
 }
 
 // toStubTable converts PlanFixtures into the table
-// internal/adapter/planner/stub takes: each fixture's query and answers
-// become its stub.Key, and Ask selects a DecisionAsk instead of the
+// internal/adapter/planner/stub takes: each fixture's query, answers and
+// turns become its stub.Key, and Ask selects a DecisionAsk instead of the
 // default DecisionCall.
 func toStubTable(fixtures []PlanFixture) map[stubplanner.Key]usecase.Decision {
 	table := make(map[stubplanner.Key]usecase.Decision, len(fixtures))
 
-	for _, f := range fixtures {
-		key := stubplanner.Key{Query: f.Query, Answers: stubplanner.AnswersKey(toUsecaseAnswers(f.Answers))}
-		table[key] = toDecision(&f)
+	for i := range fixtures {
+		f := &fixtures[i]
+		key := stubplanner.Key{
+			Query:   f.Query,
+			Answers: stubplanner.AnswersKey(toUsecaseAnswers(f.Answers)),
+			Turns:   stubplanner.TurnsKey(toUsecaseTurns(f.Turns)),
+		}
+		table[key] = toDecision(f)
 	}
 
 	return table
+}
+
+// toUsecaseTurns adapts PlanFixture.Turns to the shape
+// internal/adapter/planner/stub's TurnsKey takes. See toUsecaseAnswers.
+func toUsecaseTurns(turns []TurnFixture) []usecase.Turn {
+	out := make([]usecase.Turn, 0, len(turns))
+	for _, t := range turns {
+		out = append(out, usecase.Turn{Service: t.Service, OperationID: t.OperationID})
+	}
+
+	return out
 }
 
 // toDecision builds the Decision one PlanFixture produces: an ask when

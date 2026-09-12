@@ -50,14 +50,14 @@ workspace id — and a control that ends one.
 This is `docs/specs/context.md` section 3a, and it lands before anything is sent
 anywhere. Nothing about the contract changes in this task.
 
-- [ ] **Step 0** Confirm the bug first: open the chat, ask something, open a
+- [x] **Step 0** Confirm the bug first: open the chat, ask something, open a
       workspace, come back. Write the test that fails because the turns are gone.
-- [ ] **Step 1** Lift the turns out of `Conversation`'s own `useState` into
+- [x] **Step 1** Lift the turns out of `Conversation`'s own `useState` into
       something the app holds, keyed per screen. Make the test pass.
-- [ ] **Step 2** Add the control that ends a conversation, and the test that the
+- [x] **Step 2** Add the control that ends a conversation, and the test that the
       next question starts from nothing.
-- [ ] **Step 3** Web gates green, then `make build` and `make guard-browser`.
-- [ ] **Step 4** Commit: `fix(web): give a conversation a life of its own`
+- [x] **Step 3** Web gates green, then `make build` and `make guard-browser`.
+- [x] **Step 4** Commit: `fix(web): give a conversation a life of its own`
 
 **Satisfies:** AC-M-107, AC-M-108.
 
@@ -88,13 +88,13 @@ type Turn struct {
 The platform truncates to the most recent `ORCHESTRA_CONTEXT_TURNS`, oldest
 dropped first (section 6). No planner renders them yet.
 
-- [ ] **Step 1** Add `turns` to the contract. `make api-lint`, `make generate`.
-- [ ] **Step 2** Write the test: more turns than the window leaves the most
+- [x] **Step 1** Add `turns` to the contract. `make api-lint`, `make generate`.
+- [x] **Step 2** Write the test: more turns than the window leaves the most
       recent, oldest first dropped; no turns behaves exactly as today. Run it,
       expect failure.
-- [ ] **Step 3** Implement. Thread the turns to the planner port.
-- [ ] **Step 4** Go gates green.
-- [ ] **Step 5** Commit: `feat(platform): carry a conversation to the planner`
+- [x] **Step 3** Implement. Thread the turns to the planner port.
+- [x] **Step 4** Go gates green.
+- [x] **Step 5** Commit: `feat(platform): carry a conversation to the planner`
 
 **Satisfies:** AC-M-104, AC-M-105.
 
@@ -115,16 +115,16 @@ both adapters.
 **No row of any answer is rendered.** A `Turn` has no data field to render, and
 a test asserts the prompt contains nothing from one.
 
-- [ ] **Step 1** Write the test for the tool-calling planner against `httptest`:
+- [x] **Step 1** Write the test for the tool-calling planner against `httptest`:
       the request body's messages carry the earlier question and the operation it
       resolved to, after the tools, and nothing else. Run it, expect failure.
-- [ ] **Step 2** Implement for `toolcall`.
-- [ ] **Step 3** The same for `jsonmode`, whose catalogue is already text — the
+- [x] **Step 2** Implement for `toolcall`.
+- [x] **Step 3** The same for `jsonmode`, whose catalogue is already text — the
       turns go after it.
-- [ ] **Step 4** Add the test that the tool list is byte-identical with and
+- [x] **Step 4** Add the test that the tool list is byte-identical with and
       without turns (AC-M-102).
-- [ ] **Step 5** Go gates green; the live tests still skip.
-- [ ] **Step 6** Commit: `feat(platform): let the model read the conversation`
+- [x] **Step 5** Go gates green; the live tests still skip.
+- [x] **Step 6** Commit: `feat(platform): let the model read the conversation`
 
 **Satisfies:** AC-M-102, AC-M-103, AC-M-106.
 
@@ -144,12 +144,12 @@ a test asserts the prompt contains nothing from one.
 A turn is built from what the browser already has: the question it asked and the
 `source` or `target` the platform answered with.
 
-- [ ] **Step 1** Write the test: a second question posts the first one's
+- [x] **Step 1** Write the test: a second question posts the first one's
       question and operation in `turns`; a first question posts none. Run it,
       expect failure.
-- [ ] **Step 2** Implement.
-- [ ] **Step 3** Web gates green, then `make build` and `make guard-browser`.
-- [ ] **Step 4** Commit: `feat(web): ask the next question in context`
+- [x] **Step 2** Implement.
+- [x] **Step 3** Web gates green, then `make build` and `make guard-browser`.
+- [x] **Step 4** Commit: `feat(web): ask the next question in context`
 
 ---
 
@@ -169,17 +169,17 @@ D8 says "The API result never goes back to the LLM. One request is one LLM call.
 Both halves are still true and the first one now has a companion sentence: the
 question and the decision do go back. Say so where D8 is written.
 
-- [ ] **Step 1** Write the process-level journey with the stub planner, whose
+- [x] **Step 1** Write the process-level journey with the stub planner, whose
       fixture table can key on the turns. Run it, expect failure, make it pass.
-- [ ] **Step 2** Write the browser journey: two questions, the second phrased
+- [x] **Step 2** Write the browser journey: two questions, the second phrased
       with no service name.
-- [ ] **Step 3** Measure it against the local model by hand, the way the planner
+- [x] **Step 3** Measure it against the local model by hand, the way the planner
       comparisons were measured: five runs of a follow-up, recorded in
       `DECISIONS.md` whether it resolves or not. **A model that cannot do this is
       a finding, not a failure** — the platform's part is what these tests fix.
-- [ ] **Step 4** `make check` in full — every gate green, and no request added
+- [x] **Step 4** `make check` in full — every gate green, and no request added
       to the model's log.
-- [ ] **Step 5** Commit: `test(e2e): ask a second question`
+- [x] **Step 5** Commit: `test(e2e): ask a second question`
 
 **Satisfies:** AC-M-101, and the whole of section 8 end to end.
 

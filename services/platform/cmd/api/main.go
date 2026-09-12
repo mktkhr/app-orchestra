@@ -63,10 +63,12 @@ func toAppServices(services []config.Service) []app.Service {
 // so this path is empty on every real deployment.
 func toAppPlanFixtures(fixtures []config.PlanFixture) []app.PlanFixture {
 	out := make([]app.PlanFixture, 0, len(fixtures))
-	for _, f := range fixtures {
+	for i := range fixtures {
+		f := &fixtures[i]
 		out = append(out, app.PlanFixture{
 			Query:       f.Query,
 			Answers:     toAppAnswers(f.Answers),
+			Turns:       toAppTurnFixtures(f.Turns),
 			Ask:         f.Ask,
 			Question:    f.Question,
 			Param:       f.Param,
@@ -74,6 +76,17 @@ func toAppPlanFixtures(fixtures []config.PlanFixture) []app.PlanFixture {
 			OperationID: f.OperationID,
 			Args:        f.Args,
 		})
+	}
+
+	return out
+}
+
+// toAppTurnFixtures adapts config.TurnFixture to app.TurnFixture. See
+// toAppServices.
+func toAppTurnFixtures(turns []config.TurnFixture) []app.TurnFixture {
+	out := make([]app.TurnFixture, 0, len(turns))
+	for _, t := range turns {
+		out = append(out, app.TurnFixture{Service: t.Service, OperationID: t.OperationID})
 	}
 
 	return out

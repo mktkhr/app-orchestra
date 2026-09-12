@@ -4,9 +4,17 @@ _Last updated: 2026-09-12_
 
 ## Summary
 
-**All three subprojects are done: `docs/plans/orchestration.md`'s seventeen
-tasks, `docs/plans/workspaces.md`'s eight, and now every one of
-`docs/plans/auth.md`'s seven (Tasks 0-6).** Accounts, sessions and
+**All four subprojects are done: `docs/plans/orchestration.md`'s seventeen
+tasks, `docs/plans/workspaces.md`'s eight, `docs/plans/auth.md`'s seven, and
+now every one of `docs/plans/context.md`'s five (Tasks 0-4).** A second
+question in the same conversation is answered with the first one's turns in
+hand: the browser keeps a conversation - one per screen, ended explicitly,
+not by a component unmounting - and sends every earlier question and what
+the platform decided for it (never a row of any answer) alongside the next
+one; both planner adapters render that conversation into the prompt, after
+the catalogue so the cache stays warm for the part that never changes; and a
+follow-up phrased with no service name is measurably, if not perfectly,
+answered from the service the question before it used. Accounts, sessions and
 permissions live in the same SQLite file workspaces already use; the
 catalogue narrows to the signed-in person before the planner or
 `/api/invoke` ever sees it; a person signs in, and an admin reads every
@@ -64,6 +72,56 @@ There is a design decision worth its own note: the shared acceptance
 sign-in helper (`newTestApp`, `services/platform/acceptance/helpers_test.go`)
 lives in the `acceptance` package rather than duplicated per file - see
 `DECISIONS.md`, 2026-09-12 ("Closing the nil-store auth bypass").
+
+**`docs/plans/context.md`, all five tasks, are done - multi-turn context is
+complete.** `web/src/features/conversation/model/conversationStore.ts` holds
+conversations above `Conversation` itself, keyed - `"chat"`, and one per
+workspace id - with a control that ends one and empties its turns
+(AC-M-107, AC-M-108). `usecase.Turn{Question, Kind, Service, OperationID,
+Args}` and `PlanRequest.turns` (contract-first: `openapi.yaml`, `make
+generate`) carry a conversation from the browser to
+`Orchestrator.Plan`, truncated to the most recent `ORCHESTRA_CONTEXT_TURNS`
+turns, oldest dropped first, before either planner ever sees it
+(AC-M-104, AC-M-105); both `toolcall` and `jsonmode` render the same turns
+into the prompt after the catalogue (M3), never a row of any answer
+(AC-M-102, AC-M-103, AC-M-106); `web/src/features/conversation`'s
+`toContextTurns` builds them from what the browser already has - a
+question's text and the following answer's `source`/`target` - so no new
+state is invented client-side either.
+
+Task 4 closed it end to end, and made one decision this task's plan asked
+for explicitly: `internal/adapter/planner/stub.Key` now carries a third
+field, `Turns` (canonicalised by the new `stub.TurnsKey`, order-dependent,
+`service/operationId` pairs joined by `|`), alongside `Query` and `Answers`.
+The stub still performs no reasoning over turns - it stays a pure table
+lookup, so `make check` still never calls a real LLM - but a fixture table
+can now key the very same `Query` on the conversation that came before it,
+which is what lets `e2e/src/context.test.ts` and `e2e/browser/context.spec.ts`
+fix a follow-up question's answer without a model at all: ask about
+inventory, then ask the same follow-up wording after an attendance turn
+instead, and get attendance back - proof the mechanism carries the turns
+through, not that any particular fixture happened to match. `pkg/app.PlanFixture`
+and `internal/infra/config.PlanFixture` both grew a `Turns []TurnFixture`
+field (`{service, operationId}`) for exactly this, decoded from
+`ORCHESTRA_PLAN_FIXTURES` the same way `Answers` already was.
+
+Whether a real model actually carries a follow-up's context is a different
+question, answered by hand rather than by any test: five `POST /api/plan`
+calls against the running `qwen3.5-9b-q8` (port 8080, `make dev-platform`),
+each carrying one earlier inventory turn and a follow-up ("他にはある？")
+phrased to give no service clue at all, went 5/5 to the inventory service -
+four resolved outright, one came back `kind: "ask"` for a missing `status`
+value but still on the right operation. Recorded in `DECISIONS.md`,
+2026-09-12 ("qwen3.5-9b-q8 carries a follow-up's context, measured by
+hand"), per this task's own instruction that a model unable to do this
+would be a finding, not a failure.
+
+D8 (`docs/specs/orchestration.md`) now says explicitly what
+`docs/specs/context.md` argued it always meant: the API result never goes
+back to the LLM and one request is still one LLM call, and what goes back
+on the _next_ request is the earlier question and the decision made for
+it, never a row of the answer - rendering that conversation into the same
+one call's prompt is not a second call.
 
 An answer worth keeping can be kept. A result in the chat can be saved to a
 workspace as a panel - service, operation id, arguments, component, title -
@@ -636,11 +694,11 @@ guessing a value the rest of the time (`DECISIONS.md`); not re-measured for
 the JSON planner, since none of the questions exercised live for Task 11
 were ambiguous enough to reach it.
 
-Everything past the two vertical slices remains future work: authentication
-and authorisation (workspaces carry a stub owner column, W6), multi-turn
-conversational context (one call per request, D8), a genre/domain layer
-above individual services, and the move to TypeScript 7 once
-`openapi-typescript` supports it (see "Known gaps in the harness" below).
+Authentication/authorisation and multi-turn conversational context are both
+done (`docs/plans/auth.md`, `docs/plans/context.md`, see the Summary above).
+What remains is a genre/domain layer above individual services, and the
+move to TypeScript 7 once `openapi-typescript` supports it (see "Known gaps
+in the harness" below).
 
 ## Known gaps in the harness
 
