@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,12 +22,16 @@ type fakePlanner struct {
 
 	query   string
 	answers []usecase.Answer
+	turns   []usecase.Turn
 	tools   []usecase.Tool
 }
 
-func (f *fakePlanner) Plan(_ context.Context, query string, answers []usecase.Answer, tools []usecase.Tool) (usecase.Decision, error) {
+func (f *fakePlanner) Plan(
+	_ context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, tools []usecase.Tool,
+) (usecase.Decision, error) {
 	f.query = query
 	f.answers = answers
+	f.turns = turns
 	f.tools = tools
 
 	return f.decision, f.err
@@ -128,7 +133,7 @@ func TestPlanSafeCallInvokesAndRendersTheResult(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindResult, result.Kind)
@@ -144,6 +149,82 @@ func TestPlanSafeCallInvokesAndRendersTheResult(t *testing.T) {
 
 	assert.Equal(t, "在庫の一覧を見せて", planner.query)
 	assert.NotEmpty(t, planner.tools, "the orchestrator must offer the planner the catalogue's tools")
+}
+
+// TestPlanWithNoTurnsBehavesExactlyAsBefore is AC-M-105: a question with no
+// turns is answered exactly as it is today, and the planner sees no turns
+// at all rather than an empty-but-non-nil slice standing in for "history".
+func TestPlanWithNoTurnsBehavesExactlyAsBefore(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, &fakeInvoker{}, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindNone, result.Kind)
+	assert.Nil(t, planner.turns)
+}
+
+// TestPlanTruncatesTurnsToTheConfiguredWindow is AC-M-104: a conversation
+// longer than the window sends the planner only the most recent turns,
+// oldest dropped first (docs/specs/context.md, section 6).
+func TestPlanTruncatesTurnsToTheConfiguredWindow(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
+	orchestrator := usecase.NewOrchestrator(
+		inventoryCatalog(), planner, &fakeInvoker{}, &fakePermissionStore{}, usecase.WithContextWindow(2),
+	)
+
+	turns := []usecase.Turn{
+		{Question: "1つ目", Kind: usecase.ResultKindResult, Service: "inventory", OperationID: "ListInventoryItems"},
+		{Question: "2つ目", Kind: usecase.ResultKindResult, Service: "inventory", OperationID: "ListInventoryItems"},
+		{Question: "3つ目", Kind: usecase.ResultKindResult, Service: "inventory", OperationID: "ListInventoryItems"},
+	}
+
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "4つ目", nil, turns)
+
+	require.NoError(t, err)
+	require.Len(t, planner.turns, 2)
+	assert.Equal(t, "2つ目", planner.turns[0].Question)
+	assert.Equal(t, "3つ目", planner.turns[1].Question)
+}
+
+// TestPlanKeepsEveryTurnWhenFewerThanTheWindow shows the window is not a
+// fixed padding: a conversation shorter than it passes through unchanged.
+func TestPlanKeepsEveryTurnWhenFewerThanTheWindow(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
+	orchestrator := usecase.NewOrchestrator(
+		inventoryCatalog(), planner, &fakeInvoker{}, &fakePermissionStore{}, usecase.WithContextWindow(5),
+	)
+
+	turns := []usecase.Turn{
+		{Question: "1つ目", Kind: usecase.ResultKindResult, Service: "inventory", OperationID: "ListInventoryItems"},
+		{Question: "2つ目", Kind: usecase.ResultKindResult, Service: "inventory", OperationID: "ListInventoryItems"},
+	}
+
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "3つ目", nil, turns)
+
+	require.NoError(t, err)
+	assert.Equal(t, turns, planner.turns)
+}
+
+// TestPlanUsesTheDefaultWindowWhenNoneIsConfigured pins
+// usecase.DefaultContextWindow's value against a NewOrchestrator built
+// without WithContextWindow - every caller before this task, and every
+// existing test in this file.
+func TestPlanUsesTheDefaultWindowWhenNoneIsConfigured(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, &fakeInvoker{}, &fakePermissionStore{})
+
+	turns := make([]usecase.Turn, usecase.DefaultContextWindow+3)
+	for i := range turns {
+		turns[i] = usecase.Turn{Question: fmt.Sprintf("質問%d", i), Kind: usecase.ResultKindNone}
+	}
+
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "最後の質問", nil, turns)
+
+	require.NoError(t, err)
+	require.Len(t, planner.turns, usecase.DefaultContextWindow)
+	assert.Equal(t, turns[len(turns)-usecase.DefaultContextWindow:], planner.turns)
 }
 
 // inventoryCatalogWithStatusColumn is inventoryCatalog, but ListInventoryItems'
@@ -210,7 +291,7 @@ func TestPlanTableResultCarriesFieldsFromTheRowSchema(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalogWithStatusColumn(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Fields)
@@ -234,7 +315,7 @@ func TestPlanDetailResultCarriesFieldsFromTheResponseSchema(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalogWithStatusColumn(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "この在庫の詳細を見せて", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "この在庫の詳細を見せて", nil, nil)
 
 	require.NoError(t, err)
 	require.NotNil(t, result.Fields)
@@ -259,7 +340,7 @@ func TestPlanResultWithNoColumnsHasNoFields(t *testing.T) {
 	// nothing a Fields map could usefully describe.
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil)
 
 	require.NoError(t, err)
 	assert.Nil(t, result.Fields)
@@ -271,7 +352,7 @@ func TestPlanNoneCallsNothingAndReturnsAMessage(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "今日の天気は？", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "今日の天気は？", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindNone, result.Kind)
@@ -287,7 +368,7 @@ func TestPlanNoneMessageMentionsListCapabilities(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "今日の天気は？", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "今日の天気は？", nil, nil)
 
 	require.NoError(t, err)
 	assert.Contains(t, result.Message, "何ができるの")
@@ -330,7 +411,7 @@ func TestPlanListCapabilitiesWithNoServiceListsEveryEndpoint(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(twoServiceCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "何ができるの？", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "何ができるの？", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindResult, result.Kind)
@@ -377,7 +458,7 @@ func TestPlanListCapabilitiesWithServiceFiltersToThatService(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(twoServiceCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫について、どういう操作ができる？", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫について、どういう操作ができる？", nil, nil)
 
 	require.NoError(t, err)
 
@@ -408,7 +489,7 @@ func TestPlanListCapabilitiesWithUnknownServiceReturnsNoRows(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(twoServiceCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "存在しないサービスについて何ができる？", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "存在しないサービスについて何ができる？", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindResult, result.Kind, "an unmatched filter is still a result, just an empty one")
@@ -434,7 +515,7 @@ func TestPlanUnsafeCallReturnsAFormWithoutInvoking(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫を登録して", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫を登録して", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindForm, result.Kind)
@@ -487,7 +568,7 @@ func TestPlanAskDecisionReturnsOptionsFromTheCatalogue(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(catalogWithStatusEnum(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindAsk, result.Kind)
@@ -516,7 +597,7 @@ func TestPlanAskDecisionFillsInAMissingLabelDefensively(t *testing.T) {
 	}}
 	orchestrator := usecase.NewOrchestrator(c, planner, &fakeInvoker{}, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, []domain.Option{{Value: "allocated", Label: ""}}, result.Options)
@@ -545,7 +626,7 @@ func TestPlanAskDecisionForAFreeTextParamReturnsAForm(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫を登録したい", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫を登録したい", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindForm, result.Kind)
@@ -577,7 +658,7 @@ func TestPlanAskDecisionForANameTheEndpointDoesNotDeclareAlsoReturnsAForm(t *tes
 
 	orchestrator := usecase.NewOrchestrator(catalogWithStatusEnum(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindForm, result.Kind)
@@ -603,7 +684,7 @@ func TestPlanAskDecisionForAnEnumParamStillAsks(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(catalogWithStatusEnum(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindAsk, result.Kind)
@@ -619,7 +700,7 @@ func TestPlanAskDecisionForAnUnknownEndpointFails(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil)
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil, nil)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
@@ -675,7 +756,7 @@ func TestPlanAskDecisionResolvesTheSameParamNameOnItsOwnService(t *testing.T) {
 	}}
 	inventoryOrchestrator := usecase.NewOrchestrator(catalog, inventoryPlanner, invoker, &fakePermissionStore{})
 
-	inventoryResult, err := inventoryOrchestrator.Plan(t.Context(), adminUser(), "在庫のステータスは？", nil)
+	inventoryResult, err := inventoryOrchestrator.Plan(t.Context(), adminUser(), "在庫のステータスは？", nil, nil)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []domain.Option{
 		{Value: "allocated", Label: "引当済"},
@@ -688,7 +769,7 @@ func TestPlanAskDecisionResolvesTheSameParamNameOnItsOwnService(t *testing.T) {
 	}}
 	attendanceOrchestrator := usecase.NewOrchestrator(catalog, attendancePlanner, invoker, &fakePermissionStore{})
 
-	attendanceResult, err := attendanceOrchestrator.Plan(t.Context(), adminUser(), "勤怠のステータスは？", nil)
+	attendanceResult, err := attendanceOrchestrator.Plan(t.Context(), adminUser(), "勤怠のステータスは？", nil, nil)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []domain.Option{
 		{Value: "present", Label: "出勤"},
@@ -708,7 +789,7 @@ func TestPlanCallToUnknownEndpointFails(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "存在しない操作", nil)
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "存在しない操作", nil, nil)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
@@ -720,7 +801,7 @@ func TestPlanUnknownDecisionKindIsNotImplemented(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "何か", nil)
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "何か", nil, nil)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrNotImplemented)
@@ -733,7 +814,7 @@ func TestPlanWrapsAPlannerError(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil)
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, boom)
@@ -750,7 +831,7 @@ func TestPlanWrapsAnInvokerError(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil)
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, boom)
@@ -763,7 +844,7 @@ func TestPlanPassesAnswersThrough(t *testing.T) {
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
 	answers := []usecase.Answer{{Param: "status", Value: "allocated"}}
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", answers)
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", answers, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, answers, planner.answers)

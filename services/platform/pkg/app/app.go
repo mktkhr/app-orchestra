@@ -171,6 +171,13 @@ type Config struct {
 	// account creation stays out of the UI and the API; setting an
 	// environment variable before the process starts serving is neither).
 	SeedAccounts []SeedAccount
+	// ContextTurns is the number of turns of a conversation Plan keeps,
+	// oldest dropped first (docs/specs/context.md, section 6). Zero - the
+	// zero value, left unset by every test that does not care about the
+	// window - falls back to usecase.DefaultContextWindow (see New): it is
+	// not itself a valid window (usecase.WithContextWindow(0) would keep
+	// nothing), so New must never pass a bare zero through unquestioned.
+	ContextTurns int
 }
 
 // SeedAccount is one account for New to put in place via SeedAccounts,
@@ -246,7 +253,7 @@ func build(
 	}
 
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
-	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions)
+	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions, contextWindowOption(cfg.ContextTurns))
 	adminUsecase := usecase.NewAdmin(users, permissions, catalog)
 
 	api := handler.NewAPI(
@@ -424,6 +431,21 @@ func seedAccounts(ctx context.Context, users *sqlitestore.Users, accounts []Seed
 	}
 
 	return nil
+}
+
+// contextWindowOption turns Config.ContextTurns into the usecase.Option
+// NewOrchestrator is built with. Zero - Config's own zero value, which
+// every test that does not care about the window leaves unset - is left
+// alone rather than passed through to usecase.WithContextWindow, which
+// would collapse the window to zero turns kept; that keeps
+// usecase.DefaultContextWindow in force instead, the same default the
+// stub-only tests already relied on before turns existed.
+func contextWindowOption(turns int) usecase.Option {
+	if turns <= 0 {
+		return func(*usecase.Orchestrator) {}
+	}
+
+	return usecase.WithContextWindow(turns)
 }
 
 // newPlanner selects the platform's usecase.Planner from cfg: the

@@ -522,9 +522,34 @@ components:
         value:
           type: string
           description: The chosen value.
+    Turn:
+      type: object
+      description: >
+        One earlier question in the conversation, and what the platform
+        decided for it - never the answer's data (docs/specs/context.md,
+        section 3). `PlanRequest.turns` carries these oldest first.
+      required:
+        - question
+        - kind
+      properties:
+        question:
+          type: string
+          description: The question, in Japanese, as it was asked.
+        kind:
+          $ref: "#/components/schemas/DecisionKind"
+        service:
+          type: string
+          description: The service the decision named. Absent when kind is "none".
+        operationId:
+          type: string
+          description: The operation id the decision named. Absent when kind is "none".
+        args:
+          type: object
+          description: The arguments the decision was made with.
+          additionalProperties: true
     PlanRequest:
       type: object
-      description: A question, and any answers to a previous disambiguation.
+      description: A question, any answers to a previous disambiguation, and the conversation before it.
       required:
         - query
       properties:
@@ -536,6 +561,14 @@ components:
           description: "Answers to a previous `kind: ask` response, if any."
           items:
             $ref: "#/components/schemas/Answer"
+        turns:
+          type: array
+          description: >
+            The conversation so far, oldest first. Absent or empty means
+            what it means today: a question with no history
+            (docs/specs/context.md, section 5).
+          items:
+            $ref: "#/components/schemas/Turn"
     DecisionKind:
       type: string
       description: What the planner decided to do about a question.

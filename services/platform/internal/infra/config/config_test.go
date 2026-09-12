@@ -22,6 +22,48 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Empty(t, cfg.StaticDir)
 }
 
+func TestLoadContextTurnsDefaultsToEight(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_CONTEXT_TURNS", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, 8, cfg.ContextTurns)
+}
+
+func TestLoadReadsContextTurns(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_CONTEXT_TURNS", "3")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, cfg.ContextTurns)
+}
+
+func TestLoadRejectsANonPositiveContextTurns(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_CONTEXT_TURNS", "0")
+
+	_, err := config.Load()
+
+	require.ErrorIs(t, err, config.ErrInvalidContextTurns)
+}
+
+func TestLoadRejectsAnUnparseableContextTurns(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_CONTEXT_TURNS", "not-a-number")
+
+	_, err := config.Load()
+
+	require.ErrorIs(t, err, config.ErrInvalidContextTurns)
+}
+
 func TestLoadReadsPortAndStaticDir(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")

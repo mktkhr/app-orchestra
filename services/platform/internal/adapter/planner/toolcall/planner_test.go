@@ -120,7 +120,7 @@ const callResponse = `{
 func TestPlanMapsAToolCallOntoADecisionCallWithItsService(t *testing.T) {
 	planner := newPlanner(t, callResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "検品保留の在庫を見せて", nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "検品保留の在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionCall, decision.Kind)
@@ -149,7 +149,7 @@ const askResponse = `{
 func TestPlanMapsAskUserOntoADecisionAsk(t *testing.T) {
 	planner := newPlanner(t, askResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "破損した在庫はある？", nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "破損した在庫はある？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionAsk, decision.Kind)
@@ -185,7 +185,7 @@ const listCapabilitiesResponse = `{
 func TestPlanMapsListCapabilitiesOntoADecisionListCapabilities(t *testing.T) {
 	planner := newPlanner(t, listCapabilitiesResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "在庫について、どういう操作ができる？", nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "在庫について、どういう操作ができる？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionListCapabilities, decision.Kind)
@@ -209,7 +209,7 @@ const listCapabilitiesNoServiceResponse = `{
 func TestPlanMapsListCapabilitiesWithNoServiceArgumentToAnEmptyFilter(t *testing.T) {
 	planner := newPlanner(t, listCapabilitiesNoServiceResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "何ができるの？", nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "何ができるの？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionListCapabilities, decision.Kind)
@@ -226,7 +226,7 @@ const noToolCallResponse = `{
 func TestPlanMapsNoToolCallOntoDecisionNone(t *testing.T) {
 	planner := newPlanner(t, noToolCallResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "今日の天気は？", nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "今日の天気は？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionNone, decision.Kind)
@@ -245,7 +245,7 @@ func TestPlanOnUnknownOperationReturnsAnError(t *testing.T) {
 
 	planner := newPlanner(t, response, fixtureCatalog())
 
-	_, err := planner.Plan(context.Background(), "何か", nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog()))
 	require.Error(t, err)
 }
 
@@ -263,7 +263,7 @@ func TestPlanOnAmbiguousOperationIDPicksFirstCatalogueMatch(t *testing.T) {
 	catalog := fixtureCatalog()
 	planner := newPlanner(t, response, catalog)
 
-	decision, err := planner.Plan(context.Background(), "何か", nil, usecase.ToolsFor(catalog))
+	decision, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(catalog))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionCall, decision.Kind)
@@ -294,7 +294,7 @@ func TestPlanSendsAnswersAlongsideTheQuery(t *testing.T) {
 
 	answers := []usecase.Answer{{Param: "status", Value: "quarantined"}}
 
-	_, err := planner.Plan(context.Background(), "破損した在庫を見せて", answers, usecase.ToolsFor(fixtureCatalog()))
+	_, err := planner.Plan(context.Background(), "破損した在庫を見せて", answers, nil, usecase.ToolsFor(fixtureCatalog()))
 	require.NoError(t, err)
 
 	messages, ok := gotBody["messages"].([]any)
@@ -330,7 +330,7 @@ func TestPlanShapesToolsWithAdditionalPropertiesFalseAndPerToolStrict(t *testing
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	planner := toolcall.New(client, fixtureCatalog())
 
-	_, err := planner.Plan(context.Background(), "在庫を見せて", nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := planner.Plan(context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
 	require.NoError(t, err)
 
 	tools, ok := gotBody["tools"].([]any)

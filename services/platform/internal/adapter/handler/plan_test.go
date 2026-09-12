@@ -24,6 +24,7 @@ type fakeOrchestrator struct {
 	user    *domain.User
 	query   string
 	answers []usecase.Answer
+	turns   []usecase.Turn
 }
 
 func (f *fakeOrchestrator) Plan(
@@ -31,10 +32,12 @@ func (f *fakeOrchestrator) Plan(
 	user *domain.User,
 	query string,
 	answers []usecase.Answer,
+	turns []usecase.Turn,
 ) (usecase.Result, error) {
 	f.user = user
 	f.query = query
 	f.answers = answers
+	f.turns = turns
 
 	return f.result, f.err
 }
@@ -214,6 +217,52 @@ func TestPostPlanPassesAnswersThrough(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orchestrator.answers, 1)
 	assert.Equal(t, usecase.Answer{Param: "status", Value: "allocated"}, orchestrator.answers[0])
+}
+
+func TestPostPlanPassesTurnsThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	service := "inventory"
+	operationID := "ListInventoryItems"
+	args := map[string]any{"status": "quarantined"}
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{
+			Query: "在庫の一覧を見せて",
+			Turns: &[]openapi.Turn{{
+				Question:    "検品保留の在庫を見せて",
+				Kind:        openapi.DecisionKindResult,
+				Service:     &service,
+				OperationId: &operationID,
+				Args:        &args,
+			}},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, orchestrator.turns, 1)
+	assert.Equal(t, usecase.Turn{
+		Question:    "検品保留の在庫を見せて",
+		Kind:        usecase.ResultKindResult,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Args:        map[string]any{"status": "quarantined"},
+	}, orchestrator.turns[0])
+}
+
+func TestPostPlanWithNoTurnsPassesNilThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて"},
+	})
+
+	require.NoError(t, err)
+	assert.Nil(t, orchestrator.turns)
 }
 
 func TestPostPlanNotImplementedErrorIs501(t *testing.T) {

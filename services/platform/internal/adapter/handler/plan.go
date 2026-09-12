@@ -22,7 +22,9 @@ var errUnrenderableData = errors.New("result data is not a JSON object")
 // *usecase.Orchestrator. An interface here, rather than the concrete type,
 // keeps this handler's test doubles simple.
 type planner interface {
-	Plan(ctx context.Context, user *domain.User, query string, answers []usecase.Answer) (usecase.Result, error)
+	Plan(
+		ctx context.Context, user *domain.User, query string, answers []usecase.Answer, turns []usecase.Turn,
+	) (usecase.Result, error)
 }
 
 // Plan implements the "plan" tag of the generated strict server interface:
@@ -42,7 +44,9 @@ func (h *Plan) PostPlan(
 	ctx context.Context,
 	request openapi.PostPlanRequestObject,
 ) (openapi.PostPlanResponseObject, error) {
-	result, err := h.orchestrator.Plan(ctx, currentUser(ctx), request.Body.Query, toAnswers(request.Body.Answers))
+	result, err := h.orchestrator.Plan(
+		ctx, currentUser(ctx), request.Body.Query, toAnswers(request.Body.Answers), toTurns(request.Body.Turns),
+	)
 	if err != nil {
 		return planErrorResponse(err), nil
 	}
@@ -85,6 +89,39 @@ func toAnswers(answers *[]openapi.Answer) []usecase.Answer {
 	out := make([]usecase.Answer, 0, len(*answers))
 	for _, a := range *answers {
 		out = append(out, usecase.Answer{Param: a.Param, Value: a.Value})
+	}
+
+	return out
+}
+
+// toTurns converts the wire representation of PlanRequest.Turns into
+// usecase.Turn, oldest first - the same order the wire carries them in
+// (docs/specs/context.md, section 5). Truncating to the configured window
+// is Orchestrator.Plan's job (docs/specs/context.md, section 6), not this
+// handler's: it forwards whatever the browser sent, exactly as toAnswers
+// forwards every answer without judging how many there are.
+func toTurns(turns *[]openapi.Turn) []usecase.Turn {
+	if turns == nil {
+		return nil
+	}
+
+	out := make([]usecase.Turn, 0, len(*turns))
+	for _, t := range *turns {
+		turn := usecase.Turn{Question: t.Question, Kind: usecase.ResultKind(t.Kind)}
+
+		if t.Service != nil {
+			turn.Service = *t.Service
+		}
+
+		if t.OperationId != nil {
+			turn.OperationID = *t.OperationId
+		}
+
+		if t.Args != nil {
+			turn.Args = *t.Args
+		}
+
+		out = append(out, turn)
 	}
 
 	return out

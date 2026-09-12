@@ -29,6 +29,7 @@ func main() {
 		SecureCookie:  cfg.SecureCookie,
 		AdminPassword: cfg.AdminPassword,
 		SeedAccounts:  toAppSeedAccounts(cfg.SeedAccounts),
+		ContextTurns:  cfg.ContextTurns,
 	})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))

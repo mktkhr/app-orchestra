@@ -55,13 +55,39 @@ type Decision struct {
 	Options  []domain.Option
 }
 
-// Planner decides, from a question and the tools describing the
-// catalogue, what to do about it. Implemented by internal/adapter/planner/
-// stub (a deterministic table lookup, used by every test and, by default,
-// by the running platform - see pkg/app) and, from Task 10, by an adapter
-// that calls a real LLM.
+// Turn is one earlier question in the conversation, and what the platform
+// decided for it (docs/specs/context.md, section 3): a service, an
+// operation and the arguments the decision was made with. Kind uses
+// ResultKind, not DecisionKind - a Turn records what /api/plan answered
+// (result, form, ask or none), which is what the wire's Turn.kind names
+// too, not what Planner.Plan itself returned for the call that produced
+// it.
+//
+// Turn has no field for the answer's data. That is deliberate (M1,
+// docs/specs/context.md, section 3): a Turn is built only from what a
+// Planner or Orchestrator already had to hand back to the caller anyway,
+// so there is nowhere a row of a result could be smuggled in later without
+// changing this type first.
+type Turn struct {
+	Question    string
+	Kind        ResultKind
+	Service     string
+	OperationID string
+	Args        map[string]any
+}
+
+// Planner decides, from a question, the conversation before it and the
+// tools describing the catalogue, what to do about it. turns is the
+// window Orchestrator.Plan has already truncated to ORCHESTRA_CONTEXT_TURNS
+// (docs/specs/context.md, section 6) - a Planner never sees more of the
+// conversation than that. Implemented by internal/adapter/planner/stub (a
+// deterministic table lookup, used by every test and, by default, by the
+// running platform - see pkg/app) and by the toolcall and jsonmode
+// adapters that call a real LLM; none of the three reads turns yet
+// (docs/plans/context.md, Task 1 - rendering them into the prompt is
+// Task 2).
 type Planner interface {
-	Plan(ctx context.Context, query string, answers []Answer, tools []Tool) (Decision, error)
+	Plan(ctx context.Context, query string, answers []Answer, turns []Turn, tools []Tool) (Decision, error)
 }
 
 // Invoker calls one endpoint of one service and returns its decoded JSON

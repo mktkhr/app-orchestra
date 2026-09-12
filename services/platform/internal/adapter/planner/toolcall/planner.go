@@ -60,9 +60,11 @@ func New(client *chat.Client, catalog domain.Catalog) *Planner {
 
 // Plan sends query (with answers folded in, see buildMessages) and tools
 // to the model, and maps the one tool call it returns - if any - onto a
-// Decision.
+// Decision. turns is accepted only to satisfy usecase.Planner: rendering
+// the conversation into the prompt is docs/plans/context.md Task 2, not
+// this one.
 func (p *Planner) Plan(
-	ctx context.Context, query string, answers []usecase.Answer, tools []usecase.Tool,
+	ctx context.Context, query string, answers []usecase.Answer, _ []usecase.Turn, tools []usecase.Tool,
 ) (usecase.Decision, error) {
 	resp, err := p.client.Complete(ctx, chat.Request{
 		Messages: buildMessages(query, answers),

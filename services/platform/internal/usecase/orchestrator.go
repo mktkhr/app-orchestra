@@ -86,14 +86,39 @@ var ErrNotImplemented = errors.New("not implemented")
 const messageNoEndpoint = "その質問に答えられる操作が見つかりませんでした。" +
 	"「何ができるの？」と聞くと、できることの一覧を確認できます。"
 
+// DefaultContextWindow is the number of turns Orchestrator keeps when no
+// Option overrides it via WithContextWindow - pkg/app always does, from
+// ORCHESTRA_CONTEXT_TURNS, so this constant is only ever reached by a
+// caller (a test, mainly) that does not care about the window. Chosen
+// small on purpose (docs/specs/context.md, section 6): a handful of
+// follow-up questions is what a conversation about one task actually
+// needs, and every turn kept is a turn that must be rendered into the
+// prompt on the very next question.
+const DefaultContextWindow = 8
+
 // Orchestrator drives one /api/plan request: it asks Planner for a
 // Decision over the catalogue's tools and, for a safe call, invokes it and
 // renders the result (docs/specs/orchestration.md, section 4).
 type Orchestrator struct {
-	catalog     domain.Catalog
-	planner     Planner
-	invoker     Invoker
-	permissions PermissionStore
+	catalog       domain.Catalog
+	planner       Planner
+	invoker       Invoker
+	permissions   PermissionStore
+	contextWindow int
+}
+
+// Option configures an Orchestrator built by NewOrchestrator, beyond its
+// required collaborators.
+type Option func(*Orchestrator)
+
+// WithContextWindow overrides DefaultContextWindow: Plan keeps only the
+// most recent n turns of what it is given, oldest dropped first
+// (docs/specs/context.md, section 6). pkg/app always passes this, from
+// ORCHESTRA_CONTEXT_TURNS - it is an Option, rather than a required
+// NewOrchestrator parameter, so the many existing callers that do not care
+// about the window did not all have to change to add it.
+func WithContextWindow(n int) Option {
+	return func(o *Orchestrator) { o.contextWindow = n }
 }
 
 // NewOrchestrator builds an Orchestrator over the given catalogue, planner,
@@ -101,22 +126,48 @@ type Orchestrator struct {
 // catalogFor, to narrow catalog down to what the calling person may call
 // (docs/specs/auth.md, section 5) - never consulted for an admin, who holds
 // every permission implicitly (docs/specs/auth.md, section 4).
-func NewOrchestrator(catalog domain.Catalog, planner Planner, invoker Invoker, permissions PermissionStore) *Orchestrator {
-	return &Orchestrator{catalog: catalog, planner: planner, invoker: invoker, permissions: permissions}
+func NewOrchestrator(
+	catalog domain.Catalog, planner Planner, invoker Invoker, permissions PermissionStore, opts ...Option,
+) *Orchestrator {
+	o := &Orchestrator{
+		catalog:       catalog,
+		planner:       planner,
+		invoker:       invoker,
+		permissions:   permissions,
+		contextWindow: DefaultContextWindow,
+	}
+
+	for _, opt := range opts {
+		opt(o)
+	}
+
+	return o
 }
 
-// Plan turns a question (plus any answers to a previous ask) into a
-// Result: a safe call is invoked and rendered, an unsafe call comes back as
-// a form to confirm, an ask decision comes back as a disambiguation
-// question built from the catalogue (see ask), and none reports that
-// nothing fits.
+// Plan turns a question (plus any answers to a previous ask, and the
+// conversation before it) into a Result: a safe call is invoked and
+// rendered, an unsafe call comes back as a form to confirm, an ask
+// decision comes back as a disambiguation question built from the
+// catalogue (see ask), and none reports that nothing fits.
+//
+// turns is the conversation as the browser holds it, oldest first
+// (docs/specs/context.md, section 3); Plan truncates it to the most recent
+// o.contextWindow entries, oldest dropped first, before it ever reaches
+// the planner (section 6) - the browser sends what it has and the
+// platform is what knows the model, so the platform is what decides how
+// much of it the model is told. Empty or nil turns - a question with no
+// history - behaves exactly as it did before turns existed (AC-M-105):
+// truncateTurns returns it unchanged and no planner reads turns yet
+// (docs/plans/context.md, Task 1).
 //
 // user is not context.Context because a value in a context is one a
 // caller can forget to put there, and the failure that produces is a
 // permission check that silently passes; an argument cannot be forgotten,
 // because the code does not compile without it (docs/specs/auth.md,
 // section 5, A6).
-func (o *Orchestrator) Plan(ctx context.Context, user *domain.User, query string, answers []Answer) (Result, error) {
+func (o *Orchestrator) Plan(
+	ctx context.Context, user *domain.User, query string, answers []Answer, turns []Turn,
+) (Result, error) {
 	catalog, err := o.catalogFor(ctx, user)
 	if err != nil {
 		return Result{}, err
@@ -124,7 +175,7 @@ func (o *Orchestrator) Plan(ctx context.Context, user *domain.User, query string
 
 	tools := ToolsFor(catalog)
 
-	decision, err := o.planner.Plan(ctx, query, answers, tools)
+	decision, err := o.planner.Plan(ctx, query, answers, truncateTurns(turns, o.contextWindow), tools)
 	if err != nil {
 		return Result{}, fmt.Errorf("planning: %w", err)
 	}
@@ -173,6 +224,26 @@ func (o *Orchestrator) Invoke(ctx context.Context, user *domain.User, service, o
 	}
 
 	return o.invokeAndRender(ctx, &endpoint, service, operationID, args)
+}
+
+// truncateTurns keeps the most recent window entries of turns, oldest
+// dropped first (docs/specs/context.md, section 6). turns is oldest first
+// (Plan's own doc comment), so the ones to keep are its tail.
+//
+// window <= 0 is treated as "keep nothing" rather than "unbounded" - a
+// misconfigured ORCHESTRA_CONTEXT_TURNS should shrink the window to
+// nothing a person can notice, not silently turn it off and let a long
+// conversation grow the prompt forever.
+func truncateTurns(turns []Turn, window int) []Turn {
+	if window <= 0 || len(turns) == 0 {
+		return nil
+	}
+
+	if len(turns) <= window {
+		return turns
+	}
+
+	return turns[len(turns)-window:]
 }
 
 // catalogFor narrows o.catalog to what user may call: the whole catalogue

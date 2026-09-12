@@ -118,8 +118,10 @@ func New(client *chat.Client, catalog domain.Catalog) *Planner {
 // accepted only to satisfy usecase.Planner: this adapter renders its own
 // text from catalog (New's parameter) rather than from usecase.ToolsFor's
 // wire-shaped schemas, which toolcall.Planner needs but this one does not.
+// turns is accepted for the same reason: rendering the conversation into
+// the prompt is docs/plans/context.md Task 2, not this one.
 func (p *Planner) Plan(
-	ctx context.Context, query string, answers []usecase.Answer, _ []usecase.Tool,
+	ctx context.Context, query string, answers []usecase.Answer, _ []usecase.Turn, _ []usecase.Tool,
 ) (usecase.Decision, error) {
 	messages := buildMessages(p.systemPrompt, query, answers)
 

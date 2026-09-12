@@ -16,6 +16,13 @@ import (
 // defaultPort is used when ORCHESTRA_PORT is unset.
 const defaultPort = 8080
 
+// defaultContextTurns is used when ORCHESTRA_CONTEXT_TURNS is unset.
+// Mirrors usecase.DefaultContextWindow - kept as its own constant rather
+// than importing usecase here, so config keeps reading only bytes off the
+// environment and pkg/app stays the one place that decides what a parsed
+// value means to the usecase layer (see this package's own doc comment).
+const defaultContextTurns = 8
+
 // ErrInvalidServiceEntry is wrapped into the error returned when
 // ORCHESTRA_SERVICES contains an entry that is not "name=url".
 var ErrInvalidServiceEntry = errors.New("invalid ORCHESTRA_SERVICES entry, want name=url")
@@ -42,6 +49,14 @@ var ErrMissingDBPath = errors.New("ORCHESTRA_DB_PATH is required")
 // ErrMissingDBPath already applies to ORCHESTRA_DB_PATH
 // (docs/plans/auth.md, Task 0, Step 3).
 var ErrMissingAdminPassword = errors.New("ORCHESTRA_ADMIN_PASSWORD is required")
+
+// ErrInvalidContextTurns is returned when ORCHESTRA_CONTEXT_TURNS is set to
+// something other than a positive integer. A window of zero or fewer turns
+// is not a valid configuration to ask for explicitly - Orchestrator itself
+// already treats a non-positive window as "keep nothing" (see
+// truncateTurns, internal/usecase/orchestrator.go) - so a typo here fails
+// startup rather than silently emptying every conversation.
+var ErrInvalidContextTurns = errors.New("ORCHESTRA_CONTEXT_TURNS must be a positive integer")
 
 // The two values ORCHESTRA_LLM_MODE accepts: which of the two
 // usecase.Planner adapters (internal/adapter/planner/toolcall,
@@ -159,6 +174,11 @@ type Config struct {
 	// mirrors is about not exposing account creation over HTTP, which this
 	// does not do.
 	SeedAccounts []SeedAccount
+	// ContextTurns is the number of turns of a conversation Orchestrator.Plan
+	// keeps, oldest dropped first, read from ORCHESTRA_CONTEXT_TURNS
+	// (docs/specs/context.md, section 6). Defaults to defaultContextTurns
+	// when unset.
+	ContextTurns int
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
@@ -202,6 +222,13 @@ func Load() (Config, error) {
 	}
 
 	cfg.SeedAccounts = seedAccounts
+
+	contextTurns, err := parseContextTurns(os.Getenv("ORCHESTRA_CONTEXT_TURNS"))
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.ContextTurns = contextTurns
 
 	dbPath, ok := os.LookupEnv("ORCHESTRA_DB_PATH")
 	if !ok || dbPath == "" {
@@ -276,6 +303,23 @@ func parseLLMMode(raw string) (string, error) {
 	}
 
 	return raw, nil
+}
+
+// parseContextTurns reads ORCHESTRA_CONTEXT_TURNS: defaultContextTurns when
+// unset or empty, or the positive integer it names otherwise. See
+// ErrInvalidContextTurns for why anything else fails startup instead of
+// falling back to the default.
+func parseContextTurns(raw string) (int, error) {
+	if raw == "" {
+		return defaultContextTurns, nil
+	}
+
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%w: %q", ErrInvalidContextTurns, raw)
+	}
+
+	return n, nil
 }
 
 // parsePlanFixtures reads ORCHESTRA_PLAN_FIXTURES: a JSON array of

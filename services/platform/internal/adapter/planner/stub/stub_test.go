@@ -14,7 +14,7 @@ func TestPlanReturnsTheDecisionForAMatchingQuery(t *testing.T) {
 	want := usecase.Decision{Kind: usecase.DecisionCall, Service: "inventory", OperationID: "ListInventoryItems"}
 	p := stub.New(map[stub.Key]usecase.Decision{{Query: "list items"}: want}, &usecase.Decision{Kind: usecase.DecisionNone})
 
-	got, err := p.Plan(t.Context(), "list items", nil, nil)
+	got, err := p.Plan(t.Context(), "list items", nil, nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, want, got)
@@ -24,7 +24,7 @@ func TestPlanReturnsNotFoundForAnUnknownQuery(t *testing.T) {
 	notFound := usecase.Decision{Kind: usecase.DecisionNone}
 	p := stub.New(map[stub.Key]usecase.Decision{{Query: "list items"}: {Kind: usecase.DecisionCall}}, &notFound)
 
-	got, err := p.Plan(t.Context(), "something else entirely", nil, nil)
+	got, err := p.Plan(t.Context(), "something else entirely", nil, nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, notFound, got)
@@ -36,7 +36,7 @@ func TestNewCopiesTheTableSoLaterMutationDoesNotLeak(t *testing.T) {
 
 	table[stub.Key{Query: "list items"}] = usecase.Decision{Kind: usecase.DecisionCall, OperationID: "B"}
 
-	got, err := p.Plan(t.Context(), "list items", nil, nil)
+	got, err := p.Plan(t.Context(), "list items", nil, nil, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, "A", got.OperationID)
@@ -49,6 +49,7 @@ func TestPlanIgnoresTools(t *testing.T) {
 	got, err := p.Plan(
 		t.Context(),
 		"ambiguous",
+		nil,
 		nil,
 		[]usecase.Tool{{Name: "ListInventoryItems"}},
 	)
@@ -76,11 +77,11 @@ func TestPlanRoutesOnAnswersToADifferentDecision(t *testing.T) {
 		{Query: "ambiguous", Answers: stub.AnswersKey(answers)}: call,
 	}, &usecase.Decision{Kind: usecase.DecisionNone})
 
-	got, err := p.Plan(t.Context(), "ambiguous", nil, nil)
+	got, err := p.Plan(t.Context(), "ambiguous", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, ask, got)
 
-	got, err = p.Plan(t.Context(), "ambiguous", answers, nil)
+	got, err = p.Plan(t.Context(), "ambiguous", answers, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, call, got)
 }

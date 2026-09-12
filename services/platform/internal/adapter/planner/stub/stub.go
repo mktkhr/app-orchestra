@@ -85,10 +85,19 @@ func New(table map[Key]usecase.Decision, notFound *usecase.Decision) *Planner {
 	return &Planner{table: copied, notFound: *notFound}
 }
 
-// Plan looks {query, answers} up in the table. tools is accepted only to
-// satisfy usecase.Planner: the stub is a fixed mapping from a query (and
-// its answers, if any) to a Decision, not a model that reads it.
-func (p *Planner) Plan(_ context.Context, query string, answers []usecase.Answer, _ []usecase.Tool) (usecase.Decision, error) {
+// Plan looks {query, answers} up in the table. turns and tools are
+// accepted only to satisfy usecase.Planner: the stub is a fixed mapping
+// from a query (and its answers, if any) to a Decision, not a model that
+// reads either. turns is deliberately left out of Key - the stub stays
+// pure and deterministic on {query, answers} alone (the global constraint
+// that `make check` never calls a real LLM depends on every fixture
+// answering the same way every time), and no planner renders turns yet
+// (docs/plans/context.md, Task 1); a fixture that needs to distinguish two
+// conversations by what came before them is Task 2's problem, once a
+// planner actually reads turns.
+func (p *Planner) Plan(
+	_ context.Context, query string, answers []usecase.Answer, _ []usecase.Turn, _ []usecase.Tool,
+) (usecase.Decision, error) {
 	key := Key{Query: query, Answers: AnswersKey(answers)}
 	if decision, ok := p.table[key]; ok {
 		return decision, nil

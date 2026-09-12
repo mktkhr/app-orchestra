@@ -85,6 +85,30 @@ func TestNewServesHealth(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+// TestNewWithContextTurnsConfiguredStillServesHealth exercises the
+// non-zero branch of contextWindowOption: Config.ContextTurns, when set,
+// must reach usecase.NewOrchestrator without New itself refusing to build
+// (see TestNewServesHealth for the zero-value path every other test in
+// this file already takes).
+func TestNewWithContextTurnsConfiguredStillServesHealth(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "app.db")
+
+	handler, err := app.New(&app.Config{DBPath: dbPath, AdminPassword: appTestAdminPassword, ContextTurns: 3})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/api/health", http.NoBody)
+	require.NoError(t, err)
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
 // fixtureSpec is a minimal OpenAPI document for a single safe list
 // operation, served by a fixtureService.
 const fixtureSpec = `
