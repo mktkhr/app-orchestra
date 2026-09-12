@@ -30,6 +30,7 @@ interface ConversationPanelProps {
 export function ConversationPanel({ defaultWorkspaceId }: ConversationPanelProps): JSX.Element {
   return (
     <Conversation
+      conversationKey={defaultWorkspaceId ?? "chat"}
       renderSaveControl={(props) => (
         <SaveToWorkspaceControl {...props} defaultWorkspaceId={defaultWorkspaceId} />
       )}

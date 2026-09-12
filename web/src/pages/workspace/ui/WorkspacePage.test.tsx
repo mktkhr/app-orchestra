@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { getWorkspace, postInvoke } from "@/shared/api/client";
 
+import { ConversationProvider } from "@/features/conversation";
+
 import { WorkspacePage } from "./WorkspacePage";
 
 vi.mock("@/shared/api/client", () => ({
@@ -33,7 +35,11 @@ describe("WorkspacePage", () => {
       data: { items: [{ id: "itm-001" }] },
     });
 
-    render(<WorkspacePage workspaceId="ws-1" />);
+    render(
+      <ConversationProvider>
+        <WorkspacePage workspaceId="ws-1" />
+      </ConversationProvider>,
+    );
 
     expect(await screen.findByRole("heading", { name: "在庫ボード" })).toBeTruthy();
     expect(screen.getByText("検品保留の在庫")).toBeTruthy();
@@ -46,7 +52,11 @@ describe("WorkspacePage", () => {
   it("reports a workspace that failed to load", async () => {
     vi.mocked(getWorkspace).mockRejectedValue(new Error("boom"));
 
-    render(<WorkspacePage workspaceId="ws-missing" />);
+    render(
+      <ConversationProvider>
+        <WorkspacePage workspaceId="ws-missing" />
+      </ConversationProvider>,
+    );
 
     expect(await screen.findByText(/取得に失敗しました/u)).toBeTruthy();
   });
@@ -82,7 +92,11 @@ describe("WorkspacePage", () => {
       .mockResolvedValueOnce({ component: "table", data: { items: [{ id: "itm-001" }] } })
       .mockRejectedValueOnce(new Error("unreachable"));
 
-    render(<WorkspacePage workspaceId="ws-1" />);
+    render(
+      <ConversationProvider>
+        <WorkspacePage workspaceId="ws-1" />
+      </ConversationProvider>,
+    );
 
     expect(await screen.findByText("itm-001")).toBeTruthy();
     expect(await screen.findByText(/取得に失敗しました/u)).toBeTruthy();

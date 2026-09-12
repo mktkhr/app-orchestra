@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { listWorkspaces, postPlan } from "@/shared/api/client";
 
+import { ConversationProvider } from "@/features/conversation";
+
 import { ConversationPanel } from "./ConversationPanel";
 
 vi.mock("@/shared/api/client", () => ({
@@ -23,7 +25,11 @@ describe("ConversationPanel", () => {
     });
     vi.mocked(listWorkspaces).mockResolvedValue([]);
 
-    render(<ConversationPanel />);
+    render(
+      <ConversationProvider>
+        <ConversationPanel />
+      </ConversationProvider>,
+    );
 
     await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
 
@@ -44,7 +50,11 @@ describe("ConversationPanel", () => {
       { id: "ws-1", name: "在庫ボード", panelCount: 0 },
     ]);
 
-    render(<ConversationPanel defaultWorkspaceId="ws-1" />);
+    render(
+      <ConversationProvider>
+        <ConversationPanel defaultWorkspaceId="ws-1" />
+      </ConversationProvider>,
+    );
 
     await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
     await user.click(await screen.findByRole("button", { name: "ワークスペースに保存" }));

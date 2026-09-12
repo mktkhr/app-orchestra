@@ -9,6 +9,7 @@ import {
   type onUnauthorized,
   postSession,
 } from "@/shared/api/client";
+import { ConversationProvider } from "@/features/conversation";
 import { SessionProvider } from "@/features/session";
 
 import { AuthGate } from "./AuthGate";
@@ -31,7 +32,9 @@ describe("AuthGate", () => {
 
     render(
       <SessionProvider>
-        <AuthGate />
+        <ConversationProvider>
+          <AuthGate />
+        </ConversationProvider>
       </SessionProvider>,
     );
 
@@ -49,7 +52,9 @@ describe("AuthGate", () => {
 
     render(
       <SessionProvider>
-        <AuthGate />
+        <ConversationProvider>
+          <AuthGate />
+        </ConversationProvider>
       </SessionProvider>,
     );
 
@@ -68,7 +73,9 @@ describe("AuthGate", () => {
 
     render(
       <SessionProvider>
-        <AuthGate />
+        <ConversationProvider>
+          <AuthGate />
+        </ConversationProvider>
       </SessionProvider>,
     );
 
@@ -85,7 +92,9 @@ describe("AuthGate", () => {
 
     render(
       <SessionProvider>
-        <AuthGate />
+        <ConversationProvider>
+          <AuthGate />
+        </ConversationProvider>
       </SessionProvider>,
     );
 

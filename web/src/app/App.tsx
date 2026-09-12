@@ -2,6 +2,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
 import type { JSX } from "react";
 
+import { ConversationProvider } from "@/features/conversation";
 import { SessionProvider } from "@/features/session";
 
 import { theme } from "./theme";
@@ -20,7 +21,9 @@ export function App(): JSX.Element {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <SessionProvider>
-        <AuthGate />
+        <ConversationProvider>
+          <AuthGate />
+        </ConversationProvider>
       </SessionProvider>
     </ThemeProvider>
   );

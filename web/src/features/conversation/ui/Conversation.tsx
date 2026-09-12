@@ -1,16 +1,24 @@
 import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import { useState, type JSX, type ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 
-import { postPlan, type PlanResult } from "@/shared/api/client";
-import { nextTurnId } from "@/shared/lib/turnId";
+import type { PlanResult } from "@/shared/api/client";
 
-import type { Turn } from "../model/turn";
+import { useConversation } from "../model/conversationContext";
 import { ExampleQuestions } from "./ExampleQuestions";
 import { QuestionForm } from "./QuestionForm";
 import { TurnList, type SaveControlSlotProps } from "./TurnList";
 
 interface ConversationProps {
+  /**
+   * Which conversation this draws - `"chat"`, or a workspace id
+   * (`docs/specs/context.md` section 3a). The conversation itself lives in
+   * `ConversationProvider`, above whichever screen mounts this component, so
+   * the same key always finds the same turns even after this component has
+   * unmounted and remounted (opening a workspace and coming back).
+   */
+  readonly conversationKey: string;
   /**
    * Draws a result turn's "save to a workspace" control - forwarded
    * straight to `TurnList`. See that prop's doc for why this is a slot
@@ -26,26 +34,12 @@ interface ConversationProps {
  * first question - the example questions (AC-F-104). See
  * docs/specs/orchestration.md section 7.
  */
-export function Conversation({ renderSaveControl }: ConversationProps = {}): JSX.Element {
-  const [turns, setTurns] = useState<readonly Turn[]>([]);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const ask = async (query: string): Promise<void> => {
-    setError(null);
-    setPending(true);
-    setTurns((current) => [...current, { id: nextTurnId(), role: "question", text: query }]);
-
-    try {
-      const result = await postPlan({ query });
-
-      setTurns((current) => [...current, { id: nextTurnId(), role: "answer", result }]);
-    } catch {
-      setError("質問の送信に失敗しました。時間をおいて試してください。");
-    } finally {
-      setPending(false);
-    }
-  };
+export function Conversation({
+  conversationKey,
+  renderSaveControl,
+}: ConversationProps): JSX.Element {
+  const { turns, pending, error, ask, submitForm, newConversation } =
+    useConversation(conversationKey);
 
   const handleSubmit = (query: string): void => {
     void ask(query);
@@ -54,11 +48,11 @@ export function Conversation({ renderSaveControl }: ConversationProps = {}): JSX
   /**
    * `ResultForm`'s successful `/api/invoke` result, already shaped as the
    * `PlanResult` a `kind: "result"` answer would carry (see
-   * `ResultForm`'s `onSubmitted` doc). Turned into a turn here, the only
-   * place that owns `turns` and mints ids.
+   * `ResultForm`'s `onSubmitted` doc). Turned into a turn by the store, the
+   * only place that owns turns and mints ids.
    */
   const handleFormSubmitted = (result: PlanResult): void => {
-    setTurns((current) => [...current, { id: nextTurnId(), role: "answer", result }]);
+    submitForm(result);
   };
 
   return (
@@ -66,11 +60,16 @@ export function Conversation({ renderSaveControl }: ConversationProps = {}): JSX
       {turns.length === 0 ? (
         <ExampleQuestions onSelect={handleSubmit} disabled={pending} />
       ) : (
-        <TurnList
-          turns={turns}
-          onFormSubmitted={handleFormSubmitted}
-          renderSaveControl={renderSaveControl}
-        />
+        <>
+          <TurnList
+            turns={turns}
+            onFormSubmitted={handleFormSubmitted}
+            renderSaveControl={renderSaveControl}
+          />
+          <Button variant="outlined" onClick={newConversation} sx={{ alignSelf: "flex-start" }}>
+            新しい会話
+          </Button>
+        </>
       )}
       {error === null ? null : <Alert severity="error">{error}</Alert>}
       <QuestionForm onSubmit={handleSubmit} disabled={pending} />

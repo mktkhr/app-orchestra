@@ -277,12 +277,28 @@ export type components = {
             /** @description The chosen value. */
             readonly value: string;
         };
-        /** @description A question, and any answers to a previous disambiguation. */
+        /** @description One earlier question in the conversation, and what the platform decided for it - never the answer's data (docs/specs/context.md, section 3). `PlanRequest.turns` carries these oldest first. */
+        readonly Turn: {
+            /** @description The question, in Japanese, as it was asked. */
+            readonly question: string;
+            readonly kind: components["schemas"]["DecisionKind"];
+            /** @description The service the decision named. Absent when kind is "none". */
+            readonly service?: string;
+            /** @description The operation id the decision named. Absent when kind is "none". */
+            readonly operationId?: string;
+            /** @description The arguments the decision was made with. */
+            readonly args?: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** @description A question, any answers to a previous disambiguation, and the conversation before it. */
         readonly PlanRequest: {
             /** @description The question, in Japanese. */
             readonly query: string;
             /** @description Answers to a previous `kind: ask` response, if any. */
             readonly answers?: readonly components["schemas"]["Answer"][];
+            /** @description The conversation so far, oldest first. Absent or empty means what it means today: a question with no history (docs/specs/context.md, section 5). */
+            readonly turns?: readonly components["schemas"]["Turn"][];
         };
         /**
          * @description What the planner decided to do about a question.

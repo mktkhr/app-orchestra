@@ -4,15 +4,31 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { postPlan } from "@/shared/api/client";
 
+import { ConversationProvider } from "../model/conversationStore";
 import { Conversation } from "./Conversation";
 
 vi.mock("@/shared/api/client", () => ({
   postPlan: vi.fn<typeof postPlan>(),
 }));
 
+/** Reads an array element without a non-null assertion or an in-test conditional. */
+function nth<T>(items: readonly T[], index: number): T {
+  const item = items[index];
+
+  if (item === undefined) {
+    throw new Error(`expected an element at index ${String(index)}`);
+  }
+
+  return item;
+}
+
 describe("Conversation", () => {
   it("shows the three example questions before the first turn", () => {
-    render(<Conversation />);
+    render(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+      </ConversationProvider>,
+    );
 
     expect(screen.getByRole("button", { name: "在庫の一覧を見せて" })).toBeTruthy();
     expect(
@@ -29,7 +45,11 @@ describe("Conversation", () => {
       message: "該当する操作が見つかりませんでした。",
     });
 
-    render(<Conversation />);
+    render(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+      </ConversationProvider>,
+    );
 
     await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
 
@@ -51,7 +71,11 @@ describe("Conversation", () => {
         }),
     );
 
-    render(<Conversation />);
+    render(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+      </ConversationProvider>,
+    );
 
     await user.type(screen.getByLabelText("質問を入力"), "出勤簿を見せて");
     await user.click(screen.getByRole("button", { name: "送信" }));
@@ -70,7 +94,11 @@ describe("Conversation", () => {
 
     vi.mocked(postPlan).mockRejectedValue(new Error("network down"));
 
-    render(<Conversation />);
+    render(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+      </ConversationProvider>,
+    );
 
     await user.type(screen.getByLabelText("質問を入力"), "壊れた質問");
     await user.click(screen.getByRole("button", { name: "送信" }));
@@ -96,7 +124,11 @@ describe("Conversation", () => {
       },
     });
 
-    render(<Conversation />);
+    render(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+      </ConversationProvider>,
+    );
 
     await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
 
@@ -119,7 +151,11 @@ describe("Conversation", () => {
       source: { service: "inventory", operationId: "listInventoryItems" },
     });
 
-    render(<Conversation />);
+    render(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+      </ConversationProvider>,
+    );
 
     await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
     expect(await screen.findByText("itm-001")).toBeTruthy();
@@ -152,7 +188,11 @@ describe("Conversation", () => {
       ],
     });
 
-    render(<Conversation />);
+    render(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+      </ConversationProvider>,
+    );
 
     await user.click(screen.getByRole("button", { name: "破損した在庫はある？" }));
 
@@ -177,5 +217,61 @@ describe("Conversation", () => {
       answers: [{ param: "status", value: "quarantined" }],
     });
     expect(await screen.findByText("itm-001")).toBeTruthy();
+  });
+
+  it("keeps its turns after unmounting and remounting with the same key", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(postPlan).mockResolvedValue({ kind: "none", message: "結果はありません。" });
+
+    const { rerender } = render(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+      </ConversationProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
+    expect(await screen.findByText("結果はありません。")).toBeTruthy();
+
+    // Simulate opening a workspace (unmounting Conversation) and coming back.
+    rerender(
+      <ConversationProvider>
+        <div>elsewhere</div>
+      </ConversationProvider>,
+    );
+    rerender(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+      </ConversationProvider>,
+    );
+
+    expect(screen.getByText("在庫の一覧を見せて")).toBeTruthy();
+    expect(screen.getByText("結果はありません。")).toBeTruthy();
+  });
+
+  it("empties its turns, and only its own, when 新しい会話 is pressed", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(postPlan).mockResolvedValue({ kind: "none", message: "結果はありません。" });
+
+    render(
+      <ConversationProvider>
+        <Conversation conversationKey="chat" />
+        <Conversation conversationKey="ws-1" />
+      </ConversationProvider>,
+    );
+
+    const askButtons = screen.getAllByRole("button", { name: "在庫の一覧を見せて" });
+
+    await user.click(nth(askButtons, 0));
+    await user.click(nth(askButtons, 1));
+    await screen.findAllByText("結果はありません。");
+
+    const newConversationButtons = screen.getAllByRole("button", { name: "新しい会話" });
+
+    await user.click(nth(newConversationButtons, 0));
+
+    expect(screen.getAllByRole("button", { name: "在庫の一覧を見せて" })).toHaveLength(1);
+    expect(screen.getAllByText("結果はありません。")).toHaveLength(1);
   });
 });
