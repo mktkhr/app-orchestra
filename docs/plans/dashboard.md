@@ -298,6 +298,16 @@ different audience (spec section 5).
 and one whose view names a chart gets a chart. A panel with no view draws
 exactly as it does today.
 
+`ResultChart` currently draws at a fixed 320x240, because `@mui/x-charts`
+measures its container with `getComputedStyle` and a test environment with
+no layout engine returns 0 (Task 1's own comment says so). That is the test
+environment deciding the product's layout, which is backwards, and a panel
+is where it stops being tolerable: a 320px chart in a wide card looks like
+a mistake. Give `ResultChart` the size its caller wants - optional props,
+defaulting to what it has now so Task 1's tests keep working - and have the
+panel pass what the panel knows. Check it at 375px too; `make guard-layout`
+will.
+
 - [ ] **Step 1** Write the test: a panel with `view.chart` renders the chart
       component; one with `view.transform` renders the grouped rows; one
       with neither renders the table it renders today (AC-P-106). Run it,

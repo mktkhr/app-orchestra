@@ -2136,3 +2136,37 @@ structural rather than textual: `ask_user` is a separate tool competing
 with the operation's own tool, so every attempt so far has been arguing
 with the model about which tool to pick, and the thing to change is that it
 has to pick.
+
+## 2026-09-12 — @mui/x-charts, pinned exactly, captioned rather than titled
+
+**Context.** `docs/plans/dashboard.md` Task 1 adds the first chart. Two
+things about the dependency were worth settling rather than rediscovering.
+
+**Decision, the version.** `@mui/x-charts` is pinned exactly (`9.4.0`),
+where `@mui/material` and `@mui/icons-material` beside it carry `^9.4.0`.
+The carets are held down by a lockfile that already resolved them to
+9.4.0; a third caret had nothing holding it and resolved fresh to the
+latest (9.13.0), which is not the same line as the other two. An exact pin
+says what the other two mean rather than depending on a lockfile never
+being regenerated. MUI's packages are not in `pnpm-workspace.yaml`'s
+catalog - that file is a protected harness path, and which packages belong
+in it is not a question this task gets to answer.
+
+**Decision, the accessibility tree.** A chart is the first thing in this
+repository that is a picture, and `make guard-a11y` runs axe against a
+real screen. `@mui/x-charts`' own `title` prop is not the way to give one
+a text alternative: it lands as an `aria-label` on a `role="none"`
+container, which axe's `aria-prohibited-attr` rule (WCAG 4.1.2) rejects
+outright. The browser's own accessibility tree recovers - `role="none"`
+loses to the presentational-conflict rule and the container resolves to
+`generic` carrying the label as its name - but axe reports the authored
+markup, not the resolved tree, so the gate fails either way. `ResultChart`
+draws its title as a visible `<figure>`/`<figcaption>` instead, which is
+both violation-free and readable by someone who can see it. Verified by
+running the built chart's HTML through axe-core in Chromium, before the
+component was written that way, not read out of the library's docs.
+
+**Consequences.** Any future chart in this repository gets its text
+alternative the same way. A caption a person can read is a better answer
+than a label only a screen reader gets, so this is not a workaround being
+tolerated - it is the thing that should have been done first.
