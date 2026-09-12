@@ -177,6 +177,50 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/users": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List every account.
+         * @description Every account the platform knows, admin only (docs/specs/auth.md, A5). A non-admin gets 403.
+         */
+        readonly get: operations["listUsers"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/users/{id}/permissions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Read one account's permissions.
+         * @description Every operation the named account may call, admin only (docs/specs/auth.md, A5). A non-admin gets 403.
+         */
+        readonly get: operations["getUserPermissions"];
+        /**
+         * Replace one account's permissions, wholesale.
+         * @description Admin only (docs/specs/auth.md, A5). Replaces every permission the named account holds with the ones given - a grant screen writes the whole set it shows, not a diff against what was there before (usecase.PermissionStore.Set).
+         */
+        readonly put: operations["setUserPermissions"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -370,6 +414,17 @@ export type components = {
             readonly name: string;
             /** @description The workspace's panels, in position order. */
             readonly panels: readonly components["schemas"]["Panel"][];
+        };
+        /** @description One operation a person may call (docs/specs/auth.md, section 4, A3). A row says this person may call this operation; there is no deny, because there is nothing to override. */
+        readonly Permission: {
+            /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
+            readonly service: string;
+            /** @description The operation id, as declared in that service's contract. */
+            readonly operationId: string;
+        };
+        /** @description The whole set of permissions an account should hold, replacing whatever it held before (usecase.PermissionStore.Set). */
+        readonly SetUserPermissionsRequest: {
+            readonly permissions: readonly components["schemas"]["Permission"][];
         };
     };
     responses: never;
@@ -721,6 +776,99 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly listUsers: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Every account. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["User"][];
+                };
+            };
+            /** @description The signed-in account is not an admin. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly getUserPermissions: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description The permissions the account holds. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["Permission"][];
+                };
+            };
+            /** @description The signed-in account is not an admin. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly setUserPermissions: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SetUserPermissionsRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description The account's permissions were replaced. */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The signed-in account is not an admin. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };

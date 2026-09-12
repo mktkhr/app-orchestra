@@ -69,6 +69,60 @@ func (u *Users) ByName(ctx context.Context, name string) (UserRecord, bool, erro
 	return rec, true, nil
 }
 
+// List returns every account (docs/specs/auth.md, section 6: GET
+// /api/users), in name order - no password hash, the same reason
+// domain.User itself carries none.
+func (u *Users) List(ctx context.Context) ([]domain.User, error) {
+	rows, err := u.db.QueryContext(ctx, `SELECT id, name, role FROM users ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("listing accounts: %w", err)
+	}
+	defer rows.Close()
+
+	var users []domain.User
+
+	for rows.Next() {
+		var (
+			user domain.User
+			role string
+		)
+
+		if err := rows.Scan(&user.ID, &user.Name, &role); err != nil {
+			return nil, fmt.Errorf("scanning account: %w", err)
+		}
+
+		user.Role = domain.Role(role)
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("listing accounts: %w", err)
+	}
+
+	return users, nil
+}
+
+// Create inserts a new account named name, with role and hash as given,
+// and returns its assigned id. Unlike SeedAdminIfNone, this does not check
+// whether the table is already populated - it is the lower-level primitive
+// internal/adapter/auth/local.EnsureAccount uses to create an account with
+// any role, once it has already decided (by name) that none exists yet.
+// A duplicate name is rejected by the users table's own UNIQUE constraint
+// (schema.sql), surfaced here as a plain error.
+func (u *Users) Create(ctx context.Context, name, role, hash string) (string, error) {
+	id := newID("usr")
+
+	if _, err := u.db.ExecContext(
+		ctx,
+		`INSERT INTO users (id, name, role, password_hash) VALUES (?, ?, ?, ?)`,
+		id, name, role, hash,
+	); err != nil {
+		return "", fmt.Errorf("creating account %q: %w", name, err)
+	}
+
+	return id, nil
+}
+
 // SeedAdminIfNone inserts a fresh admin account named name, with hash as
 // its password hash, but only when the users table is currently empty -
 // so a platform started against a database that already has accounts

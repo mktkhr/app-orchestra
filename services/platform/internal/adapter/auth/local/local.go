@@ -42,6 +42,44 @@ func New(ctx context.Context, store *sqlite.Users, adminName, adminPassword stri
 	return &Authenticator{store: store}, nil
 }
 
+// ErrEmptyPassword is returned by EnsureAccount when password is empty,
+// for the same reason New refuses an empty adminPassword
+// (ErrEmptyAdminPassword): a default password is a way of having none
+// while appearing to.
+var ErrEmptyPassword = errors.New("the password must not be empty")
+
+// EnsureAccount returns the account named name, creating one with
+// password and role first when none exists yet. Unlike New's own seeding
+// (which only ever runs once, against an empty table, and only for the
+// admin), this checks by name and may be called for any role - it is not
+// reachable through any HTTP route (docs/specs/auth.md, section 8: no
+// account creation through the UI, and nothing here changes that), only
+// through pkg/app's own Config, the platform's composition root - the
+// same seam ORCHESTRA_ADMIN_PASSWORD already uses to put the first
+// account in place. A caller that already has an account (an operator's
+// deployment config, or an acceptance test building the accounts its
+// scenario needs) uses this to put a second, third, or non-admin one
+// there too, without a network-reachable "anyone can register" endpoint
+// ever existing.
+func EnsureAccount(ctx context.Context, store *sqlite.Users, name, password string, role domain.Role) (domain.User, error) {
+	if password == "" {
+		return domain.User{}, ErrEmptyPassword
+	}
+
+	if rec, found, err := store.ByName(ctx, name); err != nil {
+		return domain.User{}, fmt.Errorf("looking up %q: %w", name, err)
+	} else if found {
+		return domain.User{ID: rec.ID, Name: rec.Name, Role: rec.Role}, nil
+	}
+
+	id, err := store.Create(ctx, name, string(role), hashPassword(password))
+	if err != nil {
+		return domain.User{}, fmt.Errorf("creating account %q: %w", name, err)
+	}
+
+	return domain.User{ID: id, Name: name, Role: role}, nil
+}
+
 // Authenticate checks name and password against the stored accounts and
 // answers with the matching domain.User, or false when either is wrong -
 // the same answer either way, so a caller can never tell "no such account"

@@ -152,6 +152,29 @@ type Config struct {
 	// both together (internal/infra/config.Load refuses to start without
 	// ORCHESTRA_ADMIN_PASSWORD either).
 	AdminPassword string
+	// SeedAccounts puts each account in place - by name, only when it does
+	// not already exist - once the admin account above is seeded. Never
+	// set by cmd/api (internal/infra/config.Load has no env var for it):
+	// this is not a second, softer way to create an account over the wire,
+	// it is how a caller of pkg/app.New itself - an acceptance test that
+	// needs a non-admin account to sign in as, most likely - puts one in
+	// place through the composition root rather than through a route
+	// (docs/specs/auth.md, section 8: account creation stays out of the
+	// UI; this does not put it back in, since nothing exposes it over
+	// HTTP).
+	SeedAccounts []SeedAccount
+}
+
+// SeedAccount is one account for New to put in place via SeedAccounts,
+// before it ever serves a request - see that field's own doc comment.
+type SeedAccount struct {
+	Name     string
+	Password string
+	// Role is domain.RoleAdmin or domain.RoleUser, as a plain string for
+	// the same reason LLM.Mode mirrors config.Config's own string rather
+	// than an internal type: pkg/app's one public package should not force
+	// a caller to import internal/domain just to spell a role.
+	Role string
 }
 
 // adminUserName is the name the first admin account is seeded under
@@ -195,9 +218,13 @@ func build(
 		return nil, err
 	}
 
-	authenticator, sessions, err := newAuth(cfg)
+	authenticator, sessions, users, err := newAuth(cfg)
 	if err != nil {
 		return nil, err
+	}
+
+	if seedErr := seedAccounts(context.Background(), users, cfg.SeedAccounts); seedErr != nil {
+		return nil, seedErr
 	}
 
 	planner, err := newPlanner(cfg, catalog)
@@ -212,6 +239,7 @@ func build(
 
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions)
+	adminUsecase := usecase.NewAdmin(users, permissions)
 
 	api := handler.NewAPI(
 		handler.NewHealth(),
@@ -219,6 +247,7 @@ func build(
 		handler.NewPlan(orchestrator),
 		handler.NewInvoke(orchestrator),
 		workspaceHandler,
+		handler.NewUsers(adminUsecase),
 	)
 
 	router, err := newRouter(api, cfg.StaticDir, sessions)
@@ -333,37 +362,59 @@ func newPermissionStore(dbPath string) (usecase.PermissionStore, error) {
 	return store, nil
 }
 
-// newAuth builds what Task 2's session endpoints need - a
-// usecase.Authenticator and a usecase.SessionStore, both backed by the
-// SQLite file at cfg.DBPath. build has already rejected an empty DBPath
-// itself (ErrMissingDBPath), so sessions is always a real, non-nil store
-// by the time it reaches httpserver.NewRouter - there is no longer a nil
-// case for requireSession to answer by running every request as a fixed
-// admin (see that function's doc comment for why that bypass was removed
-// entirely, not just made harder to reach).
+// newAuth builds what Task 2's session endpoints, and Task 3's admin ones,
+// need - a usecase.Authenticator, a usecase.SessionStore and the
+// *sqlitestore.Users store itself (which also satisfies usecase.UserStore,
+// for GET /api/users - handler.NewUsers's own Admin usecase, wired in
+// build), all backed by the SQLite file at cfg.DBPath. build has already
+// rejected an empty DBPath itself (ErrMissingDBPath), so sessions is
+// always a real, non-nil store by the time it reaches
+// httpserver.NewRouter - there is no longer a nil case for requireSession
+// to answer by running every request as a fixed admin (see that function's
+// doc comment for why that bypass was removed entirely, not just made
+// harder to reach).
 //
 // Opening the accounts table also seeds the first admin from
 // cfg.AdminPassword when none exists yet (docs/specs/auth.md, section 3;
 // docs/plans/auth.md, Task 0, Step 3) - so a bad ORCHESTRA_ADMIN_PASSWORD
 // fails startup here, the same reason newWorkspaceHandler's store open and
 // newPlanner's catalogue fetch do, above.
-func newAuth(cfg *Config) (usecase.Authenticator, usecase.SessionStore, error) {
+func newAuth(cfg *Config) (usecase.Authenticator, usecase.SessionStore, *sqlitestore.Users, error) {
 	users, err := sqlitestore.NewUsers(cfg.DBPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("opening the user store: %w", err)
+		return nil, nil, nil, fmt.Errorf("opening the user store: %w", err)
 	}
 
 	authenticator, err := local.New(context.Background(), users, adminUserName, cfg.AdminPassword)
 	if err != nil {
-		return nil, nil, fmt.Errorf("seeding the admin account: %w", err)
+		return nil, nil, nil, fmt.Errorf("seeding the admin account: %w", err)
 	}
 
 	sessions, err := sqlitestore.NewSessions(cfg.DBPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("opening the session store: %w", err)
+		return nil, nil, nil, fmt.Errorf("opening the session store: %w", err)
 	}
 
-	return authenticator, sessions, nil
+	return authenticator, sessions, users, nil
+}
+
+// seedAccounts puts every SeedAccount in accounts in place - creating each
+// one, by name, when it does not already exist (local.EnsureAccount) -
+// once the admin account is already seeded. Not reachable through any
+// HTTP route: cmd/api's Config never sets SeedAccounts (nothing in
+// internal/infra/config.Load populates it), so this only ever runs for a
+// caller of pkg/app.New that builds one into its own Config directly - the
+// platform's composition root, the same seam AdminPassword itself uses,
+// not a network-reachable "anyone can register" endpoint
+// (docs/specs/auth.md, section 8: no account creation through the UI).
+func seedAccounts(ctx context.Context, users *sqlitestore.Users, accounts []SeedAccount) error {
+	for _, account := range accounts {
+		if _, err := local.EnsureAccount(ctx, users, account.Name, account.Password, domain.Role(account.Role)); err != nil {
+			return fmt.Errorf("seeding account %q: %w", account.Name, err)
+		}
+	}
+
+	return nil
 }
 
 // newPlanner selects the platform's usecase.Planner from cfg: the

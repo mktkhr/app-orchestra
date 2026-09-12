@@ -93,6 +93,73 @@ func TestNewDoesNotReseedOrOverwriteAnExistingAdmin(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// TestEnsureAccountCreatesAnAccountThatThenAuthenticates proves
+// EnsureAccount puts a non-admin account in place - the seam
+// pkg/app.Config.SeedAccounts uses, and acceptance tests use through it,
+// to build the accounts docs/plans/auth.md, Task 3's own tests need
+// (docs/specs/auth.md, section 8: still no account creation over HTTP,
+// only through this Go-level seam).
+func TestEnsureAccountCreatesAnAccountThatThenAuthenticates(t *testing.T) {
+	ctx := context.Background()
+	store := openUsers(t)
+
+	auth, err := local.New(ctx, store, "admin", "correct horse battery staple")
+	require.NoError(t, err)
+
+	user, err := local.EnsureAccount(ctx, store, "yamada", "yamada's password", domain.RoleUser)
+	require.NoError(t, err)
+	assert.Equal(t, "yamada", user.Name)
+	assert.Equal(t, domain.RoleUser, user.Role)
+	require.NotEmpty(t, user.ID)
+
+	authenticated, ok, err := auth.Authenticate(ctx, "yamada", "yamada's password")
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, user.ID, authenticated.ID)
+	assert.Equal(t, domain.RoleUser, authenticated.Role)
+}
+
+// TestEnsureAccountIsIdempotentByName proves calling it twice for the same
+// name does not create a second account, or change the first one's
+// password - the same "by name" rule its own doc comment describes.
+func TestEnsureAccountIsIdempotentByName(t *testing.T) {
+	ctx := context.Background()
+	store := openUsers(t)
+
+	first, err := local.EnsureAccount(ctx, store, "yamada", "first password", domain.RoleUser)
+	require.NoError(t, err)
+
+	second, err := local.EnsureAccount(ctx, store, "yamada", "a different password", domain.RoleAdmin)
+	require.NoError(t, err)
+
+	assert.Equal(t, first.ID, second.ID)
+	assert.Equal(t, domain.RoleUser, second.Role, "the account already there is not re-created with the new role")
+
+	auth, err := local.New(ctx, store, "admin-for-this-test", "irrelevant admin password")
+	require.NoError(t, err)
+
+	_, ok, err := auth.Authenticate(ctx, "yamada", "first password")
+	require.NoError(t, err)
+	assert.True(t, ok, "the first password still authenticates")
+
+	_, ok, err = auth.Authenticate(ctx, "yamada", "a different password")
+	require.NoError(t, err)
+	assert.False(t, ok, "the second call's password was never stored")
+}
+
+// TestEnsureAccountRejectsAnEmptyPassword mirrors New's own refusal of an
+// empty admin password (ErrEmptyAdminPassword): a default password is a
+// way of having none while appearing to.
+func TestEnsureAccountRejectsAnEmptyPassword(t *testing.T) {
+	ctx := context.Background()
+	store := openUsers(t)
+
+	_, err := local.EnsureAccount(ctx, store, "yamada", "", domain.RoleUser)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, local.ErrEmptyPassword)
+}
+
 // TestStoredHashIsNotThePlainPassword proves the password never lands in
 // storage as plaintext: the stored hash is an argon2id PHC string, not
 // the password it was derived from.
@@ -112,4 +179,67 @@ func TestStoredHashIsNotThePlainPassword(t *testing.T) {
 	assert.NotEqual(t, password, rec.Hash)
 	assert.NotContains(t, rec.Hash, password)
 	assert.True(t, strings.HasPrefix(rec.Hash, "$argon2id$"))
+}
+
+// TestNewFailsWhenTheStoreCannotBeQueried exercises New's own database
+// error path (SeedAdminIfNone failing) the same way
+// sqlite_test.TestStoreOperationsFailOnClosedStore exercises the
+// workspace store's: a closed *sqlite.Users produces the same shape of
+// failure a disk error or a killed connection would, without needing to
+// fake either.
+func TestNewFailsWhenTheStoreCannotBeQueried(t *testing.T) {
+	store := openUsers(t)
+	require.NoError(t, store.Close())
+
+	_, err := local.New(context.Background(), store, "admin", "correct horse battery staple")
+
+	require.Error(t, err)
+}
+
+// TestEnsureAccountFailsWhenTheStoreCannotBeQueried is EnsureAccount's own
+// version of TestNewFailsWhenTheStoreCannotBeQueried.
+func TestEnsureAccountFailsWhenTheStoreCannotBeQueried(t *testing.T) {
+	store := openUsers(t)
+	require.NoError(t, store.Close())
+
+	_, err := local.EnsureAccount(context.Background(), store, "yamada", "yamada's password", domain.RoleUser)
+
+	require.Error(t, err)
+}
+
+// TestAuthenticateFailsWhenTheStoreCannotBeQueried is Authenticate's own
+// version of the same failure mode - the account lookup itself fails,
+// rather than merely finding nothing.
+func TestAuthenticateFailsWhenTheStoreCannotBeQueried(t *testing.T) {
+	ctx := context.Background()
+	store := openUsers(t)
+
+	auth, err := local.New(ctx, store, "admin", "correct horse battery staple")
+	require.NoError(t, err)
+
+	require.NoError(t, store.Close())
+
+	_, _, err = auth.Authenticate(ctx, "admin", "correct horse battery staple")
+
+	require.Error(t, err)
+}
+
+// TestAuthenticateFailsWhenTheStoredHashIsMalformed proves a corrupted
+// stored hash - never one hashPassword itself wrote - fails loudly
+// (local.ErrMalformedHash, wrapped) rather than being treated as a
+// non-match, the same distinction verifyPassword's own tests make at the
+// hashing layer; this exercises it through Authenticate.
+func TestAuthenticateFailsWhenTheStoredHashIsMalformed(t *testing.T) {
+	ctx := context.Background()
+	store := openUsers(t)
+
+	_, err := store.Create(ctx, "yamada", string(domain.RoleUser), "not-a-valid-hash")
+	require.NoError(t, err)
+
+	auth, err := local.New(ctx, store, "admin", "correct horse battery staple")
+	require.NoError(t, err)
+
+	_, _, err = auth.Authenticate(ctx, "yamada", "whatever")
+
+	require.Error(t, err)
 }

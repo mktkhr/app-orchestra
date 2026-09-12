@@ -399,3 +399,64 @@ func TestNewServesInvokeAndRejectsAnUnknownEndpoint(t *testing.T) {
 	// Task 8), not the 501 the placeholder used to answer with.
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
+
+// TestNewSeedsExtraAccountsFromSeedAccounts proves the composition-root
+// seam pkg/app.Config.SeedAccounts uses to put a non-admin account in
+// place - the way an acceptance test builds one, since there is no HTTP
+// route that creates accounts (docs/specs/auth.md, section 8;
+// docs/plans/auth.md, Task 3): a person seeded this way signs in over
+// /api/session exactly like the admin does.
+func TestNewSeedsExtraAccountsFromSeedAccounts(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "seed-accounts.db")
+
+	handler, err := app.New(&app.Config{
+		DBPath:        dbPath,
+		AdminPassword: appTestAdminPassword,
+		SeedAccounts: []app.SeedAccount{
+			{Name: "yamada", Password: "yamada's password", Role: "user"},
+		},
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	server.Client().Jar = jar
+
+	raw, err := json.Marshal(map[string]any{"name": "yamada", "password": "yamada's password"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/session", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Role string `json:"role"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "user", body.Role)
+}
+
+// TestNewFailsWhenASeedAccountIsInvalid proves a bad SeedAccounts entry -
+// an empty password, the same rule AdminPassword itself follows - fails
+// startup rather than silently skipping the account.
+func TestNewFailsWhenASeedAccountIsInvalid(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "bad-seed-account.db")
+
+	_, err := app.New(&app.Config{
+		DBPath:        dbPath,
+		AdminPassword: appTestAdminPassword,
+		SeedAccounts:  []app.SeedAccount{{Name: "yamada", Password: "", Role: "user"}},
+	})
+
+	require.Error(t, err)
+}
