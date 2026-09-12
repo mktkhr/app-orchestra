@@ -41,6 +41,14 @@ describe("useHashRoute", () => {
     expect(result.current).toEqual({ screen: "workspace", workspaceId: "ws-1" });
   });
 
+  it("reads users for #users", () => {
+    setHash("#users");
+
+    const { result } = renderHook(() => useHashRoute());
+
+    expect(result.current).toEqual({ screen: "users" });
+  });
+
   it("follows a hash change after mount", () => {
     const { result } = renderHook(() => useHashRoute());
 

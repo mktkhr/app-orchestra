@@ -55,11 +55,17 @@
 **/test-results/
 **/playwright-report/
 **/blob-report/
-**/sessions/
-**/users/
 **/coverage/
 /services/*/bin/
 /services/*/tmp/
+# The platform's local dev data, when a service runs against a directory of
+# loose files instead of the SQLite file docs/specs/auth.md section 3
+# actually uses. Anchored under services/*/ - `**/sessions/` and `**/users/`
+# used to match anywhere, which also matched the (tracked) source trees
+# `web/src/features/session/` and `web/src/pages/users/`
+# (docs/plans/auth.md Task 4/5).
+/services/*/sessions/
+/services/*/users/
 # `go build` drops the binary next to its source and it has no extension.
 /harness/guard/archcheck/archcheck
 *.tsbuildinfo

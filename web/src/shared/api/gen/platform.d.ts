@@ -221,6 +221,26 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/operations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List every operation across every configured service.
+         * @description Every operation the catalogue holds, admin only (docs/specs/auth.md, section 4). GET /api/users/{id}/permissions answers only what one account already holds; the permission grid needs the whole catalogue to draw itself, grouped by service, and this is where it reads that from. A non-admin gets 403.
+         */
+        readonly get: operations["listOperations"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -414,6 +434,15 @@ export type components = {
             readonly name: string;
             /** @description The workspace's panels, in position order. */
             readonly panels: readonly components["schemas"]["Panel"][];
+        };
+        /** @description One operation the catalogue holds - a service and operation id, with its summary, for the admin's permission grid (docs/specs/auth.md, section 4). GET /api/operations lists every one of these; Permission names which of them one account may call. */
+        readonly Operation: {
+            /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
+            readonly service: string;
+            /** @description The operation id, as declared in that service's contract. */
+            readonly operationId: string;
+            /** @description The operation's summary, from its contract. */
+            readonly summary?: string;
         };
         /** @description One operation a person may call (docs/specs/auth.md, section 4, A3). A row says this person may call this operation; there is no deny, because there is nothing to override. */
         readonly Permission: {
@@ -860,6 +889,35 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The signed-in account is not an admin. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly listOperations: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Every operation, across every configured service. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["Operation"][];
+                };
             };
             /** @description The signed-in account is not an admin. */
             readonly 403: {

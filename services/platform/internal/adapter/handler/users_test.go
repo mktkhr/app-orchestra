@@ -26,6 +26,9 @@ type fakeAdmin struct {
 	setPermissionsErr    error
 	setPermissionsTarget string
 	setPermissionsIn     []domain.Permission
+
+	operationsResult []domain.Endpoint
+	operationsErr    error
 }
 
 func (f *fakeAdmin) ListUsers(context.Context, *domain.User) ([]domain.User, error) {
@@ -48,6 +51,10 @@ func (f *fakeAdmin) SetPermissions(
 	f.setPermissionsIn = permissions
 
 	return f.setPermissionsErr
+}
+
+func (f *fakeAdmin) Operations(context.Context, *domain.User) ([]domain.Endpoint, error) {
+	return f.operationsResult, f.operationsErr
 }
 
 var testAdminUser = &domain.User{ID: "usr-admin", Name: "admin", Role: domain.RoleAdmin}
@@ -174,6 +181,47 @@ func TestUsersSetUserPermissionsReturnsAnErrorForAGenuineFailure(t *testing.T) {
 		Id:   "usr-1",
 		Body: &openapi.SetUserPermissionsRequest{Permissions: []openapi.Permission{}},
 	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, boom)
+}
+
+func TestUsersListOperationsReturnsTheWholeCatalogue(t *testing.T) {
+	admin := &fakeAdmin{operationsResult: []domain.Endpoint{
+		{Service: "inventory", OperationID: "ListInventoryItems", Summary: "List items"},
+		{Service: "attendance", OperationID: "ListAttendance"},
+	}}
+	h := handler.NewUsers(admin)
+
+	resp, err := h.ListOperations(handler.WithUser(t.Context(), testAdminUser), openapi.ListOperationsRequestObject{})
+
+	require.NoError(t, err)
+	list, ok := resp.(openapi.ListOperations200JSONResponse)
+	require.True(t, ok)
+	require.Len(t, list, 2)
+	assert.Equal(t, "inventory", list[0].Service)
+	assert.Equal(t, "ListInventoryItems", list[0].OperationId)
+	require.NotNil(t, list[0].Summary)
+	assert.Equal(t, "List items", *list[0].Summary)
+	assert.Nil(t, list[1].Summary)
+}
+
+func TestUsersListOperationsReturns403ForANonAdmin(t *testing.T) {
+	admin := &fakeAdmin{operationsErr: usecase.ErrNotAdmin}
+	h := handler.NewUsers(admin)
+
+	resp, err := h.ListOperations(t.Context(), openapi.ListOperationsRequestObject{})
+
+	require.NoError(t, err)
+	_, ok := resp.(openapi.ListOperations403JSONResponse)
+	assert.True(t, ok)
+}
+
+func TestUsersListOperationsReturnsAnErrorForAGenuineFailure(t *testing.T) {
+	boom := errors.New("boom")
+	h := handler.NewUsers(&fakeAdmin{operationsErr: boom})
+
+	_, err := h.ListOperations(t.Context(), openapi.ListOperationsRequestObject{})
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, boom)

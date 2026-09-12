@@ -40,11 +40,16 @@ var ErrNotAdmin = errors.New("admin only")
 type Admin struct {
 	users       UserStore
 	permissions PermissionStore
+	catalog     domain.Catalog
 }
 
-// NewAdmin builds an Admin usecase over users and permissions.
-func NewAdmin(users UserStore, permissions PermissionStore) *Admin {
-	return &Admin{users: users, permissions: permissions}
+// NewAdmin builds an Admin usecase over users, permissions and the whole
+// catalogue - catalog is never filtered by domain.Catalog.For here, unlike
+// Orchestrator.catalogFor: Operations answers what every service holds,
+// not what one person may call, because that is exactly what the
+// permission grid needs to draw itself (docs/specs/auth.md, section 4).
+func NewAdmin(users UserStore, permissions PermissionStore, catalog domain.Catalog) *Admin {
+	return &Admin{users: users, permissions: permissions, catalog: catalog}
 }
 
 // ListUsers returns every account. admin only.
@@ -93,6 +98,19 @@ func (a *Admin) SetPermissions(
 	}
 
 	return nil
+}
+
+// Operations returns every operation the catalogue holds, across every
+// configured service - not filtered to any one person's permissions,
+// because this is what GET /api/operations feeds the permission grid
+// (docs/specs/auth.md, section 4): the full list of what could be
+// granted, grouped by service on the frontend. admin only.
+func (a *Admin) Operations(_ context.Context, user *domain.User) ([]domain.Endpoint, error) {
+	if !isAdmin(user) {
+		return nil, ErrNotAdmin
+	}
+
+	return a.catalog.Endpoints, nil
 }
 
 // isAdmin reports whether user is signed in and holds domain.RoleAdmin -

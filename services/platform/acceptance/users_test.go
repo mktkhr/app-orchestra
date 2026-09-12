@@ -27,6 +27,14 @@ type permissionOnWire struct {
 	OperationID string `json:"operationId"`
 }
 
+// operationOnWire is the wire shape of one Operation, as GET
+// /api/operations lists it.
+type operationOnWire struct {
+	Service     string `json:"service"`
+	OperationID string `json:"operationId"`
+	Summary     string `json:"summary"`
+}
+
 // nonAdminName is the account docs/plans/auth.md, Task 3's own tests need
 // but have no HTTP route to create (docs/specs/auth.md, section 8: no
 // account creation through the UI, still). It is seeded through
@@ -153,6 +161,15 @@ func TestAdminReadsAccountsGrantsPermissionsAndThePersonsNextQuestionUsesThem(t 
 	require.Equal(t, http.StatusOK, status)
 	require.Len(t, accounts, 2)
 
+	// The admin reads the whole catalogue - what the permission grid needs
+	// to draw itself, grouped by service (docs/specs/auth.md, section 4).
+	var operations []operationOnWire
+	status = doJSON(t, server, http.MethodGet, "/api/operations", nil, &operations)
+	require.Equal(t, http.StatusOK, status)
+	require.Len(t, operations, 1)
+	assert.Equal(t, "inventory", operations[0].Service)
+	assert.Equal(t, "ListInventoryItems", operations[0].OperationID)
+
 	yamadaID := findAccountID(t, accounts, nonAdminName)
 
 	yamada := newClientWithJar(t)
@@ -229,6 +246,9 @@ func TestNonAdminGetsForbiddenFromEveryUsersEndpoint(t *testing.T) {
 		"permissions": []map[string]any{},
 	}, nil)
 	assert.Equal(t, http.StatusForbidden, status, "PUT /api/users/{id}/permissions")
+
+	status = doJSONWithClient(t, yamada, server.URL, http.MethodGet, "/api/operations", nil, nil)
+	assert.Equal(t, http.StatusForbidden, status, "GET /api/operations")
 }
 
 // TestUsersEndpointsAre401WithoutASession is AC-A-102 for this file's own
@@ -242,5 +262,8 @@ func TestUsersEndpointsAre401WithoutASession(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, status)
 
 	status = doJSONWithClient(t, anon, server.URL, http.MethodGet, "/api/users/whoever/permissions", nil, nil)
+	assert.Equal(t, http.StatusUnauthorized, status)
+
+	status = doJSONWithClient(t, anon, server.URL, http.MethodGet, "/api/operations", nil, nil)
 	assert.Equal(t, http.StatusUnauthorized, status)
 }

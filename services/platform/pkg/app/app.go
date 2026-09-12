@@ -243,7 +243,7 @@ func build(
 
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions)
-	adminUsecase := usecase.NewAdmin(users, permissions)
+	adminUsecase := usecase.NewAdmin(users, permissions, catalog)
 
 	api := handler.NewAPI(
 		handler.NewHealth(),

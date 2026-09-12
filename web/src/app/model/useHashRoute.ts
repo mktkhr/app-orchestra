@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 
 const WORKSPACE_PREFIX = "#workspace-";
+const USERS_HASH = "#users";
 
-/** The one screen `Shell` can show: the chat, or one workspace. */
+/** The one screen `Shell` can show: the chat, one workspace, or the admin's users screen. */
 export type Route =
   | { readonly screen: "chat" }
-  | { readonly screen: "workspace"; readonly workspaceId: string };
+  | { readonly screen: "workspace"; readonly workspaceId: string }
+  | { readonly screen: "users" };
 
 function readRoute(): Route {
   const hash = window.location.hash;
@@ -16,6 +18,10 @@ function readRoute(): Route {
     if (workspaceId !== "") {
       return { screen: "workspace", workspaceId };
     }
+  }
+
+  if (hash === USERS_HASH) {
+    return { screen: "users" };
   }
 
   return { screen: "chat" };
@@ -33,7 +39,7 @@ function readRoute(): Route {
  * renders.
  *
  * A client-side router (`react-router` or similar) was the alternative.
- * This application has exactly two screens and no nested or parameterised
+ * This application has a handful of screens and no nested or parameterised
  * paths beyond the one workspace id the hash already carries, no need for
  * a back/forward-aware history stack beyond what the browser's own hash
  * navigation already gives for free, and no server-rendered routes to keep

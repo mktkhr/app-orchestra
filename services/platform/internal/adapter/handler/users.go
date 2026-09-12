@@ -17,6 +17,7 @@ type admin interface {
 	ListUsers(ctx context.Context, user *domain.User) ([]domain.User, error)
 	Permissions(ctx context.Context, user *domain.User, targetUserID string) ([]domain.Permission, error)
 	SetPermissions(ctx context.Context, user *domain.User, targetUserID string, permissions []domain.Permission) error
+	Operations(ctx context.Context, user *domain.User) ([]domain.Endpoint, error)
 }
 
 // Users implements the "users" tag of the generated strict server
@@ -38,7 +39,7 @@ func (h *Users) ListUsers(
 	ctx context.Context,
 	_ openapi.ListUsersRequestObject,
 ) (openapi.ListUsersResponseObject, error) {
-	users, err := h.admin.ListUsers(ctx, currentUser(ctx))
+	out, err := adminList(ctx, h.admin.ListUsers, toAPIUser)
 	if err != nil {
 		forbidden := func(msg string) openapi.ListUsersResponseObject {
 			return openapi.ListUsers403JSONResponse{Message: msg}
@@ -51,12 +52,7 @@ func (h *Users) ListUsers(
 		return nil, fmt.Errorf("listing accounts: %w", err)
 	}
 
-	out := make(openapi.ListUsers200JSONResponse, len(users))
-	for i := range users {
-		out[i] = toAPIUser(&users[i])
-	}
-
-	return out, nil
+	return openapi.ListUsers200JSONResponse(out), nil
 }
 
 // GetUserPermissions implements GET /api/users/{id}/permissions.
@@ -106,6 +102,62 @@ func (h *Users) SetUserPermissions(
 	}
 
 	return openapi.SetUserPermissions204Response{}, nil
+}
+
+// ListOperations implements GET /api/operations.
+func (h *Users) ListOperations(
+	ctx context.Context,
+	_ openapi.ListOperationsRequestObject,
+) (openapi.ListOperationsResponseObject, error) {
+	out, err := adminList(ctx, h.admin.Operations, toAPIOperation)
+	if err != nil {
+		forbidden := func(msg string) openapi.ListOperationsResponseObject {
+			return openapi.ListOperations403JSONResponse{Message: msg}
+		}
+
+		if resp, ok := adminErrorResponse(err, forbidden); ok {
+			return resp, nil
+		}
+
+		return nil, fmt.Errorf("listing operations: %w", err)
+	}
+
+	return openapi.ListOperations200JSONResponse(out), nil
+}
+
+// adminList resolves the signed-in user, calls fetch, and converts every
+// item fetch returns with convert. Shared by ListUsers and ListOperations
+// so the two are not near-identical bodies differing only in their types
+// (golangci-lint's dupl) - each still maps its own error onto its own 403
+// response via adminErrorResponse, the same as every other Users method.
+func adminList[TIn any, TOut any](
+	ctx context.Context,
+	fetch func(context.Context, *domain.User) ([]TIn, error),
+	convert func(*TIn) TOut,
+) ([]TOut, error) {
+	items, err := fetch(ctx, currentUser(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]TOut, len(items))
+	for i := range items {
+		out[i] = convert(&items[i])
+	}
+
+	return out, nil
+}
+
+// toAPIOperation converts one domain.Endpoint into the wire Operation:
+// only the three fields the permission grid needs, not the parameters,
+// schemas or method the rest of the catalogue carries.
+func toAPIOperation(e *domain.Endpoint) openapi.Operation {
+	op := openapi.Operation{Service: e.Service, OperationId: e.OperationID}
+	if e.Summary != "" {
+		op.Summary = &e.Summary
+	}
+
+	return op
 }
 
 // adminErrorResponse maps usecase.ErrNotAdmin onto its 403 response - the

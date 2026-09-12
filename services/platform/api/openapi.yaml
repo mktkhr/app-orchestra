@@ -429,6 +429,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/operations:
+    get:
+      operationId: listOperations
+      summary: List every operation across every configured service.
+      description: >
+        Every operation the catalogue holds, admin only
+        (docs/specs/auth.md, section 4). GET /api/users/{id}/permissions
+        answers only what one account already holds; the permission grid
+        needs the whole catalogue to draw itself, grouped by service, and
+        this is where it reads that from. A non-admin gets 403.
+      tags:
+        - users
+      responses:
+        "200":
+          description: Every operation, across every configured service.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Operation"
+        "403":
+          description: The signed-in account is not an admin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     Health:
@@ -794,6 +821,26 @@ components:
           description: The workspace's panels, in position order.
           items:
             $ref: "#/components/schemas/Panel"
+    Operation:
+      type: object
+      description: >
+        One operation the catalogue holds - a service and operation id,
+        with its summary, for the admin's permission grid
+        (docs/specs/auth.md, section 4). GET /api/operations lists every
+        one of these; Permission names which of them one account may call.
+      required:
+        - service
+        - operationId
+      properties:
+        service:
+          type: string
+          description: The service's name, as configured in ORCHESTRA_SERVICES.
+        operationId:
+          type: string
+          description: The operation id, as declared in that service's contract.
+        summary:
+          type: string
+          description: The operation's summary, from its contract.
     Permission:
       type: object
       description: >

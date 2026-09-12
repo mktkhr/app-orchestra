@@ -5,8 +5,10 @@ import type { components, paths } from "./gen/platform";
 /**
  * The one HTTP client in the application. Nothing outside src/shared/api may
  * import "openapi-fetch" or call fetch directly (see harness/quality/oxlint).
+ * Exported so `users.ts` (split out of this file for eslint's `max-lines`)
+ * can reuse this same instance rather than a `createClient` of its own.
  */
-const client = createClient<paths>({ baseUrl: "" });
+export const client = createClient<paths>({ baseUrl: "" });
 
 /** Notified through {@link onUnauthorized} whenever any call here gets a 401. */
 const unauthorizedListeners = new Set<() => void>();
@@ -252,9 +254,8 @@ export async function getWorkspace(id: string): Promise<WorkspaceDetail> {
 }
 
 /**
- * Calls DELETE /api/workspaces/{id}. Deleting a workspace that does not exist
- * is not an error (docs/specs/workspaces.md section 5): the end state is the
- * same either way, so this only rejects on a transport failure.
+ * Calls DELETE /api/workspaces/{id}. Deleting one that does not exist is not
+ * an error (docs/specs/workspaces.md section 5) - only a transport failure rejects.
  */
 export async function deleteWorkspace(id: string): Promise<void> {
   // See the comment on getHealth above: fetch is read at call time on purpose.
@@ -269,11 +270,9 @@ export async function deleteWorkspace(id: string): Promise<void> {
 }
 
 /**
- * A call to save as a new panel: everything a plan result's `source` and
- * `component` already carry, plus a title a person can edit
- * (docs/specs/workspaces.md section 3). Nothing here is derived - the
- * caller copies `source.service`/`source.operationId`/`source.args` and the
- * result's own `component` straight through.
+ * A call to save as a new panel: a plan result's `source` and `component`
+ * plus a title a person can edit (docs/specs/workspaces.md section 3).
+ * Nothing here is derived - the caller copies the fields straight through.
  */
 export type AddPanelRequest = components["schemas"]["CreatePanelRequest"];
 

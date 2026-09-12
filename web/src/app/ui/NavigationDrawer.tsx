@@ -4,9 +4,11 @@ import List from "@mui/material/List";
 import Toolbar from "@mui/material/Toolbar";
 import type { JSX } from "react";
 
+import { useSession } from "@/features/session";
 import { WorkspaceList } from "@/features/workspaces";
 
 import { ChatNavItem } from "./ChatNavItem";
+import { UsersNavItem } from "./UsersNavItem";
 
 export const DRAWER_WIDTH = 240;
 
@@ -23,8 +25,16 @@ interface NavigationDrawerProps {
   readonly onClose: () => void;
 }
 
-/** The application's left navigation: チャット, then every workspace. */
+/**
+ * The application's left navigation: チャット, then every workspace, and -
+ * for an admin only - ユーザー管理 (docs/plans/auth.md Task 5). Hidden from
+ * a non-admin here; the endpoints behind it refuse them with 403 either
+ * way (docs/specs/auth.md section 7), since a hidden control is not a
+ * check.
+ */
 export function NavigationDrawer({ open, beside, onClose }: NavigationDrawerProps): JSX.Element {
+  const { user } = useSession();
+
   return (
     <Drawer
       variant={beside ? "persistent" : "temporary"}
@@ -39,6 +49,7 @@ export function NavigationDrawer({ open, beside, onClose }: NavigationDrawerProp
       <Toolbar />
       <List>
         <ChatNavItem onClick={onClose} />
+        {user?.role === "admin" ? <UsersNavItem onClick={onClose} /> : null}
       </List>
       <Divider />
       <WorkspaceList onNavigate={onClose} />

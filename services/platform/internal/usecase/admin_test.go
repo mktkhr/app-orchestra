@@ -61,7 +61,7 @@ func TestAdminListUsersReturnsEveryAccountForAnAdmin(t *testing.T) {
 		{ID: "usr-admin", Name: "admin", Role: domain.RoleAdmin},
 		{ID: "usr-1", Name: "someone", Role: domain.RoleUser},
 	}}
-	a := usecase.NewAdmin(users, &adminFakePermissionStore{})
+	a := usecase.NewAdmin(users, &adminFakePermissionStore{}, domain.Catalog{})
 
 	got, err := a.ListUsers(t.Context(), admin)
 
@@ -70,7 +70,7 @@ func TestAdminListUsersReturnsEveryAccountForAnAdmin(t *testing.T) {
 }
 
 func TestAdminListUsersRefusesANonAdmin(t *testing.T) {
-	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{})
+	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{}, domain.Catalog{})
 
 	_, err := a.ListUsers(t.Context(), plainUser)
 
@@ -79,7 +79,7 @@ func TestAdminListUsersRefusesANonAdmin(t *testing.T) {
 }
 
 func TestAdminListUsersRefusesANilUser(t *testing.T) {
-	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{})
+	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{}, domain.Catalog{})
 
 	_, err := a.ListUsers(t.Context(), nil)
 
@@ -89,7 +89,7 @@ func TestAdminListUsersRefusesANilUser(t *testing.T) {
 
 func TestAdminListUsersWrapsAStoreError(t *testing.T) {
 	boom := errors.New("boom")
-	a := usecase.NewAdmin(&adminFakeUserStore{err: boom}, &adminFakePermissionStore{})
+	a := usecase.NewAdmin(&adminFakeUserStore{err: boom}, &adminFakePermissionStore{}, domain.Catalog{})
 
 	_, err := a.ListUsers(t.Context(), admin)
 
@@ -101,7 +101,7 @@ func TestAdminPermissionsReturnsWhatTheTargetHolds(t *testing.T) {
 	permissions := &adminFakePermissionStore{byUser: map[string][]domain.Permission{
 		"usr-1": {{Service: "inventory", OperationID: "ListInventoryItems"}},
 	}}
-	a := usecase.NewAdmin(&adminFakeUserStore{}, permissions)
+	a := usecase.NewAdmin(&adminFakeUserStore{}, permissions, domain.Catalog{})
 
 	got, err := a.Permissions(t.Context(), admin, "usr-1")
 
@@ -110,7 +110,7 @@ func TestAdminPermissionsReturnsWhatTheTargetHolds(t *testing.T) {
 }
 
 func TestAdminPermissionsRefusesANonAdmin(t *testing.T) {
-	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{})
+	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{}, domain.Catalog{})
 
 	_, err := a.Permissions(t.Context(), plainUser, "usr-1")
 
@@ -120,7 +120,7 @@ func TestAdminPermissionsRefusesANonAdmin(t *testing.T) {
 
 func TestAdminPermissionsWrapsAStoreError(t *testing.T) {
 	boom := errors.New("boom")
-	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{forErr: boom})
+	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{forErr: boom}, domain.Catalog{})
 
 	_, err := a.Permissions(t.Context(), admin, "usr-1")
 
@@ -130,7 +130,7 @@ func TestAdminPermissionsWrapsAStoreError(t *testing.T) {
 
 func TestAdminSetPermissionsReplacesTheTargetsPermissions(t *testing.T) {
 	permissions := &adminFakePermissionStore{}
-	a := usecase.NewAdmin(&adminFakeUserStore{}, permissions)
+	a := usecase.NewAdmin(&adminFakeUserStore{}, permissions, domain.Catalog{})
 
 	granted := []domain.Permission{{Service: "inventory", OperationID: "ListInventoryItems"}}
 	err := a.SetPermissions(t.Context(), admin, "usr-1", granted)
@@ -142,7 +142,7 @@ func TestAdminSetPermissionsReplacesTheTargetsPermissions(t *testing.T) {
 
 func TestAdminSetPermissionsRefusesANonAdmin(t *testing.T) {
 	permissions := &adminFakePermissionStore{}
-	a := usecase.NewAdmin(&adminFakeUserStore{}, permissions)
+	a := usecase.NewAdmin(&adminFakeUserStore{}, permissions, domain.Catalog{})
 
 	err := a.SetPermissions(t.Context(), plainUser, "usr-1", nil)
 
@@ -152,10 +152,42 @@ func TestAdminSetPermissionsRefusesANonAdmin(t *testing.T) {
 
 func TestAdminSetPermissionsWrapsAStoreError(t *testing.T) {
 	boom := errors.New("boom")
-	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{setErr: boom})
+	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{setErr: boom}, domain.Catalog{})
 
 	err := a.SetPermissions(t.Context(), admin, "usr-1", nil)
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, boom)
+}
+
+func TestAdminOperationsReturnsTheWholeCatalogueForAnAdmin(t *testing.T) {
+	catalog := domain.Catalog{Endpoints: []domain.Endpoint{
+		{Service: "inventory", OperationID: "ListInventoryItems", Summary: "List items"},
+		{Service: "attendance", OperationID: "ListAttendance"},
+	}}
+	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{}, catalog)
+
+	got, err := a.Operations(t.Context(), admin)
+
+	require.NoError(t, err)
+	assert.Equal(t, catalog.Endpoints, got)
+}
+
+func TestAdminOperationsRefusesANonAdmin(t *testing.T) {
+	catalog := domain.Catalog{Endpoints: []domain.Endpoint{{Service: "inventory", OperationID: "ListInventoryItems"}}}
+	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{}, catalog)
+
+	_, err := a.Operations(t.Context(), plainUser)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, usecase.ErrNotAdmin)
+}
+
+func TestAdminOperationsRefusesANilUser(t *testing.T) {
+	a := usecase.NewAdmin(&adminFakeUserStore{}, &adminFakePermissionStore{}, domain.Catalog{})
+
+	_, err := a.Operations(t.Context(), nil)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, usecase.ErrNotAdmin)
 }
