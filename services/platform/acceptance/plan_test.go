@@ -88,6 +88,49 @@ const inventorySpecWithCreate = inventorySpec + `
                 type: object
 `
 
+// inventorySpecWithCreateStatusEnum is inventorySpecWithCreate, but with
+// CreateInventoryItem's "status" property declared as the same enum
+// ListInventoryItems' query parameter carries: the fixture for
+// TestPlanAskDecisionForAnUnsafeOperationReachesTheWireAsAForm, the
+// end-to-end shape of the defect docs/specs/orchestration.md section 8b
+// describes - 在庫を登録したい names CreateInventoryItem, the model asks
+// about "status" because it is a real enum, and the wire result must be a
+// form naming CreateInventoryItem, not an "ask" over that enum.
+const inventorySpecWithCreateStatusEnum = inventorySpec + `
+  /api/inventory/items/create:
+    post:
+      operationId: CreateInventoryItem
+      summary: Create a stock item.
+      x-orchestra-expose: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - status
+              properties:
+                name:
+                  type: string
+                status:
+                  type: string
+                  enum: [allocated, staged, quarantined, consigned]
+                  x-enum-labels:
+                    allocated: 引当済
+                    staged: 出荷準備完了
+                    quarantined: 検品保留
+                    consigned: 預託在庫
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+`
+
 // inventorySpecWithUnexposedOp is inventorySpecWithCreate plus one further
 // operation carrying no x-orchestra-expose mark at all, used to drive
 // Task 17's acceptance criterion: an operation the catalogue never
@@ -304,6 +347,50 @@ func TestPlanUnsafeCallReturnsAFormAndNeverReachesTheService(t *testing.T) {
 
 	assert.Empty(t, inventory.requests, "an unsafe call must never reach the service")
 	assert.Empty(t, attendance.requests, "an unrelated service must not be called")
+}
+
+// TestPlanAskDecisionForAnUnsafeOperationReachesTheWireAsAForm is the
+// end-to-end acceptance test for the defect docs/specs/orchestration.md
+// section 8b describes: 在庫を登録したい names CreateInventoryItem and no
+// arguments, the planner asks about "status" - a real enum in the
+// catalogue - and before this fix that reached the wire as kind: "ask"
+// over 「ステータスを選んでください」, a question that cannot complete a
+// create ("name" was never asked about) and that the form which follows
+// repeats as a select over the same values. The fix makes it reach the
+// wire as kind: "form" naming CreateInventoryItem instead, and the
+// service must never be called.
+func TestPlanAskDecisionForAnUnsafeOperationReachesTheWireAsAForm(t *testing.T) {
+	inventory := newFixtureService(t, inventorySpecWithCreateStatusEnum, "/api/inventory/items/create", `{}`)
+
+	server := newTestApp(t, &app.Config{
+		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
+		PlanFixtures: []app.PlanFixture{
+			{
+				Query:       "在庫を登録したい",
+				Ask:         true,
+				Question:    "ステータスを選んでください",
+				Param:       "status",
+				Service:     "inventory",
+				OperationID: "CreateInventoryItem",
+			},
+		},
+	})
+
+	status, body := postPlan(t, server, "在庫を登録したい")
+
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, "form", body.Kind, "an ask over an unsafe operation must reach the wire as a form, not a question")
+
+	require.NotNil(t, body.Schema)
+	properties, ok := body.Schema["properties"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, properties, "name")
+	assert.Contains(t, properties, "status")
+
+	assert.Equal(t, "inventory", body.Target.Service)
+	assert.Equal(t, "CreateInventoryItem", body.Target.OperationID)
+
+	assert.Empty(t, inventory.requests, "an ask over an unsafe operation must never call a service")
 }
 
 func TestPlanNoneCallsNoServiceAndReportsAMessage(t *testing.T) {

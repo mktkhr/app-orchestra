@@ -2040,3 +2040,54 @@ at this defect has to change the competition between `ask_user` and the
 operation's own tool - through the tool's own description, through
 `ask_user`'s own description, or through the decision procedure itself -
 not add another value to the enum.
+
+## 2026-09-12 An unsafe operation is answered by its form, not a question
+
+**Context.** 「在庫を登録したい」 names `CreateInventoryItem` and no
+arguments. The model reaches for `ask_user` on the first required field it
+cannot fill in, and when that field happens to be `status` - a real enum -
+the person is shown 「ステータスを選んでください」 instead of the create
+form they asked for. The ask is not wrong so much as beside the point: it
+offers one of the three fields a create needs, `name` and `quantity` were
+never asked about so answering it cannot complete anything, and the form
+that appears afterwards repeats `status` as a select over the same values
+with the same labels - the same question, twice, the second time in a
+control that could have been the whole interaction.
+
+The mechanism was `Orchestrator.ask` degrading a `DecisionAsk` into a form
+only when `optionsForParam` found no enum for the named parameter, and
+`optionsForParam` searched an unsafe endpoint's request body properties as
+well as its declared parameters - so `status` on `CreateInventoryItem` was
+found there, options were built, and the result was `kind: "ask"` rather
+than a form.
+
+**Decision.** D8 already settled that an unsafe operation is never run by
+the model: it is answered by a form in every other case, and a person
+presses the button. `ask` now applies that before it ever looks at the
+parameter: an endpoint that is not `Endpoint.IsSafe()` degrades straight to
+`kind: "form"` (the same `Schema`/`Initial` the existing degradation path
+already produced), whether or not the named parameter has an enum. There is
+nothing left to disambiguate before running, because nothing runs. An ask
+over a **safe** endpoint is a different question, unchanged: that one runs
+immediately, so a wrong value is already on the screen before anybody could
+object, which is what D11 was for - enum found still means `kind: "ask"`,
+no enum still degrades to a form.
+
+With every caller of `optionsForParam`'s request-body branch now routed
+around it (an unsafe endpoint never reaches `optionsForParam` at all), the
+branch had nothing left to search - deleted, along with its doc comment's
+claim that it searches "for an unsafe endpoint, its request body's own
+properties". `docs/specs/orchestration.md` D11 is amended with this
+reasoning in place, and a new section 8b walks through the defect itself.
+
+**Consequences.** The two degradation paths (an unsafe `DecisionCall`, and
+now an `ask_user` naming an unsafe operation) are one idea rather than two:
+a form is what an unsafe operation is answered with, full stop, and the
+same form is what a safe operation's un-listable parameter degrades to.
+`web/` needed no change - `TurnList.tsx` already dispatches purely on
+`result.kind`, `ResultForm` already renders an enum request-body property
+as a select, and no existing frontend test asserted `kind: "ask"` for an
+unsafe/create operation (the one `"ask"` fixture in `Conversation.test.tsx`
+and `ResultChoice.test.tsx` is `ListInventoryItems`, a safe read, and is
+unaffected). Verified with `docker logs llama-swap`'s
+`POST /v1/chat/completions` count unchanged across `make check`.

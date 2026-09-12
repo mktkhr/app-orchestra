@@ -333,6 +333,16 @@ func (o *Orchestrator) call(ctx context.Context, catalog domain.Catalog, decisio
 // alongside the one it got stuck on, carries through as the form's
 // initial values, exactly as an unsafe DecisionCall's do (see call).
 //
+// An ask naming an unsafe operation degrades to that same form before the
+// parameter is even looked at, whether or not it has an enum
+// (docs/specs/orchestration.md, D11 and section 8b): D8 already answers an
+// unsafe call with a form in every other case, that form already carries
+// the parameter as a select over the same enum, and asking the question
+// again first would only make the person answer it twice. An ask over a
+// safe operation is unaffected - it still runs on whatever value the model
+// asks about, so an enum found in the catalogue is offered as a
+// ResultKindAsk exactly as before.
+//
 // decision is a pointer for the same reason call's is: golangci-lint's
 // gocritic hugeParam check on Decision's 112 bytes (see
 // harness/quality/go/golangci.yml).
@@ -340,6 +350,16 @@ func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, 
 	endpoint, ok := catalog.Find(decision.Service, decision.OperationID)
 	if !ok {
 		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, decision.Service, decision.OperationID)
+	}
+
+	if !endpoint.IsSafe() {
+		return Result{
+			Kind:        ResultKindForm,
+			Service:     decision.Service,
+			OperationID: decision.OperationID,
+			Schema:      inputSchemaFor(&endpoint),
+			Initial:     decision.Args,
+		}, nil
 	}
 
 	options, ok := optionsForParam(&endpoint, decision.Param)
@@ -361,10 +381,13 @@ func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, 
 	}, nil
 }
 
-// optionsForParam searches one endpoint's parameters and, for an unsafe
-// endpoint, its request body's own properties, for the one named name that
-// declares an enum, and builds the options a person is offered from that
-// schema's Enum and EnumLabels.
+// optionsForParam searches one endpoint's parameters for the one named
+// name that declares an enum, and builds the options a person is offered
+// from that schema's Enum and EnumLabels. Only a safe endpoint's ask ever
+// reaches this function - ask degrades an unsafe endpoint to a form before
+// looking at the parameter at all (see ask) - so there is no request body
+// to search: a request body only ever appears on an unsafe endpoint's
+// call.
 //
 // The catalogue is authoritative here rather than Decision.Options: a
 // Decision is ultimately produced by a model (docs/plans/orchestration.md
@@ -386,12 +409,6 @@ func optionsForParam(endpoint *domain.Endpoint, name string) ([]domain.Option, b
 		p := &endpoint.Parameters[i]
 		if p.Name == name && len(p.Schema.Enum) > 0 {
 			return optionsFromSchema(&p.Schema), true
-		}
-	}
-
-	if endpoint.RequestBody != nil && endpoint.RequestBody.Type == domain.SchemaTypeObject {
-		if schema, ok := endpoint.RequestBody.Properties[name]; ok && len(schema.Enum) > 0 {
-			return optionsFromSchema(&schema), true
 		}
 	}
 

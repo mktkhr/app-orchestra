@@ -526,6 +526,76 @@ func TestPlanUnsafeCallReturnsAFormWithoutInvoking(t *testing.T) {
 	assert.Zero(t, invoker.calls, "an unsafe call must never reach the service")
 }
 
+// catalogWithCreateStatusEnum is inventoryCatalog plus a "status" property
+// on CreateInventoryItem's request body, declared as the same enum
+// ListInventoryItems' query parameter carries: this is what makes
+// optionsForParam able to find an enum for "status" on an unsafe
+// operation, the exact situation D11 and section 8b (docs/specs/orchestration.md)
+// were amended for - the ask must degrade to a form despite the enum
+// being found, because CreateInventoryItem is unsafe.
+func catalogWithCreateStatusEnum() domain.Catalog {
+	c := inventoryCatalog()
+	c.Endpoints[1].RequestBody = &domain.Schema{
+		Type: domain.SchemaTypeObject,
+		Properties: map[string]domain.Schema{
+			"name": {Type: domain.SchemaTypeString},
+			"status": {
+				Type: domain.SchemaTypeString,
+				Enum: []string{"allocated", "staged", "quarantined", "consigned"},
+				EnumLabels: map[string]string{
+					"allocated":   "引当済",
+					"staged":      "出荷準備完了",
+					"quarantined": "検品保留",
+					"consigned":   "預託在庫",
+				},
+			},
+		},
+	}
+
+	return c
+}
+
+// TestPlanAskDecisionForAnUnsafeOperationReturnsAFormEvenWithAnEnum drives
+// the defect this task fixes: 在庫を登録したい asks CreateInventoryItem to
+// be filled in, the model reaches for ask_user on "status" because it is
+// the one required field it cannot decide on its own, and "status" is a
+// real enum in the catalogue - so optionsForParam finds it and, before
+// this fix, ask returned kind: "ask" over "ステータスを選んでください"
+// instead of the create form. CreateInventoryItem is unsafe, so the
+// question is beside the point: name and quantity were never asked about,
+// and the form that follows would repeat the same select anyway
+// (docs/specs/orchestration.md, section 8b). The fix is to degrade to a
+// form before optionsForParam is ever consulted, whenever the endpoint is
+// unsafe.
+func TestPlanAskDecisionForAnUnsafeOperationReturnsAFormEvenWithAnEnum(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionAsk,
+		Service:     "inventory",
+		OperationID: "CreateInventoryItem",
+		Question:    "ステータスを選んでください",
+		Param:       "status",
+		Args:        map[string]any{"name": "widget"},
+	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(catalogWithCreateStatusEnum(), planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫を登録したい", nil, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindForm, result.Kind)
+	assert.Equal(t, "inventory", result.Service)
+	assert.Equal(t, "CreateInventoryItem", result.OperationID)
+	assert.Equal(t, map[string]any{"name": "widget"}, result.Initial)
+
+	properties, ok := result.Schema["properties"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, properties, "name")
+	assert.Contains(t, properties, "status", "the whole input schema, including the enum field asked about, must reach the form")
+
+	assert.Zero(t, invoker.calls, "an ask over an unsafe operation must never call a service")
+}
+
 // catalogWithStatusEnum is inventoryCatalog plus the "status" query
 // parameter ListInventoryItems actually declares (docs/specs section 8):
 // an enum with Japanese labels, which is what optionsForParam is meant to

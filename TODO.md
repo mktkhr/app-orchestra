@@ -38,6 +38,17 @@ Everything remaining sits outside all four subprojects above:
 
 ## Done
 
+- Fixed: an `ask_user` naming an **unsafe** operation (e.g. `CreateInventoryItem`)
+  whose parameter happens to be a real enum (`status`) used to reach the
+  wire as `kind: "ask"` - 「ステータスを選んでください」 - instead of the
+  create form, because `optionsForParam` searched an unsafe endpoint's
+  request body properties too. `Orchestrator.ask` now degrades to the
+  operation's form whenever the endpoint is not `IsSafe()`, before the
+  parameter is looked at at all; `optionsForParam`'s request-body branch
+  had no caller left and is deleted. A safe operation's ask is unchanged.
+  See `DECISIONS.md`, 2026-09-12 ("An unsafe operation is answered by its
+  form, not a question"), and `docs/specs/orchestration.md` D11 (amended)
+  and section 8b. `web/` needed no change - verified, not assumed.
 - D15 (an optional enum parameter on a safe endpoint offered to the model
   as required, with a synthetic `__all__` value appended so the model
   cannot silently drop a filter it could not match): tried, measured three
