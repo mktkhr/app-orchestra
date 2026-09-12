@@ -192,23 +192,23 @@ already is — JSON lives inside that adapter and may not reach `domain` or
 A panel saved before this slice has no `view` and must still read back and
 still draw (AC-P-106): the column is nullable and `View` is a pointer.
 
-- [ ] **Step 1** Add `View` and `Component: chart` to the contract, and
+- [x] **Step 1** Add `View` and `Component: chart` to the contract, and
       `view` to `Panel` and `CreatePanelRequest`. Remember `x-enum-labels`
       on both new enums. `make api-lint`, `make generate`.
-- [ ] **Step 2** Write the store test: a panel with a view round-trips; a
+- [x] **Step 2** Write the store test: a panel with a view round-trips; a
       panel without one round-trips as nil; an existing row with a NULL
       `view` reads back as nil rather than erroring. Run it, expect failure.
-- [ ] **Step 3** Implement, including the migration — the schema is
+- [x] **Step 3** Implement, including the migration — the schema is
       embedded and applied at open with `IF NOT EXISTS`, so adding a column
       to an existing file needs an `ALTER TABLE` guarded the same way.
       **Open a database file created before this change and read it**, in a
       test; a migration nobody ran against old data is a migration nobody
       tested.
-- [ ] **Step 4** Add the test that `AddPanel` refuses an operation the
+- [x] **Step 4** Add the test that `AddPanel` refuses an operation the
       person may not call, with the same error an unknown one gets
       (AC-P-107) — `Workspaces` already takes the user.
-- [ ] **Step 5** Go gates green.
-- [ ] **Step 6** Commit: `feat(platform): let a panel say how to draw itself`
+- [x] **Step 5** Go gates green.
+- [x] **Step 6** Commit: `feat(platform): let a panel say how to draw itself`
 
 **Satisfies:** AC-P-106, AC-P-107.
 

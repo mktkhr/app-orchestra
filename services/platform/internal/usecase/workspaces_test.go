@@ -85,6 +85,16 @@ func exposedCatalog() domain.Catalog {
 	}}
 }
 
+// grantedPermissions returns a usecase.PermissionStore granting exactly
+// the operation exposedCatalog() exposes, regardless of which user it is
+// asked about - enough for every test in this file but AC-P-107's own to
+// pass a permission check it is not otherwise testing.
+func grantedPermissions() *fakePermissionStore {
+	return &fakePermissionStore{permissions: []domain.Permission{
+		{Service: "inventory", OperationID: "ListInventoryItems"},
+	}}
+}
+
 // owner is the user every "happy path" test in this file acts as: a
 // workspace it reads or writes belongs to owner.ID.
 func owner() *domain.User {
@@ -100,7 +110,7 @@ func stranger() *domain.User {
 
 func TestWorkspacesListScopesToTheUser(t *testing.T) {
 	store := &fakeWorkspaceStore{}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	_, err := w.List(t.Context(), owner())
 
@@ -110,7 +120,7 @@ func TestWorkspacesListScopesToTheUser(t *testing.T) {
 
 func TestWorkspacesCreateScopesToTheUser(t *testing.T) {
 	store := &fakeWorkspaceStore{}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	ws, err := w.Create(t.Context(), owner(), "在庫ボード")
 
@@ -122,7 +132,7 @@ func TestWorkspacesCreateScopesToTheUser(t *testing.T) {
 
 func TestWorkspacesDeleteDelegatesToTheStoreForTheOwner(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	require.NoError(t, w.Delete(t.Context(), owner(), "ws-1"))
 	assert.Equal(t, "ws-1", store.deletedID)
@@ -130,7 +140,7 @@ func TestWorkspacesDeleteDelegatesToTheStoreForTheOwner(t *testing.T) {
 
 func TestWorkspacesDeleteIsANoOpForSomebodyElsesWorkspace(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	require.NoError(t, w.Delete(t.Context(), stranger(), "ws-1"))
 	assert.Empty(t, store.deletedID, "the store must never be asked to delete a workspace the caller does not own")
@@ -138,7 +148,7 @@ func TestWorkspacesDeleteIsANoOpForSomebodyElsesWorkspace(t *testing.T) {
 
 func TestWorkspacesGetReturnsTheOwnersWorkspace(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	ws, ok, err := w.Get(t.Context(), owner(), "ws-1")
 
@@ -149,7 +159,7 @@ func TestWorkspacesGetReturnsTheOwnersWorkspace(t *testing.T) {
 
 func TestWorkspacesGetIsNotFoundForSomebodyElsesWorkspace(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	_, ok, err := w.Get(t.Context(), stranger(), "ws-1")
 
@@ -159,7 +169,7 @@ func TestWorkspacesGetIsNotFoundForSomebodyElsesWorkspace(t *testing.T) {
 
 func TestWorkspacesGetIsNotFoundWhenTheStoreHasNothing(t *testing.T) {
 	store := &fakeWorkspaceStore{getFound: false}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	_, ok, err := w.Get(t.Context(), owner(), "ws-missing")
 
@@ -169,7 +179,7 @@ func TestWorkspacesGetIsNotFoundWhenTheStoreHasNothing(t *testing.T) {
 
 func TestWorkspacesAddPanelRejectsAnOperationTheCatalogueDoesNotExpose(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	_, err := w.AddPanel(t.Context(), owner(), "ws-1", &domain.Panel{Service: "inventory", OperationID: "GetInventorySpec"})
 
@@ -178,9 +188,44 @@ func TestWorkspacesAddPanelRejectsAnOperationTheCatalogueDoesNotExpose(t *testin
 	assert.Nil(t, store.addPanelIn, "the store must never be reached for an unexposed operation")
 }
 
+// TestWorkspacesAddPanelRejectsAnOperationTheUserMayNotCall proves
+// AC-P-107: an operation the full catalogue exposes, but that the calling
+// user holds no permission for, is refused the same way an operation that
+// does not exist at all is - the same sentinel, so a 400 never tells
+// anybody what exists (docs/specs/dashboard.md, AC-P-107; the same rule
+// Orchestrator.Invoke already applies via catalogFor).
+func TestWorkspacesAddPanelRejectsAnOperationTheUserMayNotCall(t *testing.T) {
+	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
+	permissions := &fakePermissionStore{} // grants nothing
+	w := usecase.NewWorkspaces(store, exposedCatalog(), permissions)
+
+	_, err := w.AddPanel(t.Context(), owner(), "ws-1", &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
+	assert.Equal(t, "owner-1", permissions.userID, "AddPanel must consult the permission store for a non-admin user")
+	assert.Nil(t, store.addPanelIn, "the store must never be reached for an operation the user may not call")
+}
+
+// TestWorkspacesAddPanelNeverConsultsThePermissionStoreForAnAdmin mirrors
+// Orchestrator.catalogFor's own admin exception: an admin's access to
+// every configured operation must never depend on a row in the permission
+// table (docs/specs/auth.md, section 4).
+func TestWorkspacesAddPanelNeverConsultsThePermissionStoreForAnAdmin(t *testing.T) {
+	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "admin-1"}, getFound: true}
+	permissions := &fakePermissionStore{} // grants nothing
+	w := usecase.NewWorkspaces(store, exposedCatalog(), permissions)
+	admin := &domain.User{ID: "admin-1", Role: domain.RoleAdmin}
+
+	_, err := w.AddPanel(t.Context(), admin, "ws-1", &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
+
+	require.NoError(t, err)
+	assert.Empty(t, permissions.userID, "an admin's access must never depend on a call to PermissionStore.For")
+}
+
 func TestWorkspacesAddPanelStoresAnExposedOperation(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	panel, err := w.AddPanel(t.Context(), owner(), "ws-1", &domain.Panel{
 		Service: "inventory", OperationID: "ListInventoryItems", Title: "検品保留の在庫",
@@ -194,7 +239,7 @@ func TestWorkspacesAddPanelStoresAnExposedOperation(t *testing.T) {
 
 func TestWorkspacesAddPanelDefaultsAnEmptyTitleToTheOperationID(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	_, err := w.AddPanel(t.Context(), owner(), "ws-1", &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
 
@@ -210,7 +255,7 @@ func TestWorkspacesAddPanelPropagatesAStoreError(t *testing.T) {
 		getFound:    true,
 		addPanelErr: sentinel,
 	}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	_, err := w.AddPanel(t.Context(), owner(), "ws-1", &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
 
@@ -220,7 +265,7 @@ func TestWorkspacesAddPanelPropagatesAStoreError(t *testing.T) {
 
 func TestWorkspacesAddPanelRejectsSomebodyElsesWorkspace(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	_, err := w.AddPanel(t.Context(), stranger(), "ws-1", &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
 
@@ -231,7 +276,7 @@ func TestWorkspacesAddPanelRejectsSomebodyElsesWorkspace(t *testing.T) {
 
 func TestWorkspacesAddPanelRejectsAnUnknownWorkspace(t *testing.T) {
 	store := &fakeWorkspaceStore{getFound: false}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	_, err := w.AddPanel(t.Context(), owner(), "ws-missing", &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
 
@@ -241,7 +286,7 @@ func TestWorkspacesAddPanelRejectsAnUnknownWorkspace(t *testing.T) {
 
 func TestWorkspacesDeletePanelDelegatesToTheStoreForTheOwner(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	require.NoError(t, w.DeletePanel(t.Context(), owner(), "ws-1", "pnl-1"))
 	assert.Equal(t, "ws-1", store.deletePanelWSID)
@@ -250,7 +295,7 @@ func TestWorkspacesDeletePanelDelegatesToTheStoreForTheOwner(t *testing.T) {
 
 func TestWorkspacesDeletePanelIsANoOpForSomebodyElsesWorkspace(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
-	w := usecase.NewWorkspaces(store, exposedCatalog())
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
 	require.NoError(t, w.DeletePanel(t.Context(), stranger(), "ws-1", "pnl-1"))
 	assert.Empty(t, store.deletePanelWSID, "the store must never be asked to delete a panel from a workspace the caller does not own")

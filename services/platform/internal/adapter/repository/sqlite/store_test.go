@@ -305,25 +305,35 @@ func TestStoreGetFailsWhenPanelsTableIsGone(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestStoreGetFailsOnMalformedPanelArgs plants a panel row whose args
-// column is not valid JSON - something the Store's own AddPanel can never
-// write - to exercise loadPanels' decode error path.
-func TestStoreGetFailsOnMalformedPanelArgs(t *testing.T) {
-	ctx := context.Background()
-	path := dbPath(t)
-	store := openStore(t, path)
+// TestStoreGetFailsOnMalformedPanelColumn plants a panel row whose args or
+// view column is not valid JSON - something the Store's own AddPanel can
+// never write - to exercise loadPanels' two decode error paths: args'
+// own, and unmarshalView's.
+func TestStoreGetFailsOnMalformedPanelColumn(t *testing.T) {
+	statements := map[string]string{
+		"args": `UPDATE panels SET args = 'not-json' WHERE workspace_id = ?`,
+		"view": `UPDATE panels SET view = 'not-json' WHERE workspace_id = ?`,
+	}
 
-	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
-	require.NoError(t, err)
+	for column, statement := range statements {
+		t.Run(column, func(t *testing.T) {
+			ctx := context.Background()
+			path := dbPath(t)
+			store := openStore(t, path)
 
-	_, err = store.AddPanel(ctx, ws.ID, &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
-	require.NoError(t, err)
+			ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+			require.NoError(t, err)
 
-	_, err = rawConn(t, path).ExecContext(ctx, `UPDATE panels SET args = 'not-json' WHERE workspace_id = ?`, ws.ID)
-	require.NoError(t, err)
+			_, err = store.AddPanel(ctx, ws.ID, &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
+			require.NoError(t, err)
 
-	_, _, err = store.Get(ctx, ws.ID)
-	require.Error(t, err)
+			_, err = rawConn(t, path).ExecContext(ctx, statement, ws.ID)
+			require.NoError(t, err)
+
+			_, _, err = store.Get(ctx, ws.ID)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestStoreListFailsWhenPanelsTableIsGone(t *testing.T) {
@@ -376,4 +386,151 @@ func TestStoreDeleteRollsBackWhenDeletingWorkspaceFails(t *testing.T) {
 
 	err = store.Delete(ctx, ws.ID)
 	require.Error(t, err)
+}
+
+// viewForRoundTrip is a view with both halves set, used to prove a panel's
+// view round-trips through the store exactly (docs/plans/dashboard.md,
+// Task 2, Step 2).
+func viewForRoundTrip() *domain.View {
+	return &domain.View{
+		Transform: &domain.Transform{
+			GroupBy:   "status",
+			Aggregate: domain.AggregateCount,
+		},
+		Chart: &domain.Chart{
+			Category: "status",
+			Value:    "count",
+			Kind:     domain.ChartKindBar,
+		},
+	}
+}
+
+// TestStoreAddPanelRoundTripsView is Task 2 Step 2's first case: a panel
+// saved with a view reads back with the same one.
+func TestStoreAddPanelRoundTripsView(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	saved, err := store.AddPanel(ctx, ws.ID, &domain.Panel{
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Component:   "chart",
+		Title:       "ステータス別の在庫件数",
+		View:        viewForRoundTrip(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, saved.View)
+	assert.Equal(t, viewForRoundTrip(), saved.View)
+
+	got, ok, err := store.Get(ctx, ws.ID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, got.Panels, 1)
+	require.NotNil(t, got.Panels[0].View)
+	assert.Equal(t, viewForRoundTrip(), got.Panels[0].View)
+}
+
+// TestStoreAddPanelWithNoViewRoundTripsAsNil is Task 2 Step 2's second
+// case: a panel saved without a view reads back with a nil one, not an
+// empty-but-present one (AC-P-106).
+func TestStoreAddPanelWithNoViewRoundTripsAsNil(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	saved, err := store.AddPanel(ctx, ws.ID, &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Component: "table",
+	})
+	require.NoError(t, err)
+	assert.Nil(t, saved.View)
+
+	got, ok, err := store.Get(ctx, ws.ID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, got.Panels, 1)
+	assert.Nil(t, got.Panels[0].View)
+}
+
+// preDashboardSchema is the panels table exactly as it existed before
+// docs/plans/dashboard.md's Task 2 added a view column - copied here
+// rather than read from schema.sql, which now describes the current
+// shape, so this test keeps proving the migration works even after
+// schema.sql moves on.
+const preDashboardSchema = `
+CREATE TABLE workspaces (
+	id    TEXT PRIMARY KEY,
+	name  TEXT NOT NULL,
+	owner TEXT NOT NULL
+);
+
+CREATE TABLE panels (
+	id           TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL,
+	service      TEXT NOT NULL,
+	operation_id TEXT NOT NULL,
+	component    TEXT NOT NULL,
+	title        TEXT NOT NULL,
+	args         TEXT NOT NULL,
+	position     INTEGER NOT NULL
+);
+`
+
+// TestNewOpensADatabaseFileWrittenBeforeViewExisted is Task 2 Step 3's own
+// requirement: a database file created by the pre-Task-2 schema, with a
+// panel already in it, must still open with the current code and that
+// panel must still read back - with a nil View, since the column did not
+// exist when the row was written (AC-P-106). This is the test that proves
+// the migration was actually run against old data, not merely written.
+func TestNewOpensADatabaseFileWrittenBeforeViewExisted(t *testing.T) {
+	ctx := context.Background()
+	path := dbPath(t)
+
+	old, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+
+	_, err = old.ExecContext(ctx, preDashboardSchema)
+	require.NoError(t, err)
+
+	_, err = old.ExecContext(
+		ctx,
+		`INSERT INTO workspaces (id, name, owner) VALUES (?, ?, ?)`,
+		"ws-1", "在庫ダッシュボード", "stub-user",
+	)
+	require.NoError(t, err)
+
+	_, err = old.ExecContext(
+		ctx,
+		`INSERT INTO panels (id, workspace_id, service, operation_id, component, title, args, position)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"pnl-1", "ws-1", "inventory", "ListInventoryItems", "table", "検品保留の在庫", `{"status":"quarantined"}`, 0,
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, old.Close())
+
+	store := openStore(t, path)
+
+	got, ok, err := store.Get(ctx, "ws-1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, got.Panels, 1)
+	assert.Equal(t, "pnl-1", got.Panels[0].ID)
+	assert.Equal(t, "検品保留の在庫", got.Panels[0].Title)
+	assert.Equal(t, map[string]any{"status": "quarantined"}, got.Panels[0].Args)
+	assert.Nil(t, got.Panels[0].View, "a panel written before the view column existed must read back with a nil view")
+
+	// The migration must also leave the file writable by the current
+	// schema going forward: a new panel, saved with a view, still works
+	// on the same migrated file.
+	saved, err := store.AddPanel(ctx, "ws-1", &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Component: "chart", View: viewForRoundTrip(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, saved.View)
+	assert.Equal(t, viewForRoundTrip(), saved.View)
 }

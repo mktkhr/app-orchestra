@@ -9,5 +9,10 @@ import _ "embed"
 // there is no migration tool here to track whether it already ran
 // (docs/specs/workspaces.md, section 6).
 //
+// A column added to a table this schema already created is a different
+// case "IF NOT EXISTS" cannot cover on its own - see openDB and
+// ensurePanelsViewColumn in migrate.go for panels.view, added by
+// docs/plans/dashboard.md's Task 2.
+//
 //go:embed schema.sql
 var schemaSQL string

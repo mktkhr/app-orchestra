@@ -4,6 +4,41 @@ _Last updated: 2026-09-12_
 
 ## Summary
 
+**`docs/plans/dashboard.md` Tasks 0, 1 and 2 are done.** Task 2 adds the
+contract's `View` schema (`transform`/`chart`, both optional, per
+"The shape everything shares") and `chart` as a fifth `Component`, wires
+`view` onto `Panel` and `CreatePanelRequest`, and adds `internal/domain/view.go`
+(`View`, `Transform`, `Chart`, `Aggregate`, `ChartKind` - pure, stdlib only)
+and `internal/domain.ComponentChart` (in `rendering.go`; never returned by
+`Render`/`RenderResult` - a chart is asked for, not implied by a response
+shape). `internal/adapter/repository/sqlite` marshals `Panel.View` to and
+from the nullable `panels.view` TEXT column the same way `Panel.Args`
+already is (`store.go`'s `marshalView`/`unmarshalView`, JSON types private
+to that adapter). The migration itself is `ensurePanelsViewColumn`
+(`internal/adapter/repository/sqlite/migrate.go`): modernc.org/sqlite's
+parser rejects SQLite's own `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+syntax outright (a genuine syntax error, not a version gap - the driver's
+`sqlite_version()` is 3.53.4), so idempotence is done in Go instead - check
+`pragma_table_info('panels')` for a `view` column first, `ALTER TABLE` only
+when it is missing - and is run unconditionally right after `schemaSQL`, on
+every open. `TestNewOpensADatabaseFileWrittenBeforeViewExisted`
+(`store_test.go`) builds a database file with the pre-Task-2 schema
+verbatim (no `view` column), inserts a workspace and a panel directly with
+`database/sql`, then opens it with `sqlite.New` and asserts the panel reads
+back with a nil `View` and its other fields intact, and that the file is
+still writable afterward. `usecase.Workspaces.AddPanel` did not already
+refuse an operation the caller may not call (only one the whole catalogue
+does not expose at all) - `docs/specs/auth.md`'s section 7 had deliberately
+deferred that check to `/api/invoke`, for workspaces. AC-P-107 changes that:
+`Workspaces` now takes a `usecase.PermissionStore` and narrows its catalogue
+per call the same way `Orchestrator.catalogFor` does (admin bypasses it;
+anybody else is narrowed by `PermissionStore.For` before `catalog.Find`),
+so a panel over an unpermitted operation gets the same `ErrEndpointNotFound`
+an unknown one does. `pkg/app.build` now opens the permission store before
+the workspace handler instead of after, to thread it through. See
+`DECISIONS.md`, 2026-09-12 (two entries: the migration, and the permission
+narrowing).
+
 **`docs/plans/dashboard.md` Tasks 0 and 1 are done.** `web/src/entities/rendering/lib/transform.ts`
 exports a pure `applyTransform(rows, transform)`: groups rows by
 `transform.groupBy` and reduces each group to `count`, `sum` or `avg`,

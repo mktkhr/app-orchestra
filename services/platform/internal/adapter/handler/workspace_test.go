@@ -146,6 +146,76 @@ func TestGetWorkspaceRendersItsPanels(t *testing.T) {
 	assert.Equal(t, "quarantined", body.Panels[0].Args["status"])
 }
 
+// TestGetWorkspaceRendersAPanelsView proves toAPIView's happy path: both
+// halves of a domain.View convert to the wire View, and an empty
+// Transform.Field (the count aggregate reads nothing) comes back absent,
+// not present-but-blank (docs/plans/dashboard.md, Task 2).
+func TestGetWorkspaceRendersAPanelsView(t *testing.T) {
+	fake := &fakeWorkspaces{
+		getFound: true,
+		getResult: domain.Workspace{
+			ID: "ws-1",
+			Panels: []domain.Panel{{
+				ID: "pnl-1", Service: "inventory", OperationID: "ListInventoryItems", Component: "chart",
+				View: &domain.View{
+					Transform: &domain.Transform{GroupBy: "status", Aggregate: domain.AggregateCount},
+					Chart:     &domain.Chart{Category: "status", Value: "count", Kind: domain.ChartKindBar},
+				},
+			}},
+		},
+	}
+
+	h := handler.NewWorkspace(fake)
+
+	resp, err := h.GetWorkspace(t.Context(), openapi.GetWorkspaceRequestObject{Id: "ws-1"})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.GetWorkspace200JSONResponse)
+	require.True(t, ok)
+	require.Len(t, body.Panels, 1)
+	view := body.Panels[0].View
+	require.NotNil(t, view)
+	require.NotNil(t, view.Transform)
+	assert.Equal(t, "status", view.Transform.GroupBy)
+	assert.Equal(t, openapi.ViewTransformAggregate("count"), view.Transform.Aggregate)
+	assert.Nil(t, view.Transform.Field, "an empty Field must come back absent, not a pointer to an empty string")
+	require.NotNil(t, view.Chart)
+	assert.Equal(t, "status", view.Chart.Category)
+	assert.Equal(t, "count", view.Chart.Value)
+	assert.Equal(t, openapi.ViewChartKind("bar"), view.Chart.Kind)
+}
+
+// TestGetWorkspaceRendersAPanelWithATransformOnlyView proves a View can
+// carry just a Transform, with no Chart, and that a non-empty Field comes
+// back as a present pointer (docs/specs/dashboard.md, section 3: the two
+// halves are independent).
+func TestGetWorkspaceRendersAPanelWithATransformOnlyView(t *testing.T) {
+	fake := &fakeWorkspaces{
+		getFound: true,
+		getResult: domain.Workspace{
+			ID: "ws-1",
+			Panels: []domain.Panel{{
+				ID: "pnl-1", Service: "inventory", OperationID: "ListInventoryItems", Component: "table",
+				View: &domain.View{Transform: &domain.Transform{GroupBy: "status", Aggregate: domain.AggregateSum, Field: "amount"}},
+			}},
+		},
+	}
+
+	h := handler.NewWorkspace(fake)
+
+	resp, err := h.GetWorkspace(t.Context(), openapi.GetWorkspaceRequestObject{Id: "ws-1"})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.GetWorkspace200JSONResponse)
+	require.True(t, ok)
+	view := body.Panels[0].View
+	require.NotNil(t, view)
+	require.NotNil(t, view.Transform)
+	require.NotNil(t, view.Transform.Field)
+	assert.Equal(t, "amount", *view.Transform.Field)
+	assert.Nil(t, view.Chart)
+}
+
 func TestGetWorkspaceReturns404WhenNotFound(t *testing.T) {
 	fake := &fakeWorkspaces{getFound: false}
 
@@ -194,6 +264,76 @@ func TestAddPanelStoresAndRendersThePanel(t *testing.T) {
 	require.NotNil(t, fake.addPanelIn)
 	assert.Equal(t, "inventory", fake.addPanelIn.Service)
 	assert.Equal(t, "ws-1", fake.addPanelWSID)
+}
+
+// TestAddPanelPassesTheViewThrough proves toDomainView's happy path: both
+// halves of a wire View, with Transform.Field present, convert into the
+// domain.View the usecase receives.
+func TestAddPanelPassesTheViewThrough(t *testing.T) {
+	fake := &fakeWorkspaces{addPanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	field := "amount"
+
+	resp, err := h.AddPanel(t.Context(), openapi.AddPanelRequestObject{
+		Id: "ws-1",
+		Body: &openapi.CreatePanelRequest{
+			Service: "inventory", OperationId: "ListInventoryItems", Component: "chart", Title: "金額合計",
+			View: &openapi.View{
+				Transform: &struct {
+					Aggregate openapi.ViewTransformAggregate `json:"aggregate"`
+					Field     *string                        `json:"field,omitempty"`
+					GroupBy   string                         `json:"groupBy"`
+				}{Aggregate: "sum", Field: &field, GroupBy: "status"},
+				Chart: &struct {
+					Category string                `json:"category"`
+					Kind     openapi.ViewChartKind `json:"kind"`
+					Value    string                `json:"value"`
+				}{Category: "status", Kind: "line", Value: "amount"},
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.IsType(t, openapi.AddPanel201JSONResponse{}, resp)
+	require.NotNil(t, fake.addPanelIn)
+	require.NotNil(t, fake.addPanelIn.View)
+	require.NotNil(t, fake.addPanelIn.View.Transform)
+	assert.Equal(t, "status", fake.addPanelIn.View.Transform.GroupBy)
+	assert.Equal(t, domain.AggregateSum, fake.addPanelIn.View.Transform.Aggregate)
+	assert.Equal(t, "amount", fake.addPanelIn.View.Transform.Field)
+	require.NotNil(t, fake.addPanelIn.View.Chart)
+	assert.Equal(t, domain.ChartKindLine, fake.addPanelIn.View.Chart.Kind)
+}
+
+// TestAddPanelPassesATransformOnlyViewWithNoField proves a request naming
+// only a Transform, with no Field (the count aggregate), converts with a
+// nil Chart and an empty Field - not a nil pointer dereference.
+func TestAddPanelPassesATransformOnlyViewWithNoField(t *testing.T) {
+	fake := &fakeWorkspaces{addPanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	resp, err := h.AddPanel(t.Context(), openapi.AddPanelRequestObject{
+		Id: "ws-1",
+		Body: &openapi.CreatePanelRequest{
+			Service: "inventory", OperationId: "ListInventoryItems", Component: "table", Title: "ステータス別件数",
+			View: &openapi.View{
+				Transform: &struct {
+					Aggregate openapi.ViewTransformAggregate `json:"aggregate"`
+					Field     *string                        `json:"field,omitempty"`
+					GroupBy   string                         `json:"groupBy"`
+				}{Aggregate: "count", GroupBy: "status"},
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.IsType(t, openapi.AddPanel201JSONResponse{}, resp)
+	require.NotNil(t, fake.addPanelIn)
+	require.NotNil(t, fake.addPanelIn.View)
+	require.NotNil(t, fake.addPanelIn.View.Transform)
+	assert.Empty(t, fake.addPanelIn.View.Transform.Field)
+	assert.Nil(t, fake.addPanelIn.View.Chart)
 }
 
 func TestAddPanelReturns400ForAnUnexposedOperation(t *testing.T) {

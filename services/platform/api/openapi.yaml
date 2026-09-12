@@ -581,12 +581,56 @@ components:
     Component:
       type: string
       description: The widget the frontend renders the result with.
-      enum: [table, detail, form, choice]
+      enum: [table, detail, form, choice, chart]
       x-enum-labels:
         table: 表
         detail: 詳細
         form: フォーム
         choice: 選択
+        chart: グラフ
+    View:
+      type: object
+      description: How to draw a result - beside the call that says what to fetch.
+      properties:
+        transform:
+          type: object
+          required:
+            - groupBy
+            - aggregate
+          properties:
+            groupBy:
+              type: string
+              description: The field whose distinct values become rows.
+            aggregate:
+              type: string
+              enum: [count, sum, avg]
+              x-enum-labels:
+                count: 件数
+                sum: 合計
+                avg: 平均
+            field:
+              type: string
+              description: The field to aggregate. Absent for `count`.
+        chart:
+          type: object
+          required:
+            - category
+            - value
+            - kind
+          properties:
+            category:
+              type: string
+              description: The field named as the chart's category axis.
+            value:
+              type: string
+              description: The field named as the chart's value axis.
+            kind:
+              type: string
+              enum: [bar, line, pie]
+              x-enum-labels:
+                bar: 棒
+                line: 折れ線
+                pie: 円
     Source:
       type: object
       description: Which endpoint of which service a call was, or would be, made against.
@@ -808,6 +852,8 @@ components:
           description: >
             Where the panel sits among its workspace's others, ascending.
             Not editable in this slice (W5).
+        view:
+          $ref: "#/components/schemas/View"
     CreatePanelRequest:
       type: object
       description: A call to save as a new panel, appended after this workspace's others.
@@ -835,6 +881,8 @@ components:
           description: >
             The panel's title. Left blank, the panel is titled with its
             operation id instead of showing an empty card header.
+        view:
+          $ref: "#/components/schemas/View"
     Workspace:
       type: object
       description: One workspace and its panels, in position order.

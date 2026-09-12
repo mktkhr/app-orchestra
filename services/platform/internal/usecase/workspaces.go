@@ -61,21 +61,26 @@ var ErrWorkspaceNotFound = errors.New("workspace not found")
 // through /api/invoke (W2) - so the check belongs here, at write time, not
 // left to the moment it fails.
 //
-// Workspaces holds no PermissionStore, unlike Orchestrator: a workspace's
-// own access rule is ownership, not the operation permission table, and a
-// panel naming an operation its owner may no longer call is left to fail
-// where it is actually invoked - Orchestrator.Invoke, through the
-// narrowed catalogue - rather than checked twice (docs/specs/auth.md,
-// section 7; AC-W-106).
+// Workspaces once held no PermissionStore, on the reasoning that a
+// workspace's own access rule is ownership, and a panel naming an
+// operation its owner may no longer call could be left to fail where it
+// is actually invoked - Orchestrator.Invoke, through the narrowed
+// catalogue (docs/specs/auth.md, section 7; AC-W-106). Building a panel
+// changed that: docs/specs/dashboard.md's AC-P-107 requires that a person
+// may not build a panel over an operation they may not call "through this
+// endpoint any more than through /api/invoke" - so AddPanel now narrows
+// the catalogue the same way catalogFor does there, and needs the same
+// PermissionStore to do it (see DECISIONS.md).
 type Workspaces struct {
-	store   WorkspaceStore
-	catalog domain.Catalog
+	store       WorkspaceStore
+	catalog     domain.Catalog
+	permissions PermissionStore
 }
 
 // NewWorkspaces builds a Workspaces usecase over store, validating panels
-// against catalog.
-func NewWorkspaces(store WorkspaceStore, catalog domain.Catalog) *Workspaces {
-	return &Workspaces{store: store, catalog: catalog}
+// against catalog narrowed by permissions.
+func NewWorkspaces(store WorkspaceStore, catalog domain.Catalog, permissions PermissionStore) *Workspaces {
+	return &Workspaces{store: store, catalog: catalog, permissions: permissions}
 }
 
 // List returns every workspace user owns.
@@ -140,9 +145,12 @@ func (w *Workspaces) Delete(ctx context.Context, user *domain.User, id string) e
 }
 
 // AddPanel saves p as a new panel on workspaceID, rejecting it with
-// ErrEndpointNotFound when the catalogue does not expose (p.Service,
-// p.OperationID) - the same sentinel Invoke returns for the same reason,
-// so a handler maps both the same way - and with ErrWorkspaceNotFound when
+// ErrEndpointNotFound when catalogFor(ctx, user) does not expose
+// (p.Service, p.OperationID) - the same sentinel Invoke returns for the
+// same reason, so a handler maps both the same way, and the same error
+// whether the operation does not exist at all or user's own permissions
+// simply do not reach it (docs/specs/dashboard.md, AC-P-107: a 400 never
+// tells anybody what exists) - and with ErrWorkspaceNotFound when
 // workspaceID does not exist or belongs to somebody other than user
 // (docs/specs/auth.md, section 7). An empty p.Title is replaced with
 // p.OperationID before it reaches the store: a panel is drawn in a card
@@ -158,7 +166,12 @@ func (w *Workspaces) AddPanel(
 	workspaceID string,
 	p *domain.Panel,
 ) (domain.Panel, error) {
-	if _, ok := w.catalog.Find(p.Service, p.OperationID); !ok {
+	catalog, err := w.catalogFor(ctx, user)
+	if err != nil {
+		return domain.Panel{}, err
+	}
+
+	if _, ok := catalog.Find(p.Service, p.OperationID); !ok {
 		return domain.Panel{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, p.Service, p.OperationID)
 	}
 
@@ -202,4 +215,24 @@ func (w *Workspaces) DeletePanel(ctx context.Context, user *domain.User, workspa
 	}
 
 	return nil
+}
+
+// catalogFor narrows w.catalog to what user may call: the whole catalogue
+// for an admin, or domain.Catalog.For(permissions) for anybody else - the
+// same rule Orchestrator.catalogFor applies, for the same reason
+// (docs/specs/auth.md, section 5): the operation AddPanel will accept and
+// the operation /api/invoke will later run must be read from the same
+// narrowed value, or a panel could be built over something its owner
+// cannot actually call.
+func (w *Workspaces) catalogFor(ctx context.Context, user *domain.User) (domain.Catalog, error) {
+	if user.Role == domain.RoleAdmin {
+		return w.catalog, nil
+	}
+
+	permissions, err := w.permissions.For(ctx, user.ID)
+	if err != nil {
+		return domain.Catalog{}, fmt.Errorf("reading permissions for %s: %w", user.ID, err)
+	}
+
+	return w.catalog.For(permissions), nil
 }

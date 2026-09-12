@@ -1,5 +1,13 @@
 package domain
 
+// ComponentChart is a fifth value Component can hold, alongside the four
+// Render and RenderResult choose between. It never comes back from either
+// function: a chart is something a panel's own View asks for, or a
+// contract's x-ui-hint declares (docs/specs/dashboard.md, P2) - never
+// something the response schema alone implies, the way a table or a
+// detail is. A person or a contract sets Component to it directly.
+const ComponentChart Component = "chart"
+
 // Render answers what to draw for an endpoint the platform is choosing
 // between: it has not been called, and may never be. No I/O, no model; the
 // component is decided entirely from the spec, per

@@ -68,6 +68,12 @@ func openDB(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("applying schema to %s: %w", path, err)
 	}
 
+	if err := ensurePanelsViewColumn(context.Background(), db); err != nil {
+		_ = db.Close()
+
+		return nil, fmt.Errorf("migrating %s: %w", path, err)
+	}
+
 	return db, nil
 }
 
@@ -218,11 +224,16 @@ func (s *Store) AddPanel(ctx context.Context, workspaceID string, p *domain.Pane
 		return domain.Panel{}, fmt.Errorf("encoding panel args: %w", err)
 	}
 
+	viewValue, err := marshalView(p.View)
+	if err != nil {
+		return domain.Panel{}, fmt.Errorf("encoding panel view: %w", err)
+	}
+
 	if _, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO panels (id, workspace_id, service, operation_id, component, title, args, position)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, workspaceID, p.Service, p.OperationID, p.Component, p.Title, string(argsJSON), p.Position,
+		`INSERT INTO panels (id, workspace_id, service, operation_id, component, title, args, position, view)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, workspaceID, p.Service, p.OperationID, p.Component, p.Title, string(argsJSON), p.Position, viewValue,
 	); err != nil {
 		return domain.Panel{}, fmt.Errorf("adding panel to workspace %s: %w", workspaceID, err)
 	}
@@ -236,7 +247,108 @@ func (s *Store) AddPanel(ctx context.Context, workspaceID string, p *domain.Pane
 		Title:       p.Title,
 		Args:        args,
 		Position:    p.Position,
+		View:        p.View,
 	}, nil
+}
+
+// viewJSON is the wire shape of domain.View, marshaled into the panels
+// table's nullable "view" column. It exists because domain may not import
+// encoding/json (harness/quality/go/golangci.yml, depguard) - the same
+// reason Panel.Args, a plain map, is marshaled here rather than in that
+// package - so this adapter is where a domain.View gains and loses its
+// JSON tags.
+type viewJSON struct {
+	Transform *transformJSON `json:"transform,omitempty"`
+	Chart     *chartJSON     `json:"chart,omitempty"`
+}
+
+type transformJSON struct {
+	GroupBy   string           `json:"groupBy"`
+	Aggregate domain.Aggregate `json:"aggregate"`
+	Field     string           `json:"field,omitempty"`
+}
+
+type chartJSON struct {
+	Category string           `json:"category"`
+	Value    string           `json:"value"`
+	Kind     domain.ChartKind `json:"kind"`
+}
+
+// marshalView encodes v into a nullable TEXT column value: v == nil
+// becomes SQL NULL rather than the literal string "null" (AC-P-106). A
+// sql.NullString, not a *string, so an empty view carries no error to
+// pair a nil pointer with (golangci-lint's nilnil check forbids a
+// function returning (nil, nil) from a pointer-and-error signature).
+func marshalView(v *domain.View) (sql.NullString, error) {
+	if v == nil {
+		return sql.NullString{}, nil
+	}
+
+	encoded, err := json.Marshal(toViewJSON(v))
+	if err != nil {
+		return sql.NullString{}, fmt.Errorf("encoding view: %w", err)
+	}
+
+	return sql.NullString{String: string(encoded), Valid: true}, nil
+}
+
+// unmarshalView decodes a non-NULL panels.view column value into a
+// domain.View. Callers check column.Valid themselves (see loadPanels) so
+// that this function, unlike marshalView, never has a nil-view case to
+// return alongside a nil error - a NULL column and a decoding failure are
+// its only two possible reasons not to return a view, and only one of
+// them is an error.
+func unmarshalView(raw string) (*domain.View, error) {
+	var wire viewJSON
+	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
+		return nil, fmt.Errorf("decoding view: %w", err)
+	}
+
+	return fromViewJSON(&wire), nil
+}
+
+func toViewJSON(v *domain.View) viewJSON {
+	var wire viewJSON
+
+	if v.Transform != nil {
+		wire.Transform = &transformJSON{
+			GroupBy:   v.Transform.GroupBy,
+			Aggregate: v.Transform.Aggregate,
+			Field:     v.Transform.Field,
+		}
+	}
+
+	if v.Chart != nil {
+		wire.Chart = &chartJSON{
+			Category: v.Chart.Category,
+			Value:    v.Chart.Value,
+			Kind:     v.Chart.Kind,
+		}
+	}
+
+	return wire
+}
+
+func fromViewJSON(wire *viewJSON) *domain.View {
+	v := &domain.View{}
+
+	if wire.Transform != nil {
+		v.Transform = &domain.Transform{
+			GroupBy:   wire.Transform.GroupBy,
+			Aggregate: wire.Transform.Aggregate,
+			Field:     wire.Transform.Field,
+		}
+	}
+
+	if wire.Chart != nil {
+		v.Chart = &domain.Chart{
+			Category: wire.Chart.Category,
+			Value:    wire.Chart.Value,
+			Kind:     wire.Chart.Kind,
+		}
+	}
+
+	return v
 }
 
 // DeletePanel removes one panel from a workspace. Deleting a panel that
@@ -255,7 +367,7 @@ func (s *Store) DeletePanel(ctx context.Context, workspaceID, panelID string) er
 func (s *Store) loadPanels(ctx context.Context, workspaceID string) ([]domain.Panel, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, workspace_id, service, operation_id, component, title, args, position
+		`SELECT id, workspace_id, service, operation_id, component, title, args, position, view
 		 FROM panels WHERE workspace_id = ? ORDER BY position`,
 		workspaceID,
 	)
@@ -268,12 +380,14 @@ func (s *Store) loadPanels(ctx context.Context, workspaceID string) ([]domain.Pa
 
 	for rows.Next() {
 		var (
-			p        domain.Panel
-			argsJSON string
+			p          domain.Panel
+			argsJSON   string
+			viewColumn sql.NullString
 		)
 
 		if err := rows.Scan(
 			&p.ID, &p.WorkspaceID, &p.Service, &p.OperationID, &p.Component, &p.Title, &argsJSON, &p.Position,
+			&viewColumn,
 		); err != nil {
 			return nil, fmt.Errorf("scanning panel: %w", err)
 		}
@@ -284,6 +398,19 @@ func (s *Store) loadPanels(ctx context.Context, workspaceID string) ([]domain.Pa
 		}
 
 		p.Args = args
+
+		// A NULL column - every panel saved before this slice, and every
+		// panel with nothing to say here - stays a nil View rather than
+		// being decoded at all (AC-P-106).
+		if viewColumn.Valid {
+			view, err := unmarshalView(viewColumn.String)
+			if err != nil {
+				return nil, fmt.Errorf("decoding panel view: %w", err)
+			}
+
+			p.View = view
+		}
+
 		panels = append(panels, p)
 	}
 

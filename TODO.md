@@ -4,12 +4,16 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-`docs/plans/dashboard.md`: Tasks 0 and 1 done. Task 0:
+`docs/plans/dashboard.md`: Tasks 0, 1 and 2 done. Task 0:
 `web/src/entities/rendering/lib/transform.ts` - pure `applyTransform`, groups rows and
 reduces each group to `count`/`sum`/`avg`; see its own tests for the edge cases pinned.
 Task 1: `web/src/entities/rendering/ui/ResultChart.tsx` - draws rows as a bar, line or pie
 chart via `@mui/x-charts@9.4.0`; see its own tests for the non-numeric-value,
-non-string-category and empty-input edge cases pinned. Tasks 2-7 remain.
+non-string-category and empty-input edge cases pinned.
+Task 2: the platform's `View` (contract, `internal/domain/view.go`, the
+`panels.view` column and its migration, `Workspaces.AddPanel`'s permission
+narrowing for AC-P-107) - see `STATE.md` and `DECISIONS.md`, 2026-09-12.
+Task 3 needs Task 2's `View` schema and is next; Tasks 4-7 remain.
 
 `docs/plans/orchestration.md`, `docs/plans/workspaces.md`,
 `docs/plans/auth.md` and `docs/plans/context.md` are all closed - every

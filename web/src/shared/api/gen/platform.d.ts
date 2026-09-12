@@ -309,7 +309,26 @@ export type components = {
          * @description The widget the frontend renders the result with.
          * @enum {string}
          */
-        readonly Component: "table" | "detail" | "form" | "choice";
+        readonly Component: "table" | "detail" | "form" | "choice" | "chart";
+        /** @description How to draw a result - beside the call that says what to fetch. */
+        readonly View: {
+            readonly transform?: {
+                /** @description The field whose distinct values become rows. */
+                readonly groupBy: string;
+                /** @enum {string} */
+                readonly aggregate: "count" | "sum" | "avg";
+                /** @description The field to aggregate. Absent for `count`. */
+                readonly field?: string;
+            };
+            readonly chart?: {
+                /** @description The field named as the chart's category axis. */
+                readonly category: string;
+                /** @description The field named as the chart's value axis. */
+                readonly value: string;
+                /** @enum {string} */
+                readonly kind: "bar" | "line" | "pie";
+            };
+        };
         /** @description Which endpoint of which service a call was, or would be, made against. */
         readonly Source: {
             /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
@@ -427,6 +446,7 @@ export type components = {
             readonly title: string;
             /** @description Where the panel sits among its workspace's others, ascending. Not editable in this slice (W5). */
             readonly position: number;
+            readonly view?: components["schemas"]["View"];
         };
         /** @description A call to save as a new panel, appended after this workspace's others. */
         readonly CreatePanelRequest: {
@@ -441,6 +461,7 @@ export type components = {
             readonly component: components["schemas"]["Component"];
             /** @description The panel's title. Left blank, the panel is titled with its operation id instead of showing an empty card header. */
             readonly title: string;
+            readonly view?: components["schemas"]["View"];
         };
         /** @description One workspace and its panels, in position order. */
         readonly Workspace: {

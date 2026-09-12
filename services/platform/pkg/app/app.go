@@ -245,7 +245,12 @@ func build(
 		return nil, fmt.Errorf("building the catalogue: %w", err)
 	}
 
-	workspaceHandler, err := newWorkspaceHandler(cfg.DBPath, catalog)
+	permissions, err := newPermissionStore(cfg.DBPath)
+	if err != nil {
+		return nil, err
+	}
+
+	workspaceHandler, err := newWorkspaceHandler(cfg.DBPath, catalog, permissions)
 	if err != nil {
 		return nil, err
 	}
@@ -260,11 +265,6 @@ func build(
 	}
 
 	planner, err := newPlanner(cfg, catalog)
-	if err != nil {
-		return nil, err
-	}
-
-	permissions, err := newPermissionStore(cfg.DBPath)
 	if err != nil {
 		return nil, err
 	}
@@ -385,16 +385,24 @@ func toUsecaseAnswers(answers []Answer) []usecase.Answer {
 // happens eagerly, above. build has already rejected an empty dbPath
 // itself (ErrMissingDBPath), so this always opens a real store.
 //
+// permissions is threaded in from build, which now opens it before this
+// call rather than after: Workspaces.AddPanel narrows the catalogue by the
+// caller's own permissions the same way Orchestrator.Invoke does
+// (docs/specs/dashboard.md, AC-P-107), and needs a PermissionStore to do
+// it.
+//
 // The store, once opened, is never closed: it lives for the process's
 // lifetime, same as the catalogue and the invoker's HTTP client above,
 // with nothing in this package's own lifecycle to close it from.
-func newWorkspaceHandler(dbPath string, catalog domain.Catalog) (*handler.Workspace, error) {
+func newWorkspaceHandler(
+	dbPath string, catalog domain.Catalog, permissions usecase.PermissionStore,
+) (*handler.Workspace, error) {
 	store, err := sqlitestore.New(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening the workspace store: %w", err)
 	}
 
-	return handler.NewWorkspace(usecase.NewWorkspaces(store, catalog)), nil
+	return handler.NewWorkspace(usecase.NewWorkspaces(store, catalog, permissions)), nil
 }
 
 // newPermissionStore opens the permissions table in the SQLite file at

@@ -30,4 +30,10 @@ type Panel struct {
 	// Position orders a workspace's panels for display (W5). The column
 	// that would record a drag exists; the editing does not (section 9).
 	Position int
+	// View is how the panel draws its result, beside Args which says what
+	// to fetch (docs/specs/dashboard.md, P1). Nil on every panel saved
+	// before this slice, and on every panel whose component needs nothing
+	// configured - a panel saved with no View still reads back and still
+	// draws (AC-P-106).
+	View *View
 }

@@ -195,6 +195,7 @@ func toAPIPanel(p *domain.Panel) openapi.Panel {
 		Component:   openapi.Component(p.Component),
 		Title:       p.Title,
 		Position:    p.Position,
+		View:        toAPIView(p.View),
 	}
 }
 
@@ -210,5 +211,87 @@ func toDomainPanel(workspaceID string, body *openapi.CreatePanelRequest) *domain
 		Component:   string(body.Component),
 		Title:       body.Title,
 		Args:        body.Args,
+		View:        toDomainView(body.View),
 	}
+}
+
+// toAPIView converts a domain.View into the wire View, and nil into nil -
+// a panel saved before this slice, or with nothing to configure, carries
+// no view either way (AC-P-106).
+func toAPIView(v *domain.View) *openapi.View {
+	if v == nil {
+		return nil
+	}
+
+	out := &openapi.View{}
+
+	if v.Transform != nil {
+		out.Transform = &struct {
+			Aggregate openapi.ViewTransformAggregate `json:"aggregate"`
+			Field     *string                        `json:"field,omitempty"`
+			GroupBy   string                         `json:"groupBy"`
+		}{
+			GroupBy:   v.Transform.GroupBy,
+			Aggregate: openapi.ViewTransformAggregate(v.Transform.Aggregate),
+			Field:     emptyToNilString(v.Transform.Field),
+		}
+	}
+
+	if v.Chart != nil {
+		out.Chart = &struct {
+			Category string                `json:"category"`
+			Kind     openapi.ViewChartKind `json:"kind"`
+			Value    string                `json:"value"`
+		}{
+			Category: v.Chart.Category,
+			Value:    v.Chart.Value,
+			Kind:     openapi.ViewChartKind(v.Chart.Kind),
+		}
+	}
+
+	return out
+}
+
+// toDomainView converts the wire View into a domain.View, and nil into
+// nil, the same way toAPIView goes the other direction.
+func toDomainView(v *openapi.View) *domain.View {
+	if v == nil {
+		return nil
+	}
+
+	out := &domain.View{}
+
+	if v.Transform != nil {
+		field := ""
+		if v.Transform.Field != nil {
+			field = *v.Transform.Field
+		}
+
+		out.Transform = &domain.Transform{
+			GroupBy:   v.Transform.GroupBy,
+			Aggregate: domain.Aggregate(v.Transform.Aggregate),
+			Field:     field,
+		}
+	}
+
+	if v.Chart != nil {
+		out.Chart = &domain.Chart{
+			Category: v.Chart.Category,
+			Value:    v.Chart.Value,
+			Kind:     domain.ChartKind(v.Chart.Kind),
+		}
+	}
+
+	return out
+}
+
+// emptyToNilString returns nil for an empty string and a pointer to s
+// otherwise - Transform.Field is absent for `count`, and an empty string
+// pointer would round-trip as a present-but-blank field instead.
+func emptyToNilString(s string) *string {
+	if s == "" {
+		return nil
+	}
+
+	return &s
 }

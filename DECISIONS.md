@@ -2170,3 +2170,83 @@ component was written that way, not read out of the library's docs.
 alternative the same way. A caption a person can read is a better answer
 than a label only a screen reader gets, so this is not a workaround being
 tolerated - it is the thing that should have been done first.
+
+## 2026-09-12 — panels.view's migration checks the column in Go, not in SQL
+
+**Context.** `docs/plans/dashboard.md` Task 2 adds a `view` column to the
+`panels` table, which already ships rows on disk at `ORCHESTRA_DB_PATH`.
+`schema.sql`'s tables are all `CREATE TABLE IF NOT EXISTS`, which does
+nothing for a column added to a table that already exists, so an existing
+file needed an `ALTER TABLE` run against it once, safely, on every open.
+The obvious spelling is SQLite's own `ALTER TABLE panels ADD COLUMN IF NOT
+EXISTS view TEXT` - upstream SQLite has supported that syntax since 3.35
+(2021), and `modernc.org/sqlite` v1.58.0's `sqlite_version()` reports
+3.53.4, well past it.
+
+**What actually happened.** That exact statement fails at parse time
+against this driver: `SQL logic error: near "EXISTS": syntax error`. A
+plain `ALTER TABLE panels ADD COLUMN view TEXT` (no `IF NOT EXISTS`) works
+fine, and fails on the specific error `duplicate column name: view` when
+run a second time. This was verified directly (not inferred from a
+changelog) with two throwaway `go run` programs against the pinned driver
+version before writing the real code: modernc.org/sqlite's own SQL parser
+does not yet accept the trailing clause on `ALTER TABLE ... ADD COLUMN`,
+whatever the reported `sqlite_version()` says about the C library it is a
+port of.
+
+**Decision.** Do the idempotence check in Go instead of in SQL:
+`internal/adapter/repository/sqlite/migrate.go`'s `panelsHasViewColumn`
+queries `SELECT 1 FROM pragma_table_info('panels') WHERE name = 'view'`
+(the same `QueryRowContext`+`Scan`+`sql.ErrNoRows` shape `AddPanel`'s own
+existence check already uses, not a hand-rolled loop over
+`PRAGMA table_info`'s full row shape, which needlessly enlarges the
+untestable-error-branch surface for no benefit), and
+`ensurePanelsViewColumn` runs the plain `ALTER TABLE` only when that comes
+back false. `store.go`'s `openDB` calls it unconditionally, right after
+`schemaSQL`, on every open - fresh file or old one, the two cases end up
+identical the moment the column exists.
+
+**Consequences.** `TestNewOpensADatabaseFileWrittenBeforeViewExisted`
+builds a file with the schema exactly as it existed before this task (no
+`view` column, a workspace and a panel inserted with raw `database/sql`,
+independent of whatever `schema.go`'s embedded SQL says today) and proves
+`sqlite.New` opens it, the old panel reads back with a nil `View`, and the
+file accepts a new panel with a view afterward - the test the plan calls
+the one that actually matters here, since a migration nobody ran against
+old data is a migration nobody tested. Any future column added to an
+existing table in this package should follow the same check-then-`ALTER`
+shape rather than reach for `IF NOT EXISTS` on `ADD COLUMN` again.
+
+## 2026-09-12 — AddPanel narrows the catalogue by permission (AC-P-107)
+
+**Context.** `docs/specs/auth.md` section 7, written for the workspaces
+subproject, deliberately left `Workspaces.AddPanel` checking only whether
+an operation exists in the whole configured catalogue, not whether the
+calling person holds a permission for it - "a panel naming an operation the
+person may no longer call fails in its own card", at `/api/invoke` time,
+was the chosen point, so the check would not be made twice. `workspaces.go`
+said so directly in `Workspaces`' own doc comment.
+
+**Decision.** `docs/specs/dashboard.md`'s AC-P-107 supersedes that for
+`AddPanel` specifically: "a person may not build a panel over an operation
+they may not call, through this endpoint any more than through
+`/api/invoke`." `Workspaces` now takes a `usecase.PermissionStore` (a third
+constructor argument) and `AddPanel` calls a `catalogFor` narrowing the
+same way `Orchestrator.catalogFor` already does - the whole catalogue for
+an admin, `catalog.For(permissions.For(ctx, user.ID))` for anybody else -
+before `catalog.Find`, so an operation that exists but that the caller
+cannot reach gets the same `ErrEndpointNotFound` an operation that does not
+exist anywhere gets. `pkg/app.build` now opens the permission store before
+`newWorkspaceHandler` rather than after, so it has one to pass in.
+
+**Consequences.** Every existing `Workspaces` test needed a third
+constructor argument; `workspaces_test.go`'s `grantedPermissions()` grants
+`exposedCatalog()`'s one operation regardless of which user is asked about,
+so every test that is not itself about permission narrowing keeps its
+prior behaviour unchanged. Two new tests
+(`TestWorkspacesAddPanelRejectsAnOperationTheUserMayNotCall`,
+`TestWorkspacesAddPanelNeverConsultsThePermissionStoreForAnAdmin`) pin
+AC-P-107 and the admin exception directly. `docs/specs/auth.md` section 7's
+prose about `/api/invoke` being the one place this is checked is now true
+of every endpoint except `AddPanel`; a future reader should treat AC-P-107
+as the narrower, later word on this one path.
