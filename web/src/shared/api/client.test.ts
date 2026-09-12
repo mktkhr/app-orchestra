@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { getHealth, getWorkspace, postPlan } from "./client";
+import {
+  deleteSession,
+  getHealth,
+  getSession,
+  getWorkspace,
+  onUnauthorized,
+  postPlan,
+  postSession,
+} from "./client";
 
 function stubFetch(status: number, body: unknown): void {
   vi.stubGlobal(
@@ -31,6 +39,94 @@ describe("getHealth", () => {
     stubFetch(500, { message: "boom" });
 
     await expect(getHealth()).rejects.toThrow("GET /api/health failed");
+  });
+});
+
+describe("getSession", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the signed-in user on success", async () => {
+    stubFetch(200, { id: "usr-1", name: "admin", role: "admin" });
+
+    await expect(getSession()).resolves.toEqual({ id: "usr-1", name: "admin", role: "admin" });
+  });
+
+  it("resolves to null, not a rejection, when nobody is signed in", async () => {
+    stubFetch(401, { message: "unauthorized" });
+
+    await expect(getSession()).resolves.toBeNull();
+  });
+});
+
+describe("postSession", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the signed-in user on success", async () => {
+    stubFetch(200, { id: "usr-1", name: "admin", role: "admin" });
+
+    await expect(postSession({ name: "admin", password: "correct" })).resolves.toEqual({
+      id: "usr-1",
+      name: "admin",
+      role: "admin",
+    });
+  });
+
+  it("throws on a wrong name or password", async () => {
+    stubFetch(401, { message: "wrong" });
+
+    await expect(postSession({ name: "admin", password: "wrong" })).rejects.toThrow(
+      "POST /api/session failed",
+    );
+  });
+});
+
+describe("deleteSession", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("resolves on success", async () => {
+    stubFetch(204, {});
+
+    await expect(deleteSession()).resolves.toBeUndefined();
+  });
+});
+
+describe("onUnauthorized", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("notifies every subscriber when any call comes back 401", async () => {
+    stubFetch(401, { message: "unauthorized" });
+
+    const listener = vi.fn<() => void>();
+    const unsubscribe = onUnauthorized(listener);
+
+    await getSession();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    await getSession();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not notify on a non-401 response", async () => {
+    stubFetch(200, { id: "usr-1", name: "admin", role: "admin" });
+
+    const listener = vi.fn<() => void>();
+    const unsubscribe = onUnauthorized(listener);
+
+    await getSession();
+    unsubscribe();
+
+    expect(listener).not.toHaveBeenCalled();
   });
 });
 

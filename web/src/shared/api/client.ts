@@ -8,6 +8,78 @@ import type { components, paths } from "./gen/platform";
  */
 const client = createClient<paths>({ baseUrl: "" });
 
+/** Notified through {@link onUnauthorized} whenever any call here gets a 401. */
+const unauthorizedListeners = new Set<() => void>();
+
+client.use({
+  onResponse({ response }) {
+    if (response.status === 401) for (const listener of unauthorizedListeners) listener();
+  },
+});
+
+/**
+ * Subscribes to every 401 this client receives, from any endpoint.
+ * `features/session` uses this to drop back to the sign-in screen the
+ * moment a session stops being valid, rather than waiting for whichever
+ * screen is open to notice on its own.
+ *
+ * @returns a function that unsubscribes.
+ */
+export function onUnauthorized(listener: () => void): () => void {
+  unauthorizedListeners.add(listener);
+
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+/** The signed-in user, as GET/POST /api/session return it (docs/specs/auth.md section 6). */
+export type SessionUser = MethodResponse<typeof client, "get", "/api/session">;
+/**
+ * Calls GET /api/session. Unlike every other call here, a 401 is the
+ * ordinary answer to "is anyone signed in", so this resolves to `null`
+ * rather than throwing on one.
+ */
+export async function getSession(): Promise<SessionUser | null> {
+  const { data, response } = await client.GET("/api/session", { fetch: globalThis.fetch });
+
+  if (response.status === 401) {
+    return null;
+  }
+
+  if (data === undefined) {
+    throw new Error("GET /api/session failed");
+  }
+
+  return data;
+}
+
+/** A name and password to check against the platform's accounts. */
+export type SignInRequest = components["schemas"]["SignInRequest"];
+
+/** Calls POST /api/session. On success the platform sets the session cookie and returns the user. */
+export async function postSession(request: SignInRequest): Promise<SessionUser> {
+  const { data, error } = await client.POST("/api/session", {
+    body: request,
+    fetch: globalThis.fetch,
+  });
+
+  if (error !== undefined) {
+    throw new Error("POST /api/session failed");
+  }
+
+  return data;
+}
+
+/** Calls DELETE /api/session. Signing out when nobody is signed in is not an error. */
+export async function deleteSession(): Promise<void> {
+  const { error } = await client.DELETE("/api/session", { fetch: globalThis.fetch });
+
+  if (error !== undefined) {
+    throw new Error("DELETE /api/session failed");
+  }
+}
+
 /** The platform's health status, as reported by GET /api/health. */
 export interface Health {
   readonly status: string;

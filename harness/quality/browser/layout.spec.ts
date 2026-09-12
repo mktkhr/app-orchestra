@@ -1,7 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { signInAsAdmin } from "./session";
-
 /**
  * Layout gate.
  *
@@ -204,7 +202,6 @@ for (const scheme of ["light", "dark"] as const) {
     test.use({ colorScheme: scheme });
 
     test("the application declares its own background", async ({ page }) => {
-      await signInAsAdmin(page);
       await page.goto("/");
       await page.waitForLoadState("networkidle");
 
@@ -218,7 +215,6 @@ for (const scheme of ["light", "dark"] as const) {
     });
 
     test("every control is big enough to hit", async ({ page }) => {
-      await signInAsAdmin(page);
       await page.goto("/");
       await page.waitForLoadState("networkidle");
 
@@ -228,7 +224,6 @@ for (const scheme of ["light", "dark"] as const) {
     });
 
     test("every control has a visible boundary", async ({ page }) => {
-      await signInAsAdmin(page);
       await page.goto("/");
       await page.waitForLoadState("networkidle");
 
@@ -239,7 +234,6 @@ for (const scheme of ["light", "dark"] as const) {
 
     test("the page does not scroll sideways on a narrow screen", async ({ page }) => {
       await page.setViewportSize(NARROW_VIEWPORT);
-      await signInAsAdmin(page);
       await page.goto("/");
       await page.waitForLoadState("networkidle");
 
