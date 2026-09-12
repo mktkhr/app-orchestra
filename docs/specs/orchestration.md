@@ -245,6 +245,17 @@ legal answer at all, and the model has exactly three left - name a declared
 value, name `__all__`, or reach for `ask_user` (D11). The silent drop has no
 shape to take.
 
+How strong that last sentence is depends on the transport enforcing it. For
+the tool-calling planner it is literal: `strict: true` (D10) has the model's
+answer checked against the schema before it is an answer at all, so a missing
+required parameter is not a reply this platform can receive. The JSON planner
+has no equivalent, as section 8 already says of `strict: true` generally - it
+reads the catalogue as prose and replies with JSON, so it is offered `__all__`
+and accepts it, but nothing structural stops it omitting the parameter the way
+it always could; its own validate-and-retry is what stands in the way. The
+asymmetry belongs to the transport, not to this decision, and it is the same
+one D10 has always lived with.
+
 `__all__` is a request for every row, which is what an absent filter already
 meant, so the platform removes it rather than passing it on: the argument is
 stripped after the catalogue lookup and before anything is validated or
