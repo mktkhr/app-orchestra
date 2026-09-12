@@ -44,8 +44,12 @@ export const cases: readonly Case[] = [
     // Run at 30, not the corpus default of 10 (measured, DECISIONS.md): at
     // n=10 the reject rate itself swung as widely as accept did (5-9/10
     // across six samples), which is not narrow enough to tell noise from a
-    // real regression at any tolerance worth setting. At n=30 three samples
-    // held to 16-19/30 (0.53-0.63), a band under half as wide.
+    // real regression at any tolerance worth setting. n=30 is narrower but
+    // not narrow: nine samples spread 15-22/30, a band 0.23 wide, which the
+    // 0.3 tolerance sits just outside. That is enough to catch the filter
+    // dropping outright and not enough to settle anything smaller - see
+    // docs/specs/eval.md section 4a, which supersedes an earlier note in
+    // DECISIONS.md that read 0.10 from only three samples.
     runs: 30,
     accept: [
       { kind: "ask", param: "status" },

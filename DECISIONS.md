@@ -2091,3 +2091,48 @@ unsafe/create operation (the one `"ask"` fixture in `Conversation.test.tsx`
 and `ResultChoice.test.tsx` is `ListInventoryItems`, a safe read, and is
 unaffected). Verified with `docker logs llama-swap`'s
 `POST /v1/chat/completions` count unchanged across `make check`.
+
+## 2026-09-12 — the eval corpus cannot adjudicate a prompt-sized change
+
+**Context.** Three separate attempts were made at the defect where a filter
+word matching no enum value is dropped silently and every row comes back:
+D15's synthetic `__all__` value (withdrawn, see above), an instruction
+appended to that parameter's own description (withdrawn with it), and a
+paragraph added to both planners' system prompts saying what omitting an
+optional parameter means ("Leaving an optional parameter out is itself an
+answer: it means the user asked for every row"). Each was measured against
+the corpus, before and after.
+
+**What the numbers actually say.** `no-enum-value`'s reject count, at
+n=30, across every measurement taken that day — under D15, under the
+description experiment, after the revert, and under the system-prompt
+paragraph, all of which measured as the same behaviour:
+
+    16, 19, 19, 19, 18, 20, 16, 15, 22   / 30
+
+Nine samples of what is, as far as any of them can tell, one condition.
+The band is 15–22, a width of 0.23. An earlier note in this file recorded
+0.10 from three samples; three samples were not enough to say, and this
+supersedes it.
+
+**Decision.** Stop tuning the prompt for this defect, and record why: the
+instrument cannot resolve a difference smaller than about 0.25, so an
+intervention of prompt size is neither confirmed nor refuted by it. The
+three attempts above were reported at the time as "no effect"; the honest
+reading is "not decidable with this corpus at this n". The system-prompt
+paragraph is reverted on the same grounds the other two were — no evidence
+of benefit, and it produced the worst sample of the nine — but "it made it
+worse" is exactly as unsupported as "it made it better" would have been.
+
+**Consequences.** `no-enum-value` remains a useful _regression_ detector:
+`ORCHESTRA_EVAL_TOLERANCE` at 0.3 sits just outside the observed band, so
+the filter beginning to drop outright would still fail the run, which is
+what the tolerance was sized for. It is not an improvement detector, and
+`docs/specs/eval.md` now says so. Deciding a prompt-sized effect would need
+n far above 30 — several hundred runs, tens of minutes of GPU per
+measurement — which is not a price a PoC's suite should ask anybody to pay
+on every change. The defect itself stays open. What is left to try is
+structural rather than textual: `ask_user` is a separate tool competing
+with the operation's own tool, so every attempt so far has been arguing
+with the model about which tool to pick, and the thing to change is that it
+has to pick.

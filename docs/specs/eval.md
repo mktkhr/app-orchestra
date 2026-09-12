@@ -99,6 +99,25 @@ the run - down, for a case judged on `accept`; up, for one judged on
 direction passes and says so too: improvements are as worth seeing as
 regressions, and a suite that only ever reports bad news gets ignored.
 
+## 4a. What a rate can and cannot settle
+
+A rate is evidence about a regression, not about an improvement, and the
+corpus is honest about which it is being asked for.
+
+`no-enum-value`'s reject count was measured nine times at n=30 under changes
+that all turned out to be the same behaviour: 16, 19, 19, 19, 18, 20, 16, 15, 22. That band is 0.23 wide. `ORCHESTRA_EVAL_TOLERANCE` at 0.3 sits just
+outside it, which is what makes the case work as intended - a filter that
+began to drop outright would clear the tolerance and fail the run - and it is
+also why nothing smaller can be read out of it. An intervention that moves the
+true rate by a tenth is invisible here, in either direction.
+
+So a case's rate answers "did this get worse in the way the case watches".
+It does not answer "did this change help", and a run whose number moved the
+good direction by less than the tolerance is reported (section 4) without
+being evidence of anything. Settling a question that small would need n in
+the hundreds - tens of minutes of GPU for one measurement - which is a price
+no suite should charge on every change (`DECISIONS.md`, 2026-09-12).
+
 ## 5. What it runs against
 
 The platform, started by the suite with the real planner and the model

@@ -35,17 +35,18 @@ const evalBaseURL = process.env["ORCHESTRA_EVAL_BASE_URL"] ?? "http://localhost:
 // `no-enum-value`, is judged on `reject` (Case.metric) rather than `accept`
 // precisely because its accept/reject split itself would not hold still at
 // n=10 - and neither did reject: six ten-run samples read 5-9/10, a band as
-// wide as accept's. Tripling its own `runs` to 30 (cases.ts) narrowed three
-// thirty-run samples to 16-19/30 (0.53-0.63), which is why only that one
-// case overrides the default instead of raising it for everyone and paying
-// the wall-clock cost on six cases that never needed it.
+// wide as accept's. Tripling its own `runs` to 30 (cases.ts) narrowed it to
+// a band of 15-22/30 over nine samples, which is why only that one case
+// overrides the default instead of raising it for everyone and paying the
+// wall-clock cost on cases that never needed it.
 //
 // `ORCHESTRA_EVAL_TOLERANCE` stays one number for every case (not per-case):
 // 0.3 was sized, in the original measurement, to a two-sample-deviation's
-// width for a rate this uncertain around n=10, and it still comfortably
-// covers the tighter swing measured at n=30 above with room to spare before
-// a real regression (the filter starting to drop outright) would need to
-// clear it.
+// width for a rate this uncertain around n=10, and it sits just outside the
+// 0.23-wide band measured at n=30 above - close enough that the filter
+// starting to drop outright still clears it, and far enough that nothing
+// smaller can be read out of a single run either way (docs/specs/eval.md
+// section 4a).
 const defaultRuns = Number(process.env["ORCHESTRA_EVAL_N"] ?? "10");
 const tolerance = Number(process.env["ORCHESTRA_EVAL_TOLERANCE"] ?? "0.3");
 
