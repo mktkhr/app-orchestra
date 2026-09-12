@@ -274,11 +274,29 @@ func validateArgs(e *domain.Endpoint, args map[string]any) error {
 // for a tool's InputSchema (internal/usecase/tools.go), read here from
 // domain.Endpoint directly instead, since that is what validateArgs and
 // renderCatalog both already have in hand.
+//
+// A safe endpoint's own optional enum parameter is carried with
+// domain.EnumAllValue already added to its Enum (usecase.WithSyntheticAll)
+// - the same D15 treatment usecase.inputSchemaFor gives it
+// (docs/specs/orchestration.md, section 8a) - since this planner renders
+// its own catalogue text from these schemas rather than from
+// usecase.ToolsFor's, and must offer the model the same synthetic value.
+// Only ever endpoint parameters, never a request body's own properties
+// (mirrors usecase.EnumParamGetsSyntheticAll exactly).
 func argSchemas(e *domain.Endpoint) map[string]domain.Schema {
 	out := make(map[string]domain.Schema, len(e.Parameters))
 
+	safe := e.IsSafe()
+
 	for i := range e.Parameters {
-		out[e.Parameters[i].Name] = e.Parameters[i].Schema
+		p := &e.Parameters[i]
+
+		if usecase.EnumParamGetsSyntheticAll(safe, p) {
+			out[p.Name] = usecase.WithSyntheticAll(&p.Schema)
+			continue
+		}
+
+		out[p.Name] = p.Schema
 	}
 
 	if e.RequestBody != nil && e.RequestBody.Type == domain.SchemaTypeObject {

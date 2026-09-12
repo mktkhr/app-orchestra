@@ -700,6 +700,36 @@ What remains is a genre/domain layer above individual services, and the
 move to TypeScript 7 once `openapi-typescript` supports it (see "Known gaps
 in the harness" below).
 
+**D15 - asking for everything is a thing the model must say.** An optional
+enum parameter on a safe endpoint (`domain.Endpoint.IsSafe()`) is now
+offered to the model as _required_, its enum carrying one synthetic value
+its contract does not, `domain.EnumAllValue` (`__all__`), labelled
+`domain.EnumAllLabel` (すべて) the same way every other enum value is
+(`usecase.EnumParamGetsSyntheticAll`/`usecase.WithSyntheticAll`,
+`internal/usecase/tools.go`). Omitting the parameter is no longer a legal
+answer, closing the failure the eval corpus measured directly: on
+`qwen3.5-9b-q8`, `no-enum-value` (破損した在庫はある？) silently dropped the
+filter and returned every row 18 of 30 runs, `no-enum-value-attendance`
+(有給の勤怠はある？) 9 of 10. The synthetic value never reaches a service or
+a result's provenance - `usecase.stripSyntheticAll`
+(`internal/usecase/orchestrator.go`) strips it after the catalogue lookup
+and before validation, the call, or `source.args` are built, on both `call`
+(the planner path) and `Invoke`. Only `e.Parameters`, never a request
+body's own properties, and only for a parameter the contract already
+leaves optional; `domain.Catalog` itself and the `ask_user` path never see
+the synthetic value, since building the emitted JSON Schema copies the
+schema rather than mutating it. Both planners needed the fix, for the
+reason `docs/specs/context.md` M5 already established (the catalogue is
+built once, rendered two ways): `toolcall` inherited it for free from
+`usecase.ToolsFor`; `jsonmode` renders its own catalogue text and needed
+its own call into the same exported helpers (`argSchemas`,
+`internal/adapter/planner/jsonmode/planner.go`) - see `DECISIONS.md`,
+2026-09-12, for the one gap this left in `jsonmode` (no structural
+"required" enforcement exists there at all, for any parameter, so `__all__`
+is offered and accepted but omission is not otherwise closed for that
+transport). The before/after eval measurement is being run outside this
+session.
+
 ## Known gaps in the harness
 
 - **TypeScript is held at 6.0.3 by a dependency, not by choice.**

@@ -101,6 +101,21 @@ func (e *Endpoint) IsSafe() bool {
 	}
 }
 
+// EnumAllValue and EnumAllLabel are the synthetic enum value D15
+// (docs/specs/orchestration.md, section 8a) adds to an optional enum
+// parameter on a safe endpoint, so the model is offered it as required:
+// leaving the parameter out stops being a legal answer, and asking for
+// every row becomes something the model must say rather than something it
+// falls into by failing to match a word. The value never reaches a
+// service or a result's provenance - the orchestrator strips it before an
+// argument is validated or a call is made (see usecase.stripSyntheticAll) -
+// and domain.Catalog itself never carries it: it is added only to the
+// JSON Schema a planner offers the model, never to a Schema.Enum here.
+const (
+	EnumAllValue = "__all__"
+	EnumAllLabel = "すべて"
+)
+
 // Option is one candidate value a person can pick from, with its Japanese
 // label. Used by a planner's ask_user decision (D11,
 // docs/specs/orchestration.md) to hand an ambiguous enum value back to the

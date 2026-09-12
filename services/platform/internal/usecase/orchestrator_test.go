@@ -583,6 +583,34 @@ func TestPlanAskDecisionReturnsOptionsFromTheCatalogue(t *testing.T) {
 	assert.Zero(t, invoker.calls, "an ask decision must never call a service")
 }
 
+// TestPlanAskDecisionOptionsNeverCarryTheSyntheticAllValue pins the last
+// case D15 (docs/specs/orchestration.md, section 8a) calls out by name:
+// ask_user's options are resolved against optionsForParam, which reads
+// the catalogue's own domain.Schema.Enum directly - the value ToolsFor
+// offers the model, with __all__ appended, is a separate JSON Schema map
+// built fresh each time (see usecase.WithSyntheticAll) and never mutates
+// that Schema. So a person choosing from an ask never sees a "すべて" option
+// alongside the contract's own declared values, whether or not the same
+// parameter's tool definition would have offered one.
+func TestPlanAskDecisionOptionsNeverCarryTheSyntheticAllValue(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "inventory", OperationID: "ListInventoryItems", Param: "status",
+	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(catalogWithStatusEnum(), planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫はある？", nil, nil)
+
+	require.NoError(t, err)
+	require.Equal(t, usecase.ResultKindAsk, result.Kind)
+	assert.Len(t, result.Options, 4, "ask_user must offer only the contract's own declared values")
+
+	for _, opt := range result.Options {
+		assert.NotEqual(t, domain.EnumAllValue, opt.Value, "ask_user must never offer the synthetic __all__ value")
+	}
+}
+
 func TestPlanAskDecisionFillsInAMissingLabelDefensively(t *testing.T) {
 	c := inventoryCatalog()
 	c.Endpoints[0].Parameters = []domain.Parameter{
@@ -848,4 +876,50 @@ func TestPlanPassesAnswersThrough(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, answers, planner.answers)
+}
+
+// TestPlanCallStripsTheSyntheticAllArgumentBeforeInvoking pins D15
+// (docs/specs/orchestration.md, section 8a): when the model names the
+// synthetic __all__ value for an enum parameter, the platform strips it
+// before the service is ever called - the service never learns the value
+// exists, and the result's provenance (Args, which becomes /api/plan's
+// source.args) reads {} exactly as it would have if the model had simply
+// left the parameter out.
+func TestPlanCallStripsTheSyntheticAllArgumentBeforeInvoking(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionCall, Service: "inventory", OperationID: "ListInventoryItems",
+		Args: map[string]any{"status": domain.EnumAllValue},
+	}}
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+
+	orchestrator := usecase.NewOrchestrator(catalogWithStatusEnum(), planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "破損した在庫はある？", nil, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{}, invoker.args, "the service must never receive the synthetic value")
+	assert.Equal(t, map[string]any{}, result.Args, "source.args must read {} exactly as an omitted parameter would")
+}
+
+// TestPlanCallStripsTheSyntheticAllArgumentButKeepsEveryOther pins that
+// stripping removes only the synthetic argument, not the rest of a call
+// with several arguments.
+func TestPlanCallStripsTheSyntheticAllArgumentButKeepsEveryOther(t *testing.T) {
+	c := catalogWithStatusEnum()
+	c.Endpoints[0].Parameters = append(c.Endpoints[0].Parameters,
+		domain.Parameter{Name: "q", In: "query", Schema: domain.Schema{Type: domain.SchemaTypeString}})
+
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionCall, Service: "inventory", OperationID: "ListInventoryItems",
+		Args: map[string]any{"status": domain.EnumAllValue, "q": "棚"},
+	}}
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+
+	orchestrator := usecase.NewOrchestrator(c, planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "棚の在庫はある？", nil, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"q": "棚"}, invoker.args)
+	assert.Equal(t, map[string]any{"q": "棚"}, result.Args)
 }

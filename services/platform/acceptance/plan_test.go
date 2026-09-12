@@ -178,8 +178,9 @@ type planResponse struct {
 	Component string         `json:"component"`
 	Data      map[string]any `json:"data"`
 	Source    struct {
-		Service     string `json:"service"`
-		OperationID string `json:"operationId"`
+		Service     string         `json:"service"`
+		OperationID string         `json:"operationId"`
+		Args        map[string]any `json:"args"`
 	} `json:"source"`
 	Message string         `json:"message"`
 	Schema  map[string]any `json:"schema"`
@@ -258,6 +259,48 @@ func TestPlanSafeCallReachesTheServiceAndRendersATable(t *testing.T) {
 	require.Len(t, inventory.requests, 1, "the inventory fixture must actually have been called")
 	assert.Equal(t, "/api/inventory/items", inventory.requests[0].URL.Path)
 	assert.Empty(t, attendance.requests, "an unrelated service must not be called")
+}
+
+// TestPlanCallNamingTheSyntheticAllValueCarriesNoArgumentsInProvenance is
+// the end-to-end acceptance test for D15 (docs/specs/orchestration.md,
+// section 8a): a planner decision that names the synthetic __all__ value
+// for an optional enum parameter still reaches the service (every row is
+// exactly what an absent filter already meant), but the result's
+// provenance carries no arguments at all - source.args is absent from the
+// wire response, exactly as it would be had the fixture never named
+// "status" in the first place.
+func TestPlanCallNamingTheSyntheticAllValueCarriesNoArgumentsInProvenance(t *testing.T) {
+	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[{"id":"1"},{"id":"2"}]}`)
+	attendance := newFixtureService(t, attendanceSpec, "/api/attendance/records", `{"items":[]}`)
+
+	server := newTestApp(t, &app.Config{
+		Services: []app.Service{
+			{Name: "inventory", URL: inventory.server.URL},
+			{Name: "attendance", URL: attendance.server.URL},
+		},
+		PlanFixtures: []app.PlanFixture{
+			{
+				Query: "破損した在庫はある？", Service: "inventory", OperationID: "ListInventoryItems",
+				Args: map[string]any{"status": "__all__"},
+			},
+		},
+	})
+
+	status, body := postPlan(t, server, "破損した在庫はある？")
+
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, "result", body.Kind)
+	assert.Equal(t, "table", body.Component)
+	assert.Equal(t, "inventory", body.Source.Service)
+	assert.Equal(t, "ListInventoryItems", body.Source.OperationID)
+	assert.Empty(t, body.Source.Args, "the synthetic __all__ argument must never reach the wire response")
+	require.Len(t, body.Data["items"], 2)
+
+	require.Len(t, inventory.requests, 1, "the service is still called - __all__ means every row, same as an absent filter")
+	assert.NotContains(t, inventory.requests[0].URL.RawQuery, "__all__",
+		"the service must never learn the synthetic value exists")
+	assert.NotContains(t, inventory.requests[0].URL.RawQuery, "status",
+		"the service must never receive the status parameter at all, exactly as an omitted filter would look")
 }
 
 func TestPlanUnsafeCallReturnsAFormAndNeverReachesTheService(t *testing.T) {

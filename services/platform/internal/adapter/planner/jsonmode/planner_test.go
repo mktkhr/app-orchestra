@@ -143,6 +143,46 @@ func TestPlanMapsAValidCallJSONObjectOntoADecisionCall(t *testing.T) {
 	assert.Equal(t, map[string]any{"status": "quarantined"}, decision.Args)
 }
 
+// TestPlanRendersTheSyntheticAllValueForAnOptionalEnumParameterOnASafeEndpoint
+// pins D15 (docs/specs/orchestration.md, section 8a) on this planner's own
+// catalogue rendering: this planner builds its own text from
+// domain.Endpoint directly rather than from usecase.ToolsFor's schemas
+// (see argSchemas' own doc comment), so it needs its own proof that it
+// still offers the synthetic __all__ value, labelled すべて, for
+// ListInventoryItems' optional "status" enum parameter.
+func TestPlanRendersTheSyntheticAllValueForAnOptionalEnumParameterOnASafeEndpoint(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
+
+	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	messages, ok := fixture.requests[0]["messages"].([]any)
+	require.True(t, ok)
+
+	system, ok := messages[0].(map[string]any)
+	require.True(t, ok)
+
+	content, ok := system["content"].(string)
+	require.True(t, ok)
+	assert.Contains(t, content, domain.EnumAllValue+"="+domain.EnumAllLabel)
+}
+
+// TestPlanAcceptsTheSyntheticAllValueAsAValidCallArgument proves the other
+// half: a "call" answer naming __all__ for that same parameter is accepted
+// by validateArgs rather than rejected as an out-of-enum value - the
+// orchestrator, not this planner, is what strips it (D15).
+func TestPlanAcceptsTheSyntheticAllValueAsAValidCallArgument(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t,
+		`{"kind":"call","service":"inventory","operationId":"ListInventoryItems","args":{"status":"__all__"}}`,
+	))
+
+	decision, err := fixture.planner.Plan(context.Background(), "破損した在庫はある？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionCall, decision.Kind)
+	assert.Equal(t, domain.EnumAllValue, decision.Args["status"])
+}
+
 func TestPlanMapsAskKindOntoADecisionAsk(t *testing.T) {
 	fixture := newPlanner(t, fixtureCatalog(), chatContent(t,
 		`{"kind":"ask","service":"inventory","operationId":"ListInventoryItems","param":"status","question":"どのステータスですか？"}`,

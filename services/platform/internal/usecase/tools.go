@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"maps"
 	"sort"
 	"strings"
 
@@ -208,12 +209,21 @@ func inputSchemaFor(e *domain.Endpoint) map[string]any {
 	properties := map[string]any{}
 
 	required := make([]string, 0, len(e.Parameters))
+	safe := e.IsSafe()
 
 	for i := range e.Parameters {
 		// Indexed rather than ranged: Parameter is 136 bytes, and
 		// gocritic's rangeValCopy (part of the fixed harness policy)
 		// rejects copying it per iteration.
 		p := &e.Parameters[i]
+
+		if EnumParamGetsSyntheticAll(safe, p) {
+			withAll := WithSyntheticAll(&p.Schema)
+			properties[p.Name] = schemaToJSONSchema(&withAll)
+			required = append(required, p.Name)
+
+			continue
+		}
 
 		properties[p.Name] = schemaToJSONSchema(&p.Schema)
 
@@ -356,6 +366,44 @@ func enumLabels(enum []string, labels map[string]string) string {
 	}
 
 	return strings.Join(parts, " / ")
+}
+
+// EnumParamGetsSyntheticAll reports whether p should be offered to the
+// model as required, with domain.EnumAllValue added to its enum (D15,
+// docs/specs/orchestration.md section 8a): a safe endpoint's optional enum
+// parameter, and no other case. Exported so both planners that read a
+// catalogue's schemas agree on when the synthetic value applies instead of
+// each deciding separately: internal/adapter/planner/toolcall's tools come
+// straight from ToolsFor/inputSchemaFor, but
+// internal/adapter/planner/jsonmode renders its own catalogue text
+// directly from domain.Endpoint and must reach the same answer.
+//
+// p is a pointer, not the value: domain.Parameter is large enough that
+// gocritic's hugeParam check (harness/quality/go/golangci.yml) rejects
+// copying it per call.
+func EnumParamGetsSyntheticAll(safe bool, p *domain.Parameter) bool {
+	return safe && !p.Required && len(p.Schema.Enum) > 0
+}
+
+// WithSyntheticAll returns a copy of s with domain.EnumAllValue appended to
+// Enum and labelled domain.EnumAllLabel in EnumLabels. It never mutates s:
+// s is the domain.Schema held by domain.Catalog, which Catalog.Find and the
+// ask_user path both read, and neither may ever see the synthetic value
+// (D15).
+func WithSyntheticAll(s *domain.Schema) domain.Schema {
+	enum := make([]string, len(s.Enum)+1)
+	copy(enum, s.Enum)
+	enum[len(s.Enum)] = domain.EnumAllValue
+
+	labels := make(map[string]string, len(s.EnumLabels)+1)
+	maps.Copy(labels, s.EnumLabels)
+	labels[domain.EnumAllValue] = domain.EnumAllLabel
+
+	out := *s
+	out.Enum = enum
+	out.EnumLabels = labels
+
+	return out
 }
 
 // enumLabelsMap builds the structured value->label map schemaToJSONSchema

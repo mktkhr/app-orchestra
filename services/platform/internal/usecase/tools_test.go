@@ -200,7 +200,11 @@ func TestToolsForEnumParameterCarriesEnumAndJapaneseLabelsInDescription(t *testi
 	statusProp, ok := properties["status"].(map[string]any)
 	require.True(t, ok, "input schema must carry the status property")
 
-	assert.Equal(t, []string{"allocated", "staged", "quarantined", "consigned"}, statusProp["enum"])
+	// status is an optional enum parameter on a safe (GET) endpoint, so
+	// D15 (docs/specs/orchestration.md, section 8a) offers it as required
+	// with the synthetic __all__ value appended.
+	assert.Equal(t, []string{"allocated", "staged", "quarantined", "consigned", "__all__"}, statusProp["enum"])
+	assert.Contains(t, listTool.InputSchema["required"], "status")
 
 	description, ok := statusProp["description"].(string)
 	require.True(t, ok, "the status property must carry a description")
@@ -208,6 +212,7 @@ func TestToolsForEnumParameterCarriesEnumAndJapaneseLabelsInDescription(t *testi
 	assert.Contains(t, description, "staged=出荷準備完了")
 	assert.Contains(t, description, "quarantined=検品保留")
 	assert.Contains(t, description, "consigned=預託在庫")
+	assert.Contains(t, description, "__all__=すべて")
 }
 
 func TestToolsForEnumParameterAlsoCarriesStructuredEnumLabels(t *testing.T) {
@@ -237,6 +242,7 @@ func TestToolsForEnumParameterAlsoCarriesStructuredEnumLabels(t *testing.T) {
 		"staged":      "出荷準備完了",
 		"quarantined": "検品保留",
 		"consigned":   "預託在庫",
+		"__all__":     "すべて",
 	}, enumLabels)
 
 	// The description form (for the model) must still be present alongside
@@ -482,4 +488,209 @@ func TestAskUserToolShape(t *testing.T) {
 	assert.ElementsMatch(t, []string{"question", "service", "operationId", "param", "options"},
 		tool.InputSchema["required"], "service and operationId must be required: a param name alone "+
 			"is not unique across services")
+}
+
+// findProperty is the shared lookup TestToolsFor's D15 cases use to pull
+// one tool's named property out of ToolsFor's output, since every case
+// below cares about exactly one endpoint and one parameter.
+func findProperty(t *testing.T, tools []usecase.Tool, toolName, propName string) map[string]any {
+	t.Helper()
+
+	for _, tool := range tools {
+		if tool.Name != toolName {
+			continue
+		}
+
+		properties, ok := tool.InputSchema["properties"].(map[string]any)
+		require.True(t, ok, "%s must carry a properties map", toolName)
+
+		prop, ok := properties[propName].(map[string]any)
+		require.True(t, ok, "%s must carry the %s property", toolName, propName)
+
+		return prop
+	}
+
+	t.Fatalf("no tool named %q", toolName)
+
+	return nil
+}
+
+// TestToolsForOptionalEnumParameterOnSafeEndpointBecomesRequiredWithAll
+// pins D15 (docs/specs/orchestration.md, section 8a): an optional enum
+// parameter on a GET is offered to the model as required, with the
+// synthetic __all__ value appended to its enum and labelled すべて in both
+// the description and the structured enumLabels map.
+func TestToolsForOptionalEnumParameterOnSafeEndpointBecomesRequiredWithAll(t *testing.T) {
+	c := catalogWithEnumParameter()
+
+	tools := usecase.ToolsFor(c)
+
+	var listTool usecase.Tool
+	for _, tool := range tools {
+		if tool.Name == "ListInventoryItems" {
+			listTool = tool
+		}
+	}
+	require.NotEmpty(t, listTool.Name)
+
+	assert.Contains(t, listTool.InputSchema["required"], "status",
+		"an optional enum parameter on a safe endpoint must become required")
+
+	statusProp := findProperty(t, tools, "ListInventoryItems", "status")
+	assert.Equal(t, []string{"allocated", "staged", "quarantined", "consigned", domain.EnumAllValue},
+		statusProp["enum"])
+
+	enumLabels, ok := statusProp["enumLabels"].(map[string]string)
+	require.True(t, ok)
+	assert.Equal(t, domain.EnumAllLabel, enumLabels[domain.EnumAllValue])
+
+	description, ok := statusProp["description"].(string)
+	require.True(t, ok)
+	assert.Contains(t, description, domain.EnumAllValue+"="+domain.EnumAllLabel)
+}
+
+// TestToolsForRequiredEnumParameterIsUnchanged pins the other half of D15:
+// a parameter the contract already marks required gets no synthetic value
+// at all - there is no silent-omission failure mode for it to close.
+func TestToolsForRequiredEnumParameterIsUnchanged(t *testing.T) {
+	c := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "attendance",
+			OperationID: "ListAttendanceRecords",
+			Method:      domain.MethodGet,
+			Path:        "/api/attendance/records",
+			Summary:     "勤怠記録の一覧を返す",
+			Parameters: []domain.Parameter{
+				{
+					Name: "kind", In: "query", Required: true,
+					Schema: domain.Schema{
+						Type:       domain.SchemaTypeString,
+						Enum:       []string{"deemed", "substitute", "compensatory", "on_call"},
+						EnumLabels: map[string]string{"deemed": "みなし労働", "substitute": "振替休日", "compensatory": "代休", "on_call": "待機"},
+					},
+				},
+			},
+			Response: &domain.Schema{Type: domain.SchemaTypeArray, Items: &domain.Schema{Type: domain.SchemaTypeObject}},
+		},
+	}}
+
+	tools := usecase.ToolsFor(c)
+
+	kindProp := findProperty(t, tools, "ListAttendanceRecords", "kind")
+	assert.Equal(t, []string{"deemed", "substitute", "compensatory", "on_call"}, kindProp["enum"],
+		"an already-required enum parameter must not gain the synthetic __all__ value")
+}
+
+// TestToolsForParameterWithNoEnumIsUnchanged pins the third case D15 does
+// not touch: an optional parameter that is not an enum at all has nothing
+// to add __all__ to, and must stay unrequired.
+func TestToolsForParameterWithNoEnumIsUnchanged(t *testing.T) {
+	c := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "ListInventoryItems",
+			Method:      domain.MethodGet,
+			Path:        "/api/inventory/items",
+			Summary:     "在庫アイテムの一覧を返す",
+			Parameters: []domain.Parameter{
+				{Name: "q", In: "query", Required: false, Schema: domain.Schema{Type: domain.SchemaTypeString}},
+			},
+			Response: &domain.Schema{Type: domain.SchemaTypeArray, Items: &domain.Schema{Type: domain.SchemaTypeObject}},
+		},
+	}}
+
+	tools := usecase.ToolsFor(c)
+
+	_, hasRequired := tools[0].InputSchema["required"]
+	assert.False(t, hasRequired, "a parameter with no enum must not become required")
+
+	qProp := findProperty(t, tools, "ListInventoryItems", "q")
+	assert.NotContains(t, qProp, "enum")
+}
+
+// TestToolsForRequestBodyEnumPropertyIsUnchanged pins the request-body half
+// of D15: a create's own enum property is a field of the thing being
+// created, not a filter, and "all" is not a status an item can be in - so
+// it never gets the synthetic value, required or not, safe or not.
+func TestToolsForRequestBodyEnumPropertyIsUnchanged(t *testing.T) {
+	c := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "CreateInventoryItem",
+			Method:      "POST",
+			Path:        "/api/inventory/items",
+			Summary:     "在庫アイテムを作成する",
+			RequestBody: &domain.Schema{
+				Type: domain.SchemaTypeObject,
+				Properties: map[string]domain.Schema{
+					"status": {
+						Type: domain.SchemaTypeString,
+						Enum: []string{"allocated", "staged", "quarantined", "consigned"},
+						EnumLabels: map[string]string{
+							"allocated": "引当済", "staged": "出荷準備完了", "quarantined": "検品保留", "consigned": "預託在庫",
+						},
+					},
+				},
+			},
+		},
+	}}
+
+	tools := usecase.ToolsFor(c)
+
+	statusProp := findProperty(t, tools, "CreateInventoryItem", "status")
+	assert.Equal(t, []string{"allocated", "staged", "quarantined", "consigned"}, statusProp["enum"],
+		"a request body's own enum property must never gain the synthetic __all__ value")
+}
+
+// TestToolsForUnsafeEndpointParameterIsUnchanged pins the last case: an
+// optional enum query parameter on a POST is left exactly as its contract
+// declares it - D15 only ever applies to a safe (GET/HEAD/QUERY) endpoint.
+func TestToolsForUnsafeEndpointParameterIsUnchanged(t *testing.T) {
+	c := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "SearchInventoryItems",
+			Method:      "POST",
+			Path:        "/api/inventory/search",
+			Summary:     "在庫アイテムを検索する",
+			Parameters: []domain.Parameter{
+				{
+					Name: "status", In: "query", Required: false,
+					Schema: domain.Schema{
+						Type: domain.SchemaTypeString,
+						Enum: []string{"allocated", "staged", "quarantined", "consigned"},
+						EnumLabels: map[string]string{
+							"allocated": "引当済", "staged": "出荷準備完了", "quarantined": "検品保留", "consigned": "預託在庫",
+						},
+					},
+				},
+			},
+			RequestBody: &domain.Schema{Type: domain.SchemaTypeObject, Properties: map[string]domain.Schema{"q": {Type: domain.SchemaTypeString}}},
+		},
+	}}
+
+	tools := usecase.ToolsFor(c)
+
+	statusProp := findProperty(t, tools, "SearchInventoryItems", "status")
+	assert.Equal(t, []string{"allocated", "staged", "quarantined", "consigned"}, statusProp["enum"],
+		"an unsafe endpoint's parameter must not gain the synthetic __all__ value")
+
+	if required, ok := tools[0].InputSchema["required"].([]string); ok {
+		assert.NotContains(t, required, "status", "an unsafe endpoint's optional parameter must not become required")
+	}
+}
+
+// TestToolsForDoesNotMutateCatalogSchema pins the constraint the spec calls
+// out by name: building the emitted JSON Schema must never mutate the
+// domain.Schema the catalogue holds, since domain.Catalog.Find and the
+// ask_user path (optionsForParam) read that same value directly and must
+// never see __all__.
+func TestToolsForDoesNotMutateCatalogSchema(t *testing.T) {
+	c := catalogWithEnumParameter()
+
+	_ = usecase.ToolsFor(c)
+
+	assert.Equal(t, []string{"allocated", "staged", "quarantined", "consigned"},
+		c.Endpoints[0].Parameters[0].Schema.Enum, "ToolsFor must not mutate the catalogue's own Schema")
+	assert.NotContains(t, c.Endpoints[0].Parameters[0].Schema.EnumLabels, domain.EnumAllValue)
 }

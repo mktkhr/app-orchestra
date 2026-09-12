@@ -1866,3 +1866,103 @@ baseline reject to 0 made the next `make eval` fail with `← REGRESSION,
 baseline 0/30 reject` and a non-zero exit, then the baseline was restored.
 `make check` was re-run after the last edit and stayed green with zero real
 model calls - `make eval` is still not one of its targets.
+
+## 2026-09-12 asking for everything is a thing the model must say (D15)
+
+**Context.** A list operation's enum filter is optional in its contract,
+and that is correct - `GET /api/inventory/items` with no `status` returns
+every item, and every item is a legitimate answer to "在庫を全部見せて". But
+an optional parameter gives the model two ways to say nothing at all, and
+the schema cannot tell them apart: "the person asked for everything" and "I
+could not match the word they used against any declared value" both come
+out as the same omitted argument. 破損した在庫はある？ has no declared
+inventory status anywhere close to 破損, and when the model cannot match it
+the schema lets it decline silently by leaving `status` out - the person is
+handed every row, presented as the answer to a question about one kind of
+row, with nothing on screen saying a filter went missing. Measured, not
+assumed: on the default local model (`qwen3.5-9b-q8`), the eval corpus's
+`no-enum-value` case (破損した在庫はある？) reached that wrong outcome 18 of
+30 runs, and `no-enum-value-attendance` (有給の勤怠はある？) 9 of 10 - the
+worse number is the telling one, since 有給 has no near neighbour among
+attendance's own enum values (みなし労働/振替休日/代休/待機) for the model to
+guess at instead, so the model is not guessing badly, it is declining to
+answer in the one way the schema lets it decline silently.
+
+**Decision.** A list of Japanese words to watch for was rejected outright -
+it would have to be written per service, would need updating every time an
+operator added a status, and would still miss whatever word the corpus
+had not thought of. Instead, take away the option of saying nothing at all:
+on a safe endpoint (`domain.Endpoint.IsSafe()` - GET, HEAD, QUERY), an
+optional enum parameter is offered to the model as _required_, with one
+value its contract does not have, `domain.EnumAllValue` (`__all__`),
+labelled `domain.EnumAllLabel` (すべて) the same way every other enum value
+is labelled - both in the description suffix and in the structured
+`enumLabels` map. Omitting the parameter is then not a legal answer at all;
+the model has exactly three choices left - name a declared value, name
+`__all__`, or reach for `ask_user` (D11) - and the silent drop has no shape
+left to take. `__all__` is a request for every row, which is what an absent
+filter already meant, so the platform strips it rather than passing it on:
+`usecase.stripSyntheticAll` (`internal/usecase/orchestrator.go`) removes
+the argument after the catalogue lookup and before anything is validated
+or called - which is also before a result's provenance is built - on both
+paths that reach a service (`call`'s safe branch and `Invoke`), so
+`source.args` reads `{}` exactly as it did when the model omitted the
+parameter, no service ever learns the synthetic value exists, and a
+workspace panel saved from the result holds no `__all__` to replay.
+
+Two further boundaries, both load-bearing: the synthetic value is added
+only to `e.Parameters`, never to a request body's own properties (a
+create's `status` is a field of the thing being created, and "all" is not
+a status an item can be in), and building the emitted JSON Schema never
+mutates the `domain.Schema` the catalogue holds - `usecase.WithSyntheticAll`
+returns a copy - because `domain.Catalog.Find` and the `ask_user` path
+(`optionsForParam`/`optionsFromSchema`) read that same value directly and
+must never offer a person a "すべて" choice alongside the contract's own
+declared ones.
+
+Both planners needed checking, not just one, because the catalogue is
+built once but rendered two ways (`docs/specs/context.md` M5): `toolcall`
+reads `usecase.ToolsFor`'s schemas directly and inherited the fix for free.
+`jsonmode` does not - it renders its own catalogue text and validates enum
+values straight from `domain.Endpoint` (`argSchemas`,
+`internal/adapter/planner/jsonmode/planner.go`), so it needed its own call
+into the same `usecase.EnumParamGetsSyntheticAll`/`usecase.WithSyntheticAll`
+helpers `tools.go` uses, exported from `usecase` specifically so the two
+planners could not independently decide this differently. `jsonmode` has no
+structural enforcement of "required" at all (no schema-level required list
+reaches its model), so the synthetic value's practical effect there is
+narrower than for `toolcall`'s `strict: true` tool calls - it offers `__all__`
+as a nameable value and accepts it in `validateArgs`, but nothing stops the
+model from omitting `status` anyway the way it always could. That gap is
+inherent to the transport, not something this change could close without
+redesigning `jsonmode` itself, so it is recorded here rather than papered
+over.
+
+One side effect, not a regression: `ListInventoryItems`'s optional `status`
+parameter becoming required means every property that tool declares is now
+required, which flips its `strict` field from `false` to `true` in
+`toolcall.shapeTool`'s output (`everyPropertyRequired` had nothing left to
+find missing) - `internal/adapter/planner/toolcall/planner_test.go`'s
+assertion was updated to match, since this is the schema doing exactly what
+D15 asked of it.
+
+**Consequences.** `internal/domain/catalog.go` (the two constants),
+`internal/usecase/tools.go` (`EnumParamGetsSyntheticAll`,
+`WithSyntheticAll`, and `inputSchemaFor`'s new branch),
+`internal/usecase/orchestrator.go` (`stripSyntheticAll`/`isEnumParam`, and
+the two call sites in `call` and `Invoke`), and
+`internal/adapter/planner/jsonmode/planner.go` (`argSchemas`) changed.
+`docs/specs/orchestration.md` D15 and section 8a describe the design.
+Tests added across `internal/usecase/tools_test.go`,
+`orchestrator_test.go`, `orchestrator_invoke_test.go`,
+`internal/adapter/planner/jsonmode/planner_test.go`, and one
+acceptance test (`services/platform/acceptance/plan_test.go`,
+`TestPlanCallNamingTheSyntheticAllValueCarriesNoArgumentsInProvenance`)
+covering the end-to-end shape: a planner decision naming `__all__` produces
+a result whose provenance carries no arguments and whose actual HTTP
+request to the service carries no `status` query parameter at all. `make
+-k check` was run to completion and is green; `docker logs llama-swap
+2>&1 | grep -c 'POST /v1/chat/completions'` read the same count before and
+after this work - no real model call was made anywhere in `make check`.
+The before/after eval measurement against `no-enum-value` and
+`no-enum-value-attendance` is being run separately, outside this session.

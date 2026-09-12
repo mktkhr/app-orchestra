@@ -23,6 +23,22 @@ Everything remaining sits outside all four subprojects above:
 
 ## Done
 
+- D15 (`docs/specs/orchestration.md`, section 8a): an optional enum
+  parameter on a safe endpoint is now offered to the model as required,
+  with a synthetic `__all__` value (labelled すべて) appended so the model
+  cannot silently drop a filter it could not match - closes the failure
+  the eval corpus measured directly (18/30 `no-enum-value`, 9/10
+  `no-enum-value-attendance` on `qwen3.5-9b-q8`). The platform strips the
+  synthetic value before an argument is validated or a call is made, on
+  both `Plan`'s call path and `Invoke`, so no service or result provenance
+  ever sees it. Both planners agree (`toolcall` inherits it from
+  `usecase.ToolsFor`; `jsonmode` got its own call into the same helpers,
+  since it renders its own catalogue text). See `DECISIONS.md`, 2026-09-12
+  ("asking for everything is a thing the model must say (D15)"), and
+  `STATE.md`'s own paragraph, for the full design and the one gap left in
+  `jsonmode` (no structural "required" enforcement exists there for any
+  parameter). The before/after eval measurement is being run outside this
+  session.
 - `docs/plans/context.md`, Task 4: end to end - closes the multi-turn
   context subproject. `e2e/src/context.test.ts` proves AC-M-101 at the
   process level against the built platform: ask about inventory (or
