@@ -1,10 +1,13 @@
 package toolcall_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -366,4 +369,191 @@ func TestPlanShapesToolsWithAdditionalPropertiesFalseAndPerToolStrict(t *testing
 	// ask_user's own schema (usecase.AskUserTool) requires every property
 	// it declares too.
 	assert.Equal(t, true, byName["ask_user"]["strict"])
+}
+
+// captureBody starts a stub server that answers every request with
+// callResponse and records each request's raw body (for byte comparisons)
+// alongside its decoded form (for content assertions). Every test below
+// happens to only need a DecisionCall back, so it is always callResponse -
+// not a parameter, because golangci-lint's unparam check (part of the
+// fixed harness policy) rejects a parameter no caller ever varies.
+type capturedRequest struct {
+	raw     []byte
+	decoded map[string]any
+}
+
+func captureBody(t *testing.T) (*httptest.Server, *[]capturedRequest) {
+	t.Helper()
+
+	var requests []capturedRequest
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("reading request body: %v", err)
+		}
+
+		var decoded map[string]any
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		requests = append(requests, capturedRequest{raw: raw, decoded: decoded})
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(callResponse)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	return server, &requests
+}
+
+// fixtureTurns is one earlier turn: the question a person asked and what
+// the platform decided for it, in the shape docs/specs/context.md section 3
+// describes. Its Kind is usecase.ResultKindResult, not any usecase.DecisionKind
+// - a Turn records what /api/plan answered, per usecase.Turn's own doc
+// comment.
+func fixtureTurns() []usecase.Turn {
+	return []usecase.Turn{
+		{
+			Question:    "検品保留の在庫を見せて",
+			Kind:        usecase.ResultKindResult,
+			Service:     "inventory",
+			OperationID: "ListInventoryItems",
+			Args:        map[string]any{"status": "quarantined"},
+		},
+	}
+}
+
+// TestPlanRendersTurnsInTheUserMessageBeforeTheQuestion is
+// docs/plans/context.md Task 2 Step 1: the request's messages carry the
+// earlier question and the operation it resolved to, ahead of the current
+// question in the one user message - never as a second "system"-role
+// message. That would have been the more obvious split (a message per
+// concern), but qwen3.5's chat template - the model this platform runs
+// against - rejects a "system" message anywhere but the very first one
+// ("System message must be at the beginning"), found by hand running this
+// exact request against the real /api/plan endpoint; see buildMessages's
+// doc comment.
+func TestPlanRendersTurnsInTheUserMessageBeforeTheQuestion(t *testing.T) {
+	server, requests := captureBody(t)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := toolcall.New(client, fixtureCatalog())
+
+	_, err := planner.Plan(context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	require.Len(t, *requests, 1)
+
+	messages, ok := (*requests)[0].decoded["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, messages, 2, "system prompt, then one user message carrying the turns and the question")
+
+	system, ok := messages[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "system", system["role"])
+
+	question, ok := messages[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "user", question["role"])
+
+	content, ok := question["content"].(string)
+	require.True(t, ok)
+	assert.Contains(t, content, "検品保留の在庫を見せて")
+	assert.Contains(t, content, "inventory")
+	assert.Contains(t, content, "ListInventoryItems")
+	assert.Contains(t, content, "quarantined")
+
+	turnsIndex := strings.Index(content, "検品保留の在庫を見せて")
+	questionIndex := strings.Index(content, "勤怠でも同じことして")
+	require.NotEqual(t, -1, turnsIndex)
+	require.NotEqual(t, -1, questionIndex)
+	assert.Less(t, turnsIndex, questionIndex, "the turns must come before the current question")
+}
+
+// TestPlanRendersNoRowOfAnyPreviousAnswer is AC-M-103: usecase.Turn has no
+// field for the answer's own data, so renderTurns cannot draw one from it
+// - this pins the exact rendered shape (question, kind, service,
+// operationId, args and nothing else) so a future change to renderTurns
+// that tried to add anything beyond those fields would fail this test
+// rather than slip through unnoticed.
+func TestPlanRendersNoRowOfAnyPreviousAnswer(t *testing.T) {
+	server, requests := captureBody(t)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := toolcall.New(client, fixtureCatalog())
+
+	_, err := planner.Plan(context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	messages, ok := (*requests)[0].decoded["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, messages, 2)
+
+	question, ok := messages[1].(map[string]any)
+	require.True(t, ok)
+
+	content, ok := question["content"].(string)
+	require.True(t, ok)
+
+	assert.Equal(t,
+		"Here is the conversation so far, oldest first. Each line is a question the user "+
+			"already asked and what the platform decided to do about it - service, operation and arguments, "+
+			"never the data the operation returned. Use it only to understand what \"it\", \"the same thing\" "+
+			"or an unnamed service in the new question below refers to.\n"+
+			`- question: "検品保留の在庫を見せて", kind=result, service=inventory, operationId=ListInventoryItems, `+
+			`args={"status":"quarantined"}`+
+			"\n\n勤怠でも同じことして",
+		content,
+	)
+}
+
+// TestPlanOffersByteIdenticalToolsWithAndWithoutTurns is AC-M-102: the
+// turns given to Plan must never change tools, which is what the prompt
+// cache is kept warm for (M3, docs/specs/context.md section 4). Comparing
+// the raw request bytes, not a re-encoded/decoded form, is deliberate:
+// re-marshaling map[string]any always sorts keys and would hide a change
+// in what was actually sent over the wire.
+func TestPlanOffersByteIdenticalToolsWithAndWithoutTurns(t *testing.T) {
+	serverWithoutTurns, requestsWithoutTurns := captureBody(t)
+	serverWithTurns, requestsWithTurns := captureBody(t)
+
+	clientWithoutTurns := chat.New(chat.Config{BaseURL: serverWithoutTurns.URL, Model: "test-model"})
+	plannerWithoutTurns := toolcall.New(clientWithoutTurns, fixtureCatalog())
+
+	clientWithTurns := chat.New(chat.Config{BaseURL: serverWithTurns.URL, Model: "test-model"})
+	plannerWithTurns := toolcall.New(clientWithTurns, fixtureCatalog())
+
+	_, err := plannerWithoutTurns.Plan(context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	_, err = plannerWithTurns.Plan(
+		context.Background(), "在庫を見せて", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()),
+	)
+	require.NoError(t, err)
+
+	toolsWithoutTurns := extractToolsRaw(t, (*requestsWithoutTurns)[0].raw)
+	toolsWithTurns := extractToolsRaw(t, (*requestsWithTurns)[0].raw)
+
+	assert.True(t, bytes.Equal(toolsWithoutTurns, toolsWithTurns),
+		"tools bytes differ:\nwithout turns: %s\nwith turns:    %s", toolsWithoutTurns, toolsWithTurns)
+}
+
+// extractToolsRaw decodes raw only as far as the "tools" field, keeping
+// its own bytes exactly as they arrived on the wire.
+func extractToolsRaw(t *testing.T, raw []byte) []byte {
+	t.Helper()
+
+	var wire struct {
+		Tools json.RawMessage `json:"tools"`
+	}
+
+	require.NoError(t, json.Unmarshal(raw, &wire))
+	require.NotEmpty(t, wire.Tools)
+
+	return wire.Tools
 }

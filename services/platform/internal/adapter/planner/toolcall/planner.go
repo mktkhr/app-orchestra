@@ -58,16 +58,19 @@ func New(client *chat.Client, catalog domain.Catalog) *Planner {
 	return &Planner{client: client, catalog: catalog}
 }
 
-// Plan sends query (with answers folded in, see buildMessages) and tools
-// to the model, and maps the one tool call it returns - if any - onto a
-// Decision. turns is accepted only to satisfy usecase.Planner: rendering
-// the conversation into the prompt is docs/plans/context.md Task 2, not
-// this one.
+// Plan sends query (with answers folded in, see buildMessages), turns and
+// tools to the model, and maps the one tool call it returns - if any -
+// onto a Decision. turns is rendered into the user message, ahead of the
+// current question (see buildMessages) - never into tools itself, which
+// shapeTools builds the same way regardless of turns (AC-M-102), nor into
+// systemPrompt: tools is what the catalogue prompt cache is warm for (M3,
+// docs/specs/context.md section 4), and this way neither it nor
+// systemPrompt's own bytes change when a conversation grows.
 func (p *Planner) Plan(
-	ctx context.Context, query string, answers []usecase.Answer, _ []usecase.Turn, tools []usecase.Tool,
+	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, tools []usecase.Tool,
 ) (usecase.Decision, error) {
 	resp, err := p.client.Complete(ctx, chat.Request{
-		Messages: buildMessages(query, answers),
+		Messages: buildMessages(query, answers, turns),
 		Tools:    shapeTools(tools),
 	})
 	if err != nil {
@@ -220,23 +223,63 @@ func optionsArg(args map[string]any, name string) []domain.Option {
 	return options
 }
 
-// buildMessages renders one system message and one user message: the
-// question, followed - when answers is non-empty - by every answer the
-// person has already given to a previous ask_user question, so a
-// resubmitted query actually uses the chosen value instead of asking
-// again. There is no assistant/tool turn here even though answers were
-// produced by a previous ask_user call: each /api/plan request is one
-// stateless chat completion (D8, docs/specs/orchestration.md - one LLM
-// call per request), not a continuation of a stored conversation, so the
-// only way an answer reaches the model at all is folded into this turn's
-// own text.
-func buildMessages(query string, answers []usecase.Answer) []chat.Message {
-	content := query
+// turnsIntro is prepended to the rendered conversation history (see
+// renderTurns). English, matching systemPrompt's own convention, and
+// worded so the model reads what follows as history rather than as
+// something to act on again: earlier questions and the operation the
+// platform chose for each, never the data that operation returned (M1,
+// docs/specs/context.md section 3).
+const turnsIntro = "Here is the conversation so far, oldest first. Each line is a question the user " +
+	"already asked and what the platform decided to do about it - service, operation and arguments, " +
+	"never the data the operation returned. Use it only to understand what \"it\", \"the same thing\" " +
+	"or an unnamed service in the new question below refers to."
+
+// buildMessages renders exactly one system message (systemPrompt) and one
+// user message: the conversation so far (renderTurns), when turns is
+// non-empty, followed by the current question (with answers folded in).
+//
+// turns is folded into the one user message rather than sent as a message
+// of its own: a second "system"-role message partway through the
+// conversation is not something every chat template tolerates - qwen3.5's
+// (the model this platform runs against, DECISIONS.md) raises "System
+// message must be at the beginning" the moment one appears anywhere but
+// index 0, discovered by hand running this exact turns payload against it
+// through the real /api/plan endpoint. A "user"-role message keeps
+// systemPrompt itself, and the tools the request carries separately, both
+// exactly as they were (M3, docs/specs/context.md section 4): only the one
+// message that already changes on every request - the user turn - grows a
+// prefix that changes with it.
+//
+// There is no assistant/tool turn here even though answers were produced
+// by a previous ask_user call, and none built from turns either, even
+// though each one records a call the platform actually made: each
+// /api/plan request is one stateless chat completion (D8,
+// docs/specs/orchestration.md - one LLM call per request), not a
+// continuation of a stored conversation, so the only way either reaches
+// the model at all is rendered as plain text.
+func buildMessages(query string, answers []usecase.Answer, turns []usecase.Turn) []chat.Message {
+	return []chat.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: buildUserContent(query, answers, turns)},
+	}
+}
+
+// buildUserContent renders, when turns is non-empty, the conversation so
+// far (renderTurns) first, then the current question, followed - when
+// answers is non-empty - by every answer the person has already given to a
+// previous ask_user question, so a resubmitted query actually uses the
+// chosen value instead of asking again.
+func buildUserContent(query string, answers []usecase.Answer, turns []usecase.Turn) string {
+	var b strings.Builder
+
+	if len(turns) > 0 {
+		b.WriteString(renderTurns(turns))
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString(query)
 
 	if len(answers) > 0 {
-		var b strings.Builder
-
-		b.WriteString(query)
 		b.WriteString("\n\nこれまでに確認した値:\n")
 
 		for _, a := range answers {
@@ -244,14 +287,45 @@ func buildMessages(query string, answers []usecase.Answer) []chat.Message {
 		}
 
 		b.WriteString("\n上記の値をそのまま使って、対応する操作を呼び出してください。")
-
-		content = b.String()
 	}
 
-	return []chat.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: content},
+	return b.String()
+}
+
+// renderTurns renders turns as turnsIntro followed by one line each,
+// naming the question, the ResultKind it resolved to, and - when a
+// service was decided (absent for usecase.ResultKindNone) - the service,
+// operation id and arguments the platform called it with. usecase.Turn has
+// no field for the answer's own data (M1), so there is nothing here that
+// could render a row of one even by mistake - see
+// TestRenderTurnsNeverRendersARowOfAnyAnswer.
+func renderTurns(turns []usecase.Turn) string {
+	var b strings.Builder
+
+	b.WriteString(turnsIntro)
+
+	for _, t := range turns {
+		fmt.Fprintf(&b, "\n- question: %q, kind=%s", t.Question, t.Kind)
+
+		if t.Service == "" {
+			continue
+		}
+
+		fmt.Fprintf(&b, ", service=%s, operationId=%s", t.Service, t.OperationID)
+
+		if len(t.Args) == 0 {
+			continue
+		}
+
+		argsJSON, err := json.Marshal(t.Args)
+		if err != nil {
+			argsJSON = []byte("{}")
+		}
+
+		fmt.Fprintf(&b, ", args=%s", argsJSON)
 	}
+
+	return b.String()
 }
 
 // shapeTools converts every usecase.Tool into a chat.ToolDefinition.

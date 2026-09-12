@@ -1653,3 +1653,32 @@ built binaries, before continuing. Noted here, and in the task's final
 report, rather than left silent: the fix for next time is to `kill` a
 specific PID captured at spawn time, never a broad `pkill -f` pattern,
 anywhere near ports something else depends on.
+
+## 2026-09-12 The conversation rides in the user message, not a second system one
+
+**Context.** The turns had to go somewhere in the prompt, after the catalogue
+so the cache stays warm for the part that does not change
+(`docs/specs/context.md`, M3). A second `system` message between the fixed one
+and the question is the obvious place: it is not the question, and it is not
+the instructions.
+
+It is also a 500. `qwen3.5-9b-q8`'s chat template refuses any system message
+that is not the first, and llama.cpp answers the whole request with
+`Jinja Exception: System message must be at the beginning`. Every run failed,
+and `make check` never saw it - the transport tests talk to `httptest`, which
+accepts any shape at all.
+
+**Decision.** Render the turns into the user message, ahead of the question.
+The fixed system prompt and the tools stay byte-identical across every request
+in a conversation either way, so M3 holds; and one system message is what every
+chat template tolerates.
+
+**Consequences.** The prompt reads as one person speaking - what they asked
+before, what the platform did about it, and what they are asking now - which is
+arguably what it always was. The cost is that a template quirk of one model
+shaped the design; the benefit is that it is the shape with the fewest ways to
+be wrong elsewhere.
+
+It is also the second time a live check caught what the test suite could not,
+after the fifteen-second write timeout. A mocked transport proves the bytes are
+assembled; only a model proves they are accepted.

@@ -82,10 +82,12 @@ type Turn struct {
 // (docs/specs/context.md, section 6) - a Planner never sees more of the
 // conversation than that. Implemented by internal/adapter/planner/stub (a
 // deterministic table lookup, used by every test and, by default, by the
-// running platform - see pkg/app) and by the toolcall and jsonmode
-// adapters that call a real LLM; none of the three reads turns yet
-// (docs/plans/context.md, Task 1 - rendering them into the prompt is
-// Task 2).
+// running platform - see pkg/app), which ignores turns (a table lookup has
+// no prompt to render them into), and by the toolcall and jsonmode
+// adapters that call a real LLM, which both render turns into the prompt
+// after the catalogue - the tool definitions and the rendered catalogue
+// text, respectively (M3, docs/specs/context.md section 4;
+// docs/plans/context.md Task 2).
 type Planner interface {
 	Plan(ctx context.Context, query string, answers []Answer, turns []Turn, tools []Tool) (Decision, error)
 }

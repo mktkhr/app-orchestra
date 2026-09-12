@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -349,4 +350,119 @@ func TestPlanFallsBackWithoutResponseFormatWhenTheEndpointRejectsIt(t *testing.T
 	require.Len(t, gotBodies, 2)
 	assert.NotNil(t, gotBodies[0]["response_format"])
 	assert.Nil(t, gotBodies[1]["response_format"])
+}
+
+// fixtureTurns is one earlier turn: the question a person asked and what
+// the platform decided for it, in the shape docs/specs/context.md section 3
+// describes - the same fixture toolcall's own tests use (planner_test.go,
+// sibling package), kept here too since the two test files do not import
+// each other.
+func fixtureTurns() []usecase.Turn {
+	return []usecase.Turn{
+		{
+			Question:    "検品保留の在庫を見せて",
+			Kind:        usecase.ResultKindResult,
+			Service:     "inventory",
+			OperationID: "ListInventoryItems",
+			Args:        map[string]any{"status": "quarantined"},
+		},
+	}
+}
+
+// systemContent reads request's system message (messages[0]) content.
+func systemContent(t *testing.T, request map[string]any) string {
+	t.Helper()
+
+	messages, ok := request["messages"].([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, messages)
+
+	system, ok := messages[0].(map[string]any)
+	require.True(t, ok)
+
+	content, ok := system["content"].(string)
+	require.True(t, ok)
+
+	return content
+}
+
+// TestPlanRendersTurnsAfterTheCatalogueInTheSystemPrompt is
+// docs/plans/context.md Task 2 Step 3: the same turns toolcall renders,
+// rendered here too, but appended after the already-rendered catalogue
+// text in the one system message this planner sends (M3,
+// docs/specs/context.md section 4) rather than as a separate message.
+func TestPlanRendersTurnsAfterTheCatalogueInTheSystemPrompt(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
+
+	_, err := fixture.planner.Plan(
+		context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()),
+	)
+	require.NoError(t, err)
+
+	content := systemContent(t, fixture.requests[0])
+
+	catalogueIndex := strings.Index(content, "ListInventoryItems")
+	turnsIndex := strings.Index(content, "検品保留の在庫を見せて")
+
+	require.NotEqual(t, -1, catalogueIndex, "catalogue must be rendered")
+	require.NotEqual(t, -1, turnsIndex, "turns must be rendered")
+	assert.Less(t, catalogueIndex, turnsIndex, "turns must come after the catalogue, never before it")
+
+	assert.Contains(t, content, "inventory")
+	assert.Contains(t, content, "quarantined")
+}
+
+// TestPlanRendersNoRowOfAnyPreviousAnswer is AC-M-103: usecase.Turn has no
+// field for the answer's own data, so renderTurns cannot draw one from it
+// - this pins the exact text appended after the catalogue, so a future
+// change to renderTurns that tried to add anything beyond question, kind,
+// service, operationId and args would fail this test rather than slip
+// through unnoticed.
+func TestPlanRendersNoRowOfAnyPreviousAnswer(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
+
+	_, err := fixture.planner.Plan(
+		context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()),
+	)
+	require.NoError(t, err)
+
+	content := systemContent(t, fixture.requests[0])
+
+	wantSuffix := "\n\nHere is the conversation so far, oldest first. Each line is a question the user " +
+		"already asked and what the platform decided to do about it - service, operation and arguments, " +
+		"never the data the operation returned. Use it only to understand what \"it\", \"the same thing\" " +
+		"or an unnamed service in the new question below refers to.\n" +
+		`- question: "検品保留の在庫を見せて", kind=result, service=inventory, operationId=ListInventoryItems, ` +
+		`args={"status":"quarantined"}`
+
+	assert.True(t, strings.HasSuffix(content, wantSuffix), "content: %s", content)
+}
+
+// TestPlanRendersTheCataloguePrefixByteIdenticallyWithAndWithoutTurns is
+// AC-M-102's equivalent for this planner: it has no separate tools field
+// to leave untouched (Plan ignores the tools argument entirely - see
+// Plan's own doc comment), so the invariant M3 protects here is that the
+// rendered catalogue - the prefix a prompt cache would be warm for - is
+// exactly the same bytes whether or not turns is empty; systemPromptFor
+// only ever appends after it, never rewrites it.
+func TestPlanRendersTheCataloguePrefixByteIdenticallyWithAndWithoutTurns(t *testing.T) {
+	fixtureWithoutTurns := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
+	fixtureWithTurns := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
+
+	_, err := fixtureWithoutTurns.planner.Plan(
+		context.Background(), "在庫について教えて", nil, nil, usecase.ToolsFor(fixtureCatalog()),
+	)
+	require.NoError(t, err)
+
+	_, err = fixtureWithTurns.planner.Plan(
+		context.Background(), "在庫について教えて", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()),
+	)
+	require.NoError(t, err)
+
+	contentWithoutTurns := systemContent(t, fixtureWithoutTurns.requests[0])
+	contentWithTurns := systemContent(t, fixtureWithTurns.requests[0])
+
+	assert.True(t, strings.HasPrefix(contentWithTurns, contentWithoutTurns),
+		"the catalogue prefix must be byte-identical with and without turns")
+	assert.Greater(t, len(contentWithTurns), len(contentWithoutTurns))
 }

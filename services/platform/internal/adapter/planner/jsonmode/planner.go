@@ -112,18 +112,23 @@ func New(client *chat.Client, catalog domain.Catalog) *Planner {
 	}
 }
 
-// Plan sends query (with answers folded in) and the rendered catalogue to
-// the model, parses and validates the one JSON object it answers with, and
-// retries once - quoting the failure back - when that fails. tools is
-// accepted only to satisfy usecase.Planner: this adapter renders its own
-// text from catalog (New's parameter) rather than from usecase.ToolsFor's
-// wire-shaped schemas, which toolcall.Planner needs but this one does not.
-// turns is accepted for the same reason: rendering the conversation into
-// the prompt is docs/plans/context.md Task 2, not this one.
+// Plan sends query (with answers folded in) and the rendered catalogue,
+// followed by turns, to the model, parses and validates the one JSON
+// object it answers with, and retries once - quoting the failure back -
+// when that fails. tools is accepted only to satisfy usecase.Planner: this
+// adapter renders its own text from catalog (New's parameter) rather than
+// from usecase.ToolsFor's wire-shaped schemas, which toolcall.Planner
+// needs but this one does not.
+//
+// turns is rendered after p.systemPrompt (systemPromptFor), never before
+// it or inside it: p.systemPrompt is built once, in New, from catalog
+// alone, so its bytes stay the same across every question of a
+// conversation - the prompt cache is warm for exactly that prefix (M3,
+// docs/specs/context.md section 4).
 func (p *Planner) Plan(
-	ctx context.Context, query string, answers []usecase.Answer, _ []usecase.Turn, _ []usecase.Tool,
+	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, _ []usecase.Tool,
 ) (usecase.Decision, error) {
-	messages := buildMessages(p.systemPrompt, query, answers)
+	messages := buildMessages(p.systemPromptFor(turns), query, answers)
 
 	var lastErr error
 
@@ -317,11 +322,70 @@ func retryPrompt(previous string, err error) string {
 	)
 }
 
+// turnsIntro is prepended to the rendered conversation history (see
+// renderTurns). Mirrors internal/adapter/planner/toolcall's own constant
+// of the same name and wording - the two planners tell the model the same
+// thing about the same Turn slice, just at a different point in a
+// differently-shaped prompt.
+const turnsIntro = "Here is the conversation so far, oldest first. Each line is a question the user " +
+	"already asked and what the platform decided to do about it - service, operation and arguments, " +
+	"never the data the operation returned. Use it only to understand what \"it\", \"the same thing\" " +
+	"or an unnamed service in the new question below refers to."
+
+// systemPromptFor returns p.systemPrompt unchanged when there are no
+// turns, or p.systemPrompt with renderTurns appended after it otherwise.
+// p.systemPrompt itself (built once, in New) is never mutated or
+// recomputed here - only ever concatenated with something after it - so
+// its own bytes are identical on every call regardless of turns (M3).
+func (p *Planner) systemPromptFor(turns []usecase.Turn) string {
+	if len(turns) == 0 {
+		return p.systemPrompt
+	}
+
+	return p.systemPrompt + "\n\n" + renderTurns(turns)
+}
+
+// renderTurns renders turns as turnsIntro followed by one line each,
+// naming the question, the ResultKind it resolved to, and - when a
+// service was decided (absent for usecase.ResultKindNone) - the service,
+// operation id and arguments the platform called it with. usecase.Turn has
+// no field for the answer's own data (M1), so there is nothing here that
+// could render a row of one even by mistake.
+func renderTurns(turns []usecase.Turn) string {
+	var b strings.Builder
+
+	b.WriteString(turnsIntro)
+
+	for _, t := range turns {
+		fmt.Fprintf(&b, "\n- question: %q, kind=%s", t.Question, t.Kind)
+
+		if t.Service == "" {
+			continue
+		}
+
+		fmt.Fprintf(&b, ", service=%s, operationId=%s", t.Service, t.OperationID)
+
+		if len(t.Args) == 0 {
+			continue
+		}
+
+		argsJSON, err := json.Marshal(t.Args)
+		if err != nil {
+			argsJSON = []byte("{}")
+		}
+
+		fmt.Fprintf(&b, ", args=%s", argsJSON)
+	}
+
+	return b.String()
+}
+
 // buildMessages renders one system message (systemPrompt, already carrying
-// the rendered catalogue) and one user message: the question, followed -
-// when answers is non-empty - by every answer already given to a previous
-// ask, exactly as internal/adapter/planner/toolcall.buildMessages does, for
-// the same reason (D8: one stateless chat completion per request).
+// the rendered catalogue and, when there are any, the conversation so far
+// after it) and one user message: the question, followed - when answers is
+// non-empty - by every answer already given to a previous ask, exactly as
+// internal/adapter/planner/toolcall.buildMessages does, for the same
+// reason (D8: one stateless chat completion per request).
 func buildMessages(systemPrompt, query string, answers []usecase.Answer) []chat.Message {
 	content := query
 
