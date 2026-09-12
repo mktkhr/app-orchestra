@@ -272,14 +272,14 @@ not by agreement.
 `GET /api/operations` is not touched. It answers a different question for a
 different audience (spec section 5).
 
-- [ ] **Step 1** Add the path and its schemas. `make api-lint`,
+- [x] **Step 1** Add the path and its schemas. `make api-lint`,
       `make generate`.
-- [ ] **Step 2** Write the acceptance test: a person granted one service
+- [x] **Step 2** Write the acceptance test: a person granted one service
       sees only its operations and none of the other's; an admin sees every
       one; no session is 401 (AC-P-101). Run it, expect failure.
-- [ ] **Step 3** Implement.
-- [ ] **Step 4** Go gates green.
-- [ ] **Step 5** Commit: `feat(platform): tell a person what they may call`
+- [x] **Step 3** Implement.
+- [x] **Step 4** Go gates green.
+- [x] **Step 5** Commit: `feat(platform): tell a person what they may call`
 
 **Satisfies:** AC-P-101.
 

@@ -2312,3 +2312,82 @@ new `countWidgets` operation and, for the malformed cases, inline spec
 snippets built in `source_test.go` rather than the shared fixture (adding a
 failing operation to the shared fixture would have broken every other test
 that fetches it successfully).
+
+## 2026-09-12 — Dashboard Task 4: one narrowing function, no port-boundary export, and a stale filelen glob left alone
+
+**Context.** `docs/plans/dashboard.md` Task 4 asks for `GET /api/catalog`:
+every operation the signed-in person may call, each with enough to build a
+panel over it - narrowed through the same rule `docs/specs/auth.md` section
+5 already names as the one seat both the planner's tool list and
+`/api/invoke`'s lookup share, `catalogFor` (`internal/usecase/auth.go`).
+
+**Decision: `internal/usecase/catalog.go` calls `catalogFor` directly, adding
+no new port.** `Catalog` (the usecase) takes exactly what `Orchestrator` and
+`Workspaces` already take - `domain.Catalog` and `usecase.PermissionStore` -
+and its `For` method is `catalogFor(ctx, c.catalog, c.permissions, user)`
+plus a conversion loop. No third implementation of the narrowing rule was
+written; the task's own framing ("a rule applied in two places is a rule
+that will disagree with itself") is why this reuses the existing
+package-private function rather than exporting a fresh copy of its nine
+lines.
+
+**Decision: `inputSchemaFor` and `fieldsFor` stayed unexported - no port
+boundary was crossed.** The plan's own text asked to report anything added
+to `usecase` to expose these through a port boundary "if the layering
+forced it." It did not: `internal/usecase/catalog.go` is a file in the same
+package as `internal/usecase/tools.go` (`inputSchemaFor`,
+`schemaToJSONSchema`) and `internal/usecase/orchestrator.go` (`fieldsFor`,
+`chartViewFor`), so `toCatalogEntry` calls all three directly, the same way
+`Orchestrator.formFor` and `Orchestrator.invokeAndRender` already do for a
+`/api/plan` result. A catalogue entry's `schema`/`fields`/`view` are
+supposed to be exactly the same shapes a plan result's `schema`/`fields`/
+`view` are (`docs/specs/dashboard.md` section 5's whole point), so sharing
+the same private functions is not a convenience - it is what keeps the two
+from drifting apart the way a second, hand-written conversion eventually
+would.
+
+**Decision: `GET /api/operations` (`usecase.Admin.Operations`) is
+untouched, on purpose.** It answers "what does this deployment hold",
+unfiltered, admin only, for the permission grid; `GET /api/catalog` answers
+"what may I call, and what shape is it", for whoever is signed in. Section
+5 of the spec argues why merging them would be one endpoint answering two
+questions with a role check in the middle - this task did not merge them,
+and flags this here rather than doing it, per the task's own instruction.
+
+**Decision: `CatalogEntry.Fields` is absent for a chart-hinted endpoint,
+same as a `/api/plan` result's `Fields` already is, and the acceptance
+test asserts that rather than fighting it.** `domain.FieldsSchema` only
+describes a table's row schema or a detail's own properties
+(`RenderResult` picking `ComponentTable`/`ComponentDetail`); a chart-hinted
+endpoint's `RenderResult` is `ComponentChart` (Task 3's own rule, ranked
+above the table/detail rules), so `FieldsSchema` returns `nil` for it, and
+`fieldsFor` - reused as-is - carries that through to the catalogue exactly
+as it already does for a `/api/plan` result over the same endpoint. A
+service wanting its chart's axes offered as `fields` too would need its
+response schema to independently support a table or detail rendering,
+which is outside this task's scope to change.
+
+**Left alone, not fixed: `harness/quality/file-length.txt`'s exclude list
+does not cover the per-service generated `.d.ts` files.** Adding
+`GET /api/catalog` and `CatalogEntry` to `services/platform/api/openapi.yaml`
+grows `web/src/shared/api/gen/platform.d.ts` (openapi-typescript output, one
+file per service, never hand-edited) from 971 to 1030 lines - past
+`guard-filelen`'s 1000-line limit. `file-length.txt`'s own header says
+"generated code is exempt," and `harness/quality/oxfmt/policy.ts` and
+`harness/quality/oxlint/policy.ts` both already exclude the whole
+`**/src/shared/api/gen/**` directory for that reason (and
+`DECISIONS.md`'s 2026-09-11 orval entry already assumed `guard-filelen` did
+too) - but `file-length.txt` itself only excludes `schema.d.ts`, a filename
+that predates the per-service split and does not exist anywhere in this
+repository any more. This is a real, pre-existing gap, not a rule this task
+disagrees with, and the honest fix is a one-line addition to
+`file-length.txt`. `AGENTS.md` rule 2 forbids reconfiguring anything under
+`harness/quality/` regardless of how clearly justified the change looks
+from inside a task, so it was left as-is: `make check` is green except this
+one gate, `guard-filelen`, failing on a file this task did not write by
+hand and could not shrink without dropping a field the spec requires. See
+`STATE.md`'s "Known gaps in the harness" and `TODO.md`'s "Next" list.
+`allOf`-based reuse of the `Operation` schema was tried first (`CatalogEntry:
+allOf: [Operation, {...}]`) and reverted: it saved only 8 of the 30 lines
+needed, and it silently turned `summary` optional (`Operation.summary` is
+not `required`), which this contract does not want for `CatalogEntry`.

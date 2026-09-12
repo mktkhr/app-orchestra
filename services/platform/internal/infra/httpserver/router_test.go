@@ -47,7 +47,7 @@ func requestCookie() *http.Cookie {
 }
 
 func TestNewRouterServesHealth(t *testing.T) {
-	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewSession(nil, nil, true), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil), handler.NewUsers(nil)), "", fakeSessionUsers{})
+	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewSession(nil, nil, true), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil), handler.NewUsers(nil), handler.NewCatalog(nil)), "", fakeSessionUsers{})
 	require.NoError(t, err)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/health", http.NoBody)
@@ -64,7 +64,7 @@ func TestNewRouterServesHealth(t *testing.T) {
 // AC-A-102) and checks that a route the embedded spec does not declare
 // answers 404, not the openapi validator's own error shape.
 func TestNewRouterRejectsUnknownRoute(t *testing.T) {
-	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewSession(nil, nil, true), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil), handler.NewUsers(nil)), "", fakeSessionUsers{})
+	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewSession(nil, nil, true), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil), handler.NewUsers(nil), handler.NewCatalog(nil)), "", fakeSessionUsers{})
 	require.NoError(t, err)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/does-not-exist", http.NoBody)
@@ -80,7 +80,7 @@ func TestNewRouterServesStaticDir(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("hello"), 0o600))
 
-	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewSession(nil, nil, true), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil), handler.NewUsers(nil)), dir, fakeSessionUsers{})
+	router, err := httpserver.NewRouter(handler.NewAPI(handler.NewHealth(), handler.NewSession(nil, nil, true), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil), handler.NewUsers(nil), handler.NewCatalog(nil)), dir, fakeSessionUsers{})
 	require.NoError(t, err)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)

@@ -12,7 +12,7 @@ import (
 func TestNewAPIComposesEveryTag(t *testing.T) {
 	api := handler.NewAPI(
 		handler.NewHealth(), handler.NewSession(nil, nil, true), handler.NewPlan(nil), handler.NewInvoke(nil), handler.NewWorkspace(nil),
-		handler.NewUsers(nil),
+		handler.NewUsers(nil), handler.NewCatalog(nil),
 	)
 
 	var iface openapi.StrictServerInterface = api

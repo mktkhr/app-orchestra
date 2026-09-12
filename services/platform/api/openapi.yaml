@@ -36,6 +36,14 @@ tags:
       The admin's endpoints: reading every account and setting what one of
       them may call (docs/specs/auth.md, A5, section 4). Admin only - a
       non-admin gets 403 from every path here.
+  - name: catalog
+    description: >
+      What the signed-in person may build a panel from: every operation
+      they may call, with its arguments schema and its response fields
+      (docs/specs/dashboard.md, section 5). Narrowed by the same rule
+      /api/plan and /api/invoke use - not to be confused with
+      /api/operations, the admin's flat list of everything the deployment
+      has, for the permission grid.
 paths:
   /api/health:
     get:
@@ -456,6 +464,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/catalog:
+    get:
+      operationId: getCatalog
+      summary: List every operation the signed-in person may call.
+      description: >
+        Every operation of `usecase.catalogFor(ctx, catalog, permissions,
+        user)` - the whole catalogue for an admin, or the narrowed one for
+        anybody else - each with its arguments schema (`schema`, as
+        `/api/plan`'s form `schema`), its response fields (`fields`, as
+        `/api/plan`'s result `fields`), and, when the contract declares
+        `x-ui-hint.chart`, that chart's axes as `view`
+        (docs/specs/dashboard.md, section 5). Built from the same rule
+        /api/plan's tool list and /api/invoke's lookup are, so the
+        operations a person can build a panel from and the ones they can
+        ask a question about are the same set by construction
+        (docs/specs/auth.md, section 5).
+      tags:
+        - catalog
+      responses:
+        "200":
+          description: Every operation the signed-in person may call.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogEntry"
 components:
   schemas:
     Health:
@@ -926,6 +961,47 @@ components:
         summary:
           type: string
           description: The operation's summary, from its contract.
+    CatalogEntry:
+      type: object
+      description: >
+        One operation the signed-in person may call, with enough about it
+        to build a panel over it (docs/specs/dashboard.md, section 5).
+      required:
+        - service
+        - operationId
+        - summary
+        - component
+        - schema
+      properties:
+        service:
+          type: string
+          description: The service's name, as configured in ORCHESTRA_SERVICES.
+        operationId:
+          type: string
+          description: The operation id, as declared in that service's contract.
+        summary:
+          type: string
+          description: The operation's summary, from its contract.
+        component:
+          $ref: "#/components/schemas/Component"
+        schema:
+          type: object
+          description: >
+            The arguments a call takes, from `usecase.inputSchemaFor` - the
+            same shape `/api/plan`'s `kind: form` result carries as its own
+            `schema`, so the browser can build the same form over it.
+          additionalProperties: true
+        fields:
+          type: object
+          description: >
+            Per-property JSON Schema for the response's fields, from
+            `domain.FieldsSchema` - the same shape `/api/plan`'s result
+            carries as `fields`, offered here as a chart's axes and a
+            transform's `groupBy`. Absent when the response has no fields
+            to describe (not an empty object).
+          additionalProperties: true
+        view:
+          $ref: "#/components/schemas/View"
     Permission:
       type: object
       description: >

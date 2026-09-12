@@ -4,7 +4,7 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-`docs/plans/dashboard.md`: Tasks 0-3 done. Task 0:
+`docs/plans/dashboard.md`: Tasks 0-4 done. Task 0:
 `web/src/entities/rendering/lib/transform.ts` - pure `applyTransform`, groups rows and
 reduces each group to `count`/`sum`/`avg`; see its own tests for the edge cases pinned.
 Task 1: `web/src/entities/rendering/ui/ResultChart.tsx` - draws rows as a bar, line or pie
@@ -17,7 +17,13 @@ Task 3: `x-ui-hint.chart` parsing (`parse.go`'s `uiHint`/`parseChartHint`),
 `domain.Endpoint.ChartHint`, `Render`/`RenderResult` choosing `ComponentChart`
 from a chart hint alone, and `PlanResult.view`/`usecase.Result.View` carrying
 only the contract's axes - see `STATE.md` and `DECISIONS.md`, 2026-09-12
-("Dashboard Task 3"). Task 4 needs Tasks 2-3 and is next; Tasks 5-7 remain.
+("Dashboard Task 3"). Task 4: `GET /api/catalog`
+(`internal/usecase/catalog.go`, `internal/adapter/handler/catalog.go`),
+narrowed through the shared `catalogFor` - see `STATE.md` and
+`DECISIONS.md`, 2026-09-12 ("Dashboard Task 4"). `make check` is green
+except a pre-existing `guard-filelen` gap this task's contract growth
+exposed (see `STATE.md`'s "Known gaps in the harness"). Task 5 needs Tasks
+0, 1 and 2 and is next; Tasks 6-7 remain.
 
 `docs/plans/orchestration.md`, `docs/plans/workspaces.md`,
 `docs/plans/auth.md` and `docs/plans/context.md` are all closed - every
@@ -50,6 +56,17 @@ Everything remaining sits outside all four subprojects above:
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
+4. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+   equivalent) added to its `exclude` list**, matching
+   `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
+   which already carry it. `docs/plans/dashboard.md` Task 4's contract
+   growth pushed `web/src/shared/api/gen/platform.d.ts` from 971 to 1030
+   lines, over `guard-filelen`'s 1000-line limit, on a file that is
+   entirely generated and never hand-edited - see `STATE.md`'s "Known gaps
+   in the harness" for the full account. Left unfixed here per `AGENTS.md`
+   rule 2 (harness/quality is not this agent's to reconfigure); the next
+   contract change that touches `platform.d.ts` will hit the same wall
+   until somebody with standing to edit the harness does.
 
 ## Done
 

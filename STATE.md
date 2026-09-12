@@ -4,6 +4,32 @@ _Last updated: 2026-09-12_
 
 ## Summary
 
+**`docs/plans/dashboard.md` Tasks 0-4 are done.** Task 4 adds `GET
+/api/catalog`: `usecase.NewCatalog(catalog, permissions)` narrows through
+the same `catalogFor(ctx, catalog, permissions, user)` `Orchestrator` and
+`Workspaces` already call (`internal/usecase/auth.go`) - the seat
+`docs/specs/auth.md` section 5 names - and builds one `usecase.CatalogEntry`
+per surviving endpoint by reusing exactly the conversions a `/api/plan`
+result already goes through: `inputSchemaFor` for `Schema`, `fieldsFor` for
+`Fields` (nil, not an empty map, whenever `domain.FieldsSchema` finds
+nothing - which includes every chart-hinted endpoint, since `FieldsSchema`
+only ever describes a table's or a detail's own properties and
+`RenderResult` picks `ComponentChart` ahead of both for one), `chartViewFor`
+for `View`, and `domain.Render` for `Component`. Both `inputSchemaFor` and
+`fieldsFor` stayed unexported: `internal/usecase/catalog.go` lives in the
+same package as `orchestrator.go`, so no port-boundary export was needed.
+`internal/adapter/handler/catalog.go` is a thin wire conversion, reusing
+`toAPIView` (`workspace.go`) as-is. `GET /api/operations` (`Admin.Operations`)
+is untouched - it still answers the admin's unfiltered "what does this
+deployment have", a different question for a different audience
+(`docs/specs/dashboard.md` section 5) - and this task did not merge them.
+Acceptance: `services/platform/acceptance/catalog_test.go` - an admin sees
+every operation across two services; a person granted one sees only its
+one; no session is 401; a chart-hinted operation carries `view`, one
+without omits it. `make check` is green except `guard-filelen`, a
+pre-existing harness gap this task's contract growth exposed but did not
+cause - see "Known gaps in the harness" below.
+
 **`docs/plans/dashboard.md` Tasks 0-3 are done.** Task 3 adds
 `x-ui-hint.chart` parsing, the sibling of the `x-ui-hint.component` `parse.go`
 already read: `uiHint` (`internal/adapter/specsource/http/parse.go`) now
@@ -848,6 +874,23 @@ did before this work found the gap.
   TypeScript 7's native implementation does not provide, so `make generate` fails
   under 7. Everything else - including type-aware Oxlint - passed under 7. Go and
   pnpm are current (`DECISIONS.md`, 2026-09-10).
+- **`harness/quality/file-length.txt` does not exempt the per-service generated
+  `.d.ts` files, only `schema.d.ts`.** `oxfmt`'s and `oxlint`'s own policies
+  (`harness/quality/oxfmt/policy.ts`, `harness/quality/oxlint/policy.ts`) already
+  exempt the whole `**/src/shared/api/gen/**` directory, and `DECISIONS.md`'s
+  2026-09-11 orval entry already assumes `guard-filelen` does too - but the glob
+  in `file-length.txt` was never updated when `openapi-typescript` moved from one
+  shared `schema.d.ts` to one file per service (`attendance.d.ts`,
+  `inventory.d.ts`, `platform.d.ts`). `web/src/shared/api/gen/platform.d.ts` was
+  already at 971 of 1000 lines before Dashboard Task 4 (`docs/plans/dashboard.md`)
+  added `GET /api/catalog` and `CatalogEntry`, which pushed it to 1030 -
+  `guard-filelen` now fails on a file nobody hand-edits, for a reason
+  `file-length.txt`'s own header says should not apply to generated code.
+  `AGENTS.md` rule 2 forbids reconfiguring anything under `harness/quality/`, so
+  this was left as-is rather than patched: whoever picks this up should add
+  `**/src/shared/api/gen/**` (or one `exclude *.d.ts` line scoped the same way
+  `*.gen.go` is) to `file-length.txt`, matching the two sibling policies. Task 4
+  is otherwise fully green - see `TODO.md`.
 
 ## The eval suite (docs/specs/eval.md), a fifth subproject about the tests
 

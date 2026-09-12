@@ -241,6 +241,26 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/catalog": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List every operation the signed-in person may call.
+         * @description Every operation of `usecase.catalogFor(ctx, catalog, permissions, user)` - the whole catalogue for an admin, or the narrowed one for anybody else - each with its arguments schema (`schema`, as `/api/plan`'s form `schema`), its response fields (`fields`, as `/api/plan`'s result `fields`), and, when the contract declares `x-ui-hint.chart`, that chart's axes as `view` (docs/specs/dashboard.md, section 5). Built from the same rule /api/plan's tool list and /api/invoke's lookup are, so the operations a person can build a panel from and the ones they can ask a question about are the same set by construction (docs/specs/auth.md, section 5).
+         */
+        readonly get: operations["getCatalog"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -481,6 +501,25 @@ export type components = {
             readonly operationId: string;
             /** @description The operation's summary, from its contract. */
             readonly summary?: string;
+        };
+        /** @description One operation the signed-in person may call, with enough about it to build a panel over it (docs/specs/dashboard.md, section 5). */
+        readonly CatalogEntry: {
+            /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
+            readonly service: string;
+            /** @description The operation id, as declared in that service's contract. */
+            readonly operationId: string;
+            /** @description The operation's summary, from its contract. */
+            readonly summary: string;
+            readonly component: components["schemas"]["Component"];
+            /** @description The arguments a call takes, from `usecase.inputSchemaFor` - the same shape `/api/plan`'s `kind: form` result carries as its own `schema`, so the browser can build the same form over it. */
+            readonly schema: {
+                readonly [key: string]: unknown;
+            };
+            /** @description Per-property JSON Schema for the response's fields, from `domain.FieldsSchema` - the same shape `/api/plan`'s result carries as `fields`, offered here as a chart's axes and a transform's `groupBy`. Absent when the response has no fields to describe (not an empty object). */
+            readonly fields?: {
+                readonly [key: string]: unknown;
+            };
+            readonly view?: components["schemas"]["View"];
         };
         /** @description One operation a person may call (docs/specs/auth.md, section 4, A3). A row says this person may call this operation; there is no deny, because there is nothing to override. */
         readonly Permission: {
@@ -964,6 +1003,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readonly getCatalog: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Every operation the signed-in person may call. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["CatalogEntry"][];
                 };
             };
         };

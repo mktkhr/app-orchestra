@@ -272,6 +272,7 @@ func build(
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions, contextWindowOption(cfg.ContextTurns))
 	adminUsecase := usecase.NewAdmin(users, permissions, catalog)
+	catalogUsecase := usecase.NewCatalog(catalog, permissions)
 
 	api := handler.NewAPI(
 		handler.NewHealth(),
@@ -280,6 +281,7 @@ func build(
 		handler.NewInvoke(orchestrator),
 		workspaceHandler,
 		handler.NewUsers(adminUsecase),
+		handler.NewCatalog(catalogUsecase),
 	)
 
 	router, err := newRouter(api, cfg.StaticDir, sessions)
