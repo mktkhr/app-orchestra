@@ -14,6 +14,12 @@ type CatalogEntry struct {
 	Service     string
 	OperationID string
 	Summary     string
+	// DisplayName is what a person should read for this operation:
+	// e.DisplayName when the contract declares one, otherwise Summary -
+	// the same fallback OperationPicker and the default panel title
+	// already used before this field existed (docs/specs/orchestration.md
+	// D7; DECISIONS.md, 2026-09-13).
+	DisplayName string
 	Component   domain.Component
 	// Schema is the call's arguments, from inputSchemaFor - the same
 	// shape a kind: form Result carries as its own Schema, so the browser
@@ -82,6 +88,7 @@ func toCatalogEntry(e *domain.Endpoint) CatalogEntry {
 		Service:     e.Service,
 		OperationID: e.OperationID,
 		Summary:     e.Summary,
+		DisplayName: e.DisplayNameOr(e.Summary),
 		Component:   domain.Render(e),
 		Schema:      inputSchemaFor(e),
 		Fields:      fieldsFor(e),

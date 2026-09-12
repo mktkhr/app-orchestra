@@ -1,6 +1,6 @@
-export { applyTransform, type Aggregate, type Transform } from "./lib/transform";
+export { AGGREGATE_LABELS, applyTransform, type Aggregate, type Transform } from "./lib/transform";
 export { fieldEntries, type FieldEntry } from "./model/fieldEntries";
-export { rowsFromData, type Fields, type Row } from "./model/rows";
+export { columnTitle, rowsFromData, type Fields, type Row } from "./model/rows";
 export { useFormValues, type FormValuesState } from "./model/useFormValues";
 export { Provenance } from "./ui/Provenance";
 export { RenderedResult } from "./ui/RenderedResult";

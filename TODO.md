@@ -57,6 +57,17 @@ Everything remaining sits outside all four subprojects above:
 
 ## Done
 
+- Follow-up fix: English showing through the panel builder. A bug
+  (`fieldOptionsFor` in `usePanelFields.ts` threw away the `title` `fields`
+  already carries for the chart/transform pickers) and a pre-existing
+  design gap (no operation had a Japanese name; `summary` is the
+  model-facing tool description and stays untranslated on purpose - see
+  `usecase.ToolsFor`). `x-ui-hint` gained `displayName`
+  (`docs/specs/orchestration.md` D15), read through
+  `domain.Endpoint.DisplayNameOr`; both dummy services' exposed operations
+  now declare one. See `STATE.md` and `DECISIONS.md`, 2026-09-13. `make
+check` is green; `make eval` was not run and no operation's `summary`
+  changed.
 - `docs/plans/dashboard.md`, Task 7: end to end - closes the whole
   dashboard subproject (all seven tasks). Checked every AC-P-101..107
   against what already runs in CI first, per the task's own instruction,

@@ -12,7 +12,7 @@ import type { CatalogEntry } from "@/shared/api/catalog";
 import { useSubmission } from "@/shared/lib/useSubmission";
 
 import { useCatalog, type Catalog } from "./useCatalog";
-import { usePanelFields } from "./usePanelFields";
+import { usePanelFields, type FieldOption } from "./usePanelFields";
 
 /** `service:operationId` - a stable identity for one catalogue entry, used to key `PanelArguments` so it remounts (and reseeds) on a new operation. */
 export function operationKey(entry: CatalogEntry): string {
@@ -90,8 +90,8 @@ export interface PanelBuilder {
   readonly component: Component;
   readonly setComponent: (value: string) => void;
   readonly componentOptions: readonly Component[];
-  readonly fieldOptions: readonly string[];
-  readonly chartFieldOptions: readonly string[];
+  readonly fieldOptions: readonly FieldOption[];
+  readonly chartFieldOptions: readonly FieldOption[];
   readonly category: string;
   readonly setCategory: (value: string) => void;
   readonly value: string;

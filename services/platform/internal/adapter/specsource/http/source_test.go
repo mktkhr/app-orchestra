@@ -125,10 +125,18 @@ func TestFetchConvertsUIHint(t *testing.T) {
 	assert.Equal(t, "GET", get.Method)
 	assert.Equal(t, "/widgets/{id}", get.Path)
 	assert.Equal(t, domain.ComponentDetail, get.UIHint)
+	assert.Equal(t, "ウィジェットの詳細", get.DisplayName)
 	require.Len(t, get.Parameters, 1)
 	assert.Equal(t, "id", get.Parameters[0].Name)
 	assert.Equal(t, "path", get.Parameters[0].In)
 	assert.True(t, get.Parameters[0].Required)
+
+	// listWidgets declares no x-ui-hint at all: DisplayName stays empty
+	// rather than falling back to anything here - DisplayNameOr is where a
+	// caller's own fallback happens (domain/catalog.go), not the parser's.
+	list, ok := catalog.Find("fixture", "listWidgets")
+	require.True(t, ok)
+	assert.Empty(t, list.DisplayName)
 }
 
 func TestFetchConvertsChartHint(t *testing.T) {

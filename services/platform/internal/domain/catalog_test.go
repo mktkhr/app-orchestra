@@ -115,3 +115,21 @@ func TestCatalogForKeepsEveryPermittedOperation(t *testing.T) {
 	_, ok := narrowed.Find("inventory", "CreateInventoryItem")
 	assert.False(t, ok)
 }
+
+// TestEndpointDisplayNameOrPrefersItsOwnDisplayName is DECISIONS.md's
+// 2026-09-13 entry: a contract that declares x-ui-hint.displayName wins
+// over whatever the caller would otherwise have shown.
+func TestEndpointDisplayNameOrPrefersItsOwnDisplayName(t *testing.T) {
+	e := domain.Endpoint{DisplayName: "在庫一覧"}
+
+	assert.Equal(t, "在庫一覧", e.DisplayNameOr("List stock items."))
+}
+
+// TestEndpointDisplayNameOrFallsBackWhenTheContractDeclaresNone is the
+// other half: a contract that says nothing about a display name changes
+// nothing a person already saw before this field existed.
+func TestEndpointDisplayNameOrFallsBackWhenTheContractDeclaresNone(t *testing.T) {
+	e := domain.Endpoint{}
+
+	assert.Equal(t, "List stock items.", e.DisplayNameOr("List stock items."))
+}

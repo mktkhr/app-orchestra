@@ -46,7 +46,7 @@ test("building a panel over a list operation, with a group-by and a bar chart, a
   await page.getByRole("button", { name: "パネルを追加" }).click();
 
   await page.getByRole("combobox", { name: "操作" }).click();
-  await page.getByText("List stock items, optionally filtered by status.").click();
+  await page.getByText("在庫一覧").click();
 
   // Step 2: draw it as a chart.
   await page.getByRole("combobox", { name: "表示方法" }).click();
@@ -55,14 +55,14 @@ test("building a panel over a list operation, with a group-by and a bar chart, a
   // Step 3: group by status, counted - the transform half (AC-P-104).
   await page.getByRole("switch", { name: "集計してから描画する" }).click();
   await page.getByRole("combobox", { name: "グループ化する項目" }).click();
-  await page.getByRole("option", { name: "status", exact: true }).click();
+  await page.getByRole("option", { name: "ステータス", exact: true }).click();
 
   // Step 4: the chart's own axes - the grouped rows' own two keys
   // (`transform.ts`'s own output shape), a bar chart by default.
   await page.getByRole("combobox", { name: "分類の軸" }).click();
-  await page.getByRole("option", { name: "status", exact: true }).click();
+  await page.getByRole("option", { name: "ステータス", exact: true }).click();
   await page.getByRole("combobox", { name: "値の軸" }).click();
-  await page.getByRole("option", { name: "count", exact: true }).click();
+  await page.getByRole("option", { name: "件数", exact: true }).click();
 
   await page.getByRole("button", { name: "追加" }).click();
 

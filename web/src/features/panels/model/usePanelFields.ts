@@ -1,6 +1,11 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 
-import type { Aggregate, ChartKind } from "@/entities/rendering";
+import {
+  AGGREGATE_LABELS,
+  columnTitle,
+  type Aggregate,
+  type ChartKind,
+} from "@/entities/rendering";
 import type { Component } from "@/shared/api/client";
 import type { CatalogEntry } from "@/shared/api/catalog";
 
@@ -30,9 +35,28 @@ function guardedSetter<T extends string>(
   };
 }
 
-/** The fields a catalogue entry describes, as a chart's axes or a transform's `groupBy` may - the keys alone, in declared order. */
-export function fieldOptionsFor(entry: CatalogEntry | null): readonly string[] {
-  return entry?.fields === undefined ? [] : Object.keys(entry.fields);
+/**
+ * One field a chart's axes or a transform's own pickers may name: the
+ * property name itself, which is what a panel posts (`value`), paired
+ * with what a person reads for it (`label`) - the same `title` a table
+ * already draws for the same property (`columnTitle`,
+ * `entities/rendering/model/rows.ts`), falling back to the property name
+ * when the contract declares none.
+ */
+export interface FieldOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+/** The fields a catalogue entry describes, as a chart's axes or a transform's `groupBy` may - the keys alone, in declared order, each with its display label. */
+export function fieldOptionsFor(entry: CatalogEntry | null): readonly FieldOption[] {
+  if (entry?.fields === undefined) {
+    return [];
+  }
+
+  const fields = entry.fields;
+
+  return Object.keys(fields).map((key) => ({ value: key, label: columnTitle(fields, key) }));
 }
 
 /**
@@ -48,16 +72,26 @@ export function fieldOptionsFor(entry: CatalogEntry | null): readonly string[] {
  * draws is this task's own journey failing silently, not passing.
  */
 function chartFieldOptionsFor(
-  fieldOptions: readonly string[],
+  fieldOptions: readonly FieldOption[],
   transformEnabled: boolean,
   groupBy: string,
   aggregate: Aggregate,
-): readonly string[] {
+): readonly FieldOption[] {
   if (!transformEnabled) {
     return fieldOptions;
   }
 
-  return groupBy === "" ? [aggregate] : [groupBy, aggregate];
+  const aggregateOption: FieldOption = { value: aggregate, label: AGGREGATE_LABELS[aggregate] };
+
+  if (groupBy === "") {
+    return [aggregateOption];
+  }
+
+  const groupByOption =
+    fieldOptions.find((option) => option.value === groupBy) ??
+    ({ value: groupBy, label: groupBy } satisfies FieldOption);
+
+  return [groupByOption, aggregateOption];
 }
 
 /** Every `Component` a person may pick for `entry`: the rule's own answer, plus `chart` whenever the entry describes fields to draw one from (P2). */
@@ -128,9 +162,9 @@ export interface PanelFields {
   readonly component: Component;
   readonly setComponent: (value: string) => void;
   readonly componentOptions: readonly Component[];
-  readonly fieldOptions: readonly string[];
+  readonly fieldOptions: readonly FieldOption[];
   /** What a chart's axes may name - `fieldOptions` itself, or the transform's own output shape once one is enabled (see `chartFieldOptionsFor`). */
-  readonly chartFieldOptions: readonly string[];
+  readonly chartFieldOptions: readonly FieldOption[];
   readonly category: string;
   readonly setCategory: (value: string) => void;
   readonly value: string;
@@ -176,7 +210,7 @@ export function usePanelFields(): PanelFields {
     setEntry(next);
     setArgsValues({});
     setComponentState(next?.component ?? "table");
-    setTitle(next?.summary ?? "");
+    setTitle(next?.displayName ?? "");
 
     const chartDefault = next?.view?.chart;
 

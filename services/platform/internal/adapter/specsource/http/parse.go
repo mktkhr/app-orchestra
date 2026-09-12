@@ -68,7 +68,7 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 				continue
 			}
 
-			component, chart, err := uiHint(op.Extensions)
+			component, chart, displayName, err := uiHint(op.Extensions)
 			if err != nil {
 				return nil, fmt.Errorf("%s %s %s: %w", service, method, path, err)
 			}
@@ -84,6 +84,7 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 				Response:    convertResponse(op.Responses),
 				UIHint:      component,
 				ChartHint:   chart,
+				DisplayName: displayName,
 			})
 		}
 	}
@@ -287,23 +288,28 @@ func isExposed(extensions map[string]any) bool {
 
 // uiHint reads x-ui-hint off an operation's extensions: component, an
 // override the rendering rule already accepts (docs/plans/dashboard.md
-// Task 3 asks for its sibling, not a rewrite of it), and chart, a
-// contract's own declaration of a result's axes (see parseChartHint).
+// Task 3 asks for its sibling, not a rewrite of it), chart, a contract's
+// own declaration of a result's axes (see parseChartHint), and
+// displayName, a name for a person to read (docs/specs/orchestration.md
+// D7; DECISIONS.md, 2026-09-13) - distinct from Summary, which is the
+// model-facing tool description and is never translated for display.
 //
-// component stays lenient exactly as it always has: absent, a non-object
-// x-ui-hint, or a non-string component all mean "no override", not an
-// error - a missing override falls back to the response schema, so there
-// is nothing to fail loudly about. chart is not given the same leniency;
-// see errMalformedChartHint.
-func uiHint(extensions map[string]any) (domain.Component, *domain.Chart, error) {
+// component and displayName stay lenient exactly as component always has:
+// absent, a non-object x-ui-hint, or a non-string value all mean "no
+// override"/"no display name", not an error - both fall back to something
+// already shown (the response schema for component, Summary or the
+// operation id for displayName; see domain.Endpoint.DisplayNameOr), so
+// there is nothing to fail loudly about. chart is not given the same
+// leniency; see errMalformedChartHint.
+func uiHint(extensions map[string]any) (domain.Component, *domain.Chart, string, error) {
 	raw, ok := extensions[extUIHint]
 	if !ok {
-		return "", nil, nil
+		return "", nil, "", nil
 	}
 
 	m, ok := raw.(map[string]any)
 	if !ok {
-		return "", nil, nil
+		return "", nil, "", nil
 	}
 
 	var component string
@@ -311,18 +317,23 @@ func uiHint(extensions map[string]any) (domain.Component, *domain.Chart, error) 
 		component = s
 	}
 
+	var displayName string
+	if s, ok := m["displayName"].(string); ok {
+		displayName = s
+	}
+
 	var chart *domain.Chart
 
 	if raw, hasChart := m["chart"]; hasChart {
 		c, err := parseChartHint(raw)
 		if err != nil {
-			return "", nil, err
+			return "", nil, "", err
 		}
 
 		chart = c
 	}
 
-	return domain.Component(component), chart, nil
+	return domain.Component(component), chart, displayName, nil
 }
 
 // parseChartHint converts x-ui-hint.chart into a domain.Chart. hasChart is

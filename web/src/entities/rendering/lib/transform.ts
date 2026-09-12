@@ -13,6 +13,20 @@
 
 export type Aggregate = "count" | "sum" | "avg";
 
+/**
+ * Each aggregate's Japanese label - the one place that knows what
+ * `applyTransform`'s own output keys (`count`/`sum`/`avg`) mean, since
+ * they name no property any contract describes and so carry no `title` of
+ * their own (`entities/rendering/model/rows.ts`'s `columnTitle` has
+ * nothing to look up for them). A panel builder's chart axes read this
+ * once a transform is on (`features/panels/model/usePanelFields.ts`).
+ */
+export const AGGREGATE_LABELS: Readonly<Record<Aggregate, string>> = {
+  count: "件数",
+  sum: "合計",
+  avg: "平均",
+};
+
 export interface Transform {
   readonly groupBy: string;
   readonly aggregate: Aggregate;

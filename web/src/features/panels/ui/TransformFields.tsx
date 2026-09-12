@@ -5,11 +5,13 @@ import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import type { ChangeEvent, JSX } from "react";
 
-import type { Aggregate } from "@/entities/rendering";
+import { AGGREGATE_LABELS, type Aggregate } from "@/entities/rendering";
+
+import type { FieldOption } from "../model/usePanelFields";
 
 interface TransformFieldsProps {
   /** The fields the catalogue entry's `fields` describes - `groupBy`'s own candidates (P2). */
-  readonly fieldOptions: readonly string[];
+  readonly fieldOptions: readonly FieldOption[];
   readonly enabled: boolean;
   readonly groupBy: string;
   readonly aggregate: Aggregate;
@@ -21,9 +23,9 @@ interface TransformFieldsProps {
 }
 
 const AGGREGATE_OPTIONS: readonly { readonly value: Aggregate; readonly label: string }[] = [
-  { value: "count", label: "件数" },
-  { value: "sum", label: "合計" },
-  { value: "avg", label: "平均" },
+  { value: "count", label: AGGREGATE_LABELS.count },
+  { value: "sum", label: AGGREGATE_LABELS.sum },
+  { value: "avg", label: AGGREGATE_LABELS.avg },
 ];
 
 /**
@@ -67,8 +69,8 @@ export function TransformFields({
             }}
           >
             {fieldOptions.map((field) => (
-              <MenuItem key={field} value={field}>
-                {field}
+              <MenuItem key={field.value} value={field.value}>
+                {field.label}
               </MenuItem>
             ))}
           </TextField>
@@ -96,8 +98,8 @@ export function TransformFields({
               }}
             >
               {fieldOptions.map((field) => (
-                <MenuItem key={field} value={field}>
-                  {field}
+                <MenuItem key={field.value} value={field.value}>
+                  {field.label}
                 </MenuItem>
               ))}
             </TextField>

@@ -10,18 +10,20 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
-// findCatalogEntry returns the entry named service/operationID among
-// entries.
-func findCatalogEntry(t *testing.T, entries []usecase.CatalogEntry, service, operationID string) usecase.CatalogEntry {
+// findCatalogEntry returns the inventory entry named operationID among
+// entries. Every test here reads an inventory operation - the attendance
+// service's presence is what the admin test asserts, not what any of these
+// read a field off - so the service is not a parameter (unparam).
+func findCatalogEntry(t *testing.T, entries []usecase.CatalogEntry, operationID string) usecase.CatalogEntry {
 	t.Helper()
 
 	for _, e := range entries {
-		if e.Service == service && e.OperationID == operationID {
+		if e.Service == "inventory" && e.OperationID == operationID {
 			return e
 		}
 	}
 
-	t.Fatalf("no catalog entry for %s/%s among %+v", service, operationID, entries)
+	t.Fatalf("no inventory catalog entry for %s among %+v", operationID, entries)
 
 	return usecase.CatalogEntry{}
 }
@@ -95,7 +97,7 @@ func TestCatalogEntryCarriesTheSchemaFieldsAndComponentOfEachEndpoint(t *testing
 	entries, err := c.For(t.Context(), adminUser())
 	require.NoError(t, err)
 
-	entry := findCatalogEntry(t, entries, "inventory", "ListInventoryItems")
+	entry := findCatalogEntry(t, entries, "ListInventoryItems")
 
 	assert.Equal(t, domain.ComponentTable, entry.Component)
 	assert.NotEmpty(t, entry.Schema, "the call's arguments, from inputSchemaFor")
@@ -113,7 +115,7 @@ func TestCatalogEntryCarriesTheEndpointsChartHintAsView(t *testing.T) {
 	entries, err := c.For(t.Context(), adminUser())
 	require.NoError(t, err)
 
-	entry := findCatalogEntry(t, entries, "inventory", "ListInventoryItems")
+	entry := findCatalogEntry(t, entries, "ListInventoryItems")
 
 	require.NotNil(t, entry.View)
 	require.NotNil(t, entry.View.Chart)
@@ -121,6 +123,46 @@ func TestCatalogEntryCarriesTheEndpointsChartHintAsView(t *testing.T) {
 	assert.Equal(t, "count", entry.View.Chart.Value)
 	assert.Equal(t, domain.ChartKindBar, entry.View.Chart.Kind)
 	assert.Nil(t, entry.View.Transform, "a contract declares axes, never a transform")
+}
+
+// TestCatalogEntryDisplayNameFallsBackToSummary is DECISIONS.md's
+// 2026-09-13 entry's catalogue half: an endpoint whose contract declares
+// no x-ui-hint.displayName still gives OperationPicker and the default
+// panel title something to show - exactly what they already showed
+// (Summary) before this field existed.
+func TestCatalogEntryDisplayNameFallsBackToSummary(t *testing.T) {
+	c := usecase.NewCatalog(inventoryCatalog(), &fakePermissionStore{})
+
+	entries, err := c.For(t.Context(), adminUser())
+	require.NoError(t, err)
+
+	entry := findCatalogEntry(t, entries, "ListInventoryItems")
+
+	assert.Equal(t, entry.Summary, entry.DisplayName)
+}
+
+// TestCatalogEntryDisplayNamePrefersTheContractsOwnDisplayName is the
+// other half: a contract that declares x-ui-hint.displayName wins over
+// Summary.
+func TestCatalogEntryDisplayNamePrefersTheContractsOwnDisplayName(t *testing.T) {
+	catalog := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "ListInventoryItems",
+			Summary:     "List stock items, optionally filtered by status.",
+			DisplayName: "在庫一覧",
+			Response:    &domain.Schema{Type: domain.SchemaTypeObject},
+		},
+	}}
+
+	c := usecase.NewCatalog(catalog, &fakePermissionStore{})
+
+	entries, err := c.For(t.Context(), adminUser())
+	require.NoError(t, err)
+
+	entry := findCatalogEntry(t, entries, "ListInventoryItems")
+
+	assert.Equal(t, "在庫一覧", entry.DisplayName)
 }
 
 // TestCatalogEntryOmitsFieldsWhenTheResponseDescribesNone matches
@@ -133,7 +175,7 @@ func TestCatalogEntryOmitsFieldsWhenTheResponseDescribesNone(t *testing.T) {
 	entries, err := c.For(t.Context(), adminUser())
 	require.NoError(t, err)
 
-	entry := findCatalogEntry(t, entries, "inventory", "CreateInventoryItem")
+	entry := findCatalogEntry(t, entries, "CreateInventoryItem")
 
 	assert.Nil(t, entry.Fields)
 }

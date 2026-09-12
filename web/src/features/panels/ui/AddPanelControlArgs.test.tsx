@@ -24,6 +24,7 @@ const listEntry: CatalogEntry = {
   service: "inventory",
   operationId: "ListInventoryItems",
   summary: "在庫一覧",
+  displayName: "在庫一覧",
   component: "table",
   schema: {
     type: "object",

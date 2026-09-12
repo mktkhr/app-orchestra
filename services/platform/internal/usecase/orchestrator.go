@@ -505,7 +505,7 @@ func capabilitiesItems(c domain.Catalog, service string) []map[string]any {
 		e := &endpoints[i]
 		items[i] = map[string]any{
 			paramService: e.Service,
-			"operation":  e.OperationID,
+			"operation":  e.DisplayNameOr(e.OperationID),
 			"summary":    e.Summary,
 		}
 	}

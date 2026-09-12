@@ -119,6 +119,7 @@ describe("WorkspacePage", () => {
         service: "inventory",
         operationId: "ListInventoryItems",
         summary: "在庫一覧",
+        displayName: "在庫一覧",
         component: "table",
         schema: { type: "object", required: [], properties: {} },
         fields: { status: { type: "string" } },

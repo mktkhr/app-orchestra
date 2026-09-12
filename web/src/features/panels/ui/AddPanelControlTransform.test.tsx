@@ -19,6 +19,7 @@ const tableEntry: CatalogEntry = {
   service: "inventory",
   operationId: "ListInventoryItems",
   summary: "在庫一覧",
+  displayName: "在庫一覧",
   component: "table",
   schema: { type: "object", required: [], properties: {} },
   fields: {
@@ -86,13 +87,13 @@ describe("AddPanelControl, a chart built on top of a transform", () => {
     await user.click(screen.getByRole("combobox", { name: "分類の軸" }));
     const categoryOptions = within(await screen.findByRole("listbox")).getAllByRole("option");
 
-    expect(categoryOptions.map((option) => option.textContent)).toEqual(["status", "count"]);
+    expect(categoryOptions.map((option) => option.textContent)).toEqual(["status", "件数"]);
 
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("combobox", { name: "値の軸" }));
     const valueOptions = within(await screen.findByRole("listbox")).getAllByRole("option");
 
-    expect(valueOptions.map((option) => option.textContent)).toEqual(["status", "count"]);
+    expect(valueOptions.map((option) => option.textContent)).toEqual(["status", "件数"]);
   });
 
   it("saves a panel whose chart draws the transform's own output shape", async () => {
@@ -122,7 +123,7 @@ describe("AddPanelControl, a chart built on top of a transform", () => {
     await user.click(screen.getByRole("switch", { name: "集計してから描画する" }));
     await selectFromDropdown(user, "グループ化する項目", "status");
     await selectFromDropdown(user, "分類の軸", "status");
-    await selectFromDropdown(user, "値の軸", "count");
+    await selectFromDropdown(user, "値の軸", "件数");
 
     await user.click(await screen.findByRole("button", { name: "追加" }));
 

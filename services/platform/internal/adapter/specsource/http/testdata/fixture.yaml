@@ -75,6 +75,7 @@ paths:
       x-orchestra-expose: true
       x-ui-hint:
         component: detail
+        displayName: ウィジェットの詳細
       parameters:
         - name: id
           in: path

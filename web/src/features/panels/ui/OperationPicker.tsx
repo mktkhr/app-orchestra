@@ -32,7 +32,7 @@ export function OperationPicker({
       <Autocomplete
         options={entries}
         groupBy={(entry) => entry.service}
-        getOptionLabel={(entry) => entry.summary || entry.operationId}
+        getOptionLabel={(entry) => entry.displayName || entry.operationId}
         isOptionEqualToValue={(option, candidate) => entryKey(option) === entryKey(candidate)}
         value={value}
         onChange={(_event, next) => {

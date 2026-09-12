@@ -5,9 +5,11 @@ import type { ChangeEvent, JSX } from "react";
 
 import type { ChartKind } from "@/entities/rendering";
 
+import type { FieldOption } from "../model/usePanelFields";
+
 interface ChartFieldsProps {
   /** The fields `entities/rendering`'s `CatalogEntry.fields` describes - never free text (P2). */
-  readonly fieldOptions: readonly string[];
+  readonly fieldOptions: readonly FieldOption[];
   readonly category: string;
   readonly value: string;
   readonly kind: ChartKind;
@@ -49,8 +51,8 @@ export function ChartFields({
         }}
       >
         {fieldOptions.map((field) => (
-          <MenuItem key={field} value={field}>
-            {field}
+          <MenuItem key={field.value} value={field.value}>
+            {field.label}
           </MenuItem>
         ))}
       </TextField>
@@ -63,8 +65,8 @@ export function ChartFields({
         }}
       >
         {fieldOptions.map((field) => (
-          <MenuItem key={field} value={field}>
-            {field}
+          <MenuItem key={field.value} value={field.value}>
+            {field.label}
           </MenuItem>
         ))}
       </TextField>

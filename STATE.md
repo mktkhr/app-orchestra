@@ -4,6 +4,29 @@ _Last updated: 2026-09-13_
 
 ## Summary
 
+**Follow-up fix: English showing through the panel builder is closed** (see
+`DECISIONS.md`, 2026-09-13). Two causes. (1) A bug: `usePanelFields.ts`'s
+`fieldOptionsFor` returned bare property names for the chart's axis pickers
+and the transform's `groupBy`/aggregate-field pickers, throwing away the
+`title` a table already draws from the same `fields` shape
+(`entities/rendering/model/rows.ts`'s `columnTitle`) - fixed by having
+`fieldOptionsFor` return `{value, label}` pairs, and a new
+`AGGREGATE_LABELS` (`entities/rendering/lib/transform.ts`) labelling
+`applyTransform`'s own output keys (`count`/`sum`/`avg`), which name no
+contract property. (2) A design gap: no operation had a Japanese name
+anywhere - `OperationPicker`, a panel's default title, and
+`list_capabilities`' 操作 column all read either `summary` (a contract's
+English tool description, `usecase.ToolsFor`'s `Tool.Description` -
+deliberately not translated, since that would move `make eval`'s baseline)
+or the raw operation id. `x-ui-hint` gains `displayName`
+(`docs/specs/orchestration.md` D15), read the same lenient way as
+`component`, carried as `domain.Endpoint.DisplayName` and read through the
+new `DisplayNameOr(fallback)` - `GET /api/catalog`'s `CatalogEntry.displayName`
+falls back to `summary`, `list_capabilities`' 操作 column falls back to the
+operation id, each the value that screen already showed. Both dummy
+services' `x-orchestra-expose: true` operations now declare one
+(`docs/specs/dashboard.md` P9). `make check` is green.
+
 **`docs/plans/dashboard.md` is done - all seven tasks.** Task 7 is the
 whole subproject's own end to end journey plus the check `docs/plans/dashboard.md`
 asked for first: that every acceptance criterion in `docs/specs/dashboard.md`

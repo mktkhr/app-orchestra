@@ -89,6 +89,26 @@ type Endpoint struct {
 	// how the result draws, not offering axes for some other component to
 	// use.
 	ChartHint *Chart
+	// DisplayName is the operation's x-ui-hint.displayName: a name for a
+	// person to read, as distinct from Summary, which is the model-facing
+	// tool description (usecase.ToolsFor) and stays in whatever language
+	// the contract's author wrote it in (DECISIONS.md, 2026-09-13). Empty
+	// when the contract declares none - see DisplayNameOr.
+	DisplayName string
+}
+
+// DisplayNameOr returns e.DisplayName when the contract declares one,
+// otherwise fallback. Each caller passes whatever it already showed a
+// person before this field existed - /api/catalog falls back to Summary,
+// list_capabilities' table falls back to OperationID - so a contract that
+// says nothing about a display name changes nothing anyone already sees
+// (DECISIONS.md, 2026-09-13).
+func (e *Endpoint) DisplayNameOr(fallback string) string {
+	if e.DisplayName != "" {
+		return e.DisplayName
+	}
+
+	return fallback
 }
 
 // IsSafe reports whether the endpoint's method never mutates state (GET,

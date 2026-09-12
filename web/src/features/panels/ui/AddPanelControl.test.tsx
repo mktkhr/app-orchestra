@@ -19,6 +19,7 @@ const tableEntry: CatalogEntry = {
   service: "inventory",
   operationId: "ListInventoryItems",
   summary: "在庫一覧",
+  displayName: "在庫一覧",
   component: "table",
   schema: {
     type: "object",
@@ -37,6 +38,7 @@ const chartEntry: CatalogEntry = {
   service: "attendance",
   operationId: "SummarizeAttendance",
   summary: "出勤の集計",
+  displayName: "出勤の集計",
   component: "chart",
   schema: { type: "object", required: [], properties: {} },
   fields: {

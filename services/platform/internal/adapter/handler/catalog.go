@@ -54,6 +54,7 @@ func toAPICatalogEntry(e *usecase.CatalogEntry) openapi.CatalogEntry {
 		Service:     e.Service,
 		OperationId: e.OperationID,
 		Summary:     e.Summary,
+		DisplayName: e.DisplayName,
 		Component:   openapi.Component(e.Component),
 		Schema:      e.Schema,
 	}

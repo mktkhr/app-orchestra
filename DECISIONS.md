@@ -2664,3 +2664,98 @@ see the same four bars draw again from the saved panel. Neither suite wires
 `ORCHESTRA_PLAN_FIXTURES`: nothing in either journey asks a question, so
 the stub planner has no part in it, which is P8's own point made
 executable.
+
+## 2026-09-13 English showing through the panel builder: a real bug and a real gap, and x-ui-hint.displayName
+
+**Context.** Using the panel builder found English text on screens meant to
+read in Japanese. Two separate causes, not one.
+
+**Cause 1, a bug: the axis pickers threw away the labels the contract
+already carries.** `fieldOptionsFor` (`usePanelFields.ts`) returned
+`Object.keys(entry.fields)` - raw property names (`status`, `quantity`,
+`employee`) - for the chart's category/value axes and the transform's
+`groupBy`/aggregate-field pickers. `entry.fields` is the same shape a table
+already reads a `title` from (`columnTitle`,
+`entities/rendering/model/rows.ts`) to draw 「ステータス」 instead of
+`status`; the picker just never called it. **Decision.** `fieldOptionsFor`
+now returns `FieldOption[]` (`{value, label}`): `value` is still the bare
+property name (what a panel posts, unchanged), `label` is `columnTitle`'s
+own answer. `chartFieldOptionsFor`'s transform-on branch needed a label for
+`applyTransform`'s own output keys too (`count`/`sum`/`avg`), which name no
+contract property and so have no `title` to look up - `AGGREGATE_LABELS`,
+a `Record<Aggregate, string>` beside `applyTransform`
+(`entities/rendering/lib/transform.ts`, the one place that already knows
+what those keys mean), fills that gap and is reused by `TransformFields`'s
+own aggregate-method picker so the label exists in exactly one place.
+**Consequences.** `ChartFields.tsx` and `TransformFields.tsx` render
+`option.label`/key `option.value` instead of the bare string.
+`AddPanelControlTransform.test.tsx`'s pinned option list changed from
+`["status", "count"]` to `["status", "件数"]` (the fixture's `status` field
+still carries no `title`, so it still falls back to the property name -
+only the aggregate's own name gained a label); `e2e/browser/dashboard.spec.ts`
+picks the real `ListInventoryItems.status` field by its real title,
+`ステータス` (`services/inventory/api/openapi.yaml`'s `ItemStatus` already
+declared one), and the value axis by `件数`, not `count`.
+
+**Cause 2, a design gap: an operation has no Japanese name anywhere.**
+`OperationPicker` and the default panel title both read `entry.summary`;
+`list_capabilities`' 操作 column read the raw operation id. Every
+contract's `summary` is English (it is written for a person, but the
+_model_ is that person - `usecase.ToolsFor` sends it verbatim as
+`Tool.Description`) and this is a pre-existing product-wide gap
+(`list_capabilities`' answer to 「何ができるの？」 shows the same English) that
+the builder only made visible. **Decision: `summary` is not translated, and
+does not become the display name.** It is the tool description the planner
+sends the model; changing it changes how the model chooses operations,
+which would move `make eval`'s measured baseline (checked: `usecase.ToolsFor`,
+`internal/adapter/planner/toolcall/planner.go`, and
+`internal/adapter/planner/jsonmode/planner.go`'s `renderCatalog` are the
+only readers of `Endpoint.Summary`/`CatalogEntry.Summary`, and none of them
+changed). A display name is a different thing from a model-facing
+description and gets its own field: `x-ui-hint.displayName`, beside
+`component` and `chart` (D7's own extension point). `displayName` is
+chosen, not `title` or `name`, because both of those already mean something
+else nearby (a JSON Schema property's `title`, an operation's own
+`operationId`/tool `Name`) and this needed to read unambiguously as "what a
+_person_ calls this," never confusable with either.
+
+It flows through exactly as D7's own hint does: `specsource/http.uiHint`
+reads it (leniently - absent, non-object, non-string all mean "no display
+name," never a fetch error, matching `component`'s own leniency, not
+`chart`'s); `domain.Endpoint.DisplayName` carries it; a new
+`domain.Endpoint.DisplayNameOr(fallback)` method is the one place that
+decides what a contract's silence means - because that silence means a
+_different_ thing depending on who is asking. `usecase.toCatalogEntry` asks
+for `e.DisplayNameOr(e.Summary)` (`CatalogEntry.DisplayName`, required,
+never blank) since `Summary` is what `OperationPicker` and the default
+panel title already showed; `orchestrator.capabilitiesItems` asks for
+`e.DisplayNameOr(e.OperationID)` since the operation id is what its own 操作
+column already showed. Neither caller's existing behaviour changes for a
+contract that declares nothing.
+
+**The dummy services get one.** `docs/specs/dashboard.md` sections 1/7 keep
+`services/inventory`/`services/attendance` untouched for aggregate
+endpoints - adding one would mean every real team must add one too,
+undercutting the whole premise that the platform draws from what a service
+already exposes. A display name is the opposite case: presentation
+metadata `x-ui-hint` already exists to carry (D7), `x-enum-labels` already
+sets the precedent that a contract carries its own Japanese labels for what
+it draws, and a service that declares none still works exactly as before.
+Every `x-orchestra-expose: true` operation in both dummy services' contracts
+now carries an `x-ui-hint.displayName` (在庫一覧, 在庫アイテムの作成,
+在庫アイテムの詳細, 勤怠記録一覧, 勤怠記録の作成, 勤怠記録の詳細).
+
+**Consequences.** `GET /api/catalog`'s `CatalogEntry` gained `displayName`
+(required); `OperationPicker.tsx` and `usePanelFields.ts`'s `selectEntry`
+(the default panel title) now read `entry.displayName` instead of
+`entry.summary`. `orchestrator_test.go` crossed `guard-filelen`'s 1000-line
+budget adding this case alongside gap 1's; its `list_capabilities` tests
+(and the `twoServiceCatalog` fixture they share) moved to a new sibling
+file, `orchestrator_capabilities_test.go`, the same split gap 1's own tests
+already used this subproject for `AddPanelControlTransform.test.tsx`.
+`e2e/browser/dashboard.spec.ts` picks the operation by 在庫一覧, not by its
+English summary. Verified `make eval` was not run and no operation's
+`summary` changed (see above); verified `docker logs llama-swap`'s
+`POST /v1/chat/completions` count is unchanged across a full `make check`
+run, matching the existing AC-E-202 guarantee this subproject does not
+touch.
