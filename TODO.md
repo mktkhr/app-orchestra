@@ -4,9 +4,12 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-`docs/plans/dashboard.md`: Task 0 done (`web/src/entities/rendering/lib/transform.ts` -
-pure `applyTransform`, groups rows and reduces each group to `count`/`sum`/`avg`; see
-its own tests for the edge cases pinned). Tasks 1-7 remain.
+`docs/plans/dashboard.md`: Tasks 0 and 1 done. Task 0:
+`web/src/entities/rendering/lib/transform.ts` - pure `applyTransform`, groups rows and
+reduces each group to `count`/`sum`/`avg`; see its own tests for the edge cases pinned.
+Task 1: `web/src/entities/rendering/ui/ResultChart.tsx` - draws rows as a bar, line or pie
+chart via `@mui/x-charts@9.4.0`; see its own tests for the non-numeric-value,
+non-string-category and empty-input edge cases pinned. Tasks 2-7 remain.
 
 `docs/plans/orchestration.md`, `docs/plans/workspaces.md`,
 `docs/plans/auth.md` and `docs/plans/context.md` are all closed - every

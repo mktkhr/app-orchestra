@@ -157,16 +157,16 @@ The title is the chart's text alternative: a picture with none is a picture
 a screen reader cannot read, and `make guard-a11y` runs against a real
 screen (spec section 11).
 
-- [ ] **Step 1** Add `@mui/x-charts` at the version the catalog pins for the
+- [x] **Step 1** Add `@mui/x-charts` at the version the catalog pins for the
       other MUI packages. `make check` must still pass `guard-ui`.
-- [ ] **Step 2** Write the test: three rows and a category/value draw three
+- [x] **Step 2** Write the test: three rows and a category/value draw three
       bars; the same rows draw as a line and as a pie when `kind` says so; a
       value that is not a number is skipped rather than drawn as `NaN`.
-- [ ] **Step 3** Implement.
-- [ ] **Step 4** Web gates green, then `make build` and
+- [x] **Step 3** Implement.
+- [x] **Step 4** Web gates green, then `make build` and
       `make guard-browser`, `make guard-a11y`, `make guard-layout` — a chart
       is the first thing in this repository that is a picture.
-- [ ] **Step 5** Commit: `feat(web): draw a chart of a result's rows`
+- [x] **Step 5** Commit: `feat(web): draw a chart of a result's rows`
 
 **Satisfies:** AC-P-103's rendering half.
 

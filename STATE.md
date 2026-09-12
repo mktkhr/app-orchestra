@@ -4,7 +4,7 @@ _Last updated: 2026-09-12_
 
 ## Summary
 
-**`docs/plans/dashboard.md` Task 0 is done.** `web/src/entities/rendering/lib/transform.ts`
+**`docs/plans/dashboard.md` Tasks 0 and 1 are done.** `web/src/entities/rendering/lib/transform.ts`
 exports a pure `applyTransform(rows, transform)`: groups rows by
 `transform.groupBy` and reduces each group to `count`, `sum` or `avg`,
 producing rows whose keys are `groupBy`'s own name and the aggregate's -
@@ -15,8 +15,29 @@ whose `groupBy` value is missing, `null`, or not a string is grouped under
 a shared `null` bucket rather than dropped; a non-numeric value under
 `field` is skipped rather than producing `NaN`; `sum` of an all-skipped
 group is `0`, `avg` of one is `null`; output order is first-seen order of
-the group key. It has no callers yet - Tasks 1 and 5 add them - and no
+the group key. It has no callers yet - Task 5 adds one - and no
 other file changed, on purpose (the function is pure, no React/MUI/I/O).
+
+`web/src/entities/rendering/ui/ResultChart.tsx` draws a `data`/`category`/
+`value`/`kind`/`title` result as a bar, line or pie chart, via `@mui/x-charts`
+pinned at `9.4.0` (exact - the version installed for `@mui/material` and
+`@mui/icons-material`, both `^9.4.0` but resolved to `9.4.0` in the
+lockfile; a caret range on `@mui/x-charts` alone resolves to whatever is
+newest, so it is pinned exact rather than relying on the lockfile never
+being regenerated). It does not call `applyTransform` - it draws whatever
+rows it is handed, grouped or not (Task 5 decides which). A row whose
+`value` is not a finite number is dropped, not drawn as `NaN`, the same
+call `transform.ts` makes for a non-numeric aggregate input; a row whose
+`category` is not a string draws under the shared placeholder label
+`"null"`, consistently with `transform.ts`'s `UNGROUPED` bucket, without
+merging such rows into one mark (this component draws one mark per row).
+Empty input, or every row filtered out, shows `ResultTable`'s own "結果は
+0件です。" message rather than a blank chart. The chart's title is a
+visible `<figcaption>`, not `@mui/x-charts`' own `title` prop: that prop
+lands as `aria-label` on a `role="none"` container, and axe's
+`aria-prohibited-attr` (WCAG 4.1.2) rejects that combination outright -
+confirmed by rendering the built chart's HTML through axe-core directly,
+not assumed from the library's docs.
 
 **All four subprojects are done: `docs/plans/orchestration.md`'s seventeen
 tasks, `docs/plans/workspaces.md`'s eight, `docs/plans/auth.md`'s seven, and
