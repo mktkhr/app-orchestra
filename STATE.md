@@ -21,6 +21,24 @@ except `GET /api/health`. `make check` is green outside `e2e/`:
 `acceptance-e2e` and `acceptance-browser` are red on 401 as of Task 2, on
 purpose - Task 6's own job to fix, per `docs/plans/auth.md`.
 
+**The nil-store auth bypass is closed.** `requireSession` used to treat a
+nil `SessionUsers` store as "run every request as a fixed stub admin" -
+harmless only because `cmd/api` always builds one, since
+`internal/infra/config.Load` refuses to start without `ORCHESTRA_DB_PATH`.
+Any other caller of `pkg/app.New` that forgot to set `Config.DBPath` got
+that bypass for free: a wide-open admin backdoor on every route.
+`pkg/app.New` now refuses to build a handler at all when `DBPath` is empty
+(`app.ErrMissingDBPath`) - there is no legitimate use of this platform
+without a database, workspaces and accounts both need one - so the nil case
+`requireSession` used to handle can no longer be reached, and that branch
+(and the `newStubAdmin` helper it used) was deleted outright rather than
+left as unreachable dead code.
+
+There is a design decision worth its own note: the shared acceptance
+sign-in helper (`newTestApp`, `services/platform/acceptance/helpers_test.go`)
+lives in the `acceptance` package rather than duplicated per file - see
+`DECISIONS.md`, 2026-09-12 ("Closing the nil-store auth bypass").
+
 An answer worth keeping can be kept. A result in the chat can be saved to a
 workspace as a panel - service, operation id, arguments, component, title -
 and opening the workspace re-runs every panel through the same

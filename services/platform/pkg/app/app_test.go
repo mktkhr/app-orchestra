@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
@@ -14,8 +15,61 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/pkg/app"
 )
 
+// appTestAdminPassword seeds the admin account every test in this file
+// that needs a DBPath builds its Config with (app.New now refuses an
+// empty one - see TestNewFailsWhenDBPathIsEmpty, below). None of these
+// tests are about authentication itself (acceptance/session_test.go and
+// acceptance/workspace_test.go cover that end-to-end); they just each need
+// their own t.TempDir()-backed database to build a handler at all.
+const appTestAdminPassword = "correct horse battery staple"
+
+// signInTestAdmin signs in as the admin account appTestAdminPassword
+// seeds, storing the resulting session cookie on server.Client()'s jar so
+// every later request through it reaches its handler instead of
+// requireSession's own 401 (docs/specs/auth.md, AC-A-102: everything but
+// GET /api/health and POST /api/session requires one).
+func signInTestAdmin(t *testing.T, server *httptest.Server) {
+	t.Helper()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	server.Client().Jar = jar
+
+	raw, err := json.Marshal(map[string]string{"name": "admin", "password": appTestAdminPassword})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/session", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// TestNewFailsWhenDBPathIsEmpty closes the auth bypass docs/specs/auth.md
+// A6 warns about: a nil session store used to make requireSession run
+// every request as a fixed admin (see DECISIONS.md). Workspaces and
+// accounts both need a database, so there is no Config for which running
+// without one is a legitimate choice - New must refuse it itself, the
+// same way internal/infra/config.Load already refuses to start cmd/api
+// without ORCHESTRA_DB_PATH (config.ErrMissingDBPath), rather than leaving
+// that check for a caller that goes through config.Load to remember and
+// every other caller of New free to forget.
+func TestNewFailsWhenDBPathIsEmpty(t *testing.T) {
+	_, err := app.New(&app.Config{})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, app.ErrMissingDBPath)
+}
+
 func TestNewServesHealth(t *testing.T) {
-	handler, err := app.New(&app.Config{})
+	dbPath := filepath.Join(t.TempDir(), "app.db")
+
+	handler, err := app.New(&app.Config{DBPath: dbPath, AdminPassword: appTestAdminPassword})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)
@@ -93,11 +147,14 @@ func TestNewWiresThePlanFixtureThroughToAResult(t *testing.T) {
 		PlanFixtures: []app.PlanFixture{
 			{Query: "widgets please", Service: "fixture", OperationID: "ListWidgets"},
 		},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
 	})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
 
 	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
 	require.NoError(t, err)
@@ -161,11 +218,14 @@ func TestNewWithLLMBaseURLConfiguredUsesTheToolCallingPlanner(t *testing.T) {
 		// PlanFixtures is deliberately left empty: if the stub were chosen
 		// instead of the tool-calling planner, "widgets please" would come
 		// back as ResultKindNone, not the table this test asserts.
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
 	})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
 
 	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
 	require.NoError(t, err)
@@ -224,13 +284,16 @@ func TestNewWithLLMModeJSONUsesTheJSONPlanner(t *testing.T) {
 	chatServer := fixtureJSONChatServer(t)
 
 	handler, err := app.New(&app.Config{
-		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
-		LLM:      app.LLM{BaseURL: chatServer.URL, Model: "test-model", Mode: app.ModeJSON},
+		Services:      []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:           app.LLM{BaseURL: chatServer.URL, Model: "test-model", Mode: app.ModeJSON},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
 	})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
 
 	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
 	require.NoError(t, err)
@@ -256,7 +319,9 @@ func TestNewWithLLMModeJSONUsesTheJSONPlanner(t *testing.T) {
 
 func TestNewRejectsAnUnknownLLMMode(t *testing.T) {
 	_, err := app.New(&app.Config{
-		LLM: app.LLM{BaseURL: "http://127.0.0.1:0", Mode: "not-a-real-mode"},
+		LLM:           app.LLM{BaseURL: "http://127.0.0.1:0", Mode: "not-a-real-mode"},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
 	})
 
 	require.Error(t, err)
@@ -264,7 +329,11 @@ func TestNewRejectsAnUnknownLLMMode(t *testing.T) {
 }
 
 func TestNewFailsWhenAConfiguredServiceIsUnreachable(t *testing.T) {
-	_, err := app.New(&app.Config{Services: []app.Service{{Name: "gone", URL: "http://127.0.0.1:0"}}})
+	_, err := app.New(&app.Config{
+		Services:      []app.Service{{Name: "gone", URL: "http://127.0.0.1:0"}},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
 
 	require.Error(t, err)
 }
@@ -304,11 +373,15 @@ func TestNewFailsWhenTheWorkspaceStoreCannotBeOpened(t *testing.T) {
 }
 
 func TestNewServesInvokeAndRejectsAnUnknownEndpoint(t *testing.T) {
-	handler, err := app.New(&app.Config{})
+	handler, err := app.New(&app.Config{
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
 
 	raw, err := json.Marshal(map[string]any{"service": "inventory", "operationId": "GetInventoryItem", "args": map[string]any{}})
 	require.NoError(t, err)

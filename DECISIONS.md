@@ -1447,3 +1447,92 @@ without a session sees" - the opposite of what `PUBLIC_PAGES` asks for.
 Whoever lands Task 4 should remove `signInAsAdmin` from both files'
 `page.goto("/")` calls, and add a deliberately-named gate for any
 signed-in-only screen that still needs one.
+
+## 2026-09-12 Closing the nil-store auth bypass
+
+**Context.** `internal/infra/httpserver.requireSession` had a branch: when
+built with a nil `SessionUsers` store, it ran every request as a fixed
+stub admin instead of ever refusing one. `pkg/app.build` only ever passed
+a nil store when `Config.DBPath` was empty (`newAuth`'s own former nil
+case) - and the shipped binary was safe only because
+`internal/infra/config.Load` already refuses to start `cmd/api` without
+`ORCHESTRA_DB_PATH` (`config.ErrMissingDBPath`). Nothing enforced the same
+rule on `pkg/app.New` itself: any other caller - a future `cmd/`, a test
+harness, anything that builds a `Config` without going through
+`config.Load` first - that forgot to set `DBPath` got a wide-open admin
+backdoor on every route, silently. `docs/specs/auth.md` section A6 already
+rejected this shape of reasoning once: "a check that can be forgotten will
+be forgotten."
+
+**Decision.** `pkg/app.New` (via `build`) now refuses to build a handler at
+all when `Config.DBPath` is empty, returning the new `app.ErrMissingDBPath`
+sentinel - written test-first
+(`services/platform/pkg/app/app_test.go`'s `TestNewFailsWhenDBPathIsEmpty`,
+confirmed red before `ErrMissingDBPath` existed, green after). There is no
+legitimate use of this platform without a database: workspaces and
+accounts both need one. With that guaranteed, `requireSession`'s
+`store == nil` branch became unreachable and was deleted outright, along
+with the `newStubAdmin` helper it alone used - not left in place as
+defensive dead code, since a check that can never fire is exactly the kind
+of thing that invites someone to reintroduce a caller that skips it.
+`newWorkspaceHandler`, `newPermissionStore` and `newAuth` in `pkg/app/app.go`
+lost their own `dbPath == ""` branches for the same reason: DBPath is now
+always non-empty by the time they run.
+
+This touched roughly fifteen `app.New(&app.Config{...})` call sites across
+`pkg/app/app_test.go` (7), `acceptance/api_test.go` (1),
+`acceptance/invoke_test.go` (3) and `acceptance/plan_test.go` (5), plus
+`pkg/app/internal_test.go`'s `TestBuildWrapsRouterError` and three
+`httpserver.NewRouter(..., nil)` calls in
+`internal/infra/httpserver/router_test.go`. Every acceptance test that now
+drives a route other than `GET /api/health` needs a session first
+(`docs/specs/auth.md`, AC-A-102) - `session_test.go` and
+`workspace_test.go` already had that pattern (a `t.TempDir()` database,
+sign in as admin, carry the cookie in a jar), so it was extracted into
+`acceptance/helpers_test.go` as `newTestApp` (builds the platform, seeds
+and signs in as the shared `adminPassword`) rather than copied into
+`invoke_test.go` and `plan_test.go` separately.
+
+**Where the shared helper lives, and why.** `acceptance/helpers_test.go`,
+a new file in the `acceptance_test` package, rather than a new subpackage
+or a `t.Helper()` added to an existing file. Go test files in one package
+already share unexported declarations freely (`doJSON`, defined in
+`workspace_test.go`, was already being called from `session_test.go`
+without any import) - so a same-package file, not a new module or package,
+is the natural home once more than one file needs the same setup. It is
+not folded into `workspace_test.go` (where `adminPassword` used to live)
+because that file is about workspace behaviour specifically, and every
+other acceptance file would then depend on a name owned by an unrelated
+test file's own concerns; a dedicated `helpers_test.go` says "this is
+shared plumbing" the way `session_test.go` and `plan_test.go` say "this is
+what I'm testing." `workspace_test.go`'s own `newWorkspaceTestApp` was
+rewritten to call the new `newTestApp` too, so the sign-in pattern now has
+exactly one implementation, not two that happen to agree.
+
+`api_test.go`'s `TestHealthEndpointReportsOK` deliberately does _not_ use
+`newTestApp`: it only ever calls the one route exempt from `requireSession`
+(`GET /api/health`), so forcing it through a sign-in it does not need would
+make the test depend on session machinery it is not about.
+
+`newTestApp` takes `*app.Config`, not `app.Config`, to satisfy
+golangci-lint's `gocritic` `hugeParam` check (`harness/quality/go/golangci.yml`)
+
+- the same reason `app.New` itself takes a pointer.
+
+Also removed: `TestRequireSessionWithNoStoreRunsEveryRequestAsTheStubAdminAndNeverBlocks`
+(`session_internal_test.go`) - it tested exactly the bypass this decision
+closes, so keeping it green would have meant keeping the bypass. The three
+`router_test.go` cases that used to pass a nil store now pass a small
+`fakeSessionUsers` fixture instead (`NewRouter`'s `sessions` parameter must
+never be nil in production now); `TestNewRouterRejectsUnknownRoute` signs
+in with it first, since an unknown `/api/` route is gated by
+`requireSession` like any other route now (it used to reach the mux's own
+404 only because the old nil-store bypass let it through unauthenticated).
+
+**Consequences.** `e2e/` was not touched (someone else's task, and its
+existing suites already sign in or are expected red per Task 2/Task 6) -
+`acceptance-e2e` and `acceptance-browser` remain the only two `make check`
+targets allowed to fail, unchanged from before this decision. No real LLM
+call is made by any of this: `docker logs llama-swap`'s
+`POST /v1/chat/completions` count was identical before and after every
+test run this decision's tests exercise.

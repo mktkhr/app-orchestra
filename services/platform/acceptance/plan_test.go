@@ -236,7 +236,7 @@ func TestPlanSafeCallReachesTheServiceAndRendersATable(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[{"id":"1"}]}`)
 	attendance := newFixtureService(t, attendanceSpec, "/api/attendance/records", `{"items":[]}`)
 
-	handler, err := app.New(&app.Config{
+	server := newTestApp(t, &app.Config{
 		Services: []app.Service{
 			{Name: "inventory", URL: inventory.server.URL},
 			{Name: "attendance", URL: attendance.server.URL},
@@ -245,10 +245,6 @@ func TestPlanSafeCallReachesTheServiceAndRendersATable(t *testing.T) {
 			{Query: "在庫の一覧を見せて", Service: "inventory", OperationID: "ListInventoryItems"},
 		},
 	})
-	require.NoError(t, err)
-
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
 
 	status, body := postPlan(t, server, "在庫の一覧を見せて")
 
@@ -268,7 +264,7 @@ func TestPlanUnsafeCallReturnsAFormAndNeverReachesTheService(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpecWithCreate, "/api/inventory/items/create", `{}`)
 	attendance := newFixtureService(t, attendanceSpec, "/api/attendance/records", `{"items":[]}`)
 
-	handler, err := app.New(&app.Config{
+	server := newTestApp(t, &app.Config{
 		Services: []app.Service{
 			{Name: "inventory", URL: inventory.server.URL},
 			{Name: "attendance", URL: attendance.server.URL},
@@ -282,10 +278,6 @@ func TestPlanUnsafeCallReturnsAFormAndNeverReachesTheService(t *testing.T) {
 			},
 		},
 	})
-	require.NoError(t, err)
-
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
 
 	status, body := postPlan(t, server, "在庫を登録して")
 
@@ -316,15 +308,11 @@ func TestPlanUnsafeCallReturnsAFormAndNeverReachesTheService(t *testing.T) {
 func TestPlanNoneCallsNoServiceAndReportsAMessage(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[]}`)
 
-	handler, err := app.New(&app.Config{
+	server := newTestApp(t, &app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 		// A query the table (default or configured) does not recognise
 		// answers DecisionNone (see internal/adapter/planner/stub).
 	})
-	require.NoError(t, err)
-
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
 
 	status, body := postPlan(t, server, "今日の天気は？")
 
@@ -342,7 +330,7 @@ func TestPlanNoneCallsNoServiceAndReportsAMessage(t *testing.T) {
 func TestPlanAskDecisionListsCatalogueOptionsAndCallsNoService(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[]}`)
 
-	handler, err := app.New(&app.Config{
+	server := newTestApp(t, &app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 		PlanFixtures: []app.PlanFixture{
 			{
@@ -355,10 +343,6 @@ func TestPlanAskDecisionListsCatalogueOptionsAndCallsNoService(t *testing.T) {
 			},
 		},
 	})
-	require.NoError(t, err)
-
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
 
 	status, body := postPlan(t, server, "破損した在庫を見せて")
 
@@ -384,7 +368,7 @@ func TestPlanAskDecisionListsCatalogueOptionsAndCallsNoService(t *testing.T) {
 func TestPlanResubmittedWithAnswersReachesThePlannerAndProducesAResult(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpec, "/api/inventory/items", `{"items":[{"id":"itm-1","status":"quarantined"}]}`)
 
-	handler, err := app.New(&app.Config{
+	server := newTestApp(t, &app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 		PlanFixtures: []app.PlanFixture{
 			{
@@ -404,10 +388,6 @@ func TestPlanResubmittedWithAnswersReachesThePlannerAndProducesAResult(t *testin
 			},
 		},
 	})
-	require.NoError(t, err)
-
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
 
 	status, body := postPlan(t, server, "破損した在庫を見せて", answerOnWire{Param: "status", Value: "quarantined"})
 

@@ -40,6 +40,12 @@ Everything remaining sits outside the two vertical slices and outside
 
 ## Done
 
+- Closed the nil-store auth bypass: `pkg/app.New` now refuses to build a
+  handler when `Config.DBPath` is empty (`app.ErrMissingDBPath`), so
+  `requireSession`'s old "no store means run every request as a fixed
+  admin" branch could never fire again - deleted, along with
+  `newStubAdmin`. Test-first (`TestNewFailsWhenDBPathIsEmpty`). See
+  `DECISIONS.md`, 2026-09-12 ("Closing the nil-store auth bypass").
 - `docs/plans/workspaces.md`, Task 7: end to end. `e2e/src/workspaces.test.ts`
   proves AC-W-105 (a workspace survives a restart of the platform) at the
   process level - create a workspace and a panel over HTTP, stop the built

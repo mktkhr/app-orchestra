@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,8 +16,17 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/pkg/app"
 )
 
+// TestHealthEndpointReportsOK only ever calls GET /api/health, which is
+// exempt from requireSession (docs/specs/auth.md, AC-A-102) - so this
+// builds its own Config directly, with just enough (a DBPath -
+// pkg/app.ErrMissingDBPath - and the admin password it requires) to build
+// a handler at all, rather than the shared newTestApp (helpers_test.go),
+// which also signs in for routes that need it.
 func TestHealthEndpointReportsOK(t *testing.T) {
-	handler, err := app.New(&app.Config{})
+	handler, err := app.New(&app.Config{
+		DBPath:        filepath.Join(t.TempDir(), "acceptance.db"),
+		AdminPassword: adminPassword,
+	})
 	require.NoError(t, err)
 
 	server := httptest.NewServer(handler)

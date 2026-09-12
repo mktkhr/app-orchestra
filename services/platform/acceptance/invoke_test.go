@@ -46,16 +46,12 @@ func TestInvokeReachesTheServiceAndRendersTheCreatedEntityAsDetail(t *testing.T)
 		`{"id":"1","name":"検証用","status":"quarantined"}`)
 	attendance := newFixtureService(t, attendanceSpec, "/api/attendance/records", `{"items":[]}`)
 
-	handler, err := app.New(&app.Config{
+	server := newTestApp(t, &app.Config{
 		Services: []app.Service{
 			{Name: "inventory", URL: inventory.server.URL},
 			{Name: "attendance", URL: attendance.server.URL},
 		},
 	})
-	require.NoError(t, err)
-
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
 
 	status, body := postInvoke(t, server, "CreateInventoryItem",
 		map[string]any{"name": "検証用", "status": "quarantined"})
@@ -109,13 +105,9 @@ func TestInvokeReturns400AndCallsNoServiceForAnOperationTheCatalogueDoesNotHave(
 		t.Run(tc.name, func(t *testing.T) {
 			inventory := newFixtureService(t, tc.spec, tc.path, `{}`)
 
-			handler, err := app.New(&app.Config{
+			server := newTestApp(t, &app.Config{
 				Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 			})
-			require.NoError(t, err)
-
-			server := httptest.NewServer(handler)
-			t.Cleanup(server.Close)
 
 			status, _ := postInvoke(t, server, tc.operationID, map[string]any{})
 
@@ -128,13 +120,9 @@ func TestInvokeReturns400AndCallsNoServiceForAnOperationTheCatalogueDoesNotHave(
 func TestInvokeMissingRequiredArgumentReturns400AndCallsNoService(t *testing.T) {
 	inventory := newFixtureService(t, inventorySpecWithCreate, "/api/inventory/items/create", `{}`)
 
-	handler, err := app.New(&app.Config{
+	server := newTestApp(t, &app.Config{
 		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 	})
-	require.NoError(t, err)
-
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
 
 	status, _ := postInvoke(t, server, "CreateInventoryItem", map[string]any{"name": "不完全"})
 

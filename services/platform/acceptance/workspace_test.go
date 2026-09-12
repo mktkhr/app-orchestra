@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,12 +12,6 @@ import (
 
 	"github.com/mktkhr/app-orchestra/services/platform/pkg/app"
 )
-
-// adminPassword is the password newWorkspaceTestApp seeds the first admin
-// with - fixed, since every test in this file signs in as that one
-// account (docs/plans/auth.md, Task 2: every route but /api/health and
-// /api/session is 401 without a session, workspaces included).
-const adminPassword = "correct horse battery staple"
 
 // workspaceSummaryOnWire is the wire shape of one WorkspaceSummary.
 type workspaceSummaryOnWire struct {
@@ -47,10 +39,12 @@ type panelOnWire struct {
 	Position    int            `json:"position"`
 }
 
-// newWorkspaceTestApp builds a platform over a fresh SQLite file in
-// t.TempDir(), with inventory the only configured service - exposing
+// newWorkspaceTestApp builds a platform (via the shared newTestApp,
+// helpers_test.go) with inventory the only configured service - exposing
 // ListInventoryItems and, when withUnexposed is true, an operation the
-// service declares but does not mark x-orchestra-expose: true.
+// service declares but does not mark x-orchestra-expose: true. Every
+// workspace route is 401 without a session (docs/plans/auth.md, Task 2),
+// so newTestApp has already signed in by the time this returns.
 func newWorkspaceTestApp(t *testing.T, withUnexposed bool) *httptest.Server {
 	t.Helper()
 
@@ -61,33 +55,9 @@ func newWorkspaceTestApp(t *testing.T, withUnexposed bool) *httptest.Server {
 
 	inventory := newFixtureService(t, spec, "/api/inventory/items", `{"items":[{"id":"1"}]}`)
 
-	dbPath := filepath.Join(t.TempDir(), "workspaces.db")
-
-	handler, err := app.New(&app.Config{
-		Services:      []app.Service{{Name: "inventory", URL: inventory.server.URL}},
-		DBPath:        dbPath,
-		AdminPassword: adminPassword,
+	return newTestApp(t, &app.Config{
+		Services: []app.Service{{Name: "inventory", URL: inventory.server.URL}},
 	})
-	require.NoError(t, err)
-
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-
-	// Every workspace route is 401 without a session (docs/plans/auth.md,
-	// Task 2). A cookie jar, set once here, is what carries the one this
-	// sign-in sets to every later request doJSON makes against server -
-	// httptest.Server.Client() otherwise builds a client with no jar at
-	// all, so a cookie an earlier response set would simply be dropped.
-	server.Client().Jar, err = cookiejar.New(nil)
-	require.NoError(t, err)
-
-	status := doJSON(t, server, http.MethodPost, "/api/session", map[string]any{
-		"name":     "admin",
-		"password": adminPassword,
-	}, nil)
-	require.Equal(t, http.StatusOK, status)
-
-	return server
 }
 
 // doJSON sends method to path with body (marshalled as JSON, or nil for

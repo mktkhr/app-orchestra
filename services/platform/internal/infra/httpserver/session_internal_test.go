@@ -127,17 +127,6 @@ func TestRequireSessionReturns500WhenTheStoreFails(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
-func TestRequireSessionWithNoStoreRunsEveryRequestAsTheStubAdminAndNeverBlocks(t *testing.T) {
-	mw := requireSession(nil, okNext)
-
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/workspaces", http.NoBody)
-	rec := httptest.NewRecorder()
-
-	mw.ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
-}
-
 // requestCookie builds the session cookie one of these tests attaches to
 // an outgoing *http.Request with req.AddCookie. Secure, HttpOnly and
 // SameSite are meaningless on a request cookie - a browser never sends

@@ -105,6 +105,18 @@ const (
 // back to the default silently.
 var ErrInvalidLLMMode = errors.New("invalid LLM.Mode, want \"\", \"toolcall\" or \"json\"")
 
+// ErrMissingDBPath is returned by New when Config.DBPath is empty. There
+// is no legitimate use of this platform without a database - workspaces
+// and accounts both need one - so New refuses to build a handler at all,
+// rather than falling back to the wide-open admin bypass
+// httpserver.requireSession used to run every request through when built
+// with a nil SessionUsers store (docs/specs/auth.md, section A6: "a check
+// that can be forgotten will be forgotten" - the shipped binary was safe
+// only because internal/infra/config.Load already refuses to start
+// without ORCHESTRA_DB_PATH (config.ErrMissingDBPath), which said nothing
+// about any other caller of New).
+var ErrMissingDBPath = errors.New("DBPath is required")
+
 // Config is everything New needs to wire the platform's object graph.
 type Config struct {
 	// StaticDir, when non-empty, is served at "/" as the built frontend.
@@ -126,19 +138,17 @@ type Config struct {
 	// 2026-09-11): once a real planner exists, answering with two
 	// hard-coded Japanese questions is no longer the honest default.
 	PlanFixtures []PlanFixture
-	// DBPath is the SQLite file workspaces are kept in
-	// (docs/specs/workspaces.md, W3). Empty skips building the workspace
-	// store entirely, which is what every test in this package that
-	// predates workspaces does; cmd/api always sets it, because
+	// DBPath is the SQLite file workspaces, accounts and sessions are all
+	// kept in (docs/specs/workspaces.md, W3). Required: see
+	// ErrMissingDBPath. cmd/api always sets it, because
 	// internal/infra/config.Load refuses to start without
-	// ORCHESTRA_DB_PATH (config.ErrMissingDBPath) - the empty case here
-	// exists for this package's own tests, not for production silently
-	// doing without storage.
+	// ORCHESTRA_DB_PATH (config.ErrMissingDBPath) - New enforces the same
+	// rule itself, rather than trusting every other caller to have gone
+	// through config.Load first.
 	DBPath string
 	// AdminPassword seeds the first admin account, once, in the file named
-	// by DBPath (docs/specs/auth.md, section 3). Ignored when DBPath is
-	// empty, the same as DBPath's own doc comment explains - and required
-	// to be non-empty whenever DBPath is set, since cmd/api always sets
+	// by DBPath (docs/specs/auth.md, section 3). Required whenever New is
+	// called at all, since DBPath now always is too - cmd/api always sets
 	// both together (internal/infra/config.Load refuses to start without
 	// ORCHESTRA_ADMIN_PASSWORD either).
 	AdminPassword string
@@ -171,6 +181,10 @@ func build(
 	cfg *Config,
 	newRouter func(openapi.StrictServerInterface, string, httpserver.SessionUsers) (http.Handler, error),
 ) (http.Handler, error) {
+	if cfg.DBPath == "" {
+		return nil, ErrMissingDBPath
+	}
+
 	catalog, err := specsourcehttp.New(toSpecSourceServices(cfg.Services), nil).Fetch(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("building the catalogue: %w", err)
@@ -191,13 +205,9 @@ func build(
 		return nil, err
 	}
 
-	var permissions usecase.PermissionStore
-
-	if cfg.DBPath != "" {
-		permissions, err = newPermissionStore(cfg.DBPath)
-		if err != nil {
-			return nil, err
-		}
+	permissions, err := newPermissionStore(cfg.DBPath)
+	if err != nil {
+		return nil, err
 	}
 
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
@@ -295,20 +305,13 @@ func toUsecaseAnswers(answers []Answer) []usecase.Answer {
 // the workspaces usecase and its handler, so a bad ORCHESTRA_DB_PATH (an
 // unwritable directory, say) fails startup here rather than on the first
 // request that touches it - the same reason newPlanner's catalogue fetch
-// happens eagerly, above.
+// happens eagerly, above. build has already rejected an empty dbPath
+// itself (ErrMissingDBPath), so this always opens a real store.
 //
-// An empty dbPath builds a handler over a nil usecase instead of opening
-// anything: see Config.DBPath's doc comment for who leaves it empty and
-// why that is fine - every caller that does never drives a /api/workspaces
-// request either. The store, once opened, is never closed: it lives for
-// the process's lifetime, same as the catalogue and the invoker's HTTP
-// client above, with nothing in this package's own lifecycle to close it
-// from.
+// The store, once opened, is never closed: it lives for the process's
+// lifetime, same as the catalogue and the invoker's HTTP client above,
+// with nothing in this package's own lifecycle to close it from.
 func newWorkspaceHandler(dbPath string, catalog domain.Catalog) (*handler.Workspace, error) {
-	if dbPath == "" {
-		return handler.NewWorkspace(nil), nil
-	}
-
 	store, err := sqlitestore.New(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening the workspace store: %w", err)
@@ -320,11 +323,7 @@ func newWorkspaceHandler(dbPath string, catalog domain.Catalog) (*handler.Worksp
 // newPermissionStore opens the permissions table in the SQLite file at
 // dbPath, the same file newWorkspaceHandler and newAuth open their own
 // tables in, so a bad ORCHESTRA_DB_PATH fails startup here too, for the
-// same reason. Only called by build when cfg.DBPath is non-empty -
-// Orchestrator.catalogFor never calls a nil store, because every caller
-// that leaves DBPath empty is this package's own pre-auth tests, which -
-// like newWorkspaceHandler's own nil case - never exercise a non-admin
-// request either.
+// same reason.
 func newPermissionStore(dbPath string) (usecase.PermissionStore, error) {
 	store, err := sqlitestore.NewPermissions(dbPath)
 	if err != nil {
@@ -336,13 +335,12 @@ func newPermissionStore(dbPath string) (usecase.PermissionStore, error) {
 
 // newAuth builds what Task 2's session endpoints need - a
 // usecase.Authenticator and a usecase.SessionStore, both backed by the
-// SQLite file at cfg.DBPath - or two nils when cfg.DBPath is empty,
-// mirroring newWorkspaceHandler and newPermissionStore's own pre-auth-test
-// case (see their doc comments): every caller that leaves DBPath empty is
-// this package's own pre-auth tests, which never drive an authenticated
-// request either. httpserver.NewRouter's own requireSession middleware
-// answers that same emptiness by running every request as a fixed admin,
-// instead of refusing any of them - see that function's doc comment.
+// SQLite file at cfg.DBPath. build has already rejected an empty DBPath
+// itself (ErrMissingDBPath), so sessions is always a real, non-nil store
+// by the time it reaches httpserver.NewRouter - there is no longer a nil
+// case for requireSession to answer by running every request as a fixed
+// admin (see that function's doc comment for why that bypass was removed
+// entirely, not just made harder to reach).
 //
 // Opening the accounts table also seeds the first admin from
 // cfg.AdminPassword when none exists yet (docs/specs/auth.md, section 3;
@@ -350,10 +348,6 @@ func newPermissionStore(dbPath string) (usecase.PermissionStore, error) {
 // fails startup here, the same reason newWorkspaceHandler's store open and
 // newPlanner's catalogue fetch do, above.
 func newAuth(cfg *Config) (usecase.Authenticator, usecase.SessionStore, error) {
-	if cfg.DBPath == "" {
-		return nil, nil, nil
-	}
-
 	users, err := sqlitestore.NewUsers(cfg.DBPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("opening the user store: %w", err)

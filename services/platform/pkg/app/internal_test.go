@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"net/http"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,12 @@ import (
 var errBoom = errors.New("boom")
 
 func TestBuildWrapsRouterError(t *testing.T) {
-	_, err := build(&Config{}, func(openapi.StrictServerInterface, string, httpserver.SessionUsers) (http.Handler, error) {
+	cfg := &Config{
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: "correct horse battery staple",
+	}
+
+	_, err := build(cfg, func(openapi.StrictServerInterface, string, httpserver.SessionUsers) (http.Handler, error) {
 		return nil, errBoom
 	})
 

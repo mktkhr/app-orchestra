@@ -20,8 +20,8 @@ import (
 // static files carry no cookie to check, so there is nothing here for
 // requireSession to gate).
 //
-// sessions may be nil - see requireSession's own doc comment for what that
-// builds instead.
+// sessions must never be nil in production - see requireSession's own doc
+// comment for why pkg/app.New now guarantees that.
 func NewRouter(si openapi.StrictServerInterface, staticDir string, sessions SessionUsers) (http.Handler, error) {
 	spec, err := openapi.GetSpec()
 	if err != nil {

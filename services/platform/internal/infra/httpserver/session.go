@@ -11,16 +11,6 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 )
 
-// newStubAdmin is who every request runs as when NewRouter is built with
-// no SessionUsers store - see requireSession's own doc comment for who
-// that is and why. A function rather than a package-level value (this
-// codebase's gochecknoglobals policy, harness/quality/go/golangci.yml):
-// each request gets its own *domain.User, the same id and role the fixed
-// stub in adapter/handler/user.go answered with before this file existed.
-func newStubAdmin() *domain.User {
-	return &domain.User{ID: "stub-admin", Role: domain.RoleAdmin}
-}
-
 // isUnauthenticatedPath reports whether path is exempt from requireSession's
 // 401.
 //
@@ -57,21 +47,15 @@ type SessionUsers interface {
 // A request naming no valid session is answered 401 directly, without
 // reaching next, unless its path is in unauthenticatedPaths.
 //
-// store may be nil: pkg/app builds NewRouter this way for its own
-// pre-auth tests - any Config that leaves DBPath empty, the same case
-// pkg/app.newWorkspaceHandler's own doc comment describes for the
-// workspace store. Every request then runs as newStubAdmin's user and
-// nothing is ever refused, matching the fixed stub
-// adapter/handler/user.go's currentUser answered with before this file
-// existed.
+// store must never be nil in production: pkg/app.New now refuses to build
+// a handler at all when Config.DBPath is empty (pkg/app.ErrMissingDBPath),
+// so the caller that once passed a nil store here - any Config that left
+// DBPath empty - can no longer exist. This function used to run every
+// request as a fixed stub admin instead of refusing it in that case; that
+// bypass is gone (docs/specs/auth.md, section A6 - "a check that can be
+// forgotten will be forgotten" - which is exactly what a nil-store branch
+// here was).
 func requireSession(store SessionUsers, next http.Handler) http.Handler {
-	if store == nil {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := handler.WithUser(r.Context(), newStubAdmin())
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := sessionCookieValue(r)
 
