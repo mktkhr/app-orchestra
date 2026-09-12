@@ -261,7 +261,7 @@ And a workspace one person makes that another cannot see.
 - [x] **Step 3** Write the browser journey.
 - [x] **Step 4** `make check` in full — every gate green, and the model's log no
       longer than it was.
-- [ ] **Step 5** Commit: `test(e2e): answer only what the person may ask`
+- [x] **Step 5** Commit: `test(e2e): answer only what the person may ask`
 
 **Satisfies:** AC-A-105, and the whole of section 9 end to end.
 
