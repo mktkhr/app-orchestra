@@ -217,22 +217,10 @@ func (w *Workspaces) DeletePanel(ctx context.Context, user *domain.User, workspa
 	return nil
 }
 
-// catalogFor narrows w.catalog to what user may call: the whole catalogue
-// for an admin, or domain.Catalog.For(permissions) for anybody else - the
-// same rule Orchestrator.catalogFor applies, for the same reason
-// (docs/specs/auth.md, section 5): the operation AddPanel will accept and
-// the operation /api/invoke will later run must be read from the same
-// narrowed value, or a panel could be built over something its owner
-// cannot actually call.
+// catalogFor narrows w.catalog to what user may call, through the shared
+// catalogFor (auth.go): the operation AddPanel accepts and the operation
+// /api/invoke will later run are read from the same narrowed value, or a
+// panel could be built over something its owner cannot actually call.
 func (w *Workspaces) catalogFor(ctx context.Context, user *domain.User) (domain.Catalog, error) {
-	if user.Role == domain.RoleAdmin {
-		return w.catalog, nil
-	}
-
-	permissions, err := w.permissions.For(ctx, user.ID)
-	if err != nil {
-		return domain.Catalog{}, fmt.Errorf("reading permissions for %s: %w", user.ID, err)
-	}
-
-	return w.catalog.For(permissions), nil
+	return catalogFor(ctx, w.catalog, w.permissions, user)
 }

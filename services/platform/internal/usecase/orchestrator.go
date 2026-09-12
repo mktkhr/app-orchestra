@@ -246,30 +246,14 @@ func truncateTurns(turns []Turn, window int) []Turn {
 	return turns[len(turns)-window:]
 }
 
-// catalogFor narrows o.catalog to what user may call: the whole catalogue
-// for an admin (docs/specs/auth.md, section 4 - "that is the whole of what
-// the role buys" is about permissions, not this exception, but the row
-// count it would otherwise take is exactly what seeding every permission
-// for every admin would cost), or domain.Catalog.For(permissions) for
-// anybody else.
-//
-// This is the one seat docs/specs/auth.md section 5 names: Plan and Invoke
-// each call catalogFor exactly once, and pass the result to every helper
-// that reads the catalogue for that request (call, ask, listCapabilities,
-// Find) - so the tool list a planner is offered and the operation
-// /api/invoke will run are read from the same narrowed value and cannot
-// disagree.
+// catalogFor narrows o.catalog to what user may call, through the shared
+// catalogFor (auth.go): Plan and Invoke each call it exactly once and pass
+// the result to every helper that reads the catalogue for that request
+// (call, ask, listCapabilities, Find), so the tool list a planner is
+// offered and the operation /api/invoke will run are read from the same
+// narrowed value and cannot disagree.
 func (o *Orchestrator) catalogFor(ctx context.Context, user *domain.User) (domain.Catalog, error) {
-	if user.Role == domain.RoleAdmin {
-		return o.catalog, nil
-	}
-
-	permissions, err := o.permissions.For(ctx, user.ID)
-	if err != nil {
-		return domain.Catalog{}, fmt.Errorf("reading permissions for %s: %w", user.ID, err)
-	}
-
-	return o.catalog.For(permissions), nil
+	return catalogFor(ctx, o.catalog, o.permissions, user)
 }
 
 // call resolves a DecisionCall against the catalogue: a safe endpoint is

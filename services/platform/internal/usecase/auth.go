@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 )
@@ -50,4 +51,33 @@ type PermissionStore interface {
 	// a grant screen writes the whole set it shows, not a diff against what
 	// was there before.
 	Set(ctx context.Context, userID string, permissions []domain.Permission) error
+}
+
+// catalogFor narrows catalog to what user may call: the whole catalogue
+// for an admin (docs/specs/auth.md, section 4 - "that is the whole of what
+// the role buys" is about permissions, not this exception, but the row
+// count it would otherwise take is exactly what seeding every permission
+// for every admin would cost), or domain.Catalog.For(permissions) for
+// anybody else.
+//
+// This is the one seat docs/specs/auth.md section 5 names, and it is a
+// function rather than a method on either usecase because both of them
+// need it: Orchestrator narrows before planning and before invoking, and
+// Workspaces narrows before accepting a panel (docs/specs/dashboard.md,
+// AC-P-107). Section 5's own argument is why they share one - "a rule
+// applied in two places is a rule that will disagree with itself" - and
+// two copies of these nine lines is exactly that rule written twice.
+func catalogFor(
+	ctx context.Context, catalog domain.Catalog, permissions PermissionStore, user *domain.User,
+) (domain.Catalog, error) {
+	if user.Role == domain.RoleAdmin {
+		return catalog, nil
+	}
+
+	held, err := permissions.For(ctx, user.ID)
+	if err != nil {
+		return domain.Catalog{}, fmt.Errorf("reading permissions for %s: %w", user.ID, err)
+	}
+
+	return catalog.For(held), nil
 }
