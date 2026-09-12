@@ -81,14 +81,16 @@ export interface PanelBuilder {
  * and the save itself. Step 1 (`catalog`, `useCatalog`) and steps 2-5
  * (`fields`, `usePanelFields`) are each their own hook, kept under
  * `max-lines-per-function`; this one only opens the form and posts
- * `POST /api/workspaces/{id}/panels` once `fields.canSave()` says the
- * current choice is complete.
+ * `POST /api/workspaces/{id}/panels` once `fields.missingBeforeSave()`
+ * says nothing is left to fill in - and shows what is, rather than
+ * ignoring the press, when something still is.
  */
 export function usePanelBuilder(
   workspaceId: string,
   onAdded: (panel: WorkspacePanel) => void,
 ): PanelBuilder {
   const [open, setOpen] = useState(false);
+  const [incomplete, setIncomplete] = useState<string | null>(null);
   const catalog = useCatalog();
   const fields = usePanelFields();
   const { submitting, error, run } = useSubmission();
@@ -99,11 +101,21 @@ export function usePanelBuilder(
   };
 
   const handleSave = (): void => {
-    if (!fields.canSave() || fields.entry === null) {
+    const entry = fields.entry;
+
+    if (entry === null) {
       return;
     }
 
-    const entry = fields.entry;
+    const missing = fields.missingBeforeSave();
+
+    if (missing !== null) {
+      setIncomplete(missing);
+
+      return;
+    }
+
+    setIncomplete(null);
 
     void run(async () => {
       const view = buildView(
@@ -134,5 +146,16 @@ export function usePanelBuilder(
     });
   };
 
-  return { open, handleOpen, catalog, ...fields, submitting, error, handleSave };
+  // The submission's own error and the "you have not finished" message go
+  // out on one channel: there is one Alert, and only one of the two can be
+  // true at a time - a press either got as far as the server or did not.
+  return {
+    open,
+    handleOpen,
+    catalog,
+    ...fields,
+    submitting,
+    error: error ?? incomplete,
+    handleSave,
+  };
 }

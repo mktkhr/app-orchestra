@@ -201,4 +201,23 @@ describe("AddPanelControl", () => {
       title: "在庫一覧",
     });
   });
+  it("says what is still missing instead of ignoring the press", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getCatalog).mockResolvedValue([tableEntry, chartEntry]);
+
+    render(<AddPanelControl workspaceId="ws-1" onAdded={() => {}} />);
+    await openBuilder(user);
+    await pickOperation(user, "在庫一覧");
+
+    // The save control is live even when the form is not finished - make
+    // guard-layout rejects a disabled contained button - so pressing it has
+    // to answer rather than do nothing. The name defaults from the summary,
+    // so empty it to leave a gap.
+    await user.clear(await screen.findByRole("textbox", { name: "パネル名" }));
+    await user.click(await screen.findByRole("button", { name: "追加" }));
+
+    expect(await screen.findByText("パネル名を入力してください。")).toBeTruthy();
+    expect(addPanel).not.toHaveBeenCalled();
+  });
 });

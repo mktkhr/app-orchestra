@@ -49,8 +49,24 @@ function componentOptionsFor(entry: CatalogEntry | null): readonly Component[] {
 }
 
 /** Whether the current choice is complete enough to save: an operation and a name always, plus a chart's axes or a transform's own fields whenever those apply. */
-function canSavePanel(
-  entry: CatalogEntry | null,
+/**
+ * What is still missing before this panel can be saved, as a sentence to
+ * show the person, or null when nothing is. It names the first gap rather
+ * than every one: a form that answers one question at a time is read, and
+ * a list of five complaints is not.
+ *
+ * It never has to say "pick an operation": `AddPanelForm` draws nothing
+ * past the picker until one is chosen, so the save control does not exist
+ * to be pressed before then. A branch for it would be one no person can
+ * reach.
+ *
+ * A reason rather than a boolean because the save control is never
+ * disabled at rest - `make guard-layout` rejects a disabled `contained`
+ * button, which has no edge it can see - so pressing it with an incomplete
+ * form has to say something. Returning silently would make the button look
+ * broken, which is the same defect as a filter dropped without a word.
+ */
+function missingBeforeSave(
   title: string,
   component: Component,
   category: string,
@@ -59,16 +75,24 @@ function canSavePanel(
   groupBy: string,
   aggregate: Aggregate,
   aggregateField: string,
-): boolean {
-  if (entry === null || title.trim() === "") {
-    return false;
+): string | null {
+  if (title.trim() === "") {
+    return "パネル名を入力してください。";
   }
 
   if (component === "chart" && (category === "" || value === "")) {
-    return false;
+    return "グラフの分類と値にするフィールドを選んでください。";
   }
 
-  return !transformEnabled || (groupBy !== "" && (aggregate === "count" || aggregateField !== ""));
+  if (transformEnabled && groupBy === "") {
+    return "グループ化するフィールドを選んでください。";
+  }
+
+  if (transformEnabled && aggregate !== "count" && aggregateField === "") {
+    return "集計するフィールドを選んでください。";
+  }
+
+  return null;
 }
 
 export interface PanelFields {
@@ -96,7 +120,8 @@ export interface PanelFields {
   readonly setAggregateField: (value: string) => void;
   readonly title: string;
   readonly setTitle: (value: string) => void;
-  readonly canSave: () => boolean;
+  /** What still has to be filled in, as a sentence, or null when nothing does. */
+  readonly missingBeforeSave: () => string | null;
 }
 
 /**
@@ -147,9 +172,8 @@ export function usePanelFields(): PanelFields {
   const setKind = guardedSetter(isChartKind, setKindState);
   const setAggregate = guardedSetter(isAggregate, setAggregateState);
 
-  const canSave = (): boolean =>
-    canSavePanel(
-      entry,
+  const missing = (): string | null =>
+    missingBeforeSave(
       title,
       component,
       category,
@@ -185,6 +209,6 @@ export function usePanelFields(): PanelFields {
     setAggregateField,
     title,
     setTitle,
-    canSave,
+    missingBeforeSave: missing,
   };
 }
