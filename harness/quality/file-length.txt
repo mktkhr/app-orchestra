@@ -14,8 +14,12 @@
 # anyone editing it, and it is never hand-edited.
 #
 # Format: 'limit <n>' once, then one 'exclude <glob>' per line. '#' is a comment.
+# A glob with a '/' is matched against the repository-relative path; one
+# without, against the basename. Name a directory where that is what is meant:
+# a basename goes stale the moment the generator moves its output, and a stale
+# exclude exempts nothing while looking like it does.
 
 limit 1000
 
 exclude *.gen.go
-exclude schema.d.ts
+exclude web/src/shared/api/gen/*.d.ts

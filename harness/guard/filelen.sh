@@ -26,11 +26,20 @@ files=$(find $scan_paths \
   \( -name '*.go' -o -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.mjs' \) -type f -print \
   2>/dev/null | sort)
 
+# A glob containing a slash is matched against the repository-relative path;
+# one without is matched against the basename. Basenames alone cannot name a
+# directory of generated code, which is how "exclude schema.d.ts" came to
+# name a file that no longer exists and to exempt nothing at all, silently:
+# a guard reports what it failed, never what it skipped.
 excluded() {
   awk '$1 == "exclude" { print $2 }' "$config" | while IFS= read -r glob; do
     [ -z "$glob" ] && continue
+    case $glob in
+      */*) subject=$1 ;;
+      *) subject=$(basename "$1") ;;
+    esac
     # shellcheck disable=SC2254
-    case $(basename "$1") in
+    case $subject in
       $glob) echo match; return ;;
     esac
   done

@@ -2391,3 +2391,47 @@ hand and could not shrink without dropping a field the spec requires. See
 allOf: [Operation, {...}]`) and reverted: it saved only 8 of the 30 lines
 needed, and it silently turned `summary` optional (`Operation.summary` is
 not `required`), which this contract does not want for `CatalogEntry`.
+
+## 2026-09-13 — a file-length exclude can name a directory
+
+**Context.** `docs/plans/dashboard.md` Task 4 added `GET /api/catalog` to
+the contract, and `make generate` grew `web/src/shared/api/gen/platform.d.ts`
+from 971 lines to 1030. `make guard-filelen` failed on it, and `main` was
+red on a generated file.
+
+`harness/quality/file-length.txt` says in its own comment that generated
+code is exempt - "its size is decided by
+`services/platform/api/openapi.yaml`, not by anyone editing it, and it is
+never hand-edited". Its exclude list did not do that. It held `*.gen.go`
+and `schema.d.ts`, and `schema.d.ts` is a file this repository no longer
+has: `harness/guard/filelen.sh` matched every glob against the basename
+alone, so when the generated TypeScript moved to
+`web/src/shared/api/gen/*.d.ts` the exclude stopped matching anything. It
+kept looking like an exclude. `harness/quality/oxlint/policy.ts` and
+`oxfmt/policy.ts` both already name `**/src/shared/api/gen/**`, and a
+2026-09-11 entry in this file assumed `guard-filelen` did too.
+
+**Decision.** A glob containing a `/` is matched against the
+repository-relative path; one without is still matched against the
+basename. The stale `schema.d.ts` becomes
+`web/src/shared/api/gen/*.d.ts`.
+
+This narrows the exemption rather than widening it: the obvious one-line
+alternative, `exclude *.d.ts`, would have exempted every `.d.ts` in the
+repository including the hand-written `web/src/vite-env.d.ts`, and would
+have left the basename-only matching in place to go stale again the next
+time a generator moves its output. Raising `limit` was the other
+alternative and is worse still - the limit's own comment is an account of
+a 1,622-line hand-written file being rewritten eleven times, which is
+about hand-written files and unaffected by how long a generated one is.
+
+**Consequences.** Verified both ways rather than assumed: with the change
+in place a 1,001-line hand-written file under `web/src/shared/lib/` still
+fails the guard, and removing it passes. `make check` is green again, with
+no request added to the model's log.
+
+A guard reports what it failed and never what it skipped, which is why
+this rotted invisibly for as long as it did. Nothing here fixes that
+general problem - a guard that printed its exclusions would have caught it
+the day the file moved - and it is worth doing if another exclude ever
+goes stale.
