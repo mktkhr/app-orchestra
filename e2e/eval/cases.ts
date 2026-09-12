@@ -106,4 +106,158 @@ export const cases: readonly Case[] = [
       },
     ],
   },
+  {
+    id: "filter-by-label-allocated",
+    question: "引当済の在庫を見せて",
+    accept: [
+      {
+        kind: "result",
+        service: "inventory",
+        operationId: "ListInventoryItems",
+        args: { status: "allocated" },
+      },
+    ],
+  },
+  {
+    id: "filter-by-label-staged",
+    question: "出荷準備完了の在庫を見せて",
+    accept: [
+      {
+        kind: "result",
+        service: "inventory",
+        operationId: "ListInventoryItems",
+        args: { status: "staged" },
+      },
+    ],
+  },
+  {
+    id: "filter-by-label-consigned",
+    question: "預託在庫を見せて",
+    accept: [
+      {
+        kind: "result",
+        service: "inventory",
+        operationId: "ListInventoryItems",
+        args: { status: "consigned" },
+      },
+    ],
+  },
+  {
+    id: "filter-by-label-deemed",
+    question: "みなし労働の勤怠を見せて",
+    accept: [
+      {
+        kind: "result",
+        service: "attendance",
+        operationId: "ListAttendanceRecords",
+        args: { kind: "deemed" },
+      },
+    ],
+  },
+  {
+    id: "filter-by-label-substitute",
+    question: "振替休日の勤怠を見せて",
+    accept: [
+      {
+        kind: "result",
+        service: "attendance",
+        operationId: "ListAttendanceRecords",
+        args: { kind: "substitute" },
+      },
+    ],
+  },
+  {
+    id: "filter-by-label-compensatory",
+    question: "代休の勤怠を見せて",
+    accept: [
+      {
+        kind: "result",
+        service: "attendance",
+        operationId: "ListAttendanceRecords",
+        args: { kind: "compensatory" },
+      },
+    ],
+  },
+  {
+    id: "filter-by-label-on-call",
+    question: "待機の勤怠を見せて",
+    accept: [
+      {
+        kind: "result",
+        service: "attendance",
+        operationId: "ListAttendanceRecords",
+        args: { kind: "on_call" },
+      },
+    ],
+  },
+  {
+    id: "list-everything-attendance",
+    question: "勤怠を全部見せて",
+    accept: [
+      { kind: "result", service: "attendance", operationId: "ListAttendanceRecords", args: {} },
+    ],
+  },
+  {
+    id: "create-attendance",
+    question: "勤怠を登録して。従業員は山田太郎、種別は振替休日、対象日は2026-09-15で",
+    accept: [
+      {
+        kind: "form",
+        service: "attendance",
+        operationId: "CreateAttendanceRecord",
+        args: { employee: "山田太郎", kind: "substitute", date: "2026-09-15" },
+      },
+    ],
+  },
+  {
+    id: "follow-up-other-service",
+    question: "勤怠でも同じことして",
+    turns: [
+      {
+        question: "在庫を全部見せて",
+        kind: "result",
+        service: "inventory",
+        operationId: "ListInventoryItems",
+        args: {},
+      },
+    ],
+    accept: [
+      { kind: "result", service: "attendance", operationId: "ListAttendanceRecords", args: {} },
+    ],
+  },
+  {
+    id: "no-enum-value-attendance",
+    question: "有給の勤怠はある？",
+    metric: "reject",
+    accept: [
+      { kind: "ask", param: "kind" },
+      {
+        kind: "result",
+        service: "attendance",
+        operationId: "ListAttendanceRecords",
+        args: { kind: "deemed" },
+      },
+      {
+        kind: "result",
+        service: "attendance",
+        operationId: "ListAttendanceRecords",
+        args: { kind: "substitute" },
+      },
+      {
+        kind: "result",
+        service: "attendance",
+        operationId: "ListAttendanceRecords",
+        args: { kind: "compensatory" },
+      },
+      {
+        kind: "result",
+        service: "attendance",
+        operationId: "ListAttendanceRecords",
+        args: { kind: "on_call" },
+      },
+    ],
+    reject: [
+      { kind: "result", service: "attendance", operationId: "ListAttendanceRecords", args: {} },
+    ],
+  },
 ];
