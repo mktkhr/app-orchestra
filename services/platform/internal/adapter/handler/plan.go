@@ -166,6 +166,8 @@ func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
 			fields := result.Fields
 			out.Fields = &fields
 		}
+
+		out.View = toAPIView(result.View)
 	}
 
 	if result.Kind == usecase.ResultKindForm {

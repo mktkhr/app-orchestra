@@ -347,7 +347,7 @@ export type components = {
             /** @description Its Japanese label (from x-enum-labels). */
             readonly label: string;
         };
-        /** @description The planner's decision and, when it was safe to act on immediately, its result. Which of the optional fields are present depends on `kind`: `result` carries `component`, `data`, `source` and, when the response has columns to describe, `fields`; `form` carries `schema`, `initial` and `target`; `ask` carries `question`, `param` and `options`; `none` carries `message`. */
+        /** @description The planner's decision and, when it was safe to act on immediately, its result. Which of the optional fields are present depends on `kind`: `result` carries `component`, `data`, `source`, when the response has columns to describe, `fields`, and, when the endpoint's contract declares `x-ui-hint.chart`, `view` (its `chart` half only - a contract declares axes, never a transform); `form` carries `schema`, `initial` and `target`; `ask` carries `question`, `param` and `options`; `none` carries `message`. */
         readonly PlanResult: {
             readonly kind: components["schemas"]["DecisionKind"];
             readonly component?: components["schemas"]["Component"];
@@ -359,6 +359,7 @@ export type components = {
             readonly fields?: {
                 readonly [key: string]: unknown;
             };
+            readonly view?: components["schemas"]["View"];
             readonly source?: components["schemas"]["Source"];
             /** @description A human-readable explanation, when kind is "none". */
             readonly message?: string;

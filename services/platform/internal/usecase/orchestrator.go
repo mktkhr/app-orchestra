@@ -47,6 +47,13 @@ type Result struct {
 	// domain.FieldsSchema finds nothing to describe (Component is not
 	// table or detail).
 	Fields map[string]any
+	// View carries the result's chart axes when Kind is ResultKindResult
+	// and the endpoint's contract declared x-ui-hint.chart
+	// (docs/specs/dashboard.md, P2): an answer draws as a chart with
+	// nothing configured. Only View.Chart is ever set here - a contract
+	// declares axes, never a transform - and nil when the endpoint
+	// declared no chart hint.
+	View *domain.View
 
 	// Populated when Kind is ResultKindNone.
 	Message string
@@ -533,7 +540,20 @@ func (o *Orchestrator) invokeAndRender(
 		OperationID: operationID,
 		Args:        args,
 		Fields:      fieldsFor(endpoint),
+		View:        chartViewFor(endpoint),
 	}, nil
+}
+
+// chartViewFor carries an endpoint's contract-declared chart axes onto its
+// result's View, and nil when the contract declares none. Only the chart
+// half is ever set: a contract declares axes, never a transform
+// (docs/plans/dashboard.md, Task 3, "The shape everything shares").
+func chartViewFor(endpoint *domain.Endpoint) *domain.View {
+	if endpoint.ChartHint == nil {
+		return nil
+	}
+
+	return &domain.View{Chart: endpoint.ChartHint}
 }
 
 // fieldsFor builds the per-property schema a ResultKindResult result

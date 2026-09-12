@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -28,6 +29,15 @@ const (
 // having a JSON schema to render) it is never marked x-orchestra-expose,
 // and so never reaches parseSpec's endpoints slice at all.
 const jsonMediaType = "application/json"
+
+// errMalformedChartHint marks an x-ui-hint.chart that cannot be parsed:
+// not an object, missing one of its three required fields, or a kind
+// outside bar/line/pie. Unlike x-ui-hint.component (see uiHint) this fails
+// the fetch rather than degrading to "no chart" - a hint nobody can see
+// failing is a hint that silently stops working, and a chart's axes are
+// never guessable the way "fall back to the response schema" is for a
+// component.
+var errMalformedChartHint = errors.New("malformed x-ui-hint.chart")
 
 // parseSpec parses one service's OpenAPI document and converts every
 // operation into a domain.Endpoint. The loader resolves the document's
@@ -58,6 +68,11 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 				continue
 			}
 
+			component, chart, err := uiHint(op.Extensions)
+			if err != nil {
+				return nil, fmt.Errorf("%s %s %s: %w", service, method, path, err)
+			}
+
 			endpoints = append(endpoints, domain.Endpoint{
 				Service:     service,
 				OperationID: op.OperationID,
@@ -67,7 +82,8 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 				Parameters:  convertParameters(op.Parameters),
 				RequestBody: convertRequestBody(op.RequestBody),
 				Response:    convertResponse(op.Responses),
-				UIHint:      uiHint(op.Extensions),
+				UIHint:      component,
+				ChartHint:   chart,
 			})
 		}
 	}
@@ -269,22 +285,81 @@ func isExposed(extensions map[string]any) bool {
 	return ok && exposed
 }
 
-// uiHint reads x-ui-hint.component off an operation's extensions.
-func uiHint(extensions map[string]any) domain.Component {
+// uiHint reads x-ui-hint off an operation's extensions: component, an
+// override the rendering rule already accepts (docs/plans/dashboard.md
+// Task 3 asks for its sibling, not a rewrite of it), and chart, a
+// contract's own declaration of a result's axes (see parseChartHint).
+//
+// component stays lenient exactly as it always has: absent, a non-object
+// x-ui-hint, or a non-string component all mean "no override", not an
+// error - a missing override falls back to the response schema, so there
+// is nothing to fail loudly about. chart is not given the same leniency;
+// see errMalformedChartHint.
+func uiHint(extensions map[string]any) (domain.Component, *domain.Chart, error) {
 	raw, ok := extensions[extUIHint]
 	if !ok {
-		return ""
+		return "", nil, nil
 	}
 
 	m, ok := raw.(map[string]any)
 	if !ok {
-		return ""
+		return "", nil, nil
 	}
 
-	component, ok := m["component"].(string)
+	var component string
+	if s, ok := m["component"].(string); ok {
+		component = s
+	}
+
+	var chart *domain.Chart
+
+	if raw, hasChart := m["chart"]; hasChart {
+		c, err := parseChartHint(raw)
+		if err != nil {
+			return "", nil, err
+		}
+
+		chart = c
+	}
+
+	return domain.Component(component), chart, nil
+}
+
+// parseChartHint converts x-ui-hint.chart into a domain.Chart. hasChart is
+// false when the operation declares no chart at all, which is not an
+// error - a contract that says nothing about its axes is simply not
+// declaring one, and parseChartHint is not even called (see uiHint).
+// Anything present but malformed - not an object, missing category or
+// value, or a kind outside bar/line/pie - is errMalformedChartHint: see
+// its own comment for why this differs from component's leniency.
+func parseChartHint(raw any) (*domain.Chart, error) {
+	m, ok := raw.(map[string]any)
 	if !ok {
-		return ""
+		return nil, fmt.Errorf("%w: not an object", errMalformedChartHint)
 	}
 
-	return domain.Component(component)
+	category, ok := m["category"].(string)
+	if !ok || category == "" {
+		return nil, fmt.Errorf("%w: category is required", errMalformedChartHint)
+	}
+
+	value, ok := m["value"].(string)
+	if !ok || value == "" {
+		return nil, fmt.Errorf("%w: value is required", errMalformedChartHint)
+	}
+
+	kindRaw, ok := m["kind"].(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: kind is required", errMalformedChartHint)
+	}
+
+	kind := domain.ChartKind(kindRaw)
+
+	switch kind {
+	case domain.ChartKindBar, domain.ChartKindLine, domain.ChartKindPie:
+	default:
+		return nil, fmt.Errorf("%w: kind %q is not bar, line or pie", errMalformedChartHint, kindRaw)
+	}
+
+	return &domain.Chart{Category: category, Value: value, Kind: kind}, nil
 }

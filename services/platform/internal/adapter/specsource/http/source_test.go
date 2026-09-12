@@ -49,10 +49,10 @@ func TestFetchBuildsCatalogueFromFixtureSpec(t *testing.T) {
 	catalog, err := source.Fetch(context.Background())
 
 	require.NoError(t, err)
-	assert.Len(t, catalog.Endpoints, 4,
-		"listWidgets, createWidget, getWidget, exportWidgets: every x-orchestra-expose: true operation, "+
-			"and no other — getSpec, getHiddenWidget, getOffWidget and getBadWidget are all unmarked or "+
-			"marked false/non-boolean")
+	assert.Len(t, catalog.Endpoints, 5,
+		"listWidgets, createWidget, getWidget, exportWidgets, countWidgets: every x-orchestra-expose: true "+
+			"operation, and no other — getSpec, getHiddenWidget, getOffWidget and getBadWidget are all "+
+			"unmarked or marked false/non-boolean")
 
 	list, ok := catalog.Find("fixture", "listWidgets")
 	require.True(t, ok)
@@ -129,6 +129,114 @@ func TestFetchConvertsUIHint(t *testing.T) {
 	assert.Equal(t, "id", get.Parameters[0].Name)
 	assert.Equal(t, "path", get.Parameters[0].In)
 	assert.True(t, get.Parameters[0].Required)
+}
+
+func TestFetchConvertsChartHint(t *testing.T) {
+	server := fixtureServer(t)
+	defer server.Close()
+
+	source := specsourcehttp.New(
+		[]specsourcehttp.Service{{Name: "fixture", URL: server.URL}},
+		nil,
+	)
+
+	catalog, err := source.Fetch(context.Background())
+	require.NoError(t, err)
+
+	count, ok := catalog.Find("fixture", "countWidgets")
+	require.True(t, ok)
+	assert.Empty(t, count.UIHint,
+		"countWidgets declares only x-ui-hint.chart, no component override")
+	require.NotNil(t, count.ChartHint)
+	assert.Equal(t, "status", count.ChartHint.Category)
+	assert.Equal(t, "count", count.ChartHint.Value)
+	assert.Equal(t, domain.ChartKindBar, count.ChartHint.Kind)
+
+	// getWidget declares only x-ui-hint.component: it must still parse,
+	// with no chart hint at all.
+	get, ok := catalog.Find("fixture", "getWidget")
+	require.True(t, ok)
+	assert.Nil(t, get.ChartHint)
+}
+
+func TestFetchFailsOnMalformedChartHint(t *testing.T) {
+	tests := map[string]string{
+		"not an object": `
+paths:
+  /bad:
+    get:
+      operationId: getBad
+      x-orchestra-expose: true
+      x-ui-hint:
+        chart: "bar"
+      responses:
+        "200": {description: n/a}
+`,
+		"missing category": `
+paths:
+  /bad:
+    get:
+      operationId: getBad
+      x-orchestra-expose: true
+      x-ui-hint:
+        chart: {value: count, kind: bar}
+      responses:
+        "200": {description: n/a}
+`,
+		"missing value": `
+paths:
+  /bad:
+    get:
+      operationId: getBad
+      x-orchestra-expose: true
+      x-ui-hint:
+        chart: {category: status, kind: bar}
+      responses:
+        "200": {description: n/a}
+`,
+		"kind outside bar/line/pie": `
+paths:
+  /bad:
+    get:
+      operationId: getBad
+      x-orchestra-expose: true
+      x-ui-hint:
+        chart: {category: status, value: count, kind: scatter}
+      responses:
+        "200": {description: n/a}
+`,
+		"wrong type entirely": `
+paths:
+  /bad:
+    get:
+      operationId: getBad
+      x-orchestra-expose: true
+      x-ui-hint:
+        chart: {category: status, value: count, kind: 3}
+      responses:
+        "200": {description: n/a}
+`,
+	}
+
+	for name, spec := range tests {
+		t.Run(name, func(t *testing.T) {
+			doc := "openapi: 3.0.3\ninfo: {title: bad, version: '1'}\n" + spec
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if _, err := w.Write([]byte(doc)); err != nil {
+					t.Errorf("writing malformed chart-hint response: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			source := specsourcehttp.New([]specsourcehttp.Service{{Name: "bad", URL: server.URL}}, nil)
+
+			catalog, err := source.Fetch(context.Background())
+
+			require.Error(t, err, "a malformed x-ui-hint.chart is a fetch error, not a silently empty hint")
+			assert.Empty(t, catalog.Endpoints)
+		})
+	}
 }
 
 func TestFetchOmitsResponseForNonJSONContent(t *testing.T) {
@@ -241,5 +349,5 @@ func TestFetchTrimsTrailingSlashFromBaseURL(t *testing.T) {
 	catalog, err := source.Fetch(context.Background())
 
 	require.NoError(t, err)
-	assert.Len(t, catalog.Endpoints, 4, "listWidgets, createWidget, getWidget, exportWidgets")
+	assert.Len(t, catalog.Endpoints, 5, "listWidgets, createWidget, getWidget, exportWidgets, countWidgets")
 }

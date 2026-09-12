@@ -81,6 +81,14 @@ type Endpoint struct {
 	// the spec gives none, in which case Render decides from the response
 	// schema.
 	UIHint Component
+	// ChartHint is the operation's x-ui-hint.chart declaration: the axes
+	// to draw a result of this endpoint's response with. nil when the
+	// contract declares none. Its presence alone is enough for Render and
+	// RenderResult to choose ComponentChart (docs/specs/dashboard.md,
+	// P2): a contract that names a chart's axes is declaring that this is
+	// how the result draws, not offering axes for some other component to
+	// use.
+	ChartHint *Chart
 }
 
 // IsSafe reports whether the endpoint's method never mutates state (GET,

@@ -21,6 +21,39 @@ func TestRenderHintOverridesEverything(t *testing.T) {
 	assert.Equal(t, domain.ComponentDetail, domain.Render(&e))
 }
 
+func TestRenderChartHintAloneMeansChart(t *testing.T) {
+	e := domain.Endpoint{
+		// No UIHint at all: declaring x-ui-hint.chart alone is enough
+		// (docs/specs/dashboard.md, P2) - no separate component override
+		// is needed to say "draw this as a chart".
+		ChartHint: &domain.Chart{Category: "status", Value: "count", Kind: domain.ChartKindBar},
+		Response: &domain.Schema{
+			Type:  "array",
+			Items: &domain.Schema{Type: "object"},
+		},
+	}
+
+	assert.Equal(t, domain.ComponentChart, domain.Render(&e))
+}
+
+func TestRenderUIHintWinsOverChartHint(t *testing.T) {
+	e := domain.Endpoint{
+		UIHint:    domain.ComponentDetail,
+		ChartHint: &domain.Chart{Category: "status", Value: "count", Kind: domain.ChartKindBar},
+	}
+
+	assert.Equal(t, domain.ComponentDetail, domain.Render(&e))
+}
+
+func TestRenderChartHintWinsOverRequestBody(t *testing.T) {
+	e := domain.Endpoint{
+		ChartHint:   &domain.Chart{Category: "status", Value: "count", Kind: domain.ChartKindBar},
+		RequestBody: &domain.Schema{Type: "object"},
+	}
+
+	assert.Equal(t, domain.ComponentChart, domain.Render(&e))
+}
+
 func TestRenderRequestBodyMeansForm(t *testing.T) {
 	e := domain.Endpoint{
 		RequestBody: &domain.Schema{Type: "object", Properties: map[string]domain.Schema{
@@ -131,6 +164,18 @@ func TestRenderResultIgnoresTheRequestBody(t *testing.T) {
 
 	assert.Equal(t, domain.ComponentForm, domain.Render(&e))
 	assert.Equal(t, domain.ComponentDetail, domain.RenderResult(&e))
+}
+
+func TestRenderResultChartHintAloneMeansChart(t *testing.T) {
+	e := domain.Endpoint{
+		ChartHint: &domain.Chart{Category: "status", Value: "count", Kind: domain.ChartKindPie},
+		Response: &domain.Schema{
+			Type:  "array",
+			Items: &domain.Schema{Type: "object"},
+		},
+	}
+
+	assert.Equal(t, domain.ComponentChart, domain.RenderResult(&e))
 }
 
 func TestRenderResultHintStillWins(t *testing.T) {

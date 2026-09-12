@@ -234,16 +234,16 @@ sibling field beside it. No service in this repository declares one — use
 `internal/adapter/specsource/http/testdata/fixture.yaml`, which is where
 `x-ui-hint` is exercised today.
 
-- [ ] **Step 1** Add `view` to `PlanResult` on the contract.
+- [x] **Step 1** Add `view` to `PlanResult` on the contract.
       `make api-lint`, `make generate`.
-- [ ] **Step 2** Write the parse test against the fixture: an operation
+- [x] **Step 2** Write the parse test against the fixture: an operation
       declaring `x-ui-hint.chart` yields an `Endpoint` carrying it; one
       declaring only `component` still parses; a malformed one is an error,
       not a silent empty. Run it, expect failure.
-- [ ] **Step 3** Implement the parse, then thread it onto the result in
+- [x] **Step 3** Implement the parse, then thread it onto the result in
       `Orchestrator`'s result path.
-- [ ] **Step 4** Go gates green.
-- [ ] **Step 5** Commit: `feat(platform): let a contract name a chart's axes`
+- [x] **Step 4** Go gates green.
+- [x] **Step 5** Commit: `feat(platform): let a contract name a chart's axes`
 
 **Satisfies:** AC-P-105's platform half.
 

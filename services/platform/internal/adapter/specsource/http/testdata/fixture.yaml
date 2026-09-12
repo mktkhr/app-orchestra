@@ -106,6 +106,39 @@ paths:
             application/yaml:
               schema:
                 type: string
+  /widgets/count:
+    get:
+      operationId: countWidgets
+      summary: Count widgets by status.
+      tags:
+        - widgets
+      x-orchestra-expose: true
+      # No x-ui-hint.component: declaring x-ui-hint.chart alone is enough
+      # for Render/RenderResult to choose the chart component
+      # (docs/specs/dashboard.md, P2) - "no view configured" means exactly
+      # this, no separate component override needed.
+      x-ui-hint:
+        chart:
+          category: status
+          value: count
+          kind: bar
+      responses:
+        "200":
+          description: Widget counts, grouped by status.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required:
+                    - status
+                    - count
+                  properties:
+                    status:
+                      $ref: "#/components/schemas/WidgetStatus"
+                    count:
+                      type: integer
   /widgets/hidden:
     get:
       operationId: getHiddenWidget

@@ -4,6 +4,34 @@ _Last updated: 2026-09-12_
 
 ## Summary
 
+**`docs/plans/dashboard.md` Tasks 0-3 are done.** Task 3 adds
+`x-ui-hint.chart` parsing, the sibling of the `x-ui-hint.component` `parse.go`
+already read: `uiHint` (`internal/adapter/specsource/http/parse.go`) now
+returns `(domain.Component, *domain.Chart, error)`, and `parseChartHint`
+converts the raw `{category, value, kind}` map into a `domain.Chart`.
+`component` keeps the leniency it always had (absent, non-object, or a
+non-string `component` all mean "no override", never an error); `chart`
+does not - a missing `category`/`value`, a `kind` outside `bar`/`line`/`pie`,
+or a `chart` that is not an object at all is `errMalformedChartHint`, which
+fails `Source.Fetch` outright (see `DECISIONS.md`, 2026-09-12, "Dashboard
+Task 3"). `domain.Endpoint` gains `ChartHint *domain.Chart`, and
+`Render`/`RenderResult` (`internal/domain/rendering.go`) both gained a new
+second rule: `ChartHint` alone - with no `x-ui-hint.component` at all -
+is now enough to choose `ComponentChart`, ranked directly under the
+existing `UIHint` override and above the request-body/response-schema
+rules. The contract's `PlanResult` gains `view` (the same `View` schema
+Task 2 added); `usecase.Result` gains `View *domain.View`, filled in by
+`chartViewFor` in `Orchestrator.invokeAndRender` - only `View.Chart` is
+ever set from a contract, never `View.Transform` ("The shape everything
+shares": a contract declares axes, never a transform). `handler.Plan`
+carries it onto the wire with the same `toAPIView` Task 2 already built for
+`Panel.View` (`workspace.go`), reused as-is. No dummy service declares
+`x-ui-hint.chart` - `docs/specs/dashboard.md` section 1/7 keep them
+unchanged - so every test exercising it uses
+`internal/adapter/specsource/http/testdata/fixture.yaml`'s new
+`countWidgets` operation (chart hint only, no `component`) plus inline
+malformed specs in `source_test.go`.
+
 **`docs/plans/dashboard.md` Tasks 0, 1 and 2 are done.** Task 2 adds the
 contract's `View` schema (`transform`/`chart`, both optional, per
 "The shape everything shares") and `chart` as a fifth `Component`, wires

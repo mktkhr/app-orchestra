@@ -346,6 +346,64 @@ func TestPlanResultWithNoColumnsHasNoFields(t *testing.T) {
 	assert.Nil(t, result.Fields)
 }
 
+// inventoryCatalogWithChartHint is inventoryCatalog, but ListInventoryItems'
+// contract declares x-ui-hint.chart, mirroring how a service would ask for
+// its own answer to draw as a chart with nothing configured
+// (docs/specs/dashboard.md, P2, AC-P-105).
+func inventoryCatalogWithChartHint() domain.Catalog {
+	catalog := inventoryCatalog()
+	catalog.Endpoints[0].ChartHint = &domain.Chart{
+		Category: "status", Value: "count", Kind: domain.ChartKindBar,
+	}
+
+	return catalog
+}
+
+// TestPlanResultCarriesTheEndpointsChartHint is AC-P-105's platform half:
+// an endpoint whose contract declares x-ui-hint.chart draws its result as
+// a chart, with the contract's own axes, and with no transform - a
+// contract declares axes, never a transform.
+func TestPlanResultCarriesTheEndpointsChartHint(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}}
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalogWithChartHint(), planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "ステータス別の件数を見せて", nil, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.ComponentChart, result.Component)
+	require.NotNil(t, result.View)
+	assert.Nil(t, result.View.Transform, "a contract declares axes, never a transform")
+	require.NotNil(t, result.View.Chart)
+	assert.Equal(t, "status", result.View.Chart.Category)
+	assert.Equal(t, "count", result.View.Chart.Value)
+	assert.Equal(t, domain.ChartKindBar, result.View.Chart.Kind)
+}
+
+// TestPlanResultWithNoChartHintHasNoView shows the common case is
+// unaffected: an endpoint declaring no x-ui-hint.chart carries no View at
+// all.
+func TestPlanResultWithNoChartHintHasNoView(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}}
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil)
+
+	require.NoError(t, err)
+	assert.Nil(t, result.View)
+}
+
 func TestPlanNoneCallsNothingAndReturnsAMessage(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
 	invoker := &fakeInvoker{}

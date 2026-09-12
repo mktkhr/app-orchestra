@@ -15,9 +15,13 @@ const ComponentChart Component = "chart"
 //
 // The rules, in order:
 //  1. Endpoint.UIHint, when set, wins outright.
-//  2. A request body means the operation is unsafe: the model's arguments
+//  2. Endpoint.ChartHint, when set, means chart: a contract that names a
+//     chart's axes is declaring how its result draws
+//     (docs/specs/dashboard.md, P2), with no separate x-ui-hint.component
+//     needed to say so.
+//  3. A request body means the operation is unsafe: the model's arguments
 //     become a form instead of being invoked.
-//  3. Otherwise the response schema decides it, as RenderResult describes.
+//  4. Otherwise the response schema decides it, as RenderResult describes.
 //
 // The parameter is a pointer, not the value shown in the plan, because
 // Endpoint is 136 bytes: golangci-lint's gocritic hugeParam check (part of
@@ -26,6 +30,10 @@ const ComponentChart Component = "chart"
 func Render(e *Endpoint) Component {
 	if e.UIHint != "" {
 		return e.UIHint
+	}
+
+	if e.ChartHint != nil {
+		return ComponentChart
 	}
 
 	if e.RequestBody != nil {
@@ -45,16 +53,21 @@ func Render(e *Endpoint) Component {
 //
 // The rules, in order:
 //  1. Endpoint.UIHint, when set, wins outright.
-//  2. An object array — either the response itself, or the single
+//  2. Endpoint.ChartHint, when set, means chart - see Render.
+//  3. An object array — either the response itself, or the single
 //     array-valued property of a wrapper object such as
 //     {items: [...], total: n} — means a table.
-//  3. A single object means a detail view.
+//  4. A single object means a detail view.
 //
 // A response that fits none of these (nil, or a bare scalar) renders as no
 // component at all: RenderResult returns "".
 func RenderResult(e *Endpoint) Component {
 	if e.UIHint != "" {
 		return e.UIHint
+	}
+
+	if e.ChartHint != nil {
+		return ComponentChart
 	}
 
 	if isObjectArray(e.Response) {

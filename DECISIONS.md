@@ -2250,3 +2250,65 @@ AC-P-107 and the admin exception directly. `docs/specs/auth.md` section 7's
 prose about `/api/invoke` being the one place this is checked is now true
 of every endpoint except `AddPanel`; a future reader should treat AC-P-107
 as the narrower, later word on this one path.
+
+## 2026-09-12 — Dashboard Task 3: a chart hint is strict, and stands alone
+
+**Context.** `docs/plans/dashboard.md` Task 3 asks for `x-ui-hint.chart`,
+the sibling of `x-ui-hint.component` (`parse.go`'s `uiHint`), and leaves
+two judgement calls open: what a malformed hint does, and whether a
+`chart` block by itself - with no `component: chart` alongside it - makes
+`Render`/`RenderResult` choose the chart component.
+
+**Decision 1: `chart` is strict where `component` is lenient, and the two
+are deliberately made to differ.** `uiHint`'s existing handling of
+`x-ui-hint.component` was already lenient before this task: an absent
+extension, a non-object `x-ui-hint`, or a non-string `component` all
+degrade silently to "no override" - never an error - because a missing
+override just falls back to deciding from the response schema, which is
+always a safe answer to fall back to. A malformed `x-ui-hint.chart` has no
+such safe fallback: there is no "guess the axes" default, and a service
+maintainer who mistypes `category` or spells a `kind` wrong needs the
+fetch to fail where they can see it, not have the hint silently vanish
+from a result nobody looks at hard enough to notice the chart never drew.
+`parseChartHint` (`internal/adapter/specsource/http/parse.go`) therefore
+returns `errMalformedChartHint` - wrapped with the reason - for anything
+present but not right: not an object, missing `category` or `value`, or a
+`kind` outside `bar`/`line`/`pie`; `Source.Fetch` propagates it and fails
+the whole fetch, the same way an unparsable OpenAPI document already does.
+This is a considered asymmetry, not an oversight: the task's own prompt
+asked for it to be named explicitly if the two diverged, and they do.
+
+**Decision 2: a `chart` block alone means chart, with no `component: chart`
+needed beside it.** `docs/specs/dashboard.md` P2 says "where a contract
+declares [chart axes], a chat answer draws as a chart with nothing
+configured" - not "draws as a chart when it also says `component: chart`".
+Read literally, declaring `x-ui-hint.chart` is itself the declaration of
+how the result draws; requiring a second, redundant field to say the same
+thing would make a contract author write the same fact twice to get one
+outcome. `Render` and `RenderResult` (`internal/domain/rendering.go`) both
+gained the same second rule, ranked directly beneath the existing
+`UIHint` override and above everything else: `Endpoint.ChartHint != nil`
+means `ComponentChart`. An explicit `UIHint` (say, `detail`) still wins
+outright over a `ChartHint` on the same operation - `UIHint` is a stated
+override of "how this draws", and stays first - but absent that, a
+`ChartHint` no longer needs a `UIHint` of `chart` riding along with it.
+Pinned by `TestRenderChartHintAloneMeansChart`,
+`TestRenderUIHintWinsOverChartHint`, `TestRenderResultChartHintAloneMeansChart`
+(`internal/domain/rendering_test.go`) and the fixture's `countWidgets`
+operation, which declares `chart` with no `component` at all.
+
+**Consequences.** `usecase.Result` gained `View *domain.View`, filled in
+by `chartViewFor` in `Orchestrator.invokeAndRender` from
+`endpoint.ChartHint` alone - `View.Transform` is never set from a
+contract, matching "The shape everything shares"'s "a contract declares
+axes, not transformations." `handler.Plan.toAPIPlanResult` carries it onto
+the wire with the same `toAPIView` Task 2 already wrote for `Panel.View`
+(`workspace.go`), unchanged: one conversion function for both directions
+`domain.View` reaches the wire from. No service in this repository
+declares `x-ui-hint.chart` (`docs/specs/dashboard.md` sections 1 and 7 keep
+the dummies unchanged on purpose), so every test exercising the parse or
+the render rule uses `internal/adapter/specsource/http/testdata/fixture.yaml`'s
+new `countWidgets` operation and, for the malformed cases, inline spec
+snippets built in `source_test.go` rather than the shared fixture (adding a
+failing operation to the shared fixture would have broken every other test
+that fetches it successfully).

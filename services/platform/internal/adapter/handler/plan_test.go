@@ -74,8 +74,43 @@ func TestPostPlanRendersAResult(t *testing.T) {
 	assert.Equal(t, map[string]any{"status": "allocated"}, *body.Source.Args)
 
 	assert.Nil(t, body.Fields)
+	assert.Nil(t, body.View, "no chart hint was declared, so the result carries no view")
 
 	assert.Equal(t, "在庫の一覧を見せて", orchestrator.query)
+}
+
+// TestPostPlanRendersAResultWithView is AC-P-105's wire half: a result
+// whose endpoint declared x-ui-hint.chart carries the contract's own axes
+// as view.chart, and no transform - a contract declares axes, never a
+// transform.
+func TestPostPlanRendersAResultWithView(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:        usecase.ResultKindResult,
+		Component:   domain.ComponentChart,
+		Data:        map[string]any{"items": []any{}},
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		View: &domain.View{
+			Chart: &domain.Chart{Category: "status", Value: "count", Kind: domain.ChartKindBar},
+		},
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "ステータス別の件数を見せて"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	require.NotNil(t, body.View)
+	assert.Nil(t, body.View.Transform)
+	require.NotNil(t, body.View.Chart)
+	assert.Equal(t, "status", body.View.Chart.Category)
+	assert.Equal(t, "count", body.View.Chart.Value)
+	assert.Equal(t, openapi.ViewChartKind("bar"), body.View.Chart.Kind)
 }
 
 func TestPostPlanRendersAResultWithFields(t *testing.T) {
