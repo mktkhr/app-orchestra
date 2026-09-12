@@ -2435,3 +2435,68 @@ this rotted invisibly for as long as it did. Nothing here fixes that
 general problem - a guard that printed its exclusions would have caught it
 the day the file moved - and it is worth doing if another exclude ever
 goes stale.
+
+## 2026-09-13 Dashboard Task 5: a panel's chart size, and what a transform-only view draws through
+
+**Context.** `docs/plans/dashboard.md` Task 5 has `pages/workspace/ui/PanelResult.tsx`
+draw a saved panel by its `view`: a transform before the component is
+chosen, a chart when `view.chart` names one. Two things the plan leaves to
+the implementer: what size `ResultChart` gets now that it takes one, and
+what a `view.transform`-only panel (no chart) actually renders through.
+
+**Decision, sizing.** `ResultChart` keeps its old fixed 320×240 as the
+default for its own two `width`/`height` props (so Task 1's tests, which
+pass neither, see exactly what they always have) and `PanelResult` passes
+two concrete sizes of its own, picked with `useMediaQuery("(min-width:600px)")`
+
+- MUI's own default `sm` breakpoint, named directly as a media-query string
+  rather than through `useTheme().breakpoints.up("sm")` (the form
+  `app/ui/Shell.tsx` already uses) because importing `@mui/material/styles`
+  on top of everything else this file already imports trips
+  `import/max-dependencies` (max 10; the file was already at 10 without it).
+  Narrow is 260×200 - comfortably under a `PanelCardShell`'s `CardContent`
+  content width at a 375px viewport (viewport minus `WorkspacePage`'s own
+  `p:3` and the card's default `CardContent` padding leaves roughly 295px);
+  wide is 560×320 - big enough that a chart reads as the panel's content
+  rather than a decoration in the corner of one, small enough to stay well
+  inside any workspace layout this slice draws. Both are named constants a
+  future task can revisit once an actual wide layout (Task 6, or FR-F-4's
+  arrangement) gives a panel a real width to measure instead of two guesses;
+  a `ResizeObserver`-based measurement was considered and rejected for now as
+  more machinery than two fixed, breakpoint-picked numbers earn today.
+
+**Decision, transform-only rendering.** `view.transform` with no
+`view.chart` still goes through `RenderedResult`/`ResultTable`, exactly as
+an untransformed result does - but the grouped rows `applyTransform`
+returns are a bare array, not the `{items: [...]}`-shaped envelope
+`rowsFromData` was written to unwrap, so `PanelResult` re-wraps them as
+`{ rows: groupedRows }` before handing them down. `rowsFromData` only ever
+needs a single array-valued property to find rows in, regardless of what
+that property is called, so this costs nothing beyond the wrapping call.
+The alternative - giving `ResultTable`/`RenderedResult` a second, rows-only
+input shape - was rejected as a change to Task 1/entities/rendering code
+this task's Files list does not name, for a benefit (skipping one object
+literal) too small to justify it. This only covers a transform paired with
+a table-shaped result, which is the only combination `docs/specs/dashboard.md`
+section 3's own example pairs (transform with a table; chart, with or
+without a transform, separately) - a transform saved against a `detail`
+component is not a case this task builds for or tests.
+
+**Decision, a chart over rows missing its fields.** `ResultChart` already
+answers this: a row with no finite value at `view.chart.value` is dropped,
+one with no string at `view.chart.category` draws under a shared `"null"`
+label, and zero surviving rows draws its own `結果は0件です。` message.
+`PanelResult` adds no second opinion here - it hands `ResultChart` the same
+rows regardless of whether they carry the named fields, and lets that
+existing behaviour decide, pinned by a `PanelResult` test with a row
+carrying neither `category` nor `value`.
+
+**Consequences.** `entities/rendering`'s barrel gained `rowsFromData`/`Row`
+exports (the functions already existed; they were only reachable from
+inside the slice) and `shared/api/client.ts` gained a `View` type alias -
+both existing shapes made reachable across the FSD boundary, not new
+logic. `web/src/shared/api/client.ts` was at exactly its 300-line
+`max-lines` ceiling before this; the new export forced two nearby
+paragraph comments to be rewrapped to fewer, fuller lines to stay under it
+
+- their wording is otherwise unchanged.

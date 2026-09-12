@@ -4,7 +4,16 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-`docs/plans/dashboard.md`: Tasks 0-4 done. Task 0:
+`docs/plans/dashboard.md`: Tasks 0-5 done. Task 5:
+`pages/workspace/ui/PanelResult.tsx` now draws a saved panel by its `view` -
+a transform applied to the rows as they arrive (before the component is
+chosen), a chart drawn with `ResultChart` when `view.chart` is present, and
+exactly today's rendering when `view` is absent (AC-P-106). `ResultChart`
+gained optional `width`/`height` props for this, defaulting to its old
+fixed size - see `STATE.md` and `DECISIONS.md`, 2026-09-13 ("Dashboard Task
+5"). Tasks 6-7 remain: Task 6 needs Tasks 4 and 5.
+
+Task 0:
 `web/src/entities/rendering/lib/transform.ts` - pure `applyTransform`, groups rows and
 reduces each group to `count`/`sum`/`avg`; see its own tests for the edge cases pinned.
 Task 1: `web/src/entities/rendering/ui/ResultChart.tsx` - draws rows as a bar, line or pie
@@ -22,8 +31,7 @@ only the contract's axes - see `STATE.md` and `DECISIONS.md`, 2026-09-12
 narrowed through the shared `catalogFor` - see `STATE.md` and
 `DECISIONS.md`, 2026-09-12 ("Dashboard Task 4"). `make check` is green
 except a pre-existing `guard-filelen` gap this task's contract growth
-exposed (see `STATE.md`'s "Known gaps in the harness"). Task 5 needs Tasks
-0, 1 and 2 and is next; Tasks 6-7 remain.
+exposed (see `STATE.md`'s "Known gaps in the harness").
 
 `docs/plans/orchestration.md`, `docs/plans/workspaces.md`,
 `docs/plans/auth.md` and `docs/plans/context.md` are all closed - every

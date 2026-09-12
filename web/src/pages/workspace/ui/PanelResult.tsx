@@ -3,15 +3,38 @@ import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import type { JSX } from "react";
 
-import { Provenance, RenderedResult } from "@/entities/rendering";
+import {
+  applyTransform,
+  Provenance,
+  RenderedResult,
+  ResultChart,
+  rowsFromData,
+} from "@/entities/rendering";
 import { PanelCardShell, usePanelInvoke } from "@/entities/workspace";
 import type { WorkspacePanel } from "@/shared/api/client";
 
 interface PanelResultProps {
   readonly panel: WorkspacePanel;
 }
+
+/**
+ * `ResultChart`'s size, for a panel: bigger than its own default on a screen wide enough for
+ * that to fit beside the panel's other chrome, and small enough on a phone to sit inside a
+ * `PanelCardShell`'s `CardContent` without pushing the card wider than the viewport - checked
+ * at 375px (`docs/plans/dashboard.md` Task 5, `make guard-layout`). `600px` is MUI's own default
+ * `sm` breakpoint (`app/ui/Shell.tsx` reads the same one, as `theme.breakpoints.up("sm")`, for
+ * its drawer) - named directly here rather than through `useTheme` so this file's import count
+ * stays under `import/max-dependencies` (`eslint`). `ResultChart`'s own default (320×240) is
+ * sized for its own tests, rendering the chart alone with no card around it to leave room for;
+ * a panel's card has padding this component's caller does not, so it needs its own number
+ * rather than reusing that default outright.
+ */
+const WIDE_BREAKPOINT_QUERY = "(min-width:600px)";
+const NARROW_CHART_SIZE = { width: 260, height: 200 } as const;
+const WIDE_CHART_SIZE = { width: 560, height: 320 } as const;
 
 /**
  * One workspace panel, fully assembled: `entities/workspace`'s card shell
@@ -39,6 +62,20 @@ interface PanelResultProps {
  */
 export function PanelResult({ panel }: PanelResultProps): JSX.Element {
   const { loading, refreshing, error, result, refresh } = usePanelInvoke(panel);
+  const chartSize = useMediaQuery(WIDE_BREAKPOINT_QUERY) ? WIDE_CHART_SIZE : NARROW_CHART_SIZE;
+
+  const view = panel.view;
+  const chart = view?.chart;
+  const transform = view?.transform;
+
+  // Applied here, where the result's rows arrive, before the code below decides which
+  // component to draw them with - `applyTransform` itself has no opinion on that, and
+  // `entities/rendering` exposes it for exactly this reason (see `transform.ts`'s own
+  // comment: this call and the panel builder's preview are its only two callers).
+  const groupedRows =
+    result === null || transform === undefined
+      ? undefined
+      : applyTransform(rowsFromData(result.data), transform);
 
   return (
     <PanelCardShell
@@ -58,8 +95,22 @@ export function PanelResult({ panel }: PanelResultProps): JSX.Element {
         </Stack>
       ) : null}
       {error === null ? null : <Alert severity="error">{error}</Alert>}
-      {result === null ? null : (
-        <RenderedResult component={result.component} data={result.data} fields={result.fields} />
+      {result === null ? null : chart === undefined ? (
+        <RenderedResult
+          component={result.component}
+          data={groupedRows === undefined ? result.data : { rows: groupedRows }}
+          fields={result.fields}
+        />
+      ) : (
+        <ResultChart
+          data={groupedRows ?? rowsFromData(result.data)}
+          category={chart.category}
+          value={chart.value}
+          kind={chart.kind}
+          title={panel.title}
+          width={chartSize.width}
+          height={chartSize.height}
+        />
       )}
     </PanelCardShell>
   );

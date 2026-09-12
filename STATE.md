@@ -1,8 +1,40 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-12_
+_Last updated: 2026-09-13_
 
 ## Summary
+
+**`docs/plans/dashboard.md` Tasks 0-5 are done.** Task 5 makes
+`pages/workspace/ui/PanelResult.tsx` the seam that draws a saved panel the
+way its `view` says to, reusing Task 0's `applyTransform` and Task 1's
+`ResultChart` rather than a second grouping function or a second chart: the
+transform runs on the rows as they arrive from `usePanelInvoke` -
+`rowsFromData(result.data)` then, when `panel.view.transform` is present,
+`applyTransform` over it - before the component is chosen, exactly where
+`transform.ts`'s own comment says its two callers (this one and Task 6's
+builder preview) sit. `panel.view.chart` present means a chart, drawn with
+`ResultChart` over those same (possibly grouped) rows, regardless of what
+`result.component` says; its absence means `RenderedResult` as before,
+fed the grouped rows re-wrapped as `{ rows: … }` (an envelope
+`rowsFromData` can still pull a sole array property out of) when a
+transform ran, or `result.data` completely untouched when neither half of
+`view` is present - the AC-P-106 regression the plan calls out by name,
+since panels saved before this slice carry no `view` at all. `ResultChart`
+gained optional `width`/`height` props, defaulting to its old fixed
+320×240 so Task 1's own tests keep seeing exactly that; `PanelResult`
+passes its own two sizes instead, chosen by `useMediaQuery("(min-width:600px)")`
+(MUI's own `sm` breakpoint, named directly rather than through `useTheme`
+to stay under `import/max-dependencies`) - 260×200 narrow, small enough to
+sit inside a `PanelCardShell`'s `CardContent` padding at 375px without
+overflowing, and 560×320 wide, filling a panel card instead of looking like
+a mistake in one. `entities/rendering`'s barrel now also exports
+`rowsFromData`/`Row` (already existed, was only reachable from inside the
+slice) and `shared/api/client.ts` exports a `View` type alias - both pure
+reuse, no new logic, so `PanelResult` could reach across the FSD boundary
+without a second copy of either. A chart whose rows carry none of its
+named fields draws `ResultChart`'s own existing empty state (`結果は0件です。`)
+rather than a second, invented answer - pinned by test. `make check` is
+green, including `guard-a11y`/`guard-layout` at 375px.
 
 **`docs/plans/dashboard.md` Tasks 0-4 are done.** Task 4 adds `GET
 /api/catalog`: `usecase.NewCatalog(catalog, permissions)` narrows through

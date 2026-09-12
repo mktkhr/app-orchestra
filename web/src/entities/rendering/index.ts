@@ -1,4 +1,5 @@
 export { applyTransform, type Aggregate, type Transform } from "./lib/transform";
+export { rowsFromData, type Row } from "./model/rows";
 export { Provenance } from "./ui/Provenance";
 export { RenderedResult } from "./ui/RenderedResult";
 export { ResultChart, type ChartKind } from "./ui/ResultChart";

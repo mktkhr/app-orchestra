@@ -308,17 +308,17 @@ defaulting to what it has now so Task 1's tests keep working - and have the
 panel pass what the panel knows. Check it at 375px too; `make guard-layout`
 will.
 
-- [ ] **Step 1** Write the test: a panel with `view.chart` renders the chart
+- [x] **Step 1** Write the test: a panel with `view.chart` renders the chart
       component; one with `view.transform` renders the grouped rows; one
       with neither renders the table it renders today (AC-P-106). Run it,
       expect failure.
-- [ ] **Step 2** Implement. The transform is applied where the rows arrive,
+- [x] **Step 2** Implement. The transform is applied where the rows arrive,
       before the component is chosen — `transform.ts` has two callers, this
       and Task 6's preview, which is why it lives in `entities/rendering`
       and not in the builder.
-- [ ] **Step 3** Web gates green, then `make build` and
+- [x] **Step 3** Web gates green, then `make build` and
       `make guard-browser`.
-- [ ] **Step 4** Commit: `feat(web): draw a panel the way it says to`
+- [x] **Step 4** Commit: `feat(web): draw a panel the way it says to`
 
 **Satisfies:** AC-P-103, AC-P-104 end to end.
 

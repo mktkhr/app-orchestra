@@ -141,6 +141,9 @@ export async function postPlan(request: PlanRequest): Promise<PlanResult> {
  */
 export type Component = components["schemas"]["Component"];
 
+/** How to draw a result, beside the call that says what to fetch (`docs/specs/dashboard.md` P1). */
+export type View = components["schemas"]["View"];
+
 /** A confirmed call to execute, posted to POST /api/invoke. */
 export type InvokeRequest = components["schemas"]["InvokeRequest"];
 
@@ -175,8 +178,7 @@ export async function postInvoke(request: InvokeRequest): Promise<InvokeResult> 
  * openapi-fetch's own `MethodResponse`, not `components["schemas"]` mapped
  * over an array: for an array response the two are structurally close but
  * not identical types, the same gap `PlanResult` above works around for
- * `exactOptionalPropertyTypes`. This is the shape the client actually
- * produces.
+ * `exactOptionalPropertyTypes` - this is the shape the client actually produces.
  */
 export type WorkspacesList = MethodResponse<typeof client, "get", "/api/workspaces">;
 
@@ -217,12 +219,11 @@ export async function createWorkspace(request: CreateWorkspaceRequest): Promise<
 }
 
 /**
- * openapi-fetch's own raw response shape for `GET /api/workspaces/{id}`. Not
- * exported: its `panels` property types as an index signature
- * (`{ readonly [x: number]: Panel }`) rather than a real array - the same
- * gap `WorkspacesList`'s comment above notes for a top-level array
- * response, here one level deeper. `WorkspaceDetail` below is the shape the
- * client actually hands back, with that array made real again.
+ * openapi-fetch's own raw response shape for `GET /api/workspaces/{id}` - not exported: its
+ * `panels` property types as an index signature (`{ readonly [x: number]: Panel }`) rather
+ * than a real array - the same gap `WorkspacesList`'s comment above notes for a top-level
+ * array response, here one level deeper. `WorkspaceDetail` below is the shape the client
+ * actually hands back, with that array made real again.
  */
 type WorkspaceDetailRaw = MethodResponse<typeof client, "get", "/api/workspaces/{id}">;
 

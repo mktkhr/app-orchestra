@@ -133,6 +133,109 @@ describe("PanelResult", () => {
     expect(screen.getByText("itm-001")).toBeTruthy();
   });
 
+  it("draws a chart when the panel's view names one (AC-P-103/104)", async () => {
+    vi.mocked(postInvoke).mockResolvedValue({
+      component: "table",
+      data: { items: [{ status: "allocated", count: 3 }] },
+    });
+
+    const { container } = render(
+      <PanelResult
+        panel={panel({
+          view: { chart: { category: "status", value: "count", kind: "bar" } },
+        })}
+      />,
+    );
+
+    await screen.findByText("検品保留の在庫");
+    expect(container.querySelectorAll(".MuiBarChart-element")).toHaveLength(1);
+    // A chart draws its own figcaption; it does not also draw a table alongside it.
+    expect(container.querySelectorAll("table")).toHaveLength(0);
+  });
+
+  it("draws the grouped rows, not the raw ones, when the panel's view names a transform", async () => {
+    vi.mocked(postInvoke).mockResolvedValue({
+      component: "table",
+      data: {
+        items: [
+          { status: "allocated", count: 1 },
+          { status: "allocated", count: 1 },
+          { status: "staged", count: 1 },
+        ],
+      },
+    });
+
+    render(
+      <PanelResult
+        panel={panel({
+          view: { transform: { groupBy: "status", aggregate: "count" } },
+        })}
+      />,
+    );
+
+    expect(await screen.findByText("allocated")).toBeTruthy();
+    expect(screen.getByText("staged")).toBeTruthy();
+    // Two source rows became one "allocated" group of count 2, not two rows.
+    expect(screen.getAllByText("2")).toHaveLength(1);
+  });
+
+  it("draws a chart of the grouped rows when the panel's view names both", async () => {
+    vi.mocked(postInvoke).mockResolvedValue({
+      component: "table",
+      data: {
+        items: [
+          { status: "allocated", count: 1 },
+          { status: "allocated", count: 1 },
+          { status: "staged", count: 1 },
+        ],
+      },
+    });
+
+    const { container } = render(
+      <PanelResult
+        panel={panel({
+          view: {
+            transform: { groupBy: "status", aggregate: "count" },
+            chart: { category: "status", value: "count", kind: "bar" },
+          },
+        })}
+      />,
+    );
+
+    await screen.findByText("検品保留の在庫");
+    // Grouped into two bars ("allocated", "staged"), not the three raw rows.
+    expect(container.querySelectorAll(".MuiBarChart-element")).toHaveLength(2);
+  });
+
+  it("draws exactly what it draws today when the panel carries no view at all (AC-P-106)", async () => {
+    vi.mocked(postInvoke).mockResolvedValue({
+      component: "table",
+      data: { items: [{ id: "itm-001", name: "品目1" }] },
+    });
+
+    const { container } = render(<PanelResult panel={panel()} />);
+
+    expect(await screen.findByText("itm-001")).toBeTruthy();
+    expect(container.querySelectorAll(".MuiBarChart-element")).toHaveLength(0);
+  });
+
+  it("draws the chart's own empty state when its rows carry none of its fields", async () => {
+    vi.mocked(postInvoke).mockResolvedValue({
+      component: "table",
+      data: { items: [{ id: "itm-001" }] },
+    });
+
+    render(
+      <PanelResult
+        panel={panel({
+          view: { chart: { category: "status", value: "count", kind: "bar" } },
+        })}
+      />,
+    );
+
+    expect(await screen.findByText("結果は0件です。")).toBeTruthy();
+  });
+
   it("ignores a second click while a refresh is already in flight", async () => {
     let resolveRefresh: ((value: Awaited<ReturnType<typeof postInvoke>>) => void) | undefined;
 

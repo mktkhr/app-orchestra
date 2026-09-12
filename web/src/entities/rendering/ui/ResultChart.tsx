@@ -24,6 +24,16 @@ interface ResultChartProps {
    * component was written this way, not assumed from the library's docs.
    */
   readonly title: string;
+  /**
+   * The chart's pixel width/height, passed to whichever `@mui/x-charts` component draws `kind`.
+   * Both default to this component's original fixed size (`DEFAULT_CHART_WIDTH`/`_HEIGHT`) so
+   * Task 1's own tests — which render `ResultChart` with neither prop — keep seeing exactly what
+   * they always have. A caller that knows its own container's size, such as a workspace panel
+   * (`pages/workspace/ui/PanelResult.tsx`), passes what it knows instead
+   * (`docs/plans/dashboard.md` Task 5).
+   */
+  readonly width?: number;
+  readonly height?: number;
 }
 
 /**
@@ -50,11 +60,12 @@ const UNKNOWN_CATEGORY = "null";
 
 // `@mui/x-charts` measures its container with `getComputedStyle` when no explicit size is
 // given (`useChartDimensions`), which returns 0 in a test environment with no layout engine
-// and draws nothing. A fixed size sidesteps that and keeps this component to the five props
-// the plan describes — no separate width/height knobs this task has no caller asking for yet.
-// Chosen small enough to fit inside the narrowest phone `make guard-layout` checks (375px).
-const CHART_WIDTH = 320;
-const CHART_HEIGHT = 240;
+// and draws nothing. These defaults sidestep that for a caller that does not care about its
+// own size — Task 1's own tests, most notably — by reproducing what this component always
+// drew before `width`/`height` became props. A caller that does care (a workspace panel)
+// passes its own numbers instead (`docs/plans/dashboard.md` Task 5).
+const DEFAULT_CHART_WIDTH = 320;
+const DEFAULT_CHART_HEIGHT = 240;
 
 /**
  * Rows in, chart points out. A row is dropped, not drawn as `NaN`, when its `value` field is
@@ -91,7 +102,15 @@ function chartPoints(data: readonly Row[], category: string, value: string): Cha
  * "no rows" message `ResultTable` shows for an empty result, rather than a blank rectangle a
  * person has to guess the meaning of.
  */
-export function ResultChart({ data, category, value, kind, title }: ResultChartProps): JSX.Element {
+export function ResultChart({
+  data,
+  category,
+  value,
+  kind,
+  title,
+  width = DEFAULT_CHART_WIDTH,
+  height = DEFAULT_CHART_HEIGHT,
+}: ResultChartProps): JSX.Element {
   const points = chartPoints(data, category, value);
 
   if (points.length === 0) {
@@ -112,8 +131,8 @@ export function ResultChart({ data, category, value, kind, title }: ResultChartP
           dataset={points}
           xAxis={[{ dataKey: "category", scaleType: "band" }]}
           series={[{ dataKey: "value" }]}
-          width={CHART_WIDTH}
-          height={CHART_HEIGHT}
+          width={width}
+          height={height}
         />
       )}
       {kind === "line" && (
@@ -121,8 +140,8 @@ export function ResultChart({ data, category, value, kind, title }: ResultChartP
           dataset={points}
           xAxis={[{ dataKey: "category", scaleType: "point" }]}
           series={[{ dataKey: "value", showMark: true }]}
-          width={CHART_WIDTH}
-          height={CHART_HEIGHT}
+          width={width}
+          height={height}
         />
       )}
       {kind === "pie" && (
@@ -136,8 +155,8 @@ export function ResultChart({ data, category, value, kind, title }: ResultChartP
               })),
             },
           ]}
-          width={CHART_WIDTH}
-          height={CHART_HEIGHT}
+          width={width}
+          height={height}
         />
       )}
     </Box>
