@@ -4,14 +4,22 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-`docs/plans/dashboard.md`: Tasks 0-5 done. Task 5:
+`docs/plans/dashboard.md`: Tasks 0-6 done. Task 6:
+`web/src/features/panels/` - the workspace screen's "add a panel" control,
+one form over `GET /api/catalog`, reusing `entities/rendering`'s
+`useFormValues`/`ResultFormFields` (pulled out of `ResultForm.tsx` for this)
+for its arguments step. See `STATE.md` and `DECISIONS.md`, 2026-09-13
+("Dashboard Task 6"). Task 7 remains: the end-to-end journey, needs
+everything.
+
+Task 5:
 `pages/workspace/ui/PanelResult.tsx` now draws a saved panel by its `view` -
 a transform applied to the rows as they arrive (before the component is
 chosen), a chart drawn with `ResultChart` when `view.chart` is present, and
 exactly today's rendering when `view` is absent (AC-P-106). `ResultChart`
 gained optional `width`/`height` props for this, defaulting to its old
 fixed size - see `STATE.md` and `DECISIONS.md`, 2026-09-13 ("Dashboard Task
-5"). Tasks 6-7 remain: Task 6 needs Tasks 4 and 5.
+5").
 
 Task 0:
 `web/src/entities/rendering/lib/transform.ts` - pure `applyTransform`, groups rows and

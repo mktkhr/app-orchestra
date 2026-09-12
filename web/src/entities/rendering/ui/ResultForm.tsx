@@ -2,18 +2,16 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import { useState, type JSX, type SyntheticEvent } from "react";
+import type { JSX, SyntheticEvent } from "react";
 
 import { postInvoke, type PlanResult } from "@/shared/api/client";
 
-import { fieldEntries } from "../model/fieldEntries";
-import { fieldSchema, type Fields } from "../model/rows";
+import { useFormValues } from "../model/useFormValues";
 import { useSubmission } from "@/shared/lib/useSubmission";
-import { ResultFormField } from "./ResultFormField";
+import { ResultFormFields } from "./ResultFormFields";
 
 type Target = NonNullable<PlanResult["target"]>;
 type Schema = NonNullable<PlanResult["schema"]>;
-type FormValues = Record<string, unknown>;
 
 interface ResultFormProps {
   readonly schema: Schema;
@@ -33,36 +31,6 @@ interface ResultFormProps {
   readonly onSubmitted: (result: PlanResult) => void;
 }
 
-function isRecordValue(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecordValue(value) ? value : undefined;
-}
-
-function asStringArray(value: unknown): readonly string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-}
-
-function seedValue(fieldType: string | undefined, initialValue: unknown): unknown {
-  if (initialValue !== undefined) {
-    return initialValue;
-  }
-
-  if (fieldType === "boolean") {
-    return false;
-  }
-
-  if (fieldType === "integer" || fieldType === "number") {
-    return 0;
-  }
-
-  return "";
-}
-
 /**
  * A `kind: "form"` payload's inputs, derived from its JSON Schema
  * (AC-F-102): a `string` property becomes a `TextField`, an enum property
@@ -72,6 +40,11 @@ function seedValue(fieldType: string | undefined, initialValue: unknown): unknow
  * per-property choice. Every value starts at `initial`, and a property
  * named in `schema.required` marks its control required.
  *
+ * The controls themselves and their state come from `useFormValues`/
+ * `ResultFormFields` (`docs/plans/dashboard.md` Task 6, P7) - shared with
+ * `features/panels`' builder, which draws the same controls over a
+ * catalogue entry's `schema` without invoking anything.
+ *
  * Submitting posts the edited values to `/api/invoke` and reports the
  * result through `onSubmitted` - this component does not itself decide
  * where the result goes. The submit button is never disabled by empty
@@ -80,26 +53,8 @@ function seedValue(fieldType: string | undefined, initialValue: unknown): unknow
  * check (WCAG 1.4.11) at rest.
  */
 export function ResultForm({ schema, initial, target, onSubmitted }: ResultFormProps): JSX.Element {
-  const properties: Fields = asRecord(schema["properties"]) ?? {};
-  const required = asStringArray(schema["required"]);
-  const entries = fieldEntries(properties, Object.keys(properties));
-
-  const [values, setValues] = useState<FormValues>(() => {
-    const seed: FormValues = {};
-
-    for (const { key } of entries) {
-      const type = fieldSchema(properties, key)?.["type"];
-
-      seed[key] = seedValue(typeof type === "string" ? type : undefined, initial?.[key]);
-    }
-
-    return seed;
-  });
+  const { properties, required, entries, values, setValue } = useFormValues(schema, initial);
   const { submitting, error, run } = useSubmission();
-
-  const setValue = (key: string, value: unknown): void => {
-    setValues((current) => ({ ...current, [key]: value }));
-  };
 
   const submit = (): Promise<void> =>
     run(async () => {
@@ -134,17 +89,13 @@ export function ResultForm({ schema, initial, target, onSubmitted }: ResultFormP
   return (
     <Box component="form" onSubmit={handleSubmit}>
       <Stack spacing={2}>
-        {entries.map(({ key, label }) => (
-          <ResultFormField
-            key={key}
-            fieldKey={key}
-            label={label}
-            fields={properties}
-            required={required.includes(key)}
-            value={values[key]}
-            onChange={setValue}
-          />
-        ))}
+        <ResultFormFields
+          entries={entries}
+          properties={properties}
+          required={required}
+          values={values}
+          onChange={setValue}
+        />
         {error === null ? null : <Alert severity="error">{error}</Alert>}
         <Box>
           <Button type="submit" variant="contained" disabled={submitting}>

@@ -4,6 +4,43 @@ _Last updated: 2026-09-13_
 
 ## Summary
 
+**`docs/plans/dashboard.md` Tasks 0-6 are done.** Task 6 adds
+`features/panels/`, the workspace screen's own "add a panel" control
+(`docs/specs/dashboard.md` section 6, P7/P8, AC-P-102): a toggle button
+(`ui/AddPanelControl.tsx`) opens one form, not a wizard - every control for
+the current choice on screen at once, absent when it does not apply. Step 1
+(`ui/OperationPicker.tsx`) is an MUI `Autocomplete` over `GET /api/catalog`
+(new `shared/api/catalog.ts`, lazily loaded on first open by
+`model/useCatalog.ts`), grouped by service via the component's own
+`groupBy`. Step 2 (`ui/PanelArguments.tsx`) reuses `entities/rendering`'s
+`useFormValues`/`ResultFormFields` - both pulled out of `ResultForm.tsx`
+unchanged in behaviour (it now composes them plus its own submit) so a
+second caller could draw the identical controls over a catalogue entry's
+`schema` without a second form; `PanelArguments` is remounted
+(`key={service:operationId}`) whenever the operation changes, so a fresh
+`useFormValues` reseeds instead of carrying over the previous operation's
+values. Step 3 (`ui/ComponentPicker.tsx`) offers the entry's own `component`
+plus `chart` whenever `fields` is present at all. Step 4 is
+`ui/ChartFields.tsx` (category/value/kind, shown only for `component ===
+"chart"`, defaulting from the entry's own `view.chart` when it has one) and
+`ui/TransformFields.tsx` (an optional groupBy/aggregate/field, independent
+of `component` - section 4's "a table with a transform is a perfectly good
+panel"). Step 5 (`ui/PanelSaveFields.tsx`) is the title, defaulted to the
+entry's `summary`, and the save button - never disabled at rest, only while
+submitting; an incomplete choice makes `handleSave`
+(`model/usePanelBuilder.ts`) silently no-op, the same shape
+`useSaveToWorkspace` already uses. `usePanelBuilder` composes `useCatalog`
+(step 1) and a new `model/usePanelFields.ts` (steps 2-5's state) to stay
+under `max-lines-per-function`; saving without a chart or a transform posts
+no `view` at all. `pages/workspace/ui/WorkspacePage.tsx` hosts the control
+through a new `model/useWorkspacePage.ts` (wrapping `useWorkspace` and a
+new `useAddedPanels.ts`, to stay under `import/max-dependencies`) and shows
+a panel just added by appending it to local state - the panel the POST
+already returns is everything `PanelResult` needs, so no second
+`GET /api/workspaces/{id}` round trip. See `DECISIONS.md`, 2026-09-13
+("Dashboard Task 6") for the judgement calls (which components a chart is
+offered alongside; the save button's silent no-op). `make check` is green.
+
 **`docs/plans/dashboard.md` Tasks 0-5 are done.** Task 5 makes
 `pages/workspace/ui/PanelResult.tsx` the seam that draws a saved panel the
 way its `view` says to, reusing Task 0's `applyTransform` and Task 1's

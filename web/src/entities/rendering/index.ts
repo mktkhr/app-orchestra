@@ -1,9 +1,12 @@
 export { applyTransform, type Aggregate, type Transform } from "./lib/transform";
-export { rowsFromData, type Row } from "./model/rows";
+export { fieldEntries, type FieldEntry } from "./model/fieldEntries";
+export { rowsFromData, type Fields, type Row } from "./model/rows";
+export { useFormValues, type FormValuesState } from "./model/useFormValues";
 export { Provenance } from "./ui/Provenance";
 export { RenderedResult } from "./ui/RenderedResult";
 export { ResultChart, type ChartKind } from "./ui/ResultChart";
 export { ResultChoice } from "./ui/ResultChoice";
 export { ResultDetail } from "./ui/ResultDetail";
 export { ResultForm } from "./ui/ResultForm";
+export { ResultFormFields } from "./ui/ResultFormFields";
 export { ResultTable } from "./ui/ResultTable";

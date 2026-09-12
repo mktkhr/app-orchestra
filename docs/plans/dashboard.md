@@ -347,14 +347,14 @@ copying it.
 The chart's axes default from the catalogue entry's `view` when it has one
 (P2), and the person may change them.
 
-- [ ] **Step 1** Write the test: the control lists only the operations the
+- [x] **Step 1** Write the test: the control lists only the operations the
       catalogue returned; picking one shows its arguments; picking `chart`
       shows the axes and offers only fields `fields` describes; saving posts
       the panel with its view (AC-P-102). Run it, expect failure.
-- [ ] **Step 2** Implement.
-- [ ] **Step 3** Web gates green, then `make build`, `make guard-browser`,
+- [x] **Step 2** Implement.
+- [x] **Step 3** Web gates green, then `make build`, `make guard-browser`,
       `make guard-a11y`, `make guard-layout`.
-- [ ] **Step 4** Commit: `feat(web): build a panel without asking a question`
+- [x] **Step 4** Commit: `feat(web): build a panel without asking a question`
 
 **Satisfies:** AC-P-102.
 

@@ -2500,3 +2500,77 @@ logic. `web/src/shared/api/client.ts` was at exactly its 300-line
 paragraph comments to be rewrapped to fewer, fuller lines to stay under it
 
 - their wording is otherwise unchanged.
+
+## 2026-09-13 Dashboard Task 6: building a panel without a question
+
+**Context.** Task 6 (`docs/plans/dashboard.md`) is the workspace screen's
+own "add a panel" control - pick an operation from `GET /api/catalog`, fill
+its arguments, pick a component, and for a chart pick its axes, all as one
+form (`docs/specs/dashboard.md` section 6, P7/P8). It asked for `ResultForm`
+to be made reusable "there, once" rather than copied, and left a few shapes
+open: what "reusable" actually means, which components a chart is offered
+alongside, and what an incomplete form does when saved.
+
+**Decision, reusing `ResultForm`.** `ResultForm` did two things at once:
+seed and hold a schema's values (`useState`, keyed by `schema.properties`),
+and draw one control per property. Both moved out, unchanged in behaviour,
+into `entities/rendering`: `model/useFormValues.ts` (the state) and
+`ui/ResultFormFields.tsx` (the controls) - `ResultForm` itself is now a thin
+composition of the two plus `postInvoke`/the submit button, and its own
+tests were not touched (same public props, same behaviour). `features/panels/ui/PanelArguments.tsx`
+calls the same two exports directly - the identical controls over a
+catalogue entry's `schema`, no invocation, no second form. Its parent
+(`AddPanelForm`) remounts it with `key={service:operationId}` whenever the
+chosen operation changes, so a fresh `useFormValues` reseeds from the new
+schema; this was chosen over teaching `useFormValues` to watch its own
+`schema` argument for changes, which would have added a `useEffect` (and a
+new failure mode: silently resetting a person's half-typed values whenever
+a parent re-render happened to hand it a new-but-equal schema object) for a
+behaviour a `key` gives for free.
+
+**Decision, which components a chart is offered alongside.** The spec says
+`chart` "is offered whenever `fields` describes rows" but a `CatalogEntry`
+carries no flag saying its `fields` describe _rows_ specifically, as
+opposed to one object's own properties (`detail`). Rather than infer that
+from `component === "table"` - which would silently exclude a `detail`-shaped
+operation whose fields happen to work fine as chart axes - `usePanelFields.componentOptionsFor`
+offers `chart` whenever `fields` is present at all (and the entry's own
+`component` is not already `chart`). This is a small overreach in the
+person's favour: they can pick `chart` for an operation the rule did not
+intend to chart, and get `ResultChart`'s own existing "0件です" or
+dropped-row behaviour if the axes do not fit, rather than the platform
+guessing that they cannot.
+
+**Decision, an incomplete form's save button.** `handleSave` (`usePanelBuilder`)
+silently no-ops when `usePanelFields.canSave()` says the choice is
+incomplete (no operation, no title, a chart with an unset axis, a transform
+switched on with an unset field), and the "追加" button is never disabled
+for that reason - only while `submitting`. This mirrors `SaveToWorkspaceControl`/`useSaveToWorkspace`'s
+existing `handleSave` exactly, for the same reason its own comments give:
+`make guard-layout` rejects a `contained` button disabled at rest (no
+visible edge), so "grey it out until valid" was never an option; a `helperText`
+per control was considered and rejected as a second form on top of the
+first for validation nobody has asked for yet, since every control here is
+a closed choice (a select or an enabled schema field) rather than free text
+that can be malformed.
+
+**Decision, the transform is independent of the component.** Per section 4
+("a table with a transform is a perfectly good panel"), `TransformFields`
+is shown whenever the chosen operation has any `fields` to group by at all,
+regardless of whether `component` is `table` or `chart` - only the chart
+axes (`ChartFields`) are gated on `component === "chart"`.
+
+**Consequences.** `entities/rendering`'s barrel gained `useFormValues`,
+`ResultFormFields`, `fieldEntries` and `Fields` - all pre-existing logic
+made reachable across the FSD boundary. `web/src/shared/api/catalog.ts` is
+a new, small client module (`getCatalog`), split out for the same
+`max-lines` reason `users.ts` already documents for itself.
+`features/panels/model/usePanelBuilder.ts` composes two smaller hooks -
+`useCatalog` (step 1's lazy load) and `usePanelFields` (steps 2-5's state) -
+to stay under `max-lines-per-function`; `WorkspacePage.tsx` gained a single
+`useWorkspacePage` hook (wrapping `useWorkspace` + a new `useAddedPanels`)
+for the same reason on `import/max-dependencies`, now that it also hosts
+`AddPanelControl`. A panel added through the control is shown by appending
+it to local state (`useAddedPanels`) rather than re-fetching the whole
+workspace - the panel `POST /api/workspaces/{id}/panels` returns is already
+everything `PanelResult` needs to draw it.
