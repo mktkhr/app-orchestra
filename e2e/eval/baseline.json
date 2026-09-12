@@ -7,8 +7,8 @@
     },
     "no-enum-value": {
       "total": 30,
-      "accept": 11,
-      "reject": 16
+      "accept": 8,
+      "reject": 18
     },
     "list-everything": {
       "total": 10,
@@ -22,7 +22,7 @@
     },
     "unanswerable": {
       "total": 10,
-      "accept": 10,
+      "accept": 9,
       "reject": 0
     },
     "capability": {
@@ -34,6 +34,61 @@
       "total": 10,
       "accept": 10,
       "reject": 0
+    },
+    "filter-by-label-allocated": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "filter-by-label-staged": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "filter-by-label-consigned": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "filter-by-label-deemed": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "filter-by-label-substitute": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "filter-by-label-compensatory": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "filter-by-label-on-call": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "list-everything-attendance": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "create-attendance": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "follow-up-other-service": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "no-enum-value-attendance": {
+      "total": 10,
+      "accept": 0,
+      "reject": 7
     }
   }
 }

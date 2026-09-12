@@ -230,6 +230,21 @@ export const cases: readonly Case[] = [
     ],
   },
   {
+    // The inventory case's twin on the other service, and the harder one:
+    // 有給 has no near neighbour among みなし労働 / 振替休日 / 代休 / 待機
+    // for the model to guess at, so it drops the filter rather than
+    // guessing - measured at 7-9/10 reject every time it has been run.
+    //
+    // Judged on reject like its twin, but be clear about what that buys:
+    // with the baseline already at 0.7 and ORCHESTRA_EVAL_TOLERANCE at 0.3,
+    // a regression would need a reject rate above 1.0, so this case cannot
+    // fail a run. It is not a check; it is a number printed on every run
+    // (AC-E-203 prints reject counts whether or not the judged rate held),
+    // and a person reading 7/10 there is reading that the defect is still
+    // live. Leaving it judged on reject rather than on accept is deliberate
+    // - accept here is the wide "asked or guessed" set that
+    // docs/specs/eval.md section 4 explains is noise, not signal - and
+    // raising `runs` would not help: section 4a has the band.
     id: "no-enum-value-attendance",
     question: "有給の勤怠はある？",
     metric: "reject",
