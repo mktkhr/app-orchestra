@@ -125,17 +125,17 @@ Rows in, rows out. The output's keys are `transform.groupBy` and the
 aggregate's own name (`count`, `sum`, `avg`), so a chart's `category` and
 `value` can name fields that exist (spec section 4).
 
-- [ ] **Step 1** Write the tests first, and make them the specification:
+- [x] **Step 1** Write the tests first, and make them the specification:
       grouping by a field with three distinct values yields three rows;
       `count` counts; `sum` and `avg` read `field`; a row missing `groupBy`
       groups under its own bucket rather than being dropped silently; a
       non-numeric value under `field` does not produce `NaN`; an empty input
       yields an empty output. Decide what each edge does and write it down
       here — this function is pure, so its tests are the whole contract.
-- [ ] **Step 2** Implement. No date handling, no sorting beyond a stable
+- [x] **Step 2** Implement. No date handling, no sorting beyond a stable
       order, no second step.
-- [ ] **Step 3** Web gates green.
-- [ ] **Step 4** Commit: `feat(web): group rows before drawing them`
+- [x] **Step 3** Web gates green.
+- [x] **Step 4** Commit: `feat(web): group rows before drawing them`
 
 **Satisfies:** AC-P-104's pure-function half.
 

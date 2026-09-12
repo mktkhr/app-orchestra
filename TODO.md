@@ -4,7 +4,11 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-Nothing. `docs/plans/orchestration.md`, `docs/plans/workspaces.md`,
+`docs/plans/dashboard.md`: Task 0 done (`web/src/entities/rendering/lib/transform.ts` -
+pure `applyTransform`, groups rows and reduces each group to `count`/`sum`/`avg`; see
+its own tests for the edge cases pinned). Tasks 1-7 remain.
+
+`docs/plans/orchestration.md`, `docs/plans/workspaces.md`,
 `docs/plans/auth.md` and `docs/plans/context.md` are all closed - every
 task, every acceptance criterion in `docs/specs/*.md` section 8/9/10 has a
 test that runs in CI, and `make check` (not `-k`) is fully green.

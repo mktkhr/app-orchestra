@@ -1,3 +1,4 @@
+export { applyTransform, type Aggregate, type Transform } from "./lib/transform";
 export { Provenance } from "./ui/Provenance";
 export { RenderedResult } from "./ui/RenderedResult";
 export { ResultChoice } from "./ui/ResultChoice";

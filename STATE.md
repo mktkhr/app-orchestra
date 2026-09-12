@@ -4,6 +4,20 @@ _Last updated: 2026-09-12_
 
 ## Summary
 
+**`docs/plans/dashboard.md` Task 0 is done.** `web/src/entities/rendering/lib/transform.ts`
+exports a pure `applyTransform(rows, transform)`: groups rows by
+`transform.groupBy` and reduces each group to `count`, `sum` or `avg`,
+producing rows whose keys are `groupBy`'s own name and the aggregate's -
+`[{status}, ...]` becomes `[{status, count}, ...]`, so a chart's
+`category`/`value` can name fields that exist. Its own tests
+(`transform.test.ts`) are the whole of its contract, per the plan: a row
+whose `groupBy` value is missing, `null`, or not a string is grouped under
+a shared `null` bucket rather than dropped; a non-numeric value under
+`field` is skipped rather than producing `NaN`; `sum` of an all-skipped
+group is `0`, `avg` of one is `null`; output order is first-seen order of
+the group key. It has no callers yet - Tasks 1 and 5 add them - and no
+other file changed, on purpose (the function is pure, no React/MUI/I/O).
+
 **All four subprojects are done: `docs/plans/orchestration.md`'s seventeen
 tasks, `docs/plans/workspaces.md`'s eight, `docs/plans/auth.md`'s seven, and
 now every one of `docs/plans/context.md`'s five (Tasks 0-4).** A second
