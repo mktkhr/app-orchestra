@@ -454,8 +454,14 @@ func renderCatalog(catalog domain.Catalog) string {
 	return b.String()
 }
 
-// renderParam writes one parameter's line: its name, JSON Schema type and,
-// when it declares one, its enum values with their Japanese labels.
+// renderParam writes one parameter's line: its name, JSON Schema type,
+// when it declares one, its enum values with their Japanese labels, and -
+// when the schema carries one, such as the D15 instruction
+// usecase.WithSyntheticAll appends - its own Description text. Without
+// this, a Description added upstream (usecase.WithSyntheticAll,
+// internal/usecase/tools.go) would reach the tool-calling planner's
+// property description but never this planner's prompt at all, since
+// nothing else here reads schema.Description.
 func renderParam(b *strings.Builder, name string, schema *domain.Schema) {
 	fmt.Fprintf(b, "  param %s (%s", name, schema.Type)
 
@@ -463,7 +469,13 @@ func renderParam(b *strings.Builder, name string, schema *domain.Schema) {
 		b.WriteString(", enum: " + enumWithLabels(schema.Enum, schema.EnumLabels))
 	}
 
-	b.WriteString(")\n")
+	b.WriteString(")")
+
+	if schema.Description != "" {
+		b.WriteString(": " + schema.Description)
+	}
+
+	b.WriteString("\n")
 }
 
 // enumWithLabels renders an enum's values and Japanese labels as

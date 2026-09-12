@@ -20,25 +20,34 @@ Everything remaining sits outside all four subprojects above:
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
+3. D15's before/after eval measurement came back negative (`DECISIONS.md`,
+   2026-09-12 correction; `STATE.md`): the accept rate fell (10/30 ->
+   5/30) without the reject rate moving outside its noise band - `__all__`
+   competes with `ask_user` rather than reinforcing it. One lever tried
+   before reverting: `__all__` now carries a description telling the model
+   when it is, and is not, the right answer
+   (`usecase.syntheticAllInstruction`). **Run the eval corpus again.** If
+   the accept-rate number does not move, revert D15 in full (the synthetic
+   `__all__` value, its stripping, and both planners' handling of it) and
+   find another way to close the silent-omission case.
 
 ## Done
 
 - D15 (`docs/specs/orchestration.md`, section 8a): an optional enum
   parameter on a safe endpoint is now offered to the model as required,
   with a synthetic `__all__` value (labelled すべて) appended so the model
-  cannot silently drop a filter it could not match - closes the failure
-  the eval corpus measured directly (18/30 `no-enum-value`, 9/10
-  `no-enum-value-attendance` on `qwen3.5-9b-q8`). The platform strips the
+  cannot silently drop a filter it could not match. The platform strips the
   synthetic value before an argument is validated or a call is made, on
   both `Plan`'s call path and `Invoke`, so no service or result provenance
   ever sees it. Both planners agree (`toolcall` inherits it from
   `usecase.ToolsFor`; `jsonmode` got its own call into the same helpers,
   since it renders its own catalogue text). See `DECISIONS.md`, 2026-09-12
-  ("asking for everything is a thing the model must say (D15)"), and
-  `STATE.md`'s own paragraph, for the full design and the one gap left in
-  `jsonmode` (no structural "required" enforcement exists there for any
-  parameter). The before/after eval measurement is being run outside this
-  session.
+  ("asking for everything is a thing the model must say (D15)") and its
+  same-day correction, and `STATE.md`'s own paragraph, for the full design
+  and the eval measurement: it did **not** close the failure it was built
+  for (accept rate fell 10/30 -> 5/30 without the reject rate moving
+  outside noise) - see item 3 under "Next" for the description experiment
+  now running and the revert condition.
 - `docs/plans/context.md`, Task 4: end to end - closes the multi-turn
   context subproject. `e2e/src/context.test.ts` proves AC-M-101 at the
   process level against the built platform: ask about inventory (or

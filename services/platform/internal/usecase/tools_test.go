@@ -1,6 +1,7 @@
 package usecase_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -490,6 +491,13 @@ func TestAskUserToolShape(t *testing.T) {
 			"is not unique across services")
 }
 
+// syntheticAllInstructionText is domain-usecase.syntheticAllInstruction,
+// duplicated verbatim here since this is an external (_test) package: the
+// text this session's negative measurement (DECISIONS.md, 2026-09-12)
+// added to tell the model when __all__ is, and is not, the right answer.
+const syntheticAllInstructionText = "__all__ は利用者が全件を求めたときだけ選ぶこと。" +
+	"利用者が挙げた語がどの値にも当てはまらないときは __all__ を選ばず、ask_user で聞き返すこと。"
+
 // findProperty is the shared lookup TestToolsFor's D15 cases use to pull
 // one tool's named property out of ToolsFor's output, since every case
 // below cares about exactly one endpoint and one parameter.
@@ -547,6 +555,52 @@ func TestToolsForOptionalEnumParameterOnSafeEndpointBecomesRequiredWithAll(t *te
 	description, ok := statusProp["description"].(string)
 	require.True(t, ok)
 	assert.Contains(t, description, domain.EnumAllValue+"="+domain.EnumAllLabel)
+
+	// This experiment (docs/specs/orchestration.md section 8a; DECISIONS.md
+	// 2026-09-12): the instruction telling the model when __all__ is and is
+	// not the right answer must be present, and must land between the base
+	// description and the enum labels - one coherent sentence-then-labels
+	// string, not the instruction buried mid-way or after the labels.
+	instructionIndex := strings.Index(description, syntheticAllInstructionText)
+	require.NotEqual(t, -1, instructionIndex, "description must carry the __all__ instruction")
+	assert.Less(t, instructionIndex, strings.Index(description, domain.EnumAllValue+"="+domain.EnumAllLabel),
+		"the instruction must come before the enum labels, not after")
+}
+
+// TestWithSyntheticAllLeavesAnUnaffectedSchemaUntouched pins the other half
+// of this experiment: WithSyntheticAll only ever applies to the schema it
+// is called on, and a property this session's D15 cases already prove does
+// not get the synthetic value at all (required, no enum, unsafe endpoint,
+// request body) must therefore carry the instruction text nowhere either.
+func TestWithSyntheticAllLeavesAnUnaffectedSchemaUntouched(t *testing.T) {
+	c := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "attendance",
+			OperationID: "ListAttendanceRecords",
+			Method:      domain.MethodGet,
+			Path:        "/api/attendance/records",
+			Summary:     "勤怠記録の一覧を返す",
+			Parameters: []domain.Parameter{
+				{
+					Name: "kind", In: "query", Required: true,
+					Schema: domain.Schema{
+						Type: domain.SchemaTypeString,
+						Enum: []string{"deemed", "substitute"},
+					},
+				},
+			},
+			Response: &domain.Schema{Type: domain.SchemaTypeArray, Items: &domain.Schema{Type: domain.SchemaTypeObject}},
+		},
+	}}
+
+	tools := usecase.ToolsFor(c)
+
+	kindProp := findProperty(t, tools, "ListAttendanceRecords", "kind")
+
+	description, ok := kindProp["description"].(string)
+	require.True(t, ok)
+	assert.NotContains(t, description, syntheticAllInstructionText,
+		"a required parameter never gets the synthetic value, so it must never carry its instruction either")
 }
 
 // TestToolsForRequiredEnumParameterIsUnchanged pins the other half of D15:

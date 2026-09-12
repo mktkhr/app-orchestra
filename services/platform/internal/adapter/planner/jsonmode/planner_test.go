@@ -17,6 +17,14 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
+// syntheticAllInstructionText is usecase.syntheticAllInstruction,
+// duplicated verbatim here (an external _test package cannot see the
+// unexported const): the text this session's negative measurement
+// (DECISIONS.md, 2026-09-12) added to tell the model when __all__ is, and
+// is not, the right answer.
+const syntheticAllInstructionText = "__all__ は利用者が全件を求めたときだけ選ぶこと。" +
+	"利用者が挙げた語がどの値にも当てはまらないときは __all__ を選ばず、ask_user で聞き返すこと。"
+
 // fixtureCatalog mirrors toolcall's own fixture (planner_test.go in the
 // sibling package): one safe list operation with an enum parameter, one
 // unsafe create, so both the happy path and the enum-validation path have
@@ -165,6 +173,54 @@ func TestPlanRendersTheSyntheticAllValueForAnOptionalEnumParameterOnASafeEndpoin
 	content, ok := system["content"].(string)
 	require.True(t, ok)
 	assert.Contains(t, content, domain.EnumAllValue+"="+domain.EnumAllLabel)
+
+	// This experiment (docs/specs/orchestration.md section 8a; DECISIONS.md
+	// 2026-09-12): the instruction that tells the model when __all__ is,
+	// and is not, the right answer must reach this planner's own rendered
+	// catalogue text too, not only usecase.ToolsFor's property description
+	// - this planner builds its own text from domain.Endpoint directly
+	// (renderParam), so it needs its own proof.
+	assert.Contains(t, content, syntheticAllInstructionText)
+}
+
+// TestPlanDoesNotRenderTheInstructionForARequiredEnumParameter pins the
+// other half of this experiment on this planner's own rendering: a
+// parameter that never gets the synthetic value at all (here, one already
+// required) must not carry its instruction in the rendered catalogue
+// either.
+func TestPlanDoesNotRenderTheInstructionForARequiredEnumParameter(t *testing.T) {
+	catalog := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "attendance",
+			OperationID: "ListAttendanceRecords",
+			Method:      domain.MethodGet,
+			Path:        "/api/attendance/records",
+			Summary:     "List attendance records.",
+			Parameters: []domain.Parameter{
+				{
+					Name: "kind", In: "query", Required: true,
+					Schema: domain.Schema{Type: domain.SchemaTypeString, Enum: []string{"deemed", "substitute"}},
+				},
+			},
+			Response: &domain.Schema{Type: domain.SchemaTypeArray, Items: &domain.Schema{Type: domain.SchemaTypeObject}},
+		},
+	}}
+
+	fixture := newPlanner(t, catalog, chatContent(t, `{"kind":"none"}`))
+
+	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(catalog))
+	require.NoError(t, err)
+
+	messages, ok := fixture.requests[0]["messages"].([]any)
+	require.True(t, ok)
+
+	system, ok := messages[0].(map[string]any)
+	require.True(t, ok)
+
+	content, ok := system["content"].(string)
+	require.True(t, ok)
+	assert.NotContains(t, content, syntheticAllInstructionText,
+		"a required parameter never gets the synthetic value, so it must never carry its instruction either")
 }
 
 // TestPlanAcceptsTheSyntheticAllValueAsAValidCallArgument proves the other

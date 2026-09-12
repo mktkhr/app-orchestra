@@ -727,8 +727,23 @@ its own call into the same exported helpers (`argSchemas`,
 2026-09-12, for the one gap this left in `jsonmode` (no structural
 "required" enforcement exists there at all, for any parameter, so `__all__`
 is offered and accepted but omission is not otherwise closed for that
-transport). The before/after eval measurement is being run outside this
-session.
+transport).
+
+**The before/after eval measurement came back, and D15 did not close the
+failure.** `no-enum-value`'s reject rate (18/30 -> 20/30) sits inside its
+own noise band; `no-enum-value-attendance`'s move (9/10 -> 5/10) is not
+decisive at n=10. What moved cleanly is the accept rate, 10/30 -> 5/30: the
+model stopped omitting the parameter, as designed, but names `__all__`
+instead about half the time, and the person sees the same screen either
+way - every row, presented as one kind of row's answer. The reading
+(`DECISIONS.md`, 2026-09-12 correction) is that `__all__` competes with
+`ask_user` rather than reinforcing it. Currently being tried: a
+description on `__all__` telling the model when it is, and is not, the
+right answer (`usecase.syntheticAllInstruction`, appended by
+`usecase.WithSyntheticAll`), reaching both planners - `toolcall` through
+the property description, `jsonmode` through `renderParam`, which now
+renders a schema's `Description` at all, something it never did before. If
+this does not move the accept-rate number, D15 is reverted.
 
 ## Known gaps in the harness
 

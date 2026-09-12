@@ -1966,3 +1966,37 @@ request to the service carries no `status` query parameter at all. `make
 after this work - no real model call was made anywhere in `make check`.
 The before/after eval measurement against `no-enum-value` and
 `no-enum-value-attendance` is being run separately, outside this session.
+
+**Correction, 2026-09-12, after the measurement came back.** The
+before/after numbers this entry was waiting on:
+
+```
+                          before          after
+no-enum-value             18/30 reject    20/30 reject     (n=30 noise band measured at 16-19)
+no-enum-value-attendance   9/10 reject     5/10 reject     (n=10 noise band is 0.40 wide - not decisive)
+no-enum-value (accept)    10/30           5/30
+every other case          10/10 accept    10/10 accept     (no side effects at all)
+```
+
+**D15 did not reduce the defect.** `no-enum-value`'s reject rate (18→20)
+sits inside its own noise band and is not a change; `no-enum-value-attendance`
+moved but its n=10 band is 0.40 wide, too coarse to call decisive either
+way. What did move, cleanly, is the accept rate: 10/30 down to 5/30. The
+mechanism this entry describes is real - the model stopped omitting the
+parameter - but what it says instead, half the time, is `__all__`, and the
+person sees the same screen either way: every row, presented as the answer
+to a question about one kind of row. Adding a value to the list tool made
+calling that tool easier to reach for; `ask_user` is a different tool, and
+got reached for _less_, not more. The reading is that `__all__` competes
+with `ask_user` (D11) rather than reinforcing it, and this entry's original
+reasoning - that taking away the silent-omission option would push the
+model toward `ask_user` - did not hold.
+
+**Next tried:** giving `__all__` a description that tells the model when it
+is, and is not, the right answer (`usecase.syntheticAllInstruction`,
+appended in `usecase.WithSyntheticAll`) - see `docs/specs/orchestration.md`
+section 8a for the exact text and where it lands in both planners' rendered
+output. If that description does not move the accept-rate number, **D15 is
+reverted**: the synthetic `__all__` value, its stripping, and both
+planners' handling of it come back out, and the silent-omission case goes
+back to being handled some other way (a fresh decision, not this one).

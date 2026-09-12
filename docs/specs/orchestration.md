@@ -268,6 +268,46 @@ Safe operations only, and parameters only - never a request body's own
 properties. A create's `status` is a field of the thing being created, and
 "all" is not a status an item can be in.
 
+**Measured, and it did not work.** The reasoning above predicted that taking
+away the silent-omission option would push the model toward `ask_user`
+instead. Measured before/after against the eval corpus on `qwen3.5-9b-q8`:
+
+```
+                          before          after
+no-enum-value             18/30 reject    20/30 reject     (n=30 noise band measured at 16-19)
+no-enum-value-attendance   9/10 reject     5/10 reject     (n=10 noise band is 0.40 wide - not decisive)
+no-enum-value (accept)    10/30           5/30
+every other case          10/10 accept    10/10 accept     (no side effects at all)
+```
+
+`no-enum-value`'s reject rate did not move outside its own noise band, and
+`no-enum-value-attendance`'s band is too wide at n=10 to call its move
+decisive either way. What did move is the accept rate, cleanly: 10/30 down
+to 5/30. The mechanism changed as predicted - the model stopped omitting the
+parameter - but what it says instead, roughly half the time, is `__all__`,
+and the person is handed the same screen either way: every row, presented
+as the answer to a question about one kind of row. Naming `__all__` is a
+call to the same tool the model was already reaching for; `ask_user` is a
+different tool, and got called _less_ often, not more. **This section's
+fix, as shipped, does not reduce the defect it was built for** - it
+changed which silent-drop the model performs, not whether one happens.
+
+The value tried next: `__all__`'s description now tells the model when it
+is, and is not, the right answer -
+`usecase.syntheticAllInstruction`, appended in `usecase.WithSyntheticAll`
+(`internal/usecase/tools.go`) to whatever description the parameter already
+carries, before its enum labels, so the rendered text reads as one
+sentence-then-labels string:
+
+    __all__ は利用者が全件を求めたときだけ選ぶこと。利用者が挙げた語がどの値にも当てはまらないときは __all__ を選ばず、ask_user で聞き返すこと。
+
+Both planners render it: the tool-calling planner through the same property
+description `schemaToJSONSchema`/`describe` already build (D5's enum-label
+suffix), and the JSON planner through `renderParam`, which previously never
+surfaced a schema's `Description` in its rendered catalogue text at all and
+now does. If this does not move the accept-rate number, D15 is reverted -
+see `DECISIONS.md`'s 2026-09-12 entry for the numbers and what happens next.
+
 ## 9. Error handling
 
 - No endpoint fits -> `kind: "none"`, whose message points at `list_capabilities`
