@@ -112,6 +112,89 @@ describe("conversationStore", () => {
     expect(screen.getByTestId("turns-ws-1").textContent).not.toBe("");
   });
 
+  it("sends no turns on the first question", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(postPlan).mockResolvedValue({ kind: "none", message: "結果はありません。" });
+
+    render(
+      <ConversationProvider>
+        <Probe conversationKey="chat" />
+      </ConversationProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ask-chat" }));
+    await screen.findByText("結果はありません。", { exact: false });
+
+    expect(postPlan).toHaveBeenCalledWith({ query: "質問" });
+  });
+
+  it("sends the first question and its resolved operation as a turn with the second question", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(postPlan).mockResolvedValueOnce({
+      kind: "result",
+      component: "table",
+      data: { items: [] },
+      source: { service: "inventory", operationId: "listInventoryItems", args: {} },
+    });
+
+    render(
+      <ConversationProvider>
+        <Probe conversationKey="chat" />
+      </ConversationProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ask-chat" }));
+    await screen.findByText("listInventoryItems", { exact: false });
+
+    vi.mocked(postPlan).mockResolvedValueOnce({ kind: "none", message: "結果はありません。" });
+
+    await user.click(screen.getByRole("button", { name: "ask-chat" }));
+    await screen.findByText("結果はありません。", { exact: false });
+
+    expect(postPlan).toHaveBeenLastCalledWith({
+      query: "質問",
+      turns: [
+        {
+          question: "質問",
+          kind: "result",
+          service: "inventory",
+          operationId: "listInventoryItems",
+          args: {},
+        },
+      ],
+    });
+  });
+
+  it("sends no turns for the question right after ending the conversation", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(postPlan).mockResolvedValueOnce({
+      kind: "result",
+      component: "table",
+      data: { items: [] },
+      source: { service: "inventory", operationId: "listInventoryItems", args: {} },
+    });
+
+    render(
+      <ConversationProvider>
+        <Probe conversationKey="chat" />
+      </ConversationProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ask-chat" }));
+    await screen.findByText("listInventoryItems", { exact: false });
+
+    await user.click(screen.getByRole("button", { name: "new-chat" }));
+
+    vi.mocked(postPlan).mockResolvedValueOnce({ kind: "none", message: "結果はありません。" });
+    await user.click(screen.getByRole("button", { name: "ask-chat" }));
+    await screen.findByText("結果はありません。", { exact: false });
+
+    expect(postPlan).toHaveBeenLastCalledWith({ query: "質問" });
+  });
+
   it("throws when used outside a ConversationProvider", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type JSX, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 
 import { postPlan, type PlanResult } from "@/shared/api/client";
 import { nextTurnId } from "@/shared/lib/turnId";
@@ -8,6 +8,7 @@ import {
   type ConversationState,
   type ConversationStoreValue,
 } from "./conversationContext";
+import { toContextTurns, type ContextTurn } from "./toContextTurns";
 
 const EMPTY_CONVERSATION: ConversationState = { turns: [], pending: false, error: null };
 
@@ -32,6 +33,16 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
     {},
   );
 
+  // Mirrors `conversations` on every render, so `ask` (below) can read the
+  // turns a question follows without depending on `conversations` itself -
+  // `setConversations`'s functional updater runs on React's own schedule,
+  // not synchronously when `update` is called, so it cannot be read back
+  // through a closure the way `ask` briefly tried to.
+  const conversationsRef = useRef(conversations);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
   const getConversation = useCallback(
     (key: string): ConversationState => conversations[key] ?? EMPTY_CONVERSATION,
     [conversations],
@@ -49,6 +60,12 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
 
   const ask = useCallback(
     async (key: string, query: string): Promise<void> => {
+      // Read before `update` adds this question as its own turn - the turns
+      // this question follows, not the one it is about to add.
+      const contextTurns: readonly ContextTurn[] = toContextTurns(
+        (conversationsRef.current[key] ?? EMPTY_CONVERSATION).turns,
+      );
+
       update(key, (current) => ({
         ...current,
         error: null,
@@ -57,7 +74,9 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
       }));
 
       try {
-        const result = await postPlan({ query });
+        const result = await postPlan(
+          contextTurns.length === 0 ? { query } : { query, turns: contextTurns },
+        );
 
         update(key, (current) => ({
           ...current,
