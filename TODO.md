@@ -4,47 +4,18 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-`docs/plans/dashboard.md`: Tasks 0-6 done. Task 6:
-`web/src/features/panels/` - the workspace screen's "add a panel" control,
-one form over `GET /api/catalog`, reusing `entities/rendering`'s
-`useFormValues`/`ResultFormFields` (pulled out of `ResultForm.tsx` for this)
-for its arguments step. See `STATE.md` and `DECISIONS.md`, 2026-09-13
-("Dashboard Task 6"). Task 7 remains: the end-to-end journey, needs
-everything.
+Nothing right now. `docs/plans/dashboard.md` (see "Done" below) was the
+last plan in flight; `docs/plans/orchestration.md`,
+`docs/plans/workspaces.md`, `docs/plans/auth.md` and `docs/plans/context.md`
+were already closed. Every task in every plan under `docs/plans/` is done,
+every acceptance criterion in `docs/specs/*.md` section 8/9/10 has a test
+that runs in CI, and `make check` (not `-k`) is fully green.
 
-Task 5:
-`pages/workspace/ui/PanelResult.tsx` now draws a saved panel by its `view` -
-a transform applied to the rows as they arrive (before the component is
-chosen), a chart drawn with `ResultChart` when `view.chart` is present, and
-exactly today's rendering when `view` is absent (AC-P-106). `ResultChart`
-gained optional `width`/`height` props for this, defaulting to its old
-fixed size - see `STATE.md` and `DECISIONS.md`, 2026-09-13 ("Dashboard Task
-5").
-
-Task 0:
-`web/src/entities/rendering/lib/transform.ts` - pure `applyTransform`, groups rows and
-reduces each group to `count`/`sum`/`avg`; see its own tests for the edge cases pinned.
-Task 1: `web/src/entities/rendering/ui/ResultChart.tsx` - draws rows as a bar, line or pie
-chart via `@mui/x-charts@9.4.0`; see its own tests for the non-numeric-value,
-non-string-category and empty-input edge cases pinned.
-Task 2: the platform's `View` (contract, `internal/domain/view.go`, the
-`panels.view` column and its migration, `Workspaces.AddPanel`'s permission
-narrowing for AC-P-107) - see `STATE.md` and `DECISIONS.md`, 2026-09-12.
-Task 3: `x-ui-hint.chart` parsing (`parse.go`'s `uiHint`/`parseChartHint`),
-`domain.Endpoint.ChartHint`, `Render`/`RenderResult` choosing `ComponentChart`
-from a chart hint alone, and `PlanResult.view`/`usecase.Result.View` carrying
-only the contract's axes - see `STATE.md` and `DECISIONS.md`, 2026-09-12
-("Dashboard Task 3"). Task 4: `GET /api/catalog`
-(`internal/usecase/catalog.go`, `internal/adapter/handler/catalog.go`),
-narrowed through the shared `catalogFor` - see `STATE.md` and
-`DECISIONS.md`, 2026-09-12 ("Dashboard Task 4"). `make check` is green
-except a pre-existing `guard-filelen` gap this task's contract growth
-exposed (see `STATE.md`'s "Known gaps in the harness").
-
-`docs/plans/orchestration.md`, `docs/plans/workspaces.md`,
-`docs/plans/auth.md` and `docs/plans/context.md` are all closed - every
-task, every acceptance criterion in `docs/specs/*.md` section 8/9/10 has a
-test that runs in CI, and `make check` (not `-k`) is fully green.
+What remains of `docs/requirements.md` FR-F is only its layout half -
+arranging panels: dragging, resizing, persisting a layout (FR-F-4),
+explicitly deferred by `docs/specs/dashboard.md` section 9. No plan exists
+for it yet; it would be a new `docs/plans/*.md`, not a reopening of
+`dashboard.md`.
 
 ## Next
 
@@ -86,6 +57,23 @@ Everything remaining sits outside all four subprojects above:
 
 ## Done
 
+- `docs/plans/dashboard.md`, Task 7: end to end - closes the whole
+  dashboard subproject (all seven tasks). Checked every AC-P-101..107
+  against what already runs in CI first, per the task's own instruction,
+  and found two real gaps closed here rather than worked around: a
+  chart-hinted chat answer never drew at all (`TurnList.tsx` had no
+  `component === "chart"` branch, and `SaveToWorkspaceControl` dropped a
+  result's own `view`), and a chart built on top of a transform could not
+  be built through the panel builder (`usePanelFields.ts`'s axis pickers
+  never offered the transform's own output keys) - plus a third found
+  chasing the second against the real inventory binary, an untouched
+  optional argument posted as `""` and rejected on every refresh
+  (`usePanelBuilder.ts`'s new `compactArgs`). See `STATE.md` and
+  `DECISIONS.md`, 2026-09-13 ("Dashboard Task 7"). `e2e/src/dashboard.test.ts` /
+  `dashboard-permissions.test.ts` and `e2e/browser/dashboard.spec.ts` are
+  the new journeys - the stub planner is never wired in for either, since
+  P8 means nothing either one does ever asks a question. `make check` is
+  fully green and `docker logs llama-swap`'s request count did not move.
 - Fixed: an `ask_user` naming an **unsafe** operation (e.g. `CreateInventoryItem`)
   whose parameter happens to be a real enum (`status`) used to reach the
   wire as `kind: "ask"` - 「ステータスを選んでください」 - instead of the

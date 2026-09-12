@@ -373,14 +373,14 @@ The chart's axes default from the catalogue entry's `view` when it has one
 workspace, add a panel over a list operation with a group-by and a bar
 chart, see it draw, reload, see it draw again from the saved view.
 
-- [ ] **Step 1** Write the process-level journey: `GET /api/catalog`,
+- [x] **Step 1** Write the process-level journey: `GET /api/catalog`,
       `POST` a panel carrying a view, read the workspace back, confirm the
       view survived. The stub planner is not involved — nothing here asks a
       question, which is P8's whole point.
-- [ ] **Step 2** Write the browser journey.
-- [ ] **Step 3** `make check` in full — every gate green, and no request
+- [x] **Step 2** Write the browser journey.
+- [x] **Step 3** `make check` in full — every gate green, and no request
       added to the model's log.
-- [ ] **Step 4** Commit: `test(e2e): build a panel and draw it`
+- [x] **Step 4** Commit: `test(e2e): build a panel and draw it`
 
 **Satisfies:** the whole of `docs/specs/dashboard.md` section 10 end to end.
 

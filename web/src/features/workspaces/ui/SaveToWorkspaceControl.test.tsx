@@ -126,6 +126,49 @@ describe("SaveToWorkspaceControl", () => {
     expect(screen.queryByText(/に保存しました/u)).toBeNull();
   });
 
+  it("carries the result's own view onto the saved panel (AC-P-105)", async () => {
+    const user = userEvent.setup();
+    const view = { chart: { category: "status", value: "count", kind: "bar" as const } };
+
+    vi.mocked(listWorkspaces).mockResolvedValue([
+      { id: "ws-1", name: "在庫ボード", panelCount: 0 },
+    ]);
+    vi.mocked(addPanel).mockResolvedValue({
+      id: "panel-1",
+      workspaceId: "ws-1",
+      service: source.service,
+      operationId: source.operationId,
+      args: source.args,
+      component: "chart",
+      title: "ステータス別の件数",
+      position: 0,
+      view,
+    });
+
+    render(
+      <SaveToWorkspaceControl
+        source={source}
+        component="chart"
+        view={view}
+        defaultTitle="ステータス別の件数"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ワークスペースに保存" }));
+    await screen.findByRole("combobox", { name: "保存先のワークスペース" });
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText("「在庫ボード」に保存しました")).toBeTruthy();
+    expect(addPanel).toHaveBeenCalledWith("ws-1", {
+      service: "inventory",
+      operationId: "listInventoryItems",
+      args: { status: "allocated" },
+      component: "chart",
+      title: "ステータス別の件数",
+      view,
+    });
+  });
+
   it("defaults the picker to the given workspace instead of the first one loaded", async () => {
     const user = userEvent.setup();
 

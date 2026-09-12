@@ -6,7 +6,12 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import type { ChangeEvent, JSX } from "react";
 
-import { useSaveToWorkspace, type Component, type Source } from "../model/useSaveToWorkspace";
+import {
+  useSaveToWorkspace,
+  type Component,
+  type Source,
+  type View,
+} from "../model/useSaveToWorkspace";
 import { SavedNotice } from "./SavedNotice";
 import { WorkspacePicker } from "./WorkspacePicker";
 
@@ -15,6 +20,13 @@ interface SaveToWorkspaceControlProps {
   readonly source: Source;
   /** The widget the result was drawn with, copied into the panel as-is. */
   readonly component: Component;
+  /**
+   * The result's own `view`, when it carried one - set only when the
+   * endpoint's contract declares `x-ui-hint.chart` (AC-P-105's second
+   * half). Copied onto the panel exactly as `source`/`component` already
+   * are; a person may still change it afterwards from the panel builder.
+   */
+  readonly view?: View;
   /** The question that produced this result - the title's default, editable before saving. */
   readonly defaultTitle: string;
   /**
@@ -50,10 +62,11 @@ interface SaveToWorkspaceControlProps {
 export function SaveToWorkspaceControl({
   source,
   component,
+  view,
   defaultTitle,
   defaultWorkspaceId,
 }: SaveToWorkspaceControlProps): JSX.Element {
-  const state = useSaveToWorkspace(source, component, defaultTitle, defaultWorkspaceId);
+  const state = useSaveToWorkspace(source, component, view, defaultTitle, defaultWorkspaceId);
 
   if (state.savedName !== null) {
     return <SavedNotice name={state.savedName} />;

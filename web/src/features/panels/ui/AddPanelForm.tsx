@@ -46,7 +46,7 @@ export function AddPanelForm({ builder }: AddPanelFormProps): JSX.Element {
 
           {builder.component === "chart" && (
             <ChartFields
-              fieldOptions={builder.fieldOptions}
+              fieldOptions={builder.chartFieldOptions}
               category={builder.category}
               value={builder.value}
               kind={builder.kind}

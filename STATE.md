@@ -4,6 +4,66 @@ _Last updated: 2026-09-13_
 
 ## Summary
 
+**`docs/plans/dashboard.md` is done - all seven tasks.** Task 7 is the
+whole subproject's own end to end journey plus the check `docs/plans/dashboard.md`
+asked for first: that every acceptance criterion in `docs/specs/dashboard.md`
+section 10 (AC-P-101 through AC-P-107) already had a test running in CI, and
+that the person's own path - sign in, open a workspace, add a panel over a
+list operation with a group-by and a bar chart, see it draw, reload, see it
+draw again - actually works against the built product, not only against
+each layer in isolation.
+
+That check found two real gaps, both closed here (see `DECISIONS.md`,
+2026-09-13, "Dashboard Task 7"): a chart-hinted chat answer never drew at
+all (`features/conversation/ui/TurnList.tsx` had no branch for
+`component === "chart"`, and `SaveToWorkspaceControl`/`useSaveToWorkspace`
+dropped a result's own `view` on the floor when saving it - AC-P-105's own
+wording, "a panel saved from that answer carries the contract's axes",
+never held); and a chart built on top of a transform could not be built
+through the panel builder at all - `usePanelFields.ts`'s axis pickers
+always offered the raw response's own fields, never the two keys
+`applyTransform` actually leaves in a grouped row (`groupBy` and the
+aggregate's own name), so picking any real field as the value axis drew
+nothing. A third gap turned up chasing the second one against the real
+inventory binary: an untouched _optional_ argument (`ListInventoryItems`'s
+own `status`) was posted as `""` and rejected by `usecase.validateEnumArg`
+on every later refresh - `usePanelBuilder.ts`'s new `compactArgs` drops it
+instead, the same way an omitted argument would be. All three are fixed in
+product code, not worked around in the tests.
+
+`e2e/src/dashboard.test.ts` and its sibling `e2e/src/dashboard-permissions.test.ts`
+(split apart at the 300-line budget) are the process-level suite:
+`GET /api/catalog`, a panel posted with a caller-built `view` (a transform
+and a chart), a read-back that proves it survived, and AC-P-107's own
+refusal against a narrowly-permissioned seeded account
+(`ORCHESTRA_SEED_ACCOUNTS`, the same pattern `auth.test.ts` uses).
+`e2e/browser/dashboard.spec.ts` drives the built product in headless
+Chromium: create a workspace from the drawer directly (no question asked -
+P8), build a panel over the real, unmodified `ListInventoryItems` with a
+status group-by and a bar chart chosen entirely from the catalogue, see
+four bars draw (`.MuiBarChart-element`, one per status the service's own
+seed data holds), reload, and see the same four bars draw again from the
+saved panel. Neither suite wires `ORCHESTRA_PLAN_FIXTURES` - nothing either
+journey does asks a question, so the stub planner is never involved, which
+is exactly P8's point.
+
+Every criterion in section 10 now has a test and a place it runs: AC-P-101
+(`services/platform/acceptance/catalog_test.go`, plus the process suite),
+AC-P-102 (`features/panels/ui/AddPanelControl.test.tsx`, plus the browser
+spec), AC-P-103/AC-P-104 (`pages/workspace/ui/PanelResult.test.tsx` and
+`entities/rendering/lib/transform.test.ts` for the pure function, plus both
+new e2e suites), AC-P-105 (`internal/usecase/orchestrator_test.go` and
+`adapter/handler/plan_test.go` for the platform half, `ConversationChart.test.tsx`
+and `SaveToWorkspaceControl.test.tsx` for the two chat halves this task
+closed), AC-P-106 (`adapter/repository/sqlite/store_test.go` and
+`PanelResult.test.tsx`), AC-P-107 (`internal/usecase/workspaces_test.go`
+and the new `dashboard-permissions.test.ts`).
+
+What is left of `docs/requirements.md` FR-F is only its second half:
+arranging panels - dragging, resizing, persisting a layout (FR-F-4),
+explicitly deferred by `docs/specs/dashboard.md` section 9. No plan exists
+for it yet.
+
 **`docs/plans/dashboard.md` Tasks 0-6 are done.** Task 6 adds
 `features/panels/`, the workspace screen's own "add a panel" control
 (`docs/specs/dashboard.md` section 6, P7/P8, AC-P-102): a toggle button

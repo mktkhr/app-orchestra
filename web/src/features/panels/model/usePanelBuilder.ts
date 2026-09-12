@@ -19,6 +19,42 @@ export function operationKey(entry: CatalogEntry): string {
   return `${entry.service}:${entry.operationId}`;
 }
 
+function requiredKeysOf(schema: Record<string, unknown>): ReadonlySet<string> {
+  const required = schema["required"];
+
+  return new Set(Array.isArray(required) ? required.filter((key) => typeof key === "string") : []);
+}
+
+/**
+ * Drops an optional argument `useFormValues` seeded to `""` - its
+ * type-appropriate default for a control nobody touched
+ * (`entities/rendering/model/useFormValues.ts`'s own `seedValue`), not a
+ * value the person chose. Left in, an untouched optional enum parameter
+ * (`ListInventoryItems`'s own `status`, say) is posted as `status: ""` and
+ * every later invocation of the panel fails `usecase.validateEnumArg` with
+ * "" is not a valid value - the panel a person just built never draws at
+ * all. A required field's own `""` is left alone: that is a real gap the
+ * save button's own `missingBeforeSave` should catch before this ever
+ * runs, not something to paper over here.
+ */
+function compactArgs(
+  schema: Record<string, unknown>,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const required = requiredKeysOf(schema);
+  const compacted: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(values)) {
+    if (value === "" && !required.has(key)) {
+      continue;
+    }
+
+    compacted[key] = value;
+  }
+
+  return compacted;
+}
+
 function buildView(
   component: Component,
   category: string,
@@ -55,6 +91,7 @@ export interface PanelBuilder {
   readonly setComponent: (value: string) => void;
   readonly componentOptions: readonly Component[];
   readonly fieldOptions: readonly string[];
+  readonly chartFieldOptions: readonly string[];
   readonly category: string;
   readonly setCategory: (value: string) => void;
   readonly value: string;
@@ -132,7 +169,7 @@ export function usePanelBuilder(
       const request: AddPanelRequest = {
         service: entry.service,
         operationId: entry.operationId,
-        args: fields.argsValues,
+        args: compactArgs(entry.schema, fields.argsValues),
         component: fields.component,
         title: fields.title.trim(),
         ...(view === undefined ? {} : { view }),

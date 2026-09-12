@@ -35,6 +35,31 @@ export function fieldOptionsFor(entry: CatalogEntry | null): readonly string[] {
   return entry?.fields === undefined ? [] : Object.keys(entry.fields);
 }
 
+/**
+ * What a chart's category/value axes may actually name. Ordinarily the same
+ * as `fieldOptionsFor` - a chart draws the rows as they came. But
+ * `applyTransform` (`entities/rendering/lib/transform.ts`) replaces every
+ * row with exactly two keys - `transform.groupBy` itself and the
+ * aggregate's own name (`count`/`sum`/`avg`) - and `PanelResult` runs that
+ * transform before choosing what to draw (`docs/plans/dashboard.md` Task
+ * 5). A chart built on top of a transform has to name axes that exist in
+ * that output, not in the raw response, or every mark it draws is "not a
+ * number" and gets skipped (`ResultChart`'s own rule) - a chart that never
+ * draws is this task's own journey failing silently, not passing.
+ */
+function chartFieldOptionsFor(
+  fieldOptions: readonly string[],
+  transformEnabled: boolean,
+  groupBy: string,
+  aggregate: Aggregate,
+): readonly string[] {
+  if (!transformEnabled) {
+    return fieldOptions;
+  }
+
+  return groupBy === "" ? [aggregate] : [groupBy, aggregate];
+}
+
 /** Every `Component` a person may pick for `entry`: the rule's own answer, plus `chart` whenever the entry describes fields to draw one from (P2). */
 function componentOptionsFor(entry: CatalogEntry | null): readonly Component[] {
   if (entry === null) {
@@ -104,6 +129,8 @@ export interface PanelFields {
   readonly setComponent: (value: string) => void;
   readonly componentOptions: readonly Component[];
   readonly fieldOptions: readonly string[];
+  /** What a chart's axes may name - `fieldOptions` itself, or the transform's own output shape once one is enabled (see `chartFieldOptionsFor`). */
+  readonly chartFieldOptions: readonly string[];
   readonly category: string;
   readonly setCategory: (value: string) => void;
   readonly value: string;
@@ -164,6 +191,12 @@ export function usePanelFields(): PanelFields {
 
   const componentOptions = componentOptionsFor(entry);
   const fieldOptions = fieldOptionsFor(entry);
+  const chartFieldOptions = chartFieldOptionsFor(
+    fieldOptions,
+    transformEnabled,
+    groupBy,
+    aggregate,
+  );
 
   const setComponent = guardedSetter(
     (candidate): candidate is Component => componentOptions.some((option) => option === candidate),
@@ -193,6 +226,7 @@ export function usePanelFields(): PanelFields {
     setComponent,
     componentOptions,
     fieldOptions,
+    chartFieldOptions,
     category,
     setCategory,
     value,

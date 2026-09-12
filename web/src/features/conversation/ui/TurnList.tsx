@@ -4,7 +4,14 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { JSX, ReactNode } from "react";
 
-import { Provenance, RenderedResult, ResultChoice, ResultForm } from "@/entities/rendering";
+import {
+  Provenance,
+  RenderedResult,
+  ResultChart,
+  ResultChoice,
+  ResultForm,
+  rowsFromData,
+} from "@/entities/rendering";
 import type { Component, PlanResult } from "@/shared/api/client";
 
 import type { Turn } from "../model/turn";
@@ -17,6 +24,8 @@ import type { Turn } from "../model/turn";
 export interface SaveControlSlotProps {
   readonly source: NonNullable<PlanResult["source"]>;
   readonly component: Component;
+  /** The answer's own `view` (only a chart-hinted result carries one), forwarded so saving it carries the axes too (AC-P-105). */
+  readonly view?: PlanResult["view"];
   readonly defaultTitle: string;
 }
 
@@ -207,17 +216,19 @@ function AnswerResult({
 }
 
 /**
- * The `kind: "result"` branches of `AnswerResult` - `table` and `detail` -
- * split into their own function so `AnswerResult` stays under
+ * The `kind: "result"` branches of `AnswerResult` - `table`, `detail` and
+ * `chart` - split into their own function so `AnswerResult` stays under
  * `max-lines-per-function`. Returns null for a `component`/`data`
  * combination this deployment's contract allows but that carries none of
- * what either widget needs, so the caller falls through to `AnswerResult`'s
- * own generic fallback instead of this one duplicating it.
+ * what any of the three widgets needs, so the caller falls through to
+ * `AnswerResult`'s own generic fallback instead of this one duplicating it.
  *
- * Each branch also draws the `renderSaveControl` slot (AC-W-101) whenever
- * the result carries a `source` to save - a `table` result always does; a
- * `detail` result only sometimes does, the same condition `Provenance`
- * above it already checks. Nothing is drawn there when no slot was given.
+ * `chart` only reaches here when the contract declares `x-ui-hint.chart`
+ * (`domain.Render`); the result then carries `view.chart` - axes only,
+ * never a transform (AC-P-105). Each branch also draws the
+ * `renderSaveControl` slot (AC-W-101) when the result has a `source` to
+ * save - `chart` forwards its own `view` too, so saving carries the
+ * contract's axes onto the new panel (AC-P-105's second half).
  */
 function renderResultAnswer(
   result: PlanResult,
@@ -250,6 +261,34 @@ function renderResultAnswer(
               component: result.component,
               defaultTitle: originalQuery,
             })}
+      </Paper>
+    );
+  }
+
+  if (
+    result.component === "chart" &&
+    result.source !== undefined &&
+    result.data !== undefined &&
+    result.view?.chart !== undefined
+  ) {
+    const chart = result.view.chart;
+
+    return (
+      <Paper elevation={1} sx={{ p: 2 }}>
+        <Provenance source={result.source} />
+        <ResultChart
+          data={rowsFromData(result.data)}
+          category={chart.category}
+          value={chart.value}
+          kind={chart.kind}
+          title={originalQuery}
+        />
+        {renderSaveControl?.({
+          source: result.source,
+          component: result.component,
+          view: result.view,
+          defaultTitle: originalQuery,
+        })}
       </Paper>
     );
   }

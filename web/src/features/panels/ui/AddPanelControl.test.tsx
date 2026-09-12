@@ -193,10 +193,15 @@ describe("AddPanelControl", () => {
     await user.click(await screen.findByRole("button", { name: "追加" }));
 
     expect(await screen.findByRole("button", { name: "パネルを追加" })).toBeTruthy();
+    // "keyword" is optional and nobody typed into it - `compactArgs`
+    // (`usePanelBuilder.ts`) drops it rather than posting it as an empty
+    // string, the same way an unfilled optional query parameter has to be
+    // omitted for a real enum parameter to invoke without error (see
+    // `AddPanelControlArgs.test.tsx`).
     expect(addPanel).toHaveBeenCalledWith("ws-1", {
       service: "inventory",
       operationId: "ListInventoryItems",
-      args: { keyword: "" },
+      args: {},
       component: "table",
       title: "在庫一覧",
     });

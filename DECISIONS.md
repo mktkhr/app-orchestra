@@ -2574,3 +2574,93 @@ for the same reason on `import/max-dependencies`, now that it also hosts
 it to local state (`useAddedPanels`) rather than re-fetching the whole
 workspace - the panel `POST /api/workspaces/{id}/panels` returns is already
 everything `PanelResult` needs to draw it.
+
+## 2026-09-13 Dashboard Task 7: closing the two gaps end to end found
+
+**Context.** `docs/plans/dashboard.md` Task 7 asked for the whole
+subproject's journey against the built product, and to check first that
+every acceptance criterion in `docs/specs/dashboard.md` section 10 had a
+test actually running in CI - "this is the task that covers it" if one did
+not. Two real gaps turned up doing that check, both because Tasks 2-6's own
+unit/acceptance tests each exercised their own layer in isolation and never
+drove the whole stack from the chat screen or the panel builder the way a
+person would.
+
+**Gap 1: a chart-hinted chat answer never drew.** AC-P-105 has two halves -
+"draws as a chart from the chat" and "a panel saved from that answer
+carries the contract's axes". `TurnList.tsx`'s `renderResultAnswer`
+(`features/conversation`) only ever matched `component === "table"` or
+`"detail"`; a `chart` component fell through to the generic "this answer
+carries nothing to draw" fallback, and `SaveToWorkspaceControl`/
+`useSaveToWorkspace` never accepted a `view` at all, so even a chart that
+did draw would save a panel with none. **Decision.** Add a third branch to
+`renderResultAnswer` for `component === "chart"` with `view.chart` set,
+drawing `ResultChart` over `rowsFromData(result.data)` the same way
+`PanelResult.tsx` already does for a saved panel; thread the result's own
+`view` through `SaveControlSlotProps` and into `useSaveToWorkspace`/
+`SaveToWorkspaceControl` as an optional prop, copied onto
+`POST /api/workspaces/{id}/panels` exactly as `source`/`component` already
+are. **Consequences.** `Conversation.test.tsx`'s own chart coverage lives in
+a sibling file, `ConversationChart.test.tsx` - the parent file was already
+at its 300-line budget - and `SaveToWorkspaceControl.test.tsx` gained a
+case pinning the view round trip.
+
+**Gap 2: a transform's own chart could not be built at all.** `usePanelFields.ts`'s
+chart axis pickers (`category`/`value`) always offered `fieldOptionsFor(entry)`
+
+- the raw response's own fields - never aware that `applyTransform`
+  (`entities/rendering/lib/transform.ts`) replaces every row with exactly two
+  keys, `transform.groupBy` and the aggregate's own name. Manually verified
+  against the built product (`services/platform/bin/api`, real
+  `ListInventoryItems`): building a panel with a transform (`groupBy: status,
+aggregate: count`) and a chart whose value axis named any real field (there
+  is no field literally called `count` on an inventory item) invoked fine at
+  save time but failed every later refresh with `usecase.validateEnumArg`-style
+  "is not a valid value" from `ResultChart` silently skipping every row as
+  "not a number" - the exact journey this task's own browser spec needs
+  ("a list operation with a group-by and a bar chart, see it draw") could not
+  be built through the UI at all. **Decision.** `chartFieldOptionsFor`
+  (`usePanelFields.ts`) narrows the chart's own axis options to
+  `[groupBy, aggregate]` once a transform is enabled, leaving `fieldOptions`
+  itself (still used for the transform's own `groupBy`/`aggregateField`
+  pickers) untouched. **Consequences.** `AddPanelControlTransform.test.tsx`
+  (a new file, kept separate from `AddPanelControl.test.tsx` for the same
+  line-budget reason as gap 1's test) pins both the narrowed option list and
+  a full save with a working transform+chart combination.
+
+**Gap 2b, found alongside it: an untouched optional argument broke every panel.**
+While chasing gap 2 with the real inventory service, `POST`ing a panel over
+`ListInventoryItems` with its optional `status` argument left untouched
+also failed every refresh: `useFormValues`'s own `seedValue` seeds an
+untouched optional string/enum field to `""`, and that empty string was
+posted as the argument's own value, which `usecase.validateEnumArg` (a real
+enum's `""` is never one of its declared values) rejects outright - a panel
+built without ever touching an optional filter could never draw, which is
+the common case, not an edge one. **Decision.** `compactArgs` in
+`usePanelBuilder.ts` drops any argument whose value is still `""` and whose
+key is not in the entry's own `schema.required`, right before
+`POST /api/workspaces/{id}/panels` - an omitted optional argument, not an
+explicit empty one. A required field's own `""` is left alone: that gap
+belongs to `missingBeforeSave`, not to this. **Consequences.**
+`AddPanelControl.test.tsx`'s pre-existing "posts no transform" test changed
+its own pinned expectation from `args: { keyword: "" }` to `args: {}` -
+`keyword` was never a real backend field, so the old assertion was pinning
+the bug, not a real behaviour - and a new `AddPanelControlArgs.test.tsx`
+pins the fix against a schema shaped like a real enum parameter. Verified
+directly against the built platform and inventory binaries
+(`POST /api/invoke` with `args: {}` returns the full item list; with
+`args: {"status": ""}` it 400s) before and after the fix, not only through
+the mocked unit tests.
+
+**Where the journey itself lives.** `e2e/src/dashboard.test.ts` (the
+catalogue → panel → read-back round trip, AC-P-101/102/103/104) and
+`e2e/src/dashboard-permissions.test.ts` (AC-P-107, split out once the first
+file reached its own line budget) are the process-level suite;
+`e2e/browser/dashboard.spec.ts` is the browser one - sign in, create a
+workspace from the drawer directly (no question asked, per P8), build a
+panel over `ListInventoryItems` with a group-by-status transform and a bar
+chart entirely from the catalogue, see four bars draw, reload the page, and
+see the same four bars draw again from the saved panel. Neither suite wires
+`ORCHESTRA_PLAN_FIXTURES`: nothing in either journey asks a question, so
+the stub planner has no part in it, which is P8's own point made
+executable.

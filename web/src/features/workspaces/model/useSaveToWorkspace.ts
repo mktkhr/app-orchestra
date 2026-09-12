@@ -9,6 +9,7 @@ import { useSubmission } from "@/shared/lib/useSubmission";
 // `max-dependencies` note on `SaveToWorkspaceControl`.
 export type { Component, WorkspaceSummary };
 export type Source = NonNullable<PlanResult["source"]>;
+export type View = PlanResult["view"];
 
 const LOAD_FAILURE = "ワークスペースの取得に失敗しました。";
 /** Not a real workspace id - the picker's "make one now" option. */
@@ -33,6 +34,14 @@ function initialWorkspaceId(
 interface SaveParams {
   readonly source: Source;
   readonly component: Component;
+  /**
+   * The result's own `view`, when it carried one - a contract's
+   * `x-ui-hint.chart` axes, never a transform (AC-P-105's second half,
+   * `docs/plans/dashboard.md` Task 7). Copied onto the panel as-is, the
+   * same way `source`/`component` already are: nothing here computes a
+   * view, it only forwards the one the answer already had.
+   */
+  readonly view: View;
   readonly title: string;
   readonly workspaceId: string;
   readonly newWorkspaceName: string;
@@ -64,6 +73,7 @@ async function performSave(params: SaveParams): Promise<{ id: string; name: stri
     args: params.source.args ?? {},
     component: params.component,
     title: params.title.trim(),
+    ...(params.view === undefined ? {} : { view: params.view }),
   });
 
   return target;
@@ -103,6 +113,7 @@ export interface SaveToWorkspace {
 export function useSaveToWorkspace(
   source: Source,
   component: Component,
+  view: View,
   defaultTitle: string,
   defaultWorkspaceId?: string,
 ): SaveToWorkspace {
@@ -147,6 +158,7 @@ export function useSaveToWorkspace(
     const target = await performSave({
       source,
       component,
+      view,
       title,
       workspaceId,
       newWorkspaceName,
