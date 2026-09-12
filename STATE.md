@@ -4,22 +4,48 @@ _Last updated: 2026-09-12_
 
 ## Summary
 
-**Both vertical slices are done, and the third (authentication and
-authorisation) has its first three tasks.** `docs/plans/orchestration.md`'s
-seventeen tasks, `docs/plans/workspaces.md`'s eight, and now
-`docs/plans/auth.md`'s Tasks 0-2: accounts, sessions and permissions exist
-in the same SQLite file workspaces already use; the catalogue narrows to
-the signed-in person before the planner or `/api/invoke` ever sees it; and
-a person can sign in. `internal/adapter/auth/local` checks a name and
-password against argon2id-hashed rows and seeds the first admin, once, from
+**All three subprojects are done: `docs/plans/orchestration.md`'s seventeen
+tasks, `docs/plans/workspaces.md`'s eight, and now every one of
+`docs/plans/auth.md`'s seven (Tasks 0-6).** Accounts, sessions and
+permissions live in the same SQLite file workspaces already use; the
+catalogue narrows to the signed-in person before the planner or
+`/api/invoke` ever sees it; a person signs in, and an admin reads every
+account and grants or revokes what each one may call, per operation, from
+a screen in the drawer only an admin sees (the endpoints refuse anybody
+else regardless). `internal/adapter/auth/local` checks a name and password
+against argon2id-hashed rows and seeds the first admin, once, from
 `ORCHESTRA_ADMIN_PASSWORD` (required at startup, the same as
 `ORCHESTRA_DB_PATH`). `POST`/`GET`/`DELETE /api/session` sign a person in
-(HttpOnly, `SameSite=Lax`, `Secure` cookie carrying an opaque token), report
-who is signed in, and sign them out; a session-resolving middleware in
-`internal/infra/httpserver` answers every other route 401 without one,
-except `GET /api/health`. `make check` is green outside `e2e/`:
-`acceptance-e2e` and `acceptance-browser` are red on 401 as of Task 2, on
-purpose - Task 6's own job to fix, per `docs/plans/auth.md`.
+(HttpOnly, `SameSite=Lax`, `Secure` cookie carrying an opaque token,
+configurable off via `ORCHESTRA_SECURE_COOKIE` for a link TLS does not
+secure), report who is signed in, and sign them out; a session-resolving
+middleware in `internal/infra/httpserver` answers every other route 401
+without one, except `GET /api/health`. The web shell shows a sign-in
+screen until a session exists, the signed-in person's name and a
+sign-out control in the bar afterwards, and returns to the sign-in screen
+on any 401 from anywhere.
+
+**Task 6 closed the subproject end to end.** Every existing e2e/browser
+suite now signs in first (`e2e/src/helpers/auth.ts`'s `signIn`/`withSession`
+for the process-level suites, `e2e/browser/helpers/auth.ts`'s
+`signIn`/`signInAsAdmin` for the browser ones), and both needed
+`ORCHESTRA_SECURE_COOKIE=false` added to their platform-starting env - these
+suites run over plain HTTP, where a `Secure` cookie is stored by nobody.
+`e2e/src/auth.test.ts` is the new process-level journey (AC-A-103, AC-A-104,
+AC-A-105): sign in as admin, seed two non-admin accounts through the new
+`ORCHESTRA_SEED_ACCOUNTS` environment variable (mirrors
+`ORCHESTRA_PLAN_FIXTURES` exactly - JSON, decoded in
+`internal/infra/config`, never set in production), grant one of them a
+single service, prove their next question is answered from it and not the
+other, prove `/api/invoke` refuses the other operation the same way an
+unknown one would, and prove a workspace either of them makes is invisible
+to the other. `e2e/browser/auth.spec.ts` drives the same product's sign-in
+→ chat → sign-out → sign-in-screen journey in headless Chromium (AC-A-107).
+`make check` (not `-k`) is fully green, including `acceptance-e2e` and
+`acceptance-browser` - the only two targets that had been allowed to fail
+since Task 2. See `DECISIONS.md`, 2026-09-12 ("Auth Task 6: end to end") for
+every design choice this task made and why, including a `pkill` mistake
+made and corrected while verifying an operation id's casing.
 
 **The nil-store auth bypass is closed.** `requireSession` used to treat a
 nil `SessionUsers` store as "run every request as a fixed stub admin" -

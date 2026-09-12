@@ -95,18 +95,18 @@ type PermissionStore interface {
 
 No HTTP in this task.
 
-- [ ] **Step 1** Write the store tests first: a seeded admin authenticates with
+- [x] **Step 1** Write the store tests first: a seeded admin authenticates with
       the right password and not the wrong one; a session round-trips and then
       does not after deletion; permissions replace wholesale. Run them, expect
       failure.
-- [ ] **Step 2** Add the three tables to the embedded schema. Add
+- [x] **Step 2** Add the three tables to the embedded schema. Add
       `golang.org/x/crypto` and hash with argon2id. Implement until green.
-- [ ] **Step 3** Seed the first admin from `ORCHESTRA_ADMIN_PASSWORD` when the
+- [x] **Step 3** Seed the first admin from `ORCHESTRA_ADMIN_PASSWORD` when the
       database is created. An unset or empty one is an error, like the database
       path: a default password is a way of having none while appearing to.
-- [ ] **Step 4** `make fmt-check services-lint services-test guard-arch
+- [x] **Step 4** `make fmt-check services-lint services-test guard-arch
 guard-coverage` green.
-- [ ] **Step 5** Commit: `feat(platform): keep accounts, sessions and permissions`
+- [x] **Step 5** Commit: `feat(platform): keep accounts, sessions and permissions`
 
 ---
 
@@ -125,15 +125,15 @@ guard-coverage` green.
 
 An admin's catalogue is the whole one; a user's is what their rows name.
 
-- [ ] **Step 1** Write the test: a catalogue of two services and a permission
+- [x] **Step 1** Write the test: a catalogue of two services and a permission
       naming one operation yields a catalogue holding only it; `ToolsFor` over it
       names nothing else; `Find` misses the rest. Run it, expect failure.
-- [ ] **Step 2** Implement `For`. Thread the user through the two usecases.
+- [x] **Step 2** Implement `For`. Thread the user through the two usecases.
       Delete the `TODO(auth)` comment — the seat is filled.
-- [ ] **Step 3** Add the test that `Invoke` refuses an operation the person may
+- [x] **Step 3** Add the test that `Invoke` refuses an operation the person may
       not call with the same error an unknown one gets, and calls nothing.
-- [ ] **Step 4** Go gates green.
-- [ ] **Step 5** Commit: `feat(platform): offer only what the person may call`
+- [x] **Step 4** Go gates green.
+- [x] **Step 5** Commit: `feat(platform): offer only what the person may call`
 
 **Satisfies:** AC-A-103, AC-A-104 at the usecase level.
 
@@ -153,15 +153,15 @@ An admin's catalogue is the whole one; a user's is what their rows name.
 **Produces:** `POST`/`DELETE`/`GET /api/session`, and a middleware that resolves
 the cookie into a user for every other route. `GET /api/health` stays open.
 
-- [ ] **Step 1** Add the paths. `make api-lint`, then `make generate`.
-- [ ] **Step 2** Write the acceptance test: signing in sets a cookie and
+- [x] **Step 1** Add the paths. `make api-lint`, then `make generate`.
+- [x] **Step 2** Write the acceptance test: signing in sets a cookie and
       returns the user; a wrong password is 401 with no cookie; every other
       endpoint is 401 without one; signing out ends it. Run it, expect failure.
-- [ ] **Step 3** Implement. The cookie is HttpOnly and SameSite; the token is
+- [x] **Step 3** Implement. The cookie is HttpOnly and SameSite; the token is
       random and opaque.
-- [ ] **Step 4** `make -k check` — nothing failing but what the frontend has not
+- [x] **Step 4** `make -k check` — nothing failing but what the frontend has not
       caught up with.
-- [ ] **Step 5** Commit: `feat(platform): sign a person in`
+- [x] **Step 5** Commit: `feat(platform): sign a person in`
 
 **Satisfies:** AC-A-101, AC-A-102, AC-A-107 at the platform level.
 
@@ -179,14 +179,14 @@ the cookie into a user for every other route. `GET /api/health` stays open.
 **Produces:** `GET /api/users`, `GET`/`PUT /api/users/{id}/permissions`, refused
 with 403 to anybody who is not an admin.
 
-- [ ] **Step 1** Add the paths. `make api-lint`, `make generate`.
-- [ ] **Step 2** Write the acceptance test: an admin reads the accounts and sets
+- [x] **Step 1** Add the paths. `make api-lint`, `make generate`.
+- [x] **Step 2** Write the acceptance test: an admin reads the accounts and sets
       another person's permissions; that person's next question is answered from
       the service they were just granted; a non-admin gets 403 from both. Run it,
       expect failure.
-- [ ] **Step 3** Implement.
-- [ ] **Step 4** Go gates green.
-- [ ] **Step 5** Commit: `feat(platform): let an admin set what a person may call`
+- [x] **Step 3** Implement.
+- [x] **Step 4** Go gates green.
+- [x] **Step 5** Commit: `feat(platform): let an admin set what a person may call`
 
 **Satisfies:** AC-A-106.
 
@@ -204,12 +204,12 @@ with 403 to anybody who is not an admin.
 **Produces:** a sign-in screen when nobody is signed in, the person's name in
 the bar, and a control to sign out. A 401 from anywhere returns to the screen.
 
-- [ ] **Step 1** Write the test: with a scripted API answering 401, the shell
+- [x] **Step 1** Write the test: with a scripted API answering 401, the shell
       shows the sign-in screen; signing in shows the chat. Run it, expect failure.
-- [ ] **Step 2** Implement. The session is read once at startup and after a
+- [x] **Step 2** Implement. The session is read once at startup and after a
       sign-in; nothing polls.
-- [ ] **Step 3** Web gates green, then `make build` and `make guard-browser`.
-- [ ] **Step 4** Commit: `feat(web): sign in before anything else`
+- [x] **Step 3** Web gates green, then `make build` and `make guard-browser`.
+- [x] **Step 4** Commit: `feat(web): sign in before anything else`
 
 **Satisfies:** AC-A-107 end to end.
 
@@ -230,12 +230,12 @@ or revokes a whole service at once.
 
 The entry is hidden from a non-admin, and the endpoints refuse them anyway.
 
-- [ ] **Step 1** Write the test: an admin sees the entry and a non-admin does
+- [x] **Step 1** Write the test: an admin sees the entry and a non-admin does
       not; checking a service's box grants every operation it holds; saving puts
       them. Run it, expect failure.
-- [ ] **Step 2** Implement.
-- [ ] **Step 3** Web gates green, then `make build` and `make guard-browser`.
-- [ ] **Step 4** Commit: `feat(web): grant and revoke what a person may call`
+- [x] **Step 2** Implement.
+- [x] **Step 3** Web gates green, then `make build` and `make guard-browser`.
+- [x] **Step 4** Commit: `feat(web): grant and revoke what a person may call`
 
 **Satisfies:** AC-A-106 end to end.
 
@@ -254,12 +254,12 @@ The entry is hidden from a non-admin, and the endpoints refuse them anyway.
 in as them, ask a question, see it answered from that service and from no other.
 And a workspace one person makes that another cannot see.
 
-- [ ] **Step 1** Make the existing e2e suites sign in. They will be failing on
+- [x] **Step 1** Make the existing e2e suites sign in. They will be failing on
       401 by now; this is the task that fixes them.
-- [ ] **Step 2** Write the process-level journey. Run it, expect failure, make it
+- [x] **Step 2** Write the process-level journey. Run it, expect failure, make it
       pass.
-- [ ] **Step 3** Write the browser journey.
-- [ ] **Step 4** `make check` in full — every gate green, and the model's log no
+- [x] **Step 3** Write the browser journey.
+- [x] **Step 4** `make check` in full — every gate green, and the model's log no
       longer than it was.
 - [ ] **Step 5** Commit: `test(e2e): answer only what the person may ask`
 

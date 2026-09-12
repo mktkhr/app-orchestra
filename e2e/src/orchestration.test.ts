@@ -1,11 +1,11 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+
+import { signIn, withSession, type Session } from "./helpers/auth";
+import { freePort, startBinary, stop, waitForReady, type RunningService } from "./helpers/process";
 
 /**
  * Process-level end to end suite (AC-E-101).
@@ -29,83 +29,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
  * Ports are picked free at runtime rather than fixed, so this suite cannot
  * collide with a developer's own running processes (8080/8081/8082/5173).
  */
-
-interface RunningService {
-  readonly process: ChildProcess;
-  readonly port: number;
-}
-
-/** A TCP port nothing is listening on right now. */
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-
-      if (address === null || typeof address === "string") {
-        reject(new Error("could not read the allocated port"));
-
-        return;
-      }
-
-      const { port } = address;
-
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
-}
-
-/** Poll url until it answers with a 2xx status, or give up after timeoutMs. */
-async function waitForReady(url: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-
-  for (;;) {
-    try {
-      const response = await fetch(url);
-
-      if (response.ok) return;
-    } catch {
-      // Not listening yet - keep polling.
-    }
-
-    if (Date.now() > deadline) {
-      throw new Error(`${url} did not become ready within ${timeoutMs}ms`);
-    }
-
-    await delay(200);
-  }
-}
-
-/** Start a built binary with the given env merged over the current one. */
-function startBinary(command: string, env: Record<string, string>): ChildProcess {
-  const child = spawn(command, [], {
-    cwd: new URL("..", import.meta.url).pathname,
-    env: { ...process.env, ...env },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  child.on("error", (error) => {
-    throw error;
-  });
-
-  return child;
-}
-
-async function stop(service: RunningService | undefined): Promise<void> {
-  if (service === undefined) return;
-
-  service.process.kill();
-
-  await new Promise<void>((resolve) => {
-    service.process.once("exit", () => {
-      resolve();
-    });
-  });
-}
 
 /**
  * The platform's RunningService, once beforeAll has set it. A helper rather
@@ -163,6 +86,16 @@ function parsePlanResponse(value: unknown): PlanResponseBody {
 let inventory: RunningService | undefined;
 let attendance: RunningService | undefined;
 let platform: RunningService | undefined;
+let session: Session | undefined;
+
+/** The admin Session, once beforeAll has signed in. See requirePlatform. */
+function requireSession(): Session {
+  if (session === undefined) {
+    throw new Error("signing in did not happen");
+  }
+
+  return session;
+}
 
 beforeAll(async () => {
   const [inventoryPort, attendancePort, platformPort] = await Promise.all([
@@ -204,14 +137,20 @@ beforeAll(async () => {
     ORCHESTRA_PLAN_FIXTURES: JSON.stringify(planFixtures),
     ORCHESTRA_DB_PATH: dbPath,
     // ORCHESTRA_ADMIN_PASSWORD has no default either
-    // (internal/infra/config.ErrMissingAdminPassword) - a fixed value is
-    // fine here, since this suite does not yet sign in (that is Task 6).
+    // (internal/infra/config.ErrMissingAdminPassword).
     ORCHESTRA_ADMIN_PASSWORD: "e2e-admin-password",
+    // This suite runs over plain HTTP (127.0.0.1, no TLS): a Secure
+    // cookie would never be stored, and signing in below would appear to
+    // work while the session never actually carried (docs/plans/auth.md
+    // Task 6, Step 1; internal/infra/config.Config.SecureCookie).
+    ORCHESTRA_SECURE_COOKIE: "false",
   });
 
   platform = { process: platformProcess, port: platformPort };
 
   await waitForReady(`http://127.0.0.1:${platformPort}/api/health`, 10_000);
+
+  session = await signIn(`http://127.0.0.1:${platformPort}`, "admin", "e2e-admin-password");
 }, 30_000);
 
 afterAll(async () => {
@@ -222,11 +161,14 @@ describe("the built product answers a question end to end (AC-E-101)", () => {
   it("plans a list question against the running inventory service and renders a table", async () => {
     const port = requirePlatform().port;
 
-    const response = await fetch(`http://127.0.0.1:${port}/api/plan`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query: "在庫の一覧を見せて" }),
-    });
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/plan`,
+      withSession(requireSession(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "在庫の一覧を見せて" }),
+      }),
+    );
 
     expect(response.status).toBe(200);
 

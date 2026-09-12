@@ -129,8 +129,15 @@ person.
   (`docs/requirements.md` section 5); running Keycloak would test Keycloak.
 - **Sharing a workspace** (U-9), still.
 - **Anything an admin does besides reading accounts and setting permissions.**
-  No creating accounts in the UI, no resetting passwords, no deleting people.
-  Each is a small screen and none of them is what this proves.
+  No creating accounts through the UI or the API, no resetting passwords, no
+  deleting people. Each is a small screen (or route) and none of them is
+  what this proves. `pkg/app.Config.SeedAccounts` puts a non-admin account
+  in place before a process ever serves a request - the same moment
+  `ORCHESTRA_ADMIN_PASSWORD` seeds the first admin, and, since
+  `docs/plans/auth.md` Task 6, reachable from a built binary too via
+  `ORCHESTRA_SEED_ACCOUNTS` (`internal/infra/config`) - which is not a
+  second, softer version of the thing excluded here: nothing over HTTP
+  creates an account either way (`DECISIONS.md`, 2026-09-12).
 - **Auditing who called what.** `docs/requirements.md` section 7 puts it out of
   scope for the PoC, and it is a feature of its own.
 

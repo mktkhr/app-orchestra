@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { defineConfig, devices } from "@playwright/test";
 
+import { ADMIN_PASSWORD } from "./browser/helpers/constants";
+
 /**
  * Browser-driven end-to-end tests.
  *
@@ -18,6 +20,11 @@ import { defineConfig, devices } from "@playwright/test";
  * The platform never calls a real LLM here: no ORCHESTRA_LLM_BASE_URL is
  * set, so it falls back to the stub planner over ORCHESTRA_PLAN_FIXTURES -
  * see e2e/src/orchestration.test.ts for why that variable exists.
+ *
+ * Every route but GET /api/health and POST /api/session now answers 401
+ * without a session (docs/specs/auth.md, AC-A-102), so every spec signs in
+ * first through browser/helpers/auth.ts's signInAsAdmin
+ * (docs/plans/auth.md, Task 6, Step 1).
  */
 const inventoryPort = 18083;
 const attendancePort = 18084;
@@ -74,9 +81,15 @@ export default defineConfig({
         ORCHESTRA_PLAN_FIXTURES: JSON.stringify(planFixtures),
         ORCHESTRA_DB_PATH: dbPath,
         // ORCHESTRA_ADMIN_PASSWORD has no default either
-        // (internal/infra/config.ErrMissingAdminPassword) - a fixed value is
-        // fine here, since this suite does not yet sign in (that is Task 6).
-        ORCHESTRA_ADMIN_PASSWORD: "e2e-admin-password",
+        // (internal/infra/config.ErrMissingAdminPassword). Kept in one
+        // place (browser/helpers/constants.ts) since every spec now signs
+        // in as this account (docs/plans/auth.md, Task 6).
+        ORCHESTRA_ADMIN_PASSWORD: ADMIN_PASSWORD,
+        // This suite runs over plain HTTP (127.0.0.1, no TLS): a Secure
+        // cookie is never stored by the browser, and signing in below
+        // would appear to work while the session never actually carried
+        // (internal/infra/config.Config.SecureCookie).
+        ORCHESTRA_SECURE_COOKIE: "false",
       },
     },
   ],

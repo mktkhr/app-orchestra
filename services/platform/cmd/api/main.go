@@ -28,6 +28,7 @@ func main() {
 		DBPath:        cfg.DBPath,
 		SecureCookie:  cfg.SecureCookie,
 		AdminPassword: cfg.AdminPassword,
+		SeedAccounts:  toAppSeedAccounts(cfg.SeedAccounts),
 	})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))
@@ -82,6 +83,20 @@ func toAppAnswers(answers []config.Answer) []app.Answer {
 	out := make([]app.Answer, 0, len(answers))
 	for _, a := range answers {
 		out = append(out, app.Answer{Param: a.Param, Value: a.Value})
+	}
+
+	return out
+}
+
+// toAppSeedAccounts adapts config.SeedAccount to app.SeedAccount. See
+// toAppServices; same reasoning, and see
+// config.Config.SeedAccounts/app.Config.SeedAccounts for why this exists
+// at all - production never sets ORCHESTRA_SEED_ACCOUNTS, so this path is
+// empty on every real deployment.
+func toAppSeedAccounts(accounts []config.SeedAccount) []app.SeedAccount {
+	out := make([]app.SeedAccount, 0, len(accounts))
+	for _, a := range accounts {
+		out = append(out, app.SeedAccount{Name: a.Name, Password: a.Password, Role: a.Role})
 	}
 
 	return out

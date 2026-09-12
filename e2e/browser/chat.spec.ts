@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { signInAsAdmin } from "./helpers/auth";
+
 /**
  * Browser-driven end to end (AC-E-101).
  *
@@ -9,10 +11,13 @@ import { expect, test } from "@playwright/test";
  * platform answers through the stub planner (no real LLM is ever called by
  * `make check`): `e2e/playwright.config.ts` feeds it the one question this
  * spec asks through `ORCHESTRA_PLAN_FIXTURES`.
+ *
+ * Signs in as admin first (`helpers/auth.ts`) - every route but
+ * `GET /api/health` and `POST /api/session` now answers 401 without a
+ * session (docs/specs/auth.md, AC-A-102).
  */
 test("clicking the list example question renders a table (AC-E-101)", async ({ page }) => {
-  await page.goto("/");
-  await page.waitForLoadState("networkidle");
+  await signInAsAdmin(page);
 
   const example = page.getByRole("button", { name: "在庫の一覧を見せて" });
 

@@ -82,6 +82,15 @@ type PlanFixture struct {
 	Args        map[string]any `json:"args"`
 }
 
+// SeedAccount is one entry of ORCHESTRA_SEED_ACCOUNTS, decoded straight
+// into the shape pkg/app.SeedAccount takes - see that type's, and
+// Config.SeedAccounts', doc comments for what this exists for.
+type SeedAccount struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
 // Config is the platform's runtime configuration.
 type Config struct {
 	// Port is the TCP port the HTTP server listens on.
@@ -138,6 +147,18 @@ type Config struct {
 	// keeping the wire honest. Anything anybody else can reach wants TLS
 	// and this left alone.
 	SecureCookie bool
+	// SeedAccounts configures pkg/app.Config.SeedAccounts, read as a JSON
+	// array from ORCHESTRA_SEED_ACCOUNTS. Production never sets this - an
+	// operator has no route to it, since docs/specs/auth.md section 8
+	// keeps account creation out of the UI and API alike. It exists for
+	// the same reason PlanFixtures does: a process started from the built
+	// binary (e2e/src/auth.test.ts, e2e/browser/auth.spec.ts) needs a
+	// non-admin account to sign in as, and has no in-process Go test's
+	// access to pkg/app.Config to seed one through directly. Setting an
+	// environment variable is not a network route - the exclusion this
+	// mirrors is about not exposing account creation over HTTP, which this
+	// does not do.
+	SeedAccounts []SeedAccount
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
@@ -174,6 +195,13 @@ func Load() (Config, error) {
 	}
 
 	cfg.PlanFixtures = fixtures
+
+	seedAccounts, err := parseSeedAccounts(os.Getenv("ORCHESTRA_SEED_ACCOUNTS"))
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.SeedAccounts = seedAccounts
 
 	dbPath, ok := os.LookupEnv("ORCHESTRA_DB_PATH")
 	if !ok || dbPath == "" {
@@ -264,4 +292,20 @@ func parsePlanFixtures(raw string) ([]PlanFixture, error) {
 	}
 
 	return fixtures, nil
+}
+
+// parseSeedAccounts reads ORCHESTRA_SEED_ACCOUNTS: a JSON array of
+// SeedAccount, or empty for none. See Config.SeedAccounts' doc comment for
+// why this exists.
+func parseSeedAccounts(raw string) ([]SeedAccount, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+
+	var accounts []SeedAccount
+	if err := json.Unmarshal([]byte(raw), &accounts); err != nil {
+		return nil, fmt.Errorf("ORCHESTRA_SEED_ACCOUNTS: %w", err)
+	}
+
+	return accounts, nil
 }

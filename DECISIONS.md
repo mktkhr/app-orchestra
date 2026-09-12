@@ -1536,3 +1536,120 @@ targets allowed to fail, unchanged from before this decision. No real LLM
 call is made by any of this: `docker logs llama-swap`'s
 `POST /v1/chat/completions` count was identical before and after every
 test run this decision's tests exercise.
+
+## 2026-09-12 Auth Task 6: end to end
+
+**Context.** `docs/plans/auth.md`'s last task: make the existing e2e/browser
+suites sign in (they were failing on 401 since Task 2), and write the
+process-level and browser journeys proving AC-A-103, AC-A-104 and AC-A-105
+end to end. Two things this task needed had no answer yet: how a
+process-level suite driving a _built binary_ carries a session cookie
+across requests (Go's acceptance tests already had `net/http/cookiejar`;
+Node's `fetch` keeps none), and how to get a non-admin account into that
+binary's database at all, since `docs/specs/auth.md` section 8 keeps
+account creation out of both the UI and the API.
+
+**Decision 1: a cookie-carrying `fetch` helper.** `e2e/src/helpers/auth.ts`
+exports `signIn(baseUrl, name, password)` (posts `/api/session`, reads the
+`Set-Cookie` response header by hand, returns `{ cookie }`) and
+`withSession(session, init?)` (merges that cookie into a `RequestInit` via
+`new Headers(init.headers)` - spreading `init.headers` directly trips
+`no-misused-spread`, since `HeadersInit` can also be an array of tuples or
+a `Headers` instance, neither of which spreads onto a plain object the way
+a caller would expect). One implementation, shared by `orchestration.test.ts`,
+`workspaces.test.ts` and the new `auth.test.ts`, rather than three copies of
+the same `Set-Cookie` parsing.
+
+**Decision 2: `ORCHESTRA_SEED_ACCOUNTS`, a new environment variable, mirroring
+`ORCHESTRA_PLAN_FIXTURES` exactly.** `pkg/app.Config.SeedAccounts` already
+existed (Task 3's own acceptance tests use it directly, being Go code that
+can build a `pkg/app.Config` by hand) with a doc comment saying cmd/api
+never sets it. A process-level e2e suite starts the _built_ `services/platform/bin/api`
+binary, though, which has no access to `pkg/app.Config` at all - only to
+`cmd/api`'s environment. The same gap already existed for the stub
+planner's fixture table, and `ORCHESTRA_PLAN_FIXTURES` is exactly the
+precedent this follows: a JSON-encoded array, decoded in
+`internal/infra/config.Load` into a new `config.SeedAccount` slice,
+wired through `cmd/api/main.go`'s `toAppSeedAccounts` into
+`app.Config.SeedAccounts`, and never set by anything other than a test.
+Test-first: `config_test.go` gained
+`TestLoadSeedAccountsDefaultsToEmpty`/`TestLoadParsesSeedAccounts`/
+`TestLoadRejectsMalformedSeedAccounts` before the field, the parser and the
+wiring existed, confirmed red, then green.
+
+This does **not** reopen `docs/specs/auth.md` section 8's exclusion ("no
+account creation through the UI"). Nothing over HTTP creates an account -
+`ORCHESTRA_SEED_ACCOUNTS` is read once, before the process ever serves a
+request, the same moment `ORCHESTRA_ADMIN_PASSWORD` already seeds the first
+admin. Section 8 was reworded slightly ("through the UI or the API") to
+name what actually stays excluded, since the previous wording ("through the
+UI") could be misread as leaving a backdoor through the API instead - it
+never did, and now says so. No behaviour changed; the doc comments on
+`pkg/app.Config.SeedAccounts` and `seedAccounts` (`pkg/app/app.go`) were
+updated to describe the new cmd/api path alongside the existing direct one.
+
+**Decision 3: the browser suites share one sign-in helper and one admin
+password constant.** `e2e/browser/helpers/auth.ts`'s `signIn`/`signInAsAdmin`
+drive the real sign-in form (fill name/password, click submit, wait for
+the チャット heading) rather than reaching around it - these are
+browser-driven specs, and the sign-in screen is exactly what Task 4 built
+for a person to use. `e2e/browser/helpers/constants.ts` holds
+`ADMIN_PASSWORD` once, imported by both `e2e/playwright.config.ts`'s
+`webServer` env and `signInAsAdmin`, so the two cannot drift into two
+different literals that happen to still match by luck. `chat.spec.ts` and
+`workspace.spec.ts` were each missing exactly one line: their opening
+`page.goto("/")` became `await signInAsAdmin(page)`, since `AuthGate` now
+shows the sign-in screen instead of the chat until a session exists
+(AC-A-102). The new `auth.spec.ts` drives the journey Task 6's own plan
+names for the browser: sign in, see the chat, sign out, and a reload still
+shows the sign-in screen (AC-A-107).
+
+**Decision 4: `ORCHESTRA_SECURE_COOKIE=false` reaches every e2e/browser
+process.** `525da74` (`docs/plans/auth.md`, "let the session cookie reach a
+link TLS did not secure") made the session cookie's `Secure` attribute
+configurable, default on. Every e2e/browser suite runs the platform over
+plain `http://127.0.0.1`, where a `Secure` cookie is stored by nobody - a
+sign-in would appear to succeed and every subsequent request would arrive
+with no session at all, a much more confusing failure than 401 from the
+first request. Added to `e2e/playwright.config.ts`'s `webServer` env and to
+both process-level suites' own platform-starting env
+(`orchestration.test.ts`, `workspaces.test.ts`, `auth.test.ts`).
+`harness/quality/browser/playwright.config.ts` (the harness's own `guard-a11y`/
+`guard-layout` gates) was deliberately left alone: those gates measure the
+sign-in screen itself (nobody signs in there, on purpose, per
+`docs/plans/auth.md`'s own Task 4 note), so no session is ever set for a
+`Secure` attribute to matter to.
+
+**Decision 5: the three process-level suites now share `helpers/process.ts`
+and `helpers/wire.ts`.** `orchestration.test.ts` and `workspaces.test.ts`
+each carried their own copy of `freePort`/`waitForReady`/`startBinary`/`stop`;
+a comment in `workspaces.test.ts` had argued this was fine for two files.
+Adding a third (`auth.test.ts`) made that argument's own math work out
+differently - three copies is real duplication, and `auth.test.ts` on its
+own tripped `eslint(max-lines)` (300) besides. Extracted verbatim into
+`e2e/src/helpers/process.ts`; all three suites import it now.
+`e2e/src/helpers/wire.ts` extracts `isRecord`/`asRecord`, a runtime
+narrowing pattern each of these three files already used privately, into
+a fourth, small module - which is what let `auth.test.ts` fit under the
+line-count ceiling without giving up how it parses a JSON response body.
+
+**Verified.** `make -k check` was run to iterate, and `make check` (no `-k`,
+after the last edit) was run once at the end and reported every gate
+green, including `acceptance-e2e` and `acceptance-browser`, which had been
+the only two allowed to fail since Task 2. `docker logs llama-swap 2>&1 |
+grep -c 'POST /v1/chat/completions'` read the same count before this task's
+first edit and after its last `make check` run - no real LLM call was ever
+made. Ports 8080/8081/8082/5173 (the developer's own running processes)
+and 11435 (llama-swap) were still listening afterwards.
+
+**A mistake made and corrected during this task.** While confirming a
+served operation id's casing, `pkill -f "bin/api"` was run to stop a
+throwaway `curl` probe's own background process - `pkill` by pattern
+matched every process with `bin/api` in its command line, which also
+killed the developer's own inventory (8081) and attendance (8082)
+processes, in violation of this task's own instruction never to touch
+them. Both were restarted immediately, on the same ports, from the same
+built binaries, before continuing. Noted here, and in the task's final
+report, rather than left silent: the fix for next time is to `kill` a
+specific PID captured at spawn time, never a broad `pkill -f` pattern,
+anywhere near ports something else depends on.

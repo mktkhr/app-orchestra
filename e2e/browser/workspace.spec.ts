@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { signInAsAdmin } from "./helpers/auth";
+
 /**
  * Browser-driven workspace journey (AC-W-101, AC-W-102, AC-W-103,
  * docs/plans/workspaces.md Task 7 Step 3): ask, save, reopen, refresh.
@@ -10,14 +12,16 @@ import { expect, test } from "@playwright/test";
  * (no real LLM is ever called by `make check`). `ORCHESTRA_DB_PATH` in that
  * same config is a file inside its own temporary directory, so this spec's
  * workspace does not collide with another suite's.
+ *
+ * Signs in as admin first (`helpers/auth.ts`) - see `chat.spec.ts`'s own
+ * comment on why.
  */
 test("asking, saving, reopening and refreshing a workspace panel (AC-W-101, AC-W-102, AC-W-103)", async ({
   page,
 }) => {
   const workspaceName = `在庫ワークスペース-${Date.now()}`;
 
-  await page.goto("/");
-  await page.waitForLoadState("networkidle");
+  await signInAsAdmin(page);
 
   // Ask, the same way chat.spec.ts does.
   const example = page.getByRole("button", { name: "在庫の一覧を見せて" });

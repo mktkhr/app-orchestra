@@ -157,15 +157,19 @@ type Config struct {
 	// ORCHESTRA_ADMIN_PASSWORD either).
 	AdminPassword string
 	// SeedAccounts puts each account in place - by name, only when it does
-	// not already exist - once the admin account above is seeded. Never
-	// set by cmd/api (internal/infra/config.Load has no env var for it):
-	// this is not a second, softer way to create an account over the wire,
-	// it is how a caller of pkg/app.New itself - an acceptance test that
-	// needs a non-admin account to sign in as, most likely - puts one in
-	// place through the composition root rather than through a route
-	// (docs/specs/auth.md, section 8: account creation stays out of the
-	// UI; this does not put it back in, since nothing exposes it over
-	// HTTP).
+	// not already exist - once the admin account above is seeded. Set
+	// directly by a Go acceptance test that needs a non-admin account to
+	// sign in as, or by cmd/api when ORCHESTRA_SEED_ACCOUNTS names one
+	// (internal/infra/config.Config.SeedAccounts) - the latter exists only
+	// so a process started from the built binary
+	// (e2e/src/auth.test.ts, e2e/browser/auth.spec.ts) can do the same
+	// thing a Go test does directly, since it never sees pkg/app.Config.
+	// Either way this is not a second, softer way to create an account
+	// over the wire: it is how a caller of pkg/app.New, or the operator
+	// starting the process, puts one in place through the composition
+	// root rather than through a route (docs/specs/auth.md, section 8:
+	// account creation stays out of the UI and the API; setting an
+	// environment variable before the process starts serving is neither).
 	SeedAccounts []SeedAccount
 }
 
@@ -405,12 +409,13 @@ func newAuth(cfg *Config) (usecase.Authenticator, usecase.SessionStore, *sqlites
 // seedAccounts puts every SeedAccount in accounts in place - creating each
 // one, by name, when it does not already exist (local.EnsureAccount) -
 // once the admin account is already seeded. Not reachable through any
-// HTTP route: cmd/api's Config never sets SeedAccounts (nothing in
-// internal/infra/config.Load populates it), so this only ever runs for a
-// caller of pkg/app.New that builds one into its own Config directly - the
-// platform's composition root, the same seam AdminPassword itself uses,
-// not a network-reachable "anyone can register" endpoint
-// (docs/specs/auth.md, section 8: no account creation through the UI).
+// HTTP route: cmd/api only ever populates Config.SeedAccounts from
+// ORCHESTRA_SEED_ACCOUNTS, an environment variable read once before the
+// process serves its first request, never set in production
+// (internal/infra/config.Config.SeedAccounts) - the platform's
+// composition root, the same seam AdminPassword itself uses, not a
+// network-reachable "anyone can register" endpoint (docs/specs/auth.md,
+// section 8: no account creation through the UI or the API).
 func seedAccounts(ctx context.Context, users *sqlitestore.Users, accounts []SeedAccount) error {
 	for _, account := range accounts {
 		if _, err := local.EnsureAccount(ctx, users, account.Name, account.Password, domain.Role(account.Role)); err != nil {

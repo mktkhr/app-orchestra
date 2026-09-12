@@ -4,29 +4,14 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-`docs/plans/auth.md`, the third subproject. Task 0 (accounts, sessions and
-permissions exist), Task 1 (the catalogue narrows to a person) and Task 2
-(signing in) are done. Non-`e2e`/browser gates are green; `acceptance-e2e`
-and `acceptance-browser` are red as of Task 2 - expected, and Task 6's job
-to fix (see below). Next:
-
-- **Task 3** - the admin's endpoints (`GET /api/users`,
-  `GET`/`PUT /api/users/{id}/permissions`).
-- **Task 4** - the sign-in screen. Also: remove `signInAsAdmin` from
-  `harness/quality/browser/a11y.spec.ts` and `layout.spec.ts`'s own
-  `page.goto("/")` calls once this lands a real one there (`DECISIONS.md`,
-  2026-09-12).
-- **Task 5** - the admin's screen (grant/revoke per service).
-- **Task 6** - end to end: the existing e2e suites sign in (`e2e/src/*.test.ts`,
-  `e2e/browser/*.spec.ts` are currently red on 401, on purpose - Task 2's
-  own plan says fixing them is this task's job), and the full journey
-  (grant a service, ask a question, see it answered from only that
-  service) gets a test.
+Nothing. `docs/plans/orchestration.md`, `docs/plans/workspaces.md` and
+`docs/plans/auth.md` are all closed - every task, every acceptance
+criterion in `docs/specs/*.md` section 9/10 has a test that runs in CI, and
+`make check` (not `-k`) is fully green.
 
 ## Next
 
-Everything remaining sits outside the two vertical slices and outside
-`docs/plans/auth.md`'s own tasks above:
+Everything remaining sits outside all three subprojects above:
 
 1. Multi-turn conversational context. Today's planner makes one call per
    request (D8); nothing remembers a prior turn across a `/api/plan` call.
@@ -40,6 +25,20 @@ Everything remaining sits outside the two vertical slices and outside
 
 ## Done
 
+- `docs/plans/auth.md`, Task 6: end to end. Every existing e2e/browser
+  suite now signs in first; `e2e/src/auth.test.ts` proves AC-A-103,
+  AC-A-104 and AC-A-105 at the process level (grant one service, ask a
+  question, see it answered from only that service; a workspace one person
+  makes is invisible to another) and `e2e/browser/auth.spec.ts` proves
+  AC-A-107 in headless Chromium (sign in, chat, sign out, back to the
+  sign-in screen, even after a reload). New: `ORCHESTRA_SEED_ACCOUNTS`
+  (`internal/infra/config`), a non-admin account seed for a built binary,
+  mirroring `ORCHESTRA_PLAN_FIXTURES`; `ORCHESTRA_SECURE_COOKIE=false` in
+  every e2e/browser platform-starting env, since these suites run over
+  plain HTTP. `make check` (not `-k`) is fully green - this closes
+  `docs/plans/auth.md`: every task done, every criterion in
+  `docs/specs/auth.md` section 9 has a test running in CI. See
+  `DECISIONS.md`, 2026-09-12 ("Auth Task 6: end to end").
 - Closed the nil-store auth bypass: `pkg/app.New` now refuses to build a
   handler when `Config.DBPath` is empty (`app.ErrMissingDBPath`), so
   `requireSession`'s old "no store means run every request as a fixed

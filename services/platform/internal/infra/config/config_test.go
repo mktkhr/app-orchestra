@@ -256,3 +256,40 @@ func TestLoadRejectsMissingAdminPassword(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, config.ErrMissingAdminPassword)
 }
+
+func TestLoadSeedAccountsDefaultsToEmpty(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_SEED_ACCOUNTS", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Empty(t, cfg.SeedAccounts)
+}
+
+func TestLoadParsesSeedAccounts(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv(
+		"ORCHESTRA_SEED_ACCOUNTS",
+		`[{"name":"yamada","password":"correct horse battery staple 2","role":"user"}]`,
+	)
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, []config.SeedAccount{
+		{Name: "yamada", Password: "correct horse battery staple 2", Role: "user"},
+	}, cfg.SeedAccounts)
+}
+
+func TestLoadRejectsMalformedSeedAccounts(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_SEED_ACCOUNTS", "not-json")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+}

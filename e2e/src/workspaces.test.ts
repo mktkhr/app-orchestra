@@ -1,11 +1,11 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 
 import { afterAll, describe, expect, it } from "vite-plus/test";
+
+import { signIn, withSession, type Session } from "./helpers/auth";
+import { freePort, startBinary, stop, waitForReady, type RunningService } from "./helpers/process";
 
 /**
  * Process-level end to end suite for workspaces (AC-W-105,
@@ -16,12 +16,11 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
  * `ORCHESTRA_DB_PATH` file, and reads the workspace back - proving it
  * survives a restart of the platform, not just a page reload.
  *
- * This suite duplicates a handful of small helpers from
- * `orchestration.test.ts` (free port allocation, starting/stopping a
- * built binary) rather than importing them: each file starts and stops
- * its own processes on its own schedule (this one restarts the platform
- * mid-test, which that one never does), and the shapes are a few lines
- * each - not worth a shared module for.
+ * Free port allocation and starting/stopping a built binary come from
+ * `helpers/process.ts`, shared with `orchestration.test.ts` and
+ * `auth.test.ts` - each file still starts and stops its own processes on
+ * its own schedule (this one restarts the platform mid-test, which the
+ * others never do), only the plumbing underneath is common now.
  *
  * The database is a file inside its own `mkdtempSync` directory, per
  * `docs/specs/workspaces.md` section 6 / W3: this suite's workspaces are
@@ -32,82 +31,15 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
  * to instead.
  */
 
-interface RunningService {
-  readonly process: ChildProcess;
-  readonly port: number;
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-
-      if (address === null || typeof address === "string") {
-        reject(new Error("could not read the allocated port"));
-
-        return;
-      }
-
-      const { port } = address;
-
-      server.close(() => {
-        resolve(port);
-      });
-    });
-  });
-}
-
-async function waitForReady(url: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-
-  for (;;) {
-    try {
-      const response = await fetch(url);
-
-      if (response.ok) return;
-    } catch {
-      // Not listening yet - keep polling.
-    }
-
-    if (Date.now() > deadline) {
-      throw new Error(`${url} did not become ready within ${timeoutMs}ms`);
-    }
-
-    await delay(200);
-  }
-}
-
-function startBinary(command: string, env: Record<string, string>): ChildProcess {
-  const child = spawn(command, [], {
-    cwd: new URL("..", import.meta.url).pathname,
-    env: { ...process.env, ...env },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  child.on("error", (error) => {
-    throw error;
-  });
-
-  return child;
-}
-
-async function stop(service: RunningService | undefined): Promise<void> {
-  if (service === undefined) return;
-
-  service.process.kill();
-
-  await new Promise<void>((resolve) => {
-    service.process.once("exit", () => {
-      resolve();
-    });
-  });
-}
-
-/** Starts the platform binary on a free port, over the given env, and waits for it to answer /api/health. */
-async function startPlatform(env: Record<string, string>): Promise<RunningService> {
+/**
+ * Starts the platform binary on a free port, over the given env, waits for
+ * it to answer /api/health, and signs in as admin (docs/plans/auth.md
+ * Task 6, Step 1) - every route but GET /api/health and POST /api/session
+ * now answers 401 without a session (AC-A-102).
+ */
+async function startPlatform(
+  env: Record<string, string>,
+): Promise<{ readonly service: RunningService; readonly session: Session }> {
   const port = await freePort();
   const platformProcess = startBinary("../services/platform/bin/api", {
     ...env,
@@ -116,7 +48,9 @@ async function startPlatform(env: Record<string, string>): Promise<RunningServic
 
   await waitForReady(`http://127.0.0.1:${port}/api/health`, 10_000);
 
-  return { process: platformProcess, port };
+  const session = await signIn(`http://127.0.0.1:${port}`, "admin", "e2e-admin-password");
+
+  return { service: { process: platformProcess, port }, session };
 }
 
 interface WorkspaceOnWire {
@@ -197,8 +131,11 @@ describe("a workspace survives a restart of the platform (AC-W-105)", () => {
       ORCHESTRA_DB_PATH: dbPath,
       // ORCHESTRA_ADMIN_PASSWORD has no default either
       // (internal/infra/config.ErrMissingAdminPassword) - a fixed value is
-      // fine here, since this suite does not yet sign in (that is Task 6).
+      // fine here, since this suite signs in as this same admin.
       ORCHESTRA_ADMIN_PASSWORD: "e2e-admin-password",
+      // Plain HTTP (127.0.0.1, no TLS): see orchestration.test.ts's own
+      // comment on this variable.
+      ORCHESTRA_SECURE_COOKIE: "false",
     };
 
     // Not pushed to `platforms`: the test stops it itself below, and
@@ -207,19 +144,22 @@ describe("a workspace survives a restart of the platform (AC-W-105)", () => {
     // wait forever.
     const first = await startPlatform(sharedEnv);
 
-    const createResponse = await fetch(`http://127.0.0.1:${first.port}/api/workspaces`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "在庫ボード" }),
-    });
+    const createResponse = await fetch(
+      `http://127.0.0.1:${first.service.port}/api/workspaces`,
+      withSession(first.session, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "在庫ボード" }),
+      }),
+    );
 
     expect(createResponse.status).toBe(201);
 
     const created = parseWorkspaceCreated(await createResponse.json());
 
     const panelResponse = await fetch(
-      `http://127.0.0.1:${first.port}/api/workspaces/${created.id}/panels`,
-      {
+      `http://127.0.0.1:${first.service.port}/api/workspaces/${created.id}/panels`,
+      withSession(first.session, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -229,20 +169,23 @@ describe("a workspace survives a restart of the platform (AC-W-105)", () => {
           component: "table",
           title: "検品保留の在庫",
         }),
-      },
+      }),
     );
 
     expect(panelResponse.status).toBe(201);
 
     // Stop the platform - the same process a restart or a deploy would
     // do - and start a fresh one on the same database file.
-    await stop(first);
+    await stop(first.service);
 
     const second = await startPlatform(sharedEnv);
 
-    platforms.push(second);
+    platforms.push(second.service);
 
-    const readBack = await fetch(`http://127.0.0.1:${second.port}/api/workspaces/${created.id}`);
+    const readBack = await fetch(
+      `http://127.0.0.1:${second.service.port}/api/workspaces/${created.id}`,
+      withSession(second.session),
+    );
 
     expect(readBack.status).toBe(200);
 
