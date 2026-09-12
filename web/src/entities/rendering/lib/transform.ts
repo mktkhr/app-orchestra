@@ -63,7 +63,9 @@ export function applyTransform(
 ): Record<string, unknown>[] {
   const { groupBy, aggregate, field } = transform;
 
-  const order: (string | typeof UNGROUPED)[] = [];
+  // A Map iterates in insertion order, which is exactly the first-seen
+  // order of the group key this function's tests pin - so the order needs
+  // no second structure to record it, and no lookup that could miss.
   const groups = new Map<string | typeof UNGROUPED, GroupAccumulator>();
 
   for (const row of rows) {
@@ -76,7 +78,6 @@ export function applyTransform(
     if (group === undefined) {
       group = { groupValue: isUsableGroupValue ? rawGroupValue : null, count: 0, values: [] };
       groups.set(key, group);
-      order.push(key);
     }
 
     group.count += 1;
@@ -90,16 +91,7 @@ export function applyTransform(
     }
   }
 
-  return order.map((key) => {
-    const group = groups.get(key);
-
-    // `key` was pushed to `order` alongside its entry in `groups`, so this
-    // is always present — the guard is only to satisfy the type checker.
-    /* istanbul ignore next -- see comment above */
-    if (group === undefined) {
-      return { [groupBy]: null };
-    }
-
+  return [...groups.values()].map((group) => {
     const outputRow: Record<string, unknown> = { [groupBy]: group.groupValue };
 
     switch (aggregate) {
