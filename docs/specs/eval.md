@@ -21,13 +21,13 @@ this is a second suite, run deliberately.
 
 ## 2. Decisions taken here
 
-|        | Decision                                                                                                                                                                |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **E1** | A case is a question and the set of decisions that would answer it. Not one decision: several are often defensible, and pretending otherwise makes a passing suite lie. |
-| **E2** | A case is run many times and scored as a rate. A model is not a function, and a suite that asserts one outcome would be red on a coin toss.                             |
-| **E3** | The suite compares against a recorded baseline and fails on a drop. What counts as a regression is behaviour getting worse, not behaviour being imperfect.              |
-| **E4** | Never part of `make check`. It needs a model, and `make check` needs nothing.                                                                                           |
-| **E5** | The baseline is updated by a person running a command that says so. A suite that rewrites its own expectations records nothing.                                         |
+|        | Decision                                                                                                                                                                                                                                                                                                                            |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **E1** | A case is a question and the set of decisions that would answer it. Not one decision: several are often defensible, and pretending otherwise makes a passing suite lie.                                                                                                                                                             |
+| **E2** | A case is run many times and scored as a rate. A model is not a function, and a suite that asserts one outcome would be red on a coin toss. A case also names which rate it is scored on - `accept` or `reject` - because not every case is asking the same question of its runs (section 3, section 4).                            |
+| **E3** | The suite compares its judged rate against a recorded baseline and fails when that rate moves the bad direction by more than its tolerance: down for a case judged on `accept`, up for one judged on `reject`. What counts as a regression is behaviour getting worse at the thing the case watches, not behaviour being imperfect. |
+| **E4** | Never part of `make check`. It needs a model, and `make check` needs nothing.                                                                                                                                                                                                                                                       |
+| **E5** | The baseline is updated by a person running a command that says so. A suite that rewrites its own expectations records nothing.                                                                                                                                                                                                     |
 
 ## 3. What a case is
 
@@ -44,6 +44,7 @@ this is a second suite, run deliberately.
 
 - id: no-matching-value
   question: 破損した在庫はある？
+  metric: reject
   accept:
     - { kind: ask, service: inventory, operationId: ListInventoryItems, param: status }
     - {
@@ -64,17 +65,39 @@ A run that matches neither is counted apart. It is not a pass, and it is not the
 failure the case was written to watch; it is the model doing something new, and
 that is worth seeing on its own.
 
+`metric` says which rate the case is judged on, and defaults to `accept` when
+left out. Most cases want that default: `accept` names every defensible
+answer, so a case that only ever writes `accept` is asking "does one of the
+right answers still happen". `no-matching-value` is not asking that - whether
+the model asks for the missing enum value or guesses the closest one is not a
+question this case has an opinion on, and letting `accept` swing between the
+two would make its rate noise, not signal. What this case actually watches is
+narrower: does the specific wrong outcome in `reject` - dropping the filter
+silently and returning every row - get more common. `metric: reject` says so,
+and flips which direction counts as a regression: for an `accept`-judged case
+a falling rate is the regression; for a `reject`-judged case a _rising_ one
+is, because the outcome it is tracking is the bad one, not a good one.
+
 ## 4. What it reports
 
 ```
 filter-by-label        5/5 accept   0/5 reject
-no-matching-value      2/5 accept   3/5 reject   ← baseline 4/5 accept
+no-matching-value      2/5 accept   3/5 reject (judged: reject)   ← baseline 3/5 reject
 follow-up-stays        5/5 accept   0/5 reject
 ```
 
-A rate below its baseline by more than a tolerance fails the run. A rate above
-it passes and says so: improvements are as worth seeing as regressions, and a
-suite that only ever reports bad news gets ignored.
+Every line prints both counts regardless of which one the case is judged on
+(AC-E-203). `(judged: reject)` names the case that is not judged the default
+way - an `accept`-judged case (the majority, and the default when a case
+leaves `metric` out) prints no such note, so the six cases that have always
+looked like this still do.
+
+The judged rate moving against its baseline by more than a tolerance fails
+the run - down, for a case judged on `accept`; up, for one judged on
+`reject` - and the trailer names which count and which direction it compared
+(`baseline 3/5 reject` above, not `accept`). A rate that moved the good
+direction passes and says so too: improvements are as worth seeing as
+regressions, and a suite that only ever reports bad news gets ignored.
 
 ## 5. What it runs against
 
@@ -98,11 +121,12 @@ expected operation is meaningless against a different catalogue.
 ## 7. Acceptance criteria
 
 - **AC-E-201** `make eval` runs every case, prints a rate per case, and exits
-  non-zero when one has dropped below its baseline beyond the tolerance.
+  non-zero when one has moved against its baseline, on the rate it is judged
+  on (`metric`), by more than the tolerance.
 - **AC-E-202** `make check` still calls no model, and `make eval` is not part of
   it.
 - **AC-E-203** A recorded reject outcome appearing at all is reported, whether
-  or not the accept rate held.
+  or not the judged rate held.
 - **AC-E-204** `make eval-accept` rewrites the baseline from the last run, and
   nothing else does.
 - **AC-E-205** The corpus covers, at least: a filter named by its label, a

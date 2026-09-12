@@ -32,6 +32,18 @@ export interface ExpectedOutcome {
   readonly param?: string;
 }
 
+/**
+ * Which rate a case is judged on (docs/specs/eval.md section 4): `"accept"`
+ * (default) fails the run when the accept rate drops: the case wants to see
+ * that any of the defensible answers still gets chosen. `"reject"` fails it
+ * when the reject rate rises instead - the direction is flipped because for
+ * a case like `no-enum-value` the accept rate is free to swing between
+ * asking and guessing (both are fine); what regressing looks like is the
+ * specific wrong outcome in `reject` becoming more common, which a rising
+ * accept rate would not catch and a falling one would not mean.
+ */
+export type CaseMetric = "accept" | "reject";
+
 /** One case: a question (with, optionally, the conversation before it) and what would answer it. */
 export interface Case {
   readonly id: string;
@@ -39,6 +51,15 @@ export interface Case {
   readonly turns?: readonly CaseTurn[];
   readonly accept: readonly ExpectedOutcome[];
   readonly reject?: readonly ExpectedOutcome[];
+  /** Which rate this case is judged on. Defaults to `"accept"` when left out. */
+  readonly metric?: CaseMetric;
+  /**
+   * How many times to run this case, overriding `run.ts`'s default
+   * (`ORCHESTRA_EVAL_N`). Left out for every case whose rate holds steady at
+   * n=10; set explicitly for one measured to need more runs to tell noise
+   * from a regression (DECISIONS.md, no-enum-value judged on reject).
+   */
+  readonly runs?: number;
 }
 
 /** /api/plan's response, narrowed to the fields a case's expected outcomes can name. */
@@ -60,4 +81,6 @@ export interface CaseTally {
   readonly total: number;
   readonly accept: number;
   readonly reject: number;
+  /** Which of accept/reject this case is judged on (Case.metric, defaulted). */
+  readonly metric: CaseMetric;
 }

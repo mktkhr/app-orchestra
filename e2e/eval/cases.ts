@@ -35,6 +35,18 @@ export const cases: readonly Case[] = [
     // below is exactly that silent drop.
     id: "no-enum-value",
     question: "破損した在庫はある？",
+    // Judged on reject, not accept (docs/specs/eval.md section 4;
+    // DECISIONS.md 2026-09-12 "no-enum-value judged on reject"): whether the
+    // model asks or guesses the enum value is not what this case watches,
+    // and that split is free to swing. What must not increase is the silent
+    // drop this case's reject outcome names.
+    metric: "reject",
+    // Run at 30, not the corpus default of 10 (measured, DECISIONS.md): at
+    // n=10 the reject rate itself swung as widely as accept did (5-9/10
+    // across six samples), which is not narrow enough to tell noise from a
+    // real regression at any tolerance worth setting. At n=30 three samples
+    // held to 16-19/30 (0.53-0.63), a band under half as wide.
+    runs: 30,
     accept: [
       { kind: "ask", param: "status" },
       {

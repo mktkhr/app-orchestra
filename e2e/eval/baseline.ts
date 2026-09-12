@@ -3,10 +3,16 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { asRecord } from "../src/helpers/wire.ts";
 import type { CaseTally } from "./types.ts";
 
-/** One case's recorded accept rate, and how many runs it was measured over. */
+/**
+ * One case's recorded accept and reject rates, and how many runs they were
+ * measured over. Both counts are always recorded, regardless of which one a
+ * case is judged on (Case.metric) - a case can switch which rate it judges
+ * without needing a fresh baseline for the count it had been ignoring.
+ */
 export interface BaselineEntry {
   readonly total: number;
   readonly accept: number;
+  readonly reject: number;
 }
 
 /** The recorded baseline (docs/specs/eval.md, E3/AC-E-204): per case, the last accepted run. */
@@ -17,9 +23,11 @@ export interface Baseline {
 /** value narrowed to a BaselineEntry, or undefined when it does not have that shape. */
 function asBaselineEntry(value: unknown): BaselineEntry | undefined {
   const record = asRecord(value);
-  const { total, accept } = record;
+  const { total, accept, reject } = record;
 
-  return typeof total === "number" && typeof accept === "number" ? { total, accept } : undefined;
+  return typeof total === "number" && typeof accept === "number" && typeof reject === "number"
+    ? { total, accept, reject }
+    : undefined;
 }
 
 /** value narrowed to a Baseline, or an empty one when the file held something else. */
@@ -53,7 +61,7 @@ export function writeBaseline(path: string, tallies: readonly CaseTally[]): void
   const cases: Record<string, BaselineEntry> = {};
 
   for (const tally of tallies) {
-    cases[tally.id] = { total: tally.total, accept: tally.accept };
+    cases[tally.id] = { total: tally.total, accept: tally.accept, reject: tally.reject };
   }
 
   writeFileSync(path, `${JSON.stringify({ cases }, null, 2)}\n`, "utf-8");

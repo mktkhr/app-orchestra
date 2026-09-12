@@ -13,12 +13,17 @@ function fraction(count: number, total: number): string {
 
 /**
  * Prints one report line per tally (docs/specs/eval.md section 4) and
- * returns the ids whose accept rate dropped below its baseline by more than
- * tolerance - what `run.ts` exits non-zero over (AC-E-201). A rate that rose
- * is reported too, per section 4 ("improvements are as worth seeing as
- * regressions"), and a recorded reject outcome appearing at all is reported
- * whether or not the accept rate held (AC-E-203) - that is every reject
- * count already printed on the line, unconditionally.
+ * returns the ids that regressed on the rate they are judged on
+ * (`tally.metric`, Case.metric) by more than tolerance - what `run.ts` exits
+ * non-zero over (AC-E-201). An `"accept"` case (the default) regresses when
+ * its accept rate drops below baseline; a `"reject"` case regresses the
+ * other way round, when its reject rate *rises* above baseline - the case
+ * that watches a specific wrong outcome cares that it did not become more
+ * common, not that some other rate held. A rate that moved the good
+ * direction is reported too, per section 4 ("improvements are as worth
+ * seeing as regressions"), and a recorded reject outcome appearing at all is
+ * reported whether or not the judged rate held (AC-E-203) - that is every
+ * reject count already printed on the line, unconditionally.
  */
 export function report(
   tallies: readonly CaseTally[],
@@ -28,27 +33,35 @@ export function report(
   const regressions: string[] = [];
 
   for (const tally of tallies) {
+    const { metric } = tally;
     const acceptRate = rate(tally.accept, tally.total);
+    const rejectRate = rate(tally.reject, tally.total);
+    const judgedRate = metric === "accept" ? acceptRate : rejectRate;
     const baselineEntry = baseline.cases[tally.id];
+    const metricNote = metric === "reject" ? " (judged: reject)" : "";
     let trailer = "";
 
     if (baselineEntry === undefined) {
       trailer = "  (no baseline recorded)";
     } else {
-      const baselineRate = rate(baselineEntry.accept, baselineEntry.total);
-      const delta = acceptRate - baselineRate;
+      const baselineJudgedCount = metric === "accept" ? baselineEntry.accept : baselineEntry.reject;
+      const baselineJudgedRate = rate(baselineJudgedCount, baselineEntry.total);
+      const delta = judgedRate - baselineJudgedRate;
+      const regressed = metric === "accept" ? delta < -tolerance : delta > tolerance;
+      const improved = metric === "accept" ? delta > tolerance : delta < -tolerance;
+      const baselineFraction = fraction(baselineJudgedCount, baselineEntry.total);
 
-      if (delta < -tolerance) {
-        trailer = `  ← REGRESSION, baseline ${fraction(baselineEntry.accept, baselineEntry.total)} accept`;
+      if (regressed) {
+        trailer = `  ← REGRESSION, baseline ${baselineFraction} ${metric}`;
         regressions.push(tally.id);
-      } else if (delta > tolerance) {
-        trailer = `  ← improved, baseline ${fraction(baselineEntry.accept, baselineEntry.total)} accept`;
+      } else if (improved) {
+        trailer = `  ← improved, baseline ${baselineFraction} ${metric}`;
       }
     }
 
     console.log(
       `${tally.id.padEnd(20)} ${fraction(tally.accept, tally.total).padEnd(8)} accept   ` +
-        `${fraction(tally.reject, tally.total).padEnd(8)} reject${trailer}`,
+        `${fraction(tally.reject, tally.total).padEnd(8)} reject${metricNote}${trailer}`,
     );
   }
 

@@ -27,16 +27,26 @@ const baselinePath = path.join(import.meta.dirname, "baseline.json");
 const evalModel = process.env["ORCHESTRA_EVAL_MODEL"] ?? "qwen3.5-9b-q8";
 const evalBaseURL = process.env["ORCHESTRA_EVAL_BASE_URL"] ?? "http://localhost:11435/v1";
 
-// N and tolerance were picked from measurement, not guessed: ten runs each
-// of every case in this corpus against qwen3.5-9b-q8 (2026-09-12) held
-// steady at 5/5 for six of the seven, and the ambiguous-filter case swung
-// between 2/10 and 4/10 reject across two ten-run samples - noise a
-// smaller N could not tell apart from an actual regression. 0.3 keeps that
-// swing (a two-sample-standard-deviation's width, for a rate this uncertain
-// around n=10) from failing a run that changed nothing; a real regression -
-// the filter starting to drop outright, not merely wobble - reads as a
-// larger drop than that.
-const runsPerCase = Number(process.env["ORCHESTRA_EVAL_N"] ?? "10");
+// N and tolerance were picked from measurement, not guessed, and re-measured
+// twice as the corpus changed (DECISIONS.md has the numbers both times).
+// `ORCHESTRA_EVAL_N` is the default every case gets unless it names its own
+// `runs`: six of the seven cases held steady at 10/10 or 5/5 across every
+// ten-run sample taken, so ten is enough for them. The seventh,
+// `no-enum-value`, is judged on `reject` (Case.metric) rather than `accept`
+// precisely because its accept/reject split itself would not hold still at
+// n=10 - and neither did reject: six ten-run samples read 5-9/10, a band as
+// wide as accept's. Tripling its own `runs` to 30 (cases.ts) narrowed three
+// thirty-run samples to 16-19/30 (0.53-0.63), which is why only that one
+// case overrides the default instead of raising it for everyone and paying
+// the wall-clock cost on six cases that never needed it.
+//
+// `ORCHESTRA_EVAL_TOLERANCE` stays one number for every case (not per-case):
+// 0.3 was sized, in the original measurement, to a two-sample-deviation's
+// width for a rate this uncertain around n=10, and it still comfortably
+// covers the tighter swing measured at n=30 above with room to spare before
+// a real regression (the filter starting to drop outright) would need to
+// clear it.
+const defaultRuns = Number(process.env["ORCHESTRA_EVAL_N"] ?? "10");
 const tolerance = Number(process.env["ORCHESTRA_EVAL_TOLERANCE"] ?? "0.3");
 
 const acceptMode = process.argv.includes("--accept");
@@ -48,8 +58,9 @@ async function runCase(
 ): Promise<CaseTally> {
   let accept = 0;
   let reject = 0;
+  const total = evalCase.runs ?? defaultRuns;
 
-  for (let i = 0; i < runsPerCase; i++) {
+  for (let i = 0; i < total; i++) {
     // Deliberately sequential (no-await-in-loop is off, see
     // harness/quality/oxlint/policy.ts): this measures one model serving
     // one request at a time, not a load test.
@@ -59,7 +70,7 @@ async function runCase(
     if (evalCase.reject !== undefined && matchesAny(outcome, evalCase.reject)) reject++;
   }
 
-  return { id: evalCase.id, total: runsPerCase, accept, reject };
+  return { id: evalCase.id, total, accept, reject, metric: evalCase.metric ?? "accept" };
 }
 
 async function main(): Promise<void> {

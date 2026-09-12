@@ -1808,3 +1808,61 @@ build`, comfortably inside "realistic to run deliberately".
 reviewer can read without a GPU, docs/specs/eval.md section 6) and was
 verified, by dry-run `git add`, to not fall through `.gitignore`'s
 deny-by-default rules the way an unnoticed new directory could.
+
+## 2026-09-12 no-enum-value judged on reject, and run at n=30
+
+**Context.** The previous entry's tolerance (0.3) was sized from two ten-run
+samples of `no-enum-value`'s accept rate. A third, unrelated observation
+(5/10, 4/10, then 2/10 accept across three ten-run samples of the same
+unchanged binary) put a sample outside that band - the tolerance was too
+tight for the thing it was actually measuring, and `make eval` would either
+cry wolf on a run that changed nothing or, sized wider to compensate, miss a
+real regression. What `no-enum-value` exists to watch (docs/specs/eval.md
+section 3) is not which defensible answer the model picks - asking for the
+missing enum value versus guessing the closest one - it is whether the
+specific wrong outcome, silently dropping the filter and returning every
+row, gets more common. Judging the case by `accept` was measuring the wrong
+split.
+
+**Decision.** Cases now name which rate they are judged on: `Case.metric`
+(`e2e/eval/types.ts`), `"accept"` (default, unchanged for the other six
+cases) or `"reject"`. `report.ts` compares whichever rate `metric` names
+against its own baseline count, in the direction that means "worse" for that
+metric - down for `accept`, _up_ for `reject` - and marks the line
+`(judged: reject)` so the report says which comparison produced a
+REGRESSION/improved trailer without changing the six unaffected lines'
+shape. `no-enum-value` is now `metric: "reject"` (`e2e/eval/cases.ts`).
+
+Measured before deciding, not assumed: switching to `reject` alone did not
+fix the noise. Six ten-run samples of `no-enum-value` (2026-09-12, same
+unchanged binary, fresh platform each time) read reject 6, 5, 7, 5, 6, 9 out
+of 10 - a 5-9/10 band exactly as wide as accept's own wobble, because accept
+and reject are complements of each other once "neither" is rare. Raising N
+is what narrowed it: three thirty-run samples read reject 16, 19, 19 out of
+30 (0.53-0.63), less than half the earlier band's width, matching
+`sqrt(p(1-p)/n)` shrinking with n. `Case.runs` (`e2e/eval/types.ts`) lets one
+case override `run.ts`'s default N; `no-enum-value` sets `runs: 30`
+(`e2e/eval/cases.ts`) and nothing else does, because the other six already
+hold to 10/10 or 5/5 - paying 3x the wall time on every case to fix the one
+that needed it would be the wrong trade. `ORCHESTRA_EVAL_TOLERANCE` stays a
+single number (0.3) rather than one per case: it was sized generously enough
+in the original measurement that it still comfortably covers the tighter
+n=30 band above, with room before a real regression would need to clear it,
+and a second per-case knob was not worth adding without evidence the shared
+one had stopped working - which, at n=30, it had not.
+
+`e2e/eval/baseline.ts`'s `BaselineEntry` now records both `accept` and
+`reject` counts unconditionally (`e2e/eval/baseline.json` rewritten by
+`make eval-accept` to match), so a case is free to switch which one it is
+judged on later without losing the count it had been ignoring.
+
+**Consequences.** `e2e/eval/types.ts`, `cases.ts`, `baseline.ts`, `run.ts`,
+`report.ts` changed; `docs/specs/eval.md` sections 2-4 and 7 (E2/E3,
+AC-E-201/AC-E-203) describe `metric` and the flipped regression direction.
+No harness or `Makefile` change was needed. Verified: two consecutive
+`make eval` runs against the rewritten baseline both passed with no
+regression reported (same unchanged code); forcing `no-enum-value`'s
+baseline reject to 0 made the next `make eval` fail with `← REGRESSION,
+baseline 0/30 reject` and a non-zero exit, then the baseline was restored.
+`make check` was re-run after the last edit and stayed green with zero real
+model calls - `make eval` is still not one of its targets.

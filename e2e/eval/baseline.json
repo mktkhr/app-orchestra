@@ -2,31 +2,38 @@
   "cases": {
     "filter-by-label": {
       "total": 10,
-      "accept": 10
+      "accept": 10,
+      "reject": 0
     },
     "no-enum-value": {
-      "total": 10,
-      "accept": 4
+      "total": 30,
+      "accept": 11,
+      "reject": 16
     },
     "list-everything": {
       "total": 10,
-      "accept": 10
+      "accept": 10,
+      "reject": 0
     },
     "create": {
       "total": 10,
-      "accept": 10
+      "accept": 10,
+      "reject": 0
     },
     "unanswerable": {
       "total": 10,
-      "accept": 10
+      "accept": 10,
+      "reject": 0
     },
     "capability": {
       "total": 10,
-      "accept": 10
+      "accept": 10,
+      "reject": 0
     },
     "follow-up-stays": {
       "total": 10,
-      "accept": 10
+      "accept": 10,
+      "reject": 0
     }
   }
 }
