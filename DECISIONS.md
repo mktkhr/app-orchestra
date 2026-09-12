@@ -1732,3 +1732,79 @@ this one. The platform's own part - carrying `turns` from the wire to the
 prompt untouched - is what `e2e/src/context.test.ts` and
 `e2e/browser/context.spec.ts` fix with the stub planner instead, since that
 part does not need a model to be right.
+
+## 2026-09-12 The eval suite (docs/specs/eval.md) lives in e2e/eval/, N=10, tolerance=0.3
+
+**Context.** docs/specs/eval.md asks for a fifth subproject that measures the
+real planner's behaviour as a rate, against a committed baseline, without
+ever running inside `make check` (E4). Building it meant deciding where the
+code lives, how many times to run each case, and how large a drop from the
+baseline counts as noise rather than a regression - none of which the spec
+settles, and none of which should be guessed.
+
+**Location.** `e2e/eval/`, not a new top-level `eval/` package. Reasons: (1)
+`.gitignore` is deny-by-default (section 3 lists the trees that are tracked
+at all) - a new top-level directory would need a new allow rule, and this
+repository's own history has one story of an allow-rule accident swallowing
+a source tree (`**/users/`, `.gitignore`'s own comment). `e2e/**` is already
+allowed. (2) The suite needs exactly what `e2e/src/*.test.ts` already have -
+`freePort`/`startBinary`/`waitForReady`/`stop` (`e2e/src/helpers/process.ts`)
+and `signIn`/`withSession` (`e2e/src/helpers/auth.ts`) - and importing them
+from a sibling package would need a second pnpm workspace entry for no
+benefit. (3) `harness/quality/oxlint/policy.ts` already turns
+`eslint/no-console` off for `files: ["harness/**", "e2e/**"]` - console
+output being pre-approved for this tree is a signal that tooling living
+under `e2e/` (not test files) was already anticipated. The one thing kept
+separate from `e2e/src/`: `e2e/vite.config.ts`'s `test.include` is
+`src/**/*.test.ts`, so nothing under `e2e/eval/` is ever collected by
+`acceptance-e2e` (`make check`) no matter its filename - AC-E-202 does not
+depend on a human remembering not to name a file `*.test.ts`.
+
+`e2e/eval/*.ts` are plain scripts run directly by `node` (`node
+e2e/eval/run.ts`), the same way `harness/guard/fsd.ts` and
+`harness/guard/duplication.ts` already are - Node 24's unflagged type
+stripping, already relied on there, needing no new tooling. `e2e/tsconfig.json`
+gained `"eval"` in its `include` so `make check`'s own `web-lint` (Oxlint,
+type-aware) still catches a mistake in this suite by static analysis alone -
+static analysis is not "calling a model" (AC-E-202).
+
+**Operation ids.** The corpus (`e2e/eval/cases.ts`) writes `ListInventoryItems`/
+`CreateInventoryItem`, not the `listInventoryItems`/`createInventoryItem` that
+`services/inventory/api/openapi.yaml` declares on disk. Traced by decoding
+`services/inventory/internal/adapter/openapi/openapi.gen.go`'s embedded
+spec directly: oapi-codegen renames every operationId in its _embedded_ copy
+of the spec to the Go identifier it generated (`ListInventoryItems`), without
+touching the source file. The platform's catalogue is built from `GET
+/openapi.yaml` - what a service actually serves - never from the file on
+disk, so the renamed spelling is what a real run resolves against. This
+also resolves what looked like a mismatch between the source `.yaml` and
+every existing fixture in `services/platform/internal/**/*_test.go` (all of
+which already write the capitalised form) - they were right, and reading
+only the source file was the error.
+
+**N and tolerance, measured, not guessed.** Every case in the corpus was run
+ten times against `qwen3.5-9b-q8` (2026-09-12, this instance's llama-swap),
+twice, from a fresh platform each time. Six of the seven held at 10/10 or
+5/5 across every sample (`filter-by-label`, `list-everything`, `create`,
+`unanswerable`, `capability`, `follow-up-stays`). The seventh, the enum-less
+filter (`破損した在庫はある？`), is the one docs/specs/eval.md exists for
+and swung: reject (the silent "no filter, every row" drop this suite watches
+for, per section 3's own example) came out 2/10 and then 3/10 across two
+ten-run samples of the same unchanged binary, with accept correspondingly
+4/10 and 5/10-7/10 depending on the sample. A binomial rate this uncertain
+at n=10 has roughly a 30-point-wide two-sample-deviation band around its own
+true value - smaller than that and a run that changed nothing would fail
+`make eval` on pure noise; catching a real regression (the filter starting
+to drop outright rather than merely wobbling) does not need much finer than
+that. `ORCHESTRA_EVAL_N=10` and `ORCHESTRA_EVAL_TOLERANCE=0.3` are the
+result, both overridable by environment variable for whoever wants to spend
+more wall time on a tighter measurement later. One full `make eval` run (70
+calls: 7 cases x 10) took about three minutes end to end including `make
+build`, comfortably inside "realistic to run deliberately".
+
+**Consequences.** `Makefile` gained `eval`/`eval-accept` (harness change,
+`ORCHESTRA_ALLOW_HARNESS_CHANGE=1`) - neither is a dependency of `check` or
+`acceptance`. `e2e/eval/baseline.json` is committed (AC-E-204's baseline a
+reviewer can read without a GPU, docs/specs/eval.md section 6) and was
+verified, by dry-run `git add`, to not fall through `.gitignore`'s
+deny-by-default rules the way an unnoticed new directory could.

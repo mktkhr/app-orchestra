@@ -243,3 +243,11 @@ Everything remaining sits outside all four subprojects above:
   order a `map[string]any` marshals to (`DECISIONS.md`, 2026-09-11). This
   closes the first vertical slice: all seventeen tasks in
   `docs/plans/orchestration.md` are done.
+
+- The eval suite (docs/specs/eval.md) is done: `e2e/eval/`, `make eval` /
+  `make eval-accept`, baseline committed (`DECISIONS.md`, 2026-09-12). Not
+  yet covered: attendance-specific cases (the corpus is inventory-only,
+  since that is where the dropped-filter behaviour docs/specs/eval.md exists
+  for was actually observed), and a wider `ORCHESTRA_EVAL_N` for anyone
+  willing to spend more wall time on a tighter measurement of the
+  enum-less-filter case's true rate.

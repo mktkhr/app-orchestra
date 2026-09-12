@@ -1,0 +1,32 @@
+{
+  "cases": {
+    "filter-by-label": {
+      "total": 10,
+      "accept": 10
+    },
+    "no-enum-value": {
+      "total": 10,
+      "accept": 4
+    },
+    "list-everything": {
+      "total": 10,
+      "accept": 10
+    },
+    "create": {
+      "total": 10,
+      "accept": 10
+    },
+    "unanswerable": {
+      "total": 10,
+      "accept": 10
+    },
+    "capability": {
+      "total": 10,
+      "accept": 10
+    },
+    "follow-up-stays": {
+      "total": 10,
+      "accept": 10
+    }
+  }
+}

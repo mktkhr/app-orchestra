@@ -4,5 +4,5 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["src", "browser", "vite.config.ts", "playwright.config.ts"]
+  "include": ["src", "browser", "eval", "vite.config.ts", "playwright.config.ts"]
 }

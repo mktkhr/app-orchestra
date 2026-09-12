@@ -47,7 +47,8 @@ GENERATED := $(addsuffix /internal/adapter/openapi/openapi.gen.go,$(SERVICE_DIRS
         services-fmt services-fmt-check services-lint services-test services-build service-run dev-platform \
         web-fmt web-fmt-check web-lint web-typecheck web-test web-build web-dev \
         guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication guard-coverage guard-browser guard-a11y guard-layout guard-protected guard-test \
-        acceptance-services acceptance-web acceptance-e2e acceptance-browser browsers
+        acceptance-services acceptance-web acceptance-e2e acceptance-browser browsers \
+        eval eval-accept
 
 ## ---------------------------------------------------------------- overview
 help: ## Show this help
@@ -246,6 +247,13 @@ acceptance-browser: ## Playwright tests in headless Chromium against the built p
 
 browsers: ## Download the Chromium build Playwright is pinned to
 	$(Q) browsers pnpm -C e2e exec playwright install chromium
+
+## ---------------------------------------------------------------- eval (docs/specs/eval.md; never part of make check)
+eval: build ## Run the eval suite against the real planner and compare to the recorded baseline (not quiet: it prints its own report; ORCHESTRA_EVAL_MODEL, default qwen3.5-9b-q8)
+	cd e2e && node eval/run.ts
+
+eval-accept: build ## Run the eval suite and rewrite eval/baseline.json from it (AC-E-204: the only target that does)
+	cd e2e && node eval/run.ts --accept
 
 ## ---------------------------------------------------------------- misc
 clean: ## Remove build output

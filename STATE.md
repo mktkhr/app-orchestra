@@ -707,3 +707,27 @@ in the harness" below).
   TypeScript 7's native implementation does not provide, so `make generate` fails
   under 7. Everything else - including type-aware Oxlint - passed under 7. Go and
   pnpm are current (`DECISIONS.md`, 2026-09-10).
+
+## The eval suite (docs/specs/eval.md), a fifth subproject about the tests
+
+`e2e/eval/` measures the real planner as a rate against a committed
+baseline - never inside `make check` (AC-E-202, verified: `docker logs
+llama-swap`'s `POST /v1/chat/completions` count is unchanged across a full
+`make check` run). `make eval` starts both dummy services and the platform
+from their built binaries with `ORCHESTRA_LLM_BASE_URL`/`ORCHESTRA_LLM_MODEL`
+set to a real local model (`ORCHESTRA_EVAL_MODEL`, default `qwen3.5-9b-q8`),
+signs in as admin, and runs every case in `e2e/eval/cases.ts`
+(`ORCHESTRA_EVAL_N`, default 10, times each), matching each response against
+the case's `accept`/`reject` outcomes (`e2e/eval/match.ts`) and printing one
+line per case (`e2e/eval/report.ts`). The corpus covers all seven kinds
+AC-E-205 asks for: a label-named filter, an enum-less filter (the one this
+suite exists for - qwen3.5-9b-q8 was measured, by hand, to sometimes drop
+the filter silently), "everything", a create, an unanswerable question, a
+capability question, and a follow-up naming no service (fixed `turns`, not a
+live first call, so only the follow-up itself is under measurement). `make
+eval` exits non-zero when a case's accept rate falls more than
+`ORCHESTRA_EVAL_TOLERANCE` (default 0.3) below `e2e/eval/baseline.json`;
+`make eval-accept` is the only thing that rewrites that file (AC-E-204).
+Both are new `Makefile` targets, neither a dependency of `check` or
+`acceptance`; see `DECISIONS.md`, 2026-09-12, for the location, N/tolerance
+and operationId-casing decisions.
