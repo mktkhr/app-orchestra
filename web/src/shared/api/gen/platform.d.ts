@@ -328,7 +328,7 @@ export type components = {
          * @description What the planner decided to do about a question.
          * @enum {string}
          */
-        readonly DecisionKind: "result" | "form" | "ask" | "none";
+        readonly DecisionKind: "result" | "form" | "ask" | "none" | "proposal";
         /**
          * @description The widget the frontend renders the result with.
          * @enum {string}
@@ -373,7 +373,7 @@ export type components = {
             /** @description Its Japanese label (from x-enum-labels). */
             readonly label: string;
         };
-        /** @description The planner's decision and, when it was safe to act on immediately, its result. Which of the optional fields are present depends on `kind`: `result` carries `component`, `data`, `source`, when the response has columns to describe, `fields`, and, when the endpoint's contract declares `x-ui-hint.chart`, `view` (its `chart` half only - a contract declares axes, never a transform); `form` carries `schema`, `initial` and `target`; `ask` carries `question`, `param` and `options`; `none` carries `message`. */
+        /** @description The planner's decision and, when it was safe to act on immediately, its result. Which of the optional fields are present depends on `kind`: `result` carries `component`, `data`, `source`, when the response has columns to describe, `fields`, and, when the endpoint's contract declares `x-ui-hint.chart`, `view` (its `chart` half only - a contract declares axes, never a transform); `form` carries `schema`, `initial` and `target`; `ask` carries `question`, `param` and `options`; `none` carries `message`; `proposal` carries `panel` (docs/specs/proposing.md, section 4) - a plan result with a panel attached, not a `result` with an extra field, since a result answers a question and a proposal offers one to place. */
         readonly PlanResult: {
             readonly kind: components["schemas"]["DecisionKind"];
             readonly component?: components["schemas"]["Component"];
@@ -404,6 +404,7 @@ export type components = {
             readonly param?: string;
             /** @description The candidate values to choose from, when kind is "ask". */
             readonly options?: readonly components["schemas"]["Option"][];
+            readonly panel?: components["schemas"]["ProposedPanel"];
         };
         /** @description A confirmed call to execute. */
         readonly InvokeRequest: {
@@ -479,6 +480,21 @@ export type components = {
             readonly height: number;
             /** @description The panel's span in grid rows on the narrow breakpoint (docs/specs/layout.md, section 5a). Absent or null on a panel with no narrow height of its own - it then draws at `height` on both breakpoints (AC-L-108), exactly as it did before this field existed. Unlike `width` and `height`, this never resolves to a default value of its own: there is nothing to override on the narrow breakpoint's single column and single order (L7), so `narrowHeight`'s absence is meaningful and stays visible on the wire rather than collapsing into some number. */
             readonly narrowHeight?: number | null;
+            readonly view?: components["schemas"]["View"];
+        };
+        /** @description The panel a `propose_panel` call filled in (docs/specs/proposing.md, section 3-4): the same call, component and view a saved Panel carries, minus everything about where it sits (`position`, `width`, `height`) - a proposal is not placed yet, so it has no position to carry. The model's own values win where it gave them; everything it left out is filled in from the catalogue, so the browser never has to (component from `domain.Render`, the view's chart axes from `x-ui-hint.chart` when the contract declares them, the title from the operation's display name). */
+        readonly ProposedPanel: {
+            /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
+            readonly service: string;
+            /** @description The operation id, as declared in that service's contract. */
+            readonly operationId: string;
+            /** @description The call's arguments, the model's own or left empty. */
+            readonly args: {
+                readonly [key: string]: unknown;
+            };
+            readonly component: components["schemas"]["Component"];
+            /** @description The panel's title, the model's own or the operation's display name. */
+            readonly title: string;
             readonly view?: components["schemas"]["View"];
         };
         /** @description A call to save as a new panel, appended after this workspace's others. */

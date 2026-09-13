@@ -23,16 +23,21 @@ const toolNameAskUser = "ask_user"
 // toolNameListCapabilities mirrors usecase.ListCapabilitiesTool's Name.
 const toolNameListCapabilities = "list_capabilities"
 
+// toolNameProposePanel mirrors usecase.ProposePanelTool's Name.
+const toolNameProposePanel = "propose_panel"
+
 // systemPrompt tells the model how to use the catalogue's tools: call one,
 // call list_capabilities when the question is about what can be done at
 // all, call ask_user when an enum value is ambiguous, or answer nothing
 // when nothing fits.
 const systemPrompt = "You are given a set of tools, one per operation of a catalogue of " +
-	"internal services, plus ask_user and list_capabilities. Read the user's question, in " +
-	"Japanese, and either call exactly one tool that answers it, call list_capabilities when the " +
-	"question asks what can be done rather than asking to do something, call ask_user when a " +
-	"parameter's value cannot be told from the question, or call no tool at all when nothing in " +
-	"the catalogue answers the question."
+	"internal services, plus ask_user, list_capabilities and propose_panel. Read the user's " +
+	"question, in Japanese, and either call exactly one tool that answers it, call " +
+	"list_capabilities when the question asks what can be done rather than asking to do " +
+	"something, call ask_user when a parameter's value cannot be told from the question, call " +
+	"propose_panel when the question asks to put something on the workspace's screen rather than " +
+	"asking to look something up, or call no tool at all when nothing in the catalogue answers " +
+	"the question."
 
 // ErrUnknownOperation is returned when the model calls a tool whose name
 // is not any endpoint in the catalogue this Planner was built with - a
@@ -96,6 +101,10 @@ func (p *Planner) Plan(
 		return decisionFromListCapabilities(args), nil
 	}
 
+	if call.Name == toolNameProposePanel {
+		return decisionFromProposePanel(args), nil
+	}
+
 	return p.decisionFromCall(call.Name, args)
 }
 
@@ -144,6 +153,84 @@ func decisionFromListCapabilities(args map[string]any) usecase.Decision {
 	return usecase.Decision{
 		Kind:    usecase.DecisionListCapabilities,
 		Service: stringArg(args, "service"),
+	}
+}
+
+// decisionFromProposePanel builds a DecisionProposal from propose_panel's
+// arguments (usecase.ProposePanelTool): service, operationId and args are
+// read exactly as decisionFromCall reads a real tool call's, and
+// component, chart, transform and title - all optional
+// (docs/specs/proposing.md, section 3) - are read only when the model gave
+// them, left zero-valued otherwise, which is exactly what
+// Orchestrator.propose needs to tell "the model said nothing" from "the
+// model said this" (section 4).
+func decisionFromProposePanel(args map[string]any) usecase.Decision {
+	return usecase.Decision{
+		Kind:        usecase.DecisionProposal,
+		Service:     stringArg(args, "service"),
+		OperationID: stringArg(args, "operationId"),
+		Args:        objectArg(args, "args"),
+		Component:   domain.Component(stringArg(args, "component")),
+		View:        viewArg(args),
+		Title:       stringArg(args, "title"),
+	}
+}
+
+// objectArg reads an object-valued argument, nil when absent or of the
+// wrong type - the same defensive default stringArg and optionsArg apply
+// to a model that gets a tool's schema wrong.
+func objectArg(args map[string]any, name string) map[string]any {
+	m, ok := args[name].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	return m
+}
+
+// viewArg builds propose_panel's optional view from its "chart" and
+// "transform" arguments. Chart and Transform are read independently,
+// mirroring domain.View's own two halves (docs/specs/dashboard.md, P1):
+// the model may give either, both or neither. nil when neither was given,
+// so Orchestrator.propose's catalogue fallback (proposalView) sees no
+// model-supplied view at all, rather than an empty one it would otherwise
+// have to tell apart from a real one.
+func viewArg(args map[string]any) *domain.View {
+	chart := chartArg(objectArg(args, "chart"))
+	transform := transformArg(objectArg(args, "transform"))
+
+	if chart == nil && transform == nil {
+		return nil
+	}
+
+	return &domain.View{Chart: chart, Transform: transform}
+}
+
+// chartArg builds a domain.Chart from propose_panel's "chart" argument, or
+// nil when the model left it out.
+func chartArg(m map[string]any) *domain.Chart {
+	if m == nil {
+		return nil
+	}
+
+	return &domain.Chart{
+		Category: stringArg(m, "category"),
+		Value:    stringArg(m, "value"),
+		Kind:     domain.ChartKind(stringArg(m, "kind")),
+	}
+}
+
+// transformArg builds a domain.Transform from propose_panel's "transform"
+// argument, or nil when the model left it out.
+func transformArg(m map[string]any) *domain.Transform {
+	if m == nil {
+		return nil
+	}
+
+	return &domain.Transform{
+		GroupBy:   stringArg(m, "groupBy"),
+		Aggregate: domain.Aggregate(stringArg(m, "aggregate")),
+		Field:     stringArg(m, "field"),
 	}
 }
 

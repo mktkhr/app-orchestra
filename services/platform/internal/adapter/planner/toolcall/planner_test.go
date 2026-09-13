@@ -276,6 +276,82 @@ func TestPlanOnAmbiguousOperationIDPicksFirstCatalogueMatch(t *testing.T) {
 	assert.Equal(t, "svc-a", decision.Service)
 }
 
+const proposePanelResponse = `{
+  "choices": [{
+    "finish_reason": "tool_calls",
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "id": "call_1",
+        "type": "function",
+        "function": {
+          "name": "propose_panel",
+          "arguments": "{\"service\":\"inventory\",\"operationId\":\"ListInventoryItems\",\"args\":{\"status\":\"quarantined\"},\"component\":\"chart\",\"chart\":{\"category\":\"status\",\"value\":\"count\",\"kind\":\"bar\"},\"transform\":{\"groupBy\":\"status\",\"aggregate\":\"count\"},\"title\":\"ステータス別の在庫\"}"
+        }
+      }]
+    }
+  }]
+}`
+
+// TestPlanMapsProposePanelOntoADecisionProposal is section 3's tool-calling
+// half: a propose_panel call, with every optional argument given, maps
+// onto a DecisionProposal carrying every one of them.
+func TestPlanMapsProposePanelOntoADecisionProposal(t *testing.T) {
+	planner := newPlanner(t, proposePanelResponse, fixtureCatalog())
+
+	decision, err := planner.Plan(context.Background(), "在庫をステータス別に棒グラフで置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
+	assert.Equal(t, "inventory", decision.Service)
+	assert.Equal(t, "ListInventoryItems", decision.OperationID)
+	assert.Equal(t, map[string]any{"status": "quarantined"}, decision.Args)
+	assert.Equal(t, domain.ComponentChart, decision.Component)
+	require.NotNil(t, decision.View)
+	require.NotNil(t, decision.View.Chart)
+	assert.Equal(t, "status", decision.View.Chart.Category)
+	assert.Equal(t, "count", decision.View.Chart.Value)
+	assert.Equal(t, domain.ChartKindBar, decision.View.Chart.Kind)
+	require.NotNil(t, decision.View.Transform)
+	assert.Equal(t, "status", decision.View.Transform.GroupBy)
+	assert.Equal(t, domain.AggregateCount, decision.View.Transform.Aggregate)
+	assert.Equal(t, "ステータス別の在庫", decision.Title)
+}
+
+const proposePanelWithNoOptionalArgumentsResponse = `{
+  "choices": [{
+    "finish_reason": "tool_calls",
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "id": "call_1",
+        "type": "function",
+        "function": {
+          "name": "propose_panel",
+          "arguments": "{\"service\":\"inventory\",\"operationId\":\"ListInventoryItems\",\"args\":{}}"
+        }
+      }]
+    }
+  }]
+}`
+
+// TestPlanMapsProposePanelWithNoOptionalArgumentsToAZeroValuedDecision
+// proves the platform, not this planner, is what fills a left-out view in
+// (docs/specs/proposing.md, section 4): a propose_panel call naming
+// nothing beyond the operation maps onto a Decision with no Component,
+// no View and no Title at all.
+func TestPlanMapsProposePanelWithNoOptionalArgumentsToAZeroValuedDecision(t *testing.T) {
+	planner := newPlanner(t, proposePanelWithNoOptionalArgumentsResponse, fixtureCatalog())
+
+	decision, err := planner.Plan(context.Background(), "在庫の一覧を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
+	assert.Empty(t, decision.Component)
+	assert.Nil(t, decision.View)
+	assert.Empty(t, decision.Title)
+}
+
 func TestPlanSendsAnswersAlongsideTheQuery(t *testing.T) {
 	var gotBody map[string]any
 

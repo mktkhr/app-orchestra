@@ -14,15 +14,15 @@ import (
 // (docs/specs/orchestration.md, section 6): result, form, ask or none.
 type ResultKind string
 
-// The four outcomes /api/plan can report. Only ResultKindResult and
-// ResultKindNone are produced today; ResultKindForm (Task 7) and
-// ResultKindAsk (Task 9) are named here so Result's shape does not change
-// again once those tasks land.
+// The five outcomes /api/plan can report (docs/specs/proposing.md, section
+// 4, adds ResultKindProposal beside the four orchestration.md already
+// settled).
 const (
-	ResultKindResult ResultKind = "result"
-	ResultKindForm   ResultKind = "form"
-	ResultKindAsk    ResultKind = "ask"
-	ResultKindNone   ResultKind = "none"
+	ResultKindResult   ResultKind = "result"
+	ResultKindForm     ResultKind = "form"
+	ResultKindAsk      ResultKind = "ask"
+	ResultKindNone     ResultKind = "none"
+	ResultKindProposal ResultKind = "proposal"
 )
 
 // Result is what Orchestrator.Plan returns: the outcome of one question,
@@ -73,6 +73,14 @@ type Result struct {
 	Question string
 	Param    string
 	Options  []domain.Option
+
+	// Title is populated when Kind is ResultKindProposal: the panel's
+	// title, the model's own or the operation's display name (see
+	// propose). Component, Args and View above are reused for a
+	// proposal's own panel - the same fields a ResultKindResult already
+	// carries, since a proposal is a plan result with a panel attached,
+	// not a distinct shape (docs/specs/proposing.md, N2).
+	Title string
 }
 
 // ErrEndpointNotFound is returned when a Decision names an operation the
@@ -202,6 +210,8 @@ func (o *Orchestrator) Plan(
 		return o.ask(catalog, &decision)
 	case DecisionListCapabilities:
 		return o.listCapabilities(catalog, &decision), nil
+	case DecisionProposal:
+		return o.propose(catalog, &decision)
 	default:
 		return Result{}, fmt.Errorf("%w: unknown decision kind %q", ErrNotImplemented, decision.Kind)
 	}
@@ -358,6 +368,98 @@ func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, 
 		Param:    decision.Param,
 		Options:  options,
 	}, nil
+}
+
+// propose resolves a DecisionProposal into a ResultKindProposal: it never
+// touches the invoker, and never checks whether the endpoint is safe -
+// unlike call, a proposal is never run at all, whether the operation it
+// names is safe or not (N1, docs/specs/proposing.md), so there is nothing
+// here for D8's safe/unsafe split to decide between.
+//
+// The catalogue lookup is the same ErrEndpointNotFound every other
+// unknown-or-forbidden operation produces (see call, ask): a proposal
+// naming an operation the person may not call cannot be produced, because
+// catalog here is already the caller's narrowed one (catalogFor) - the
+// same reason Invoke's own lookup answers a forbidden operation with
+// ErrEndpointNotFound rather than a distinct "forbidden" sentinel
+// (docs/specs/auth.md, A4; AC-N-105).
+//
+// Every optional field the model left zero-valued is filled in from the
+// catalogue, never from decision.Args or a second guess - see
+// proposalComponent, proposalView and proposalTitle for what each of them
+// reads (section 4: "The platform fills in what the model left out").
+//
+// decision is a pointer for the same gocritic hugeParam reason as call's
+// and ask's (Decision is over 100 bytes; see harness/quality/go/golangci.yml).
+func (o *Orchestrator) propose(catalog domain.Catalog, decision *Decision) (Result, error) {
+	endpoint, ok := catalog.Find(decision.Service, decision.OperationID)
+	if !ok {
+		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, decision.Service, decision.OperationID)
+	}
+
+	return Result{
+		Kind:               ResultKindProposal,
+		Service:            decision.Service,
+		ServiceDisplayName: endpoint.ServiceDisplayNameOr(decision.Service),
+		OperationID:        decision.OperationID,
+		Args:               decision.Args,
+		Component:          proposalComponent(&endpoint, decision),
+		View:               proposalView(&endpoint, decision),
+		Title:              proposalTitle(&endpoint, decision),
+	}, nil
+}
+
+// proposalComponent answers what a proposal draws its panel with: the
+// model's own Component when it named one, otherwise domain.Render's own
+// rule - the endpoint has not been called and may never be (N1), exactly
+// the situation Render (not RenderResult) already answers for a call the
+// platform is choosing between.
+func proposalComponent(endpoint *domain.Endpoint, decision *Decision) domain.Component {
+	if decision.Component != "" {
+		return decision.Component
+	}
+
+	return domain.Render(endpoint)
+}
+
+// proposalView merges the model's own view with the catalogue's, one half
+// at a time: a Chart the model gave wins outright, and one it left out is
+// filled from the endpoint's own x-ui-hint.chart when the contract
+// declares one (chartViewFor); Transform has no catalogue-sourced default
+// at all - grouping is the model's own judgment about the question, or
+// nothing - so it is only ever the model's own. Returns nil when neither
+// half ends up set, exactly as chartViewFor's own callers already expect
+// (AC-P-106's convention: no view, not an empty one).
+func proposalView(endpoint *domain.Endpoint, decision *Decision) *domain.View {
+	var transform *domain.Transform
+
+	chart := endpoint.ChartHint
+
+	if decision.View != nil {
+		transform = decision.View.Transform
+
+		if decision.View.Chart != nil {
+			chart = decision.View.Chart
+		}
+	}
+
+	if chart == nil && transform == nil {
+		return nil
+	}
+
+	return &domain.View{Chart: chart, Transform: transform}
+}
+
+// proposalTitle answers a proposal's title: the model's own when it gave
+// one, otherwise the operation's display name - the same DisplayNameOr
+// fallback (to the operation id) CreatePanelRequest's own "title" already
+// documents for a panel saved with none.
+func proposalTitle(endpoint *domain.Endpoint, decision *Decision) string {
+	if decision.Title != "" {
+		return decision.Title
+	}
+
+	return endpoint.DisplayNameOr(decision.OperationID)
 }
 
 // formFor builds the form the platform hands a person instead of running

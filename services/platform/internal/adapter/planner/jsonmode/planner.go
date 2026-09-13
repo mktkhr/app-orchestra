@@ -22,14 +22,15 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
-// The four shapes a JSON answer's "kind" can name - the JSON planner's
+// The five shapes a JSON answer's "kind" can name - the JSON planner's
 // equivalent of a tool call's name, mirroring usecase.DecisionKind exactly
-// (docs/plans/orchestration.md, Task 11).
+// (docs/plans/orchestration.md, Task 11; docs/plans/proposing.md, Task 0).
 const (
 	kindCall             = "call"
 	kindAsk              = "ask"
 	kindNone             = "none"
 	kindListCapabilities = "list_capabilities"
+	kindProposePanel     = "propose_panel"
 )
 
 // maxAttempts bounds how many times Plan asks the model for a decision: one
@@ -76,6 +77,12 @@ const systemPromptHeader = "You are given a catalogue of internal services below
 	"operation you would have called instead, had the value been clear.\n" +
 	`{"kind":"list_capabilities","service":<service, optional>}` + "  when the question asks what can be done at " +
 	"all, rather than asking to do something.\n" +
+	`{"kind":"propose_panel","service":<service>,"operationId":<operationId>,"args":{...},` +
+	`"component":<component, optional>,"chart":{"category":<field>,"value":<field>,"kind":<bar|line|pie>} (optional),` +
+	`"transform":{"groupBy":<field>,"aggregate":<count|sum|avg>,"field":<field, optional>} (optional),` +
+	`"title":<title, optional>}` + "  when the question asks to put something on the workspace's screen " +
+	"rather than asking to look something up - name the operation and args exactly as \"call\" would, and " +
+	"leave component/chart/transform/title out to let the platform fill them in.\n" +
 	`{"kind":"none"}` + "  when nothing in the catalogue answers the question.\n\n" +
 	"Only ever use a value listed in a parameter's own enum; never invent one that is not listed.\n\nCatalogue:\n"
 
@@ -179,6 +186,21 @@ func (p *Planner) complete(ctx context.Context, messages []chat.Message) (chat.R
 	return resp, nil
 }
 
+// wireChart and wireTransform are propose_panel's own "chart" and
+// "transform" arguments, decoded separately from wireDecision's own flat
+// fields because they are nested objects, not scalars.
+type wireChart struct {
+	Category string `json:"category"`
+	Value    string `json:"value"`
+	Kind     string `json:"kind"`
+}
+
+type wireTransform struct {
+	GroupBy   string `json:"groupBy"`
+	Aggregate string `json:"aggregate"`
+	Field     string `json:"field"`
+}
+
 // wireDecision is the JSON object shape the model is asked for - every
 // field of every kind at once, since which ones matter depends on Kind
 // (see parse).
@@ -189,6 +211,10 @@ type wireDecision struct {
 	Args        map[string]any `json:"args"`
 	Param       string         `json:"param"`
 	Question    string         `json:"question"`
+	Component   string         `json:"component"`
+	Chart       *wireChart     `json:"chart"`
+	Transform   *wireTransform `json:"transform"`
+	Title       string         `json:"title"`
 }
 
 // parse extracts a JSON object from content, decodes it, and maps it onto a
@@ -217,6 +243,8 @@ func (p *Planner) parse(content string) (usecase.Decision, error) {
 		}, nil
 	case kindCall:
 		return p.decisionFromCall(&wire)
+	case kindProposePanel:
+		return p.decisionFromProposePanel(&wire)
 	default:
 		return usecase.Decision{}, fmt.Errorf("%w: %q", ErrUnknownKind, wire.Kind)
 	}
@@ -238,6 +266,62 @@ func (p *Planner) decisionFromCall(wire *wireDecision) (usecase.Decision, error)
 	return usecase.Decision{
 		Kind: usecase.DecisionCall, Service: wire.Service, OperationID: wire.OperationID, Args: wire.Args,
 	}, nil
+}
+
+// decisionFromProposePanel validates a "propose_panel" answer's
+// service/operationId and args exactly as decisionFromCall does - the same
+// reason: this transport's response_format has no equivalent of tool
+// calling's strict: true, and a proposal's args are exactly a call's own
+// args, just answered with instead of run (docs/specs/proposing.md,
+// section 3-4). Component, chart, transform and title are read only when
+// the model gave them; Orchestrator.propose fills in whatever it left out
+// from the catalogue.
+func (p *Planner) decisionFromProposePanel(wire *wireDecision) (usecase.Decision, error) {
+	endpoint, ok := p.catalog.Find(wire.Service, wire.OperationID)
+	if !ok {
+		return usecase.Decision{}, fmt.Errorf("%w: %s.%s", ErrUnknownOperation, wire.Service, wire.OperationID)
+	}
+
+	if err := validateArgs(&endpoint, wire.Args); err != nil {
+		return usecase.Decision{}, err
+	}
+
+	return usecase.Decision{
+		Kind:        usecase.DecisionProposal,
+		Service:     wire.Service,
+		OperationID: wire.OperationID,
+		Args:        wire.Args,
+		Component:   domain.Component(wire.Component),
+		View:        viewFromWire(wire),
+		Title:       wire.Title,
+	}, nil
+}
+
+// viewFromWire builds propose_panel's optional view from wire's "chart"
+// and "transform" objects, mirroring domain.View's own two independent
+// halves (docs/specs/dashboard.md, P1): nil when the model gave neither,
+// so Orchestrator.propose's catalogue fallback sees no model-supplied view
+// at all rather than an empty one.
+func viewFromWire(wire *wireDecision) *domain.View {
+	var chart *domain.Chart
+
+	var transform *domain.Transform
+
+	if wire.Chart != nil {
+		chart = &domain.Chart{Category: wire.Chart.Category, Value: wire.Chart.Value, Kind: domain.ChartKind(wire.Chart.Kind)}
+	}
+
+	if wire.Transform != nil {
+		transform = &domain.Transform{
+			GroupBy: wire.Transform.GroupBy, Aggregate: domain.Aggregate(wire.Transform.Aggregate), Field: wire.Transform.Field,
+		}
+	}
+
+	if chart == nil && transform == nil {
+		return nil
+	}
+
+	return &domain.View{Chart: chart, Transform: transform}
 }
 
 // validateArgs rejects any argument naming a value outside its parameter's
@@ -507,12 +591,17 @@ func sortedNames(m map[string]domain.Schema) []string {
 // already appears in systemPromptHeader (kind, service, operationId,
 // args, param, question). See DECISIONS.md.
 const decisionSchemaJSON = `{"type":"object","properties":{` +
-	`"kind":{"type":"string","enum":["` + kindCall + `","` + kindAsk + `","` + kindNone + `","` + kindListCapabilities + `"]},` +
+	`"kind":{"type":"string","enum":["` + kindCall + `","` + kindAsk + `","` + kindNone + `","` +
+	kindListCapabilities + `","` + kindProposePanel + `"]},` +
 	`"service":{"type":"string"},` +
 	`"operationId":{"type":"string"},` +
 	`"args":{"type":"object"},` +
 	`"param":{"type":"string"},` +
-	`"question":{"type":"string"}` +
+	`"question":{"type":"string"},` +
+	`"component":{"type":"string"},` +
+	`"chart":{"type":"object","properties":{"category":{"type":"string"},"value":{"type":"string"},"kind":{"type":"string"}}},` +
+	`"transform":{"type":"object","properties":{"groupBy":{"type":"string"},"aggregate":{"type":"string"},"field":{"type":"string"}}},` +
+	`"title":{"type":"string"}` +
 	`},"required":["kind"]}`
 
 // buildResponseFormat builds the ResponseFormat sent with every request -

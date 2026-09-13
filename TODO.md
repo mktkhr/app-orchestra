@@ -4,16 +4,18 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-Nothing right now - `docs/plans/routing.md` closed (see "Done" below); pick
-the next item off "Next".
+**FR-F-5: asking the chat to add a panel** (`docs/plans/proposing.md`,
+`docs/specs/proposing.md`). Task 0 (the model can answer with a panel) is
+done - see `STATE.md` and `DECISIONS.md`, 2026-09-13. Task 1 (the browser
+draws the proposal as the builder's own form, filled in, and places it) and
+Task 2 (the end-to-end journey, and measuring what offering `propose_panel`
+in every request costs every other question - `docs/specs/proposing.md`
+section 9) are next; Task 1 needs Task 0, Task 2 needs both, nothing runs
+in parallel.
 
 ## Next
 
-1. **FR-F-5: asking the chat to add a panel.** `docs/plans/layout.md`
-   closed FR-F-4 (a panel decides its own size and order); FR-F-5, adding a
-   panel by asking rather than through the builder, is not started -
-   nothing in `docs/plans/` or `docs/specs/` targets it yet.
-2. A genre/domain layer above individual services - grouping services by
+1. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
    exposed operation in `services/inventory` carries the single tag `items`
@@ -21,12 +23,12 @@ the next item off "Next".
    group nothing beyond what `OperationPicker`'s own `groupBy` (off
    `serviceDisplayName`) already does. Worth building once a service
    carries more than one tag over its own exposed operations.
-3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+2. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-4. **Open defect: a question whose filter word matches no enum value gets
+3. **Open defect: a question whose filter word matches no enum value gets
    every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
    在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
    variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
@@ -41,7 +43,7 @@ the next item off "Next".
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
-5. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+4. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -52,7 +54,7 @@ the next item off "Next".
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-6. **`harness/guard/suppressions.sh` does not scan for `istanbul ignore`
+5. **`harness/guard/suppressions.sh` does not scan for `istanbul ignore`
    at all** - its `pattern` covers `//nolint`, the `@ts-*` family,
    `eslint-disable`/`oxlint-disable`, `biome-ignore`, `prettier-ignore` and
    `oxfmt-ignore`, but not `istanbul ignore`, even though `AGENTS.md` rule
@@ -66,7 +68,7 @@ the next item off "Next".
    standing to edit it should add the directive to `suppressions.sh`'s own
    `pattern`.
 
-7. **`<Typography color="text.secondary">` is a silent no-op almost
+6. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the

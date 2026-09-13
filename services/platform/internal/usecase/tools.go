@@ -20,12 +20,21 @@ const (
 	keyEnumLabels  = "enumLabels"
 )
 
-// paramService names the "service" argument shared by ask_user and
-// list_capabilities (each with a different meaning - see their own doc
-// comments) and the "service" column of a list_capabilities result. Named
-// once, here, so the literal doesn't drift and to satisfy goconst
-// (harness/quality/go/golangci.yml, min-occurrences: 3).
+// paramService names the "service" argument shared by ask_user,
+// list_capabilities and propose_panel (each with a different meaning - see
+// their own doc comments) and the "service" column of a list_capabilities
+// result. Named once, here, so the literal doesn't drift and to satisfy
+// goconst (harness/quality/go/golangci.yml, min-occurrences: 3).
 const paramService = "service"
+
+// paramOperationID names the "operationId" argument shared by ask_user and
+// propose_panel, for the same goconst reason paramService is named once.
+const paramOperationID = "operationId"
+
+// paramValue names the "value" property ask_user's own "options" items and
+// propose_panel's "chart" argument both declare, for the same goconst
+// reason paramService is named once.
+const paramValue = "value"
 
 // Tool is one function the model can call: one catalogue endpoint, or the
 // fixed ask_user escape hatch. It is deliberately spec-agnostic (a plain
@@ -88,7 +97,7 @@ func AskUserTool() Tool {
 					keyType:        domain.SchemaTypeString,
 					keyDescription: askUserServiceDescription,
 				},
-				"operationId": map[string]any{
+				paramOperationID: map[string]any{
 					keyType:        domain.SchemaTypeString,
 					keyDescription: askUserOperationIDDescription,
 				},
@@ -101,15 +110,15 @@ func AskUserTool() Tool {
 					keyItems: map[string]any{
 						keyType: domain.SchemaTypeObject,
 						keyProperties: map[string]any{
-							"value": map[string]any{keyType: domain.SchemaTypeString},
-							"label": map[string]any{keyType: domain.SchemaTypeString},
+							paramValue: map[string]any{keyType: domain.SchemaTypeString},
+							"label":    map[string]any{keyType: domain.SchemaTypeString},
 						},
-						keyRequired: []string{"value", "label"},
+						keyRequired: []string{paramValue, "label"},
 					},
 					keyDescription: "The candidate values, each with its Japanese label, for the person to pick from.",
 				},
 			},
-			keyRequired: []string{"question", paramService, "operationId", "param", "options"},
+			keyRequired: []string{"question", paramService, paramOperationID, "param", "options"},
 		},
 		Strict: true,
 	}
@@ -159,9 +168,113 @@ func ListCapabilitiesTool() Tool {
 	}
 }
 
+// proposePanelDescription explains, to the model, when to reach for
+// propose_panel instead of calling a safe operation directly: a question
+// that asks for something to be put on the workspace's screen, as opposed
+// to a question that asks to look something up. It never does anything
+// itself (docs/specs/proposing.md, N1) - the platform turns the call into
+// an offer a person still has to place.
+const proposePanelDescription = "Call this when the question asks to put something on the workspace's " +
+	"screen - a panel, a chart, a table - rather than asking a question you should just answer. Name the " +
+	"operation and arguments the panel's data should come from, exactly as you would for that operation's " +
+	"own tool. component, chart, transform and title are all optional: leave any of them out and the " +
+	"platform fills it in from the same rule it would have drawn the answer with. Never call this for a " +
+	"question that only asks to look something up - call that operation's own tool instead."
+
+// proposePanelArgsDescription, proposePanelComponentDescription,
+// proposePanelChartDescription, proposePanelTransformDescription and
+// proposePanelTitleDescription are propose_panel's own per-parameter
+// descriptions - kept as named constants for the same reason
+// askUserServiceDescription is (readability of ProposePanelTool below).
+const (
+	proposePanelArgsDescription = "The arguments the named operation should be called with, exactly as " +
+		"that operation's own tool declares them."
+	proposePanelComponentDescription = "Optional. The widget to draw the panel with. Leave it out to let " +
+		"the platform choose the same way it would have for a plain answer."
+	proposePanelChartDescription = "Optional. The chart's axes, when component is \"chart\" and the " +
+		"operation's own contract does not already declare them."
+	proposePanelTransformDescription = "Optional. How to group and reduce the rows before drawing them - " +
+		"leave it out when the operation's own response needs no grouping."
+	proposePanelTitleDescription = "Optional. The panel's title. Leave it out to use the operation's own " +
+		"display name."
+)
+
+// proposePanelChartSchema and proposePanelTransformSchema build
+// propose_panel's "chart" and "transform" argument schemas: the same
+// shape the contract's View schema declares (docs/specs/dashboard.md,
+// section 3), reused here rather than invented a second time
+// (docs/plans/proposing.md, Task 0's own constraint).
+func proposePanelChartSchema() map[string]any {
+	return map[string]any{
+		keyType:        domain.SchemaTypeObject,
+		keyDescription: proposePanelChartDescription,
+		keyProperties: map[string]any{
+			"category": map[string]any{keyType: domain.SchemaTypeString, keyDescription: "The field named as the chart's category axis."},
+			paramValue: map[string]any{keyType: domain.SchemaTypeString, keyDescription: "The field named as the chart's value axis."},
+			"kind":     map[string]any{keyType: domain.SchemaTypeString, keyEnum: []string{"bar", "line", "pie"}},
+		},
+		keyRequired: []string{"category", paramValue, "kind"},
+	}
+}
+
+func proposePanelTransformSchema() map[string]any {
+	return map[string]any{
+		keyType:        domain.SchemaTypeObject,
+		keyDescription: proposePanelTransformDescription,
+		keyProperties: map[string]any{
+			"groupBy":   map[string]any{keyType: domain.SchemaTypeString, keyDescription: "The field whose distinct values become rows."},
+			"aggregate": map[string]any{keyType: domain.SchemaTypeString, keyEnum: []string{"count", "sum", "avg"}},
+			"field":     map[string]any{keyType: domain.SchemaTypeString, keyDescription: "The field to aggregate. Absent for \"count\"."},
+		},
+		keyRequired: []string{"groupBy", "aggregate"},
+	}
+}
+
+// ProposePanelTool is one further tool, always present, not derived from
+// any service's spec: it lets the model answer with a panel it composed
+// rather than doing anything (docs/specs/proposing.md, N1, section 3). It
+// is a function rather than a package-level value for the same
+// gochecknoglobals reason AskUserTool is (see its own doc comment).
+func ProposePanelTool() Tool {
+	return Tool{
+		Name:        "propose_panel",
+		Description: proposePanelDescription,
+		InputSchema: map[string]any{
+			keyType: domain.SchemaTypeObject,
+			keyProperties: map[string]any{
+				paramService: map[string]any{
+					keyType:        domain.SchemaTypeString,
+					keyDescription: "The service the operation belongs to, exactly as that operation's own tool names it.",
+				},
+				paramOperationID: map[string]any{
+					keyType:        domain.SchemaTypeString,
+					keyDescription: "The operation id the panel's data should come from.",
+				},
+				"args": map[string]any{
+					keyType:        domain.SchemaTypeObject,
+					keyDescription: proposePanelArgsDescription,
+				},
+				"component": map[string]any{
+					keyType:        domain.SchemaTypeString,
+					keyEnum:        []string{"table", "detail", "form", "choice", "chart"},
+					keyDescription: proposePanelComponentDescription,
+				},
+				"chart":     proposePanelChartSchema(),
+				"transform": proposePanelTransformSchema(),
+				"title": map[string]any{
+					keyType:        domain.SchemaTypeString,
+					keyDescription: proposePanelTitleDescription,
+				},
+			},
+			keyRequired: []string{paramService, paramOperationID, "args"},
+		},
+		Strict: true,
+	}
+}
+
 // ToolsFor converts a catalogue into the tool definitions a planner offers
-// the model: one per endpoint the catalogue carries, plus AskUserTool and
-// ListCapabilitiesTool.
+// the model: one per endpoint the catalogue carries, plus AskUserTool,
+// ListCapabilitiesTool and ProposePanelTool.
 //
 // Every endpoint here is already one the operator marked
 // x-orchestra-expose: true (internal/adapter/specsource/http.parseSpec) —
@@ -176,10 +289,10 @@ func ListCapabilitiesTool() Tool {
 // silently drop. harness/guard/exposed-ops.sh catches it before it reaches
 // here.
 // builtinToolCount is how many tools ToolsFor adds beyond the catalogue's
-// own endpoints (AskUserTool, ListCapabilitiesTool) - named so the
-// capacity hint below isn't a bare "magic number" (mnd,
+// own endpoints (AskUserTool, ListCapabilitiesTool, ProposePanelTool) -
+// named so the capacity hint below isn't a bare "magic number" (mnd,
 // harness/quality/go/golangci.yml).
-const builtinToolCount = 2
+const builtinToolCount = 3
 
 func ToolsFor(c domain.Catalog) []Tool {
 	tools := make([]Tool, 0, len(c.Endpoints)+builtinToolCount)
@@ -195,7 +308,7 @@ func ToolsFor(c domain.Catalog) []Tool {
 		})
 	}
 
-	tools = append(tools, AskUserTool(), ListCapabilitiesTool())
+	tools = append(tools, AskUserTool(), ListCapabilitiesTool(), ProposePanelTool())
 
 	return tools
 }

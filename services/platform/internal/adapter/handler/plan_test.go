@@ -241,6 +241,75 @@ func TestPostPlanRendersAnAsk(t *testing.T) {
 	assert.Nil(t, body.Data)
 }
 
+// TestPostPlanRendersAProposal is section 4's wire half: kind "proposal"
+// carries a panel, not a "result" with an extra field - Data and Source,
+// the fields a "result" carries, stay nil.
+func TestPostPlanRendersAProposal(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:        usecase.ResultKindProposal,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Args:        map[string]any{"status": "quarantined"},
+		Component:   domain.ComponentChart,
+		View: &domain.View{
+			Chart: &domain.Chart{Category: "status", Value: "count", Kind: domain.ChartKindBar},
+		},
+		Title: "ステータス別の在庫",
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫をステータス別に棒グラフで置いて"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	assert.Equal(t, openapi.DecisionKind("proposal"), body.Kind)
+	assert.Nil(t, body.Data, "a proposal is not a result: it carries no data")
+	assert.Nil(t, body.Source, "a proposal is not a result: it carries no source")
+
+	require.NotNil(t, body.Panel)
+	assert.Equal(t, "inventory", body.Panel.Service)
+	assert.Equal(t, "ListInventoryItems", body.Panel.OperationId)
+	assert.Equal(t, map[string]any{"status": "quarantined"}, body.Panel.Args)
+	assert.Equal(t, openapi.Component("chart"), body.Panel.Component)
+	assert.Equal(t, "ステータス別の在庫", body.Panel.Title)
+	require.NotNil(t, body.Panel.View)
+	require.NotNil(t, body.Panel.View.Chart)
+	assert.Equal(t, "status", body.Panel.View.Chart.Category)
+	assert.Equal(t, "count", body.Panel.View.Chart.Value)
+}
+
+// TestPostPlanRendersAProposalWithNoArgsAsAnEmptyObject proves
+// ProposedPanel.Args - not a pointer on the wire - is always present, even
+// when the model proposed a panel with no arguments at all.
+func TestPostPlanRendersAProposalWithNoArgsAsAnEmptyObject(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:        usecase.ResultKindProposal,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Component:   domain.ComponentTable,
+		Title:       "ListInventoryItems",
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を置いて"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	require.NotNil(t, body.Panel)
+	assert.Equal(t, map[string]any{}, body.Panel.Args)
+	assert.Nil(t, body.Panel.View)
+}
+
 func TestPostPlanPassesAnswersThrough(t *testing.T) {
 	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
 

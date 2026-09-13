@@ -70,11 +70,11 @@ func TestToolsForBuildsOneToolPerCatalogueEndpointPlusAskUser(t *testing.T) {
 	tools := usecase.ToolsFor(c)
 
 	// 3 catalogue endpoints (ListInventoryItems, CreateInventoryItem,
-	// GetInventoryItem) + ask_user + list_capabilities. The catalogue never
-	// carries an unexposed operation such as GetSpec in the first place -
-	// that filter runs once, in specsource/http.parseSpec, before ToolsFor
-	// ever sees c.Endpoints.
-	require.Len(t, tools, 5)
+	// GetInventoryItem) + ask_user + list_capabilities + propose_panel.
+	// The catalogue never carries an unexposed operation such as GetSpec
+	// in the first place - that filter runs once, in
+	// specsource/http.parseSpec, before ToolsFor ever sees c.Endpoints.
+	require.Len(t, tools, 6)
 
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -98,8 +98,8 @@ func TestToolsForIncludesListCapabilitiesExactlyOnce(t *testing.T) {
 
 	tools := usecase.ToolsFor(c)
 
-	// 3 catalogue endpoints + ask_user + list_capabilities.
-	require.Len(t, tools, 5)
+	// 3 catalogue endpoints + ask_user + list_capabilities + propose_panel.
+	require.Len(t, tools, 6)
 
 	count := 0
 	for _, tool := range tools {
@@ -129,6 +129,66 @@ func TestListCapabilitiesToolHasAnOptionalServiceParameterThatIsNotAnEnum(t *tes
 	assert.False(t, hasRequired, "service is the tool's only property and it is optional, so there is no required list at all")
 }
 
+// TestToolsForIncludesProposePanelExactlyOnce is AC-N-106's precondition:
+// propose_panel must reach the tool list ToolsFor builds, alongside
+// ask_user and list_capabilities, on every catalogue.
+func TestToolsForIncludesProposePanelExactlyOnce(t *testing.T) {
+	c := catalogWithEnumParameter()
+
+	tools := usecase.ToolsFor(c)
+
+	count := 0
+	for _, tool := range tools {
+		if tool.Name == "propose_panel" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "propose_panel must be present exactly once")
+}
+
+// TestProposePanelToolNamesExactlyTheParametersSection3Declares is
+// docs/specs/proposing.md, section 3: propose_panel(service, operationId,
+// args, component?, chart?, transform?, title?) - service, operationId and
+// args required, the panel's own view and title optional.
+func TestProposePanelToolNamesExactlyTheParametersSection3Declares(t *testing.T) {
+	tool := usecase.ProposePanelTool()
+
+	assert.Equal(t, "propose_panel", tool.Name)
+	assert.NotEmpty(t, tool.Description)
+	assert.True(t, tool.Strict)
+
+	properties, ok := tool.InputSchema["properties"].(map[string]any)
+	require.True(t, ok, "input schema must carry a properties map")
+
+	for _, name := range []string{"service", "operationId", "args", "component", "chart", "transform", "title"} {
+		assert.Contains(t, properties, name)
+	}
+
+	required, ok := tool.InputSchema["required"].([]string)
+	require.True(t, ok, "input schema must carry a required list")
+	assert.ElementsMatch(t, []string{"service", "operationId", "args"}, required)
+
+	componentProp, ok := properties["component"].(map[string]any)
+	require.True(t, ok)
+	assert.ElementsMatch(t, []string{"table", "detail", "form", "choice", "chart"}, componentProp["enum"])
+
+	chartProp, ok := properties["chart"].(map[string]any)
+	require.True(t, ok)
+	chartProperties, ok := chartProp["properties"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, chartProperties, "category")
+	assert.Contains(t, chartProperties, "value")
+	assert.Contains(t, chartProperties, "kind")
+
+	transformProp, ok := properties["transform"].(map[string]any)
+	require.True(t, ok)
+	transformProperties, ok := transformProp["properties"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, transformProperties, "groupBy")
+	assert.Contains(t, transformProperties, "aggregate")
+	assert.Contains(t, transformProperties, "field")
+}
+
 func TestToolsForDoesNotExcludeAnEndpointWithNoResponseAndNoRequestBody(t *testing.T) {
 	// Whether an endpoint can be rendered is no longer ToolsFor's business:
 	// only x-orchestra-expose (enforced upstream, in specsource/http and
@@ -149,7 +209,7 @@ func TestToolsForDoesNotExcludeAnEndpointWithNoResponseAndNoRequestBody(t *testi
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 3)
+	require.Len(t, tools, 4)
 	names := []string{tools[0].Name, tools[1].Name, tools[2].Name}
 	assert.Contains(t, names, "PingInventory")
 	assert.Contains(t, names, "ask_user")
@@ -312,7 +372,7 @@ func TestToolsForNonObjectRequestBodyBecomesBodyProperty(t *testing.T) {
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 3)
+	require.Len(t, tools, 4)
 	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
 	require.True(t, ok)
 
@@ -346,7 +406,7 @@ func TestToolsForObjectRequestBodyMergesRequiredFieldsIntoTopLevel(t *testing.T)
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 3)
+	require.Len(t, tools, 4)
 	assert.Equal(t, []string{"name", "quantity", "status"}, tools[0].InputSchema["required"],
 		"the request body's required fields must reach the top-level required list, deduped and sorted")
 }
@@ -375,7 +435,7 @@ func TestToolsForMergesParameterAndRequestBodyRequiredNamesDeduped(t *testing.T)
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 3)
+	require.Len(t, tools, 4)
 	assert.Equal(t, []string{"id", "status"}, tools[0].InputSchema["required"],
 		"a name required by both the parameters and the body must appear only once")
 }
@@ -408,7 +468,7 @@ func TestSchemaToJSONSchemaIncludesRequiredForObjectProperties(t *testing.T) {
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 3)
+	require.Len(t, tools, 4)
 	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
 	require.True(t, ok)
 
@@ -450,7 +510,7 @@ func TestToolsForNestedObjectAndArraySchemasRecurse(t *testing.T) {
 
 	tools := usecase.ToolsFor(c)
 
-	require.Len(t, tools, 3)
+	require.Len(t, tools, 4)
 	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
 	require.True(t, ok)
 

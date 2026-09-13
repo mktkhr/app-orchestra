@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/stub"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
@@ -40,6 +41,29 @@ func TestNewCopiesTheTableSoLaterMutationDoesNotLeak(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "A", got.OperationID)
+}
+
+// TestPlanReturnsAProposeDecisionForAMatchingQuery is AC-N-106: the stub
+// planner answers a propose_panel question with whichever DecisionProposal
+// its fixture names, the same table lookup every other DecisionKind
+// already goes through - no model involved.
+func TestPlanReturnsAProposeDecisionForAMatchingQuery(t *testing.T) {
+	want := usecase.Decision{
+		Kind:        usecase.DecisionProposal,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Component:   domain.ComponentChart,
+		View:        &domain.View{Chart: &domain.Chart{Category: "status", Value: "count", Kind: domain.ChartKindBar}},
+		Title:       "ステータス別の在庫",
+	}
+	p := stub.New(map[stub.Key]usecase.Decision{
+		{Query: "在庫をステータス別に棒グラフで置いて"}: want,
+	}, &usecase.Decision{Kind: usecase.DecisionNone})
+
+	got, err := p.Plan(t.Context(), "在庫をステータス別に棒グラフで置いて", nil, nil, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
 }
 
 func TestPlanIgnoresTools(t *testing.T) {

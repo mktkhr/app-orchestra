@@ -4204,3 +4204,104 @@ rule about one library's API, which is what a type would be better at - and
 MUI's own types accept both, because `sx`-style shorthands are valid on
 some props and not this one. What caught it was being told to look at a
 colour with a browser instead of trusting the code.
+
+## 2026-09-13 — a number field nobody could empty
+
+**Context.** "数値の部分にデフォルトで0が入ってて、しかもそれ消せない."
+
+**What it was.** Two halves that made each other worse.
+`useFormValues.seedValue` returned `0` for an `integer`/`number` field with
+no initial value, so every numeric box opened holding a zero nobody typed.
+And `ResultFormField`'s numeric control did:
+
+```ts
+const parsed = Number(event.target.value);
+onChange(fieldKey, Number.isNaN(parsed) ? 0 : parsed);
+```
+
+`Number("")` is **0**, not `NaN`. So deleting the last digit never reached
+the guard - it parsed cleanly to zero and wrote zero straight back, on the
+same keystroke. The field could not be emptied.
+
+**Decision.** An empty box is an empty value. A numeric field seeds with
+nothing, and emptying one **removes the key** rather than setting it to `0`,
+`null` or `undefined`: `values` is posted whole as a call's arguments, and an
+absent key is the one shape that says nobody gave this. A `null` is a value
+the service must have an opinion about; an `undefined` survives as a key
+holding nothing until `JSON.stringify` drops it, which agrees with this by
+accident one layer later. So `useFormValues` gained `clearValue`, and the
+control calls it.
+
+A quantity of zero and a quantity nobody has given are different claims, and
+a required field with neither is what a validation message is for - not a
+zero put there to make the form look answered.
+
+**Consequences.** `NaN` is now also a clear rather than a zero: a box holding
+`-` mid-typing sends nothing instead of sending 0. Verified live through the
+panel builder's own arguments form, which needs no model: the field opens
+empty, takes 7, and empties again.
+
+## 2026-09-13 propose_panel: a fifth `kind`, filled in from the catalogue
+
+**Context.** `docs/plans/proposing.md` Task 0: the model answers with a
+panel (`propose_panel(service, operationId, args, component?, chart?,
+transform?, title?)`) instead of doing anything - N1, `docs/specs/proposing.md`.
+Three design questions Task 0 itself didn't spell out to the byte:
+
+**What `DecisionKind`/`ResultKind` value to use.** `usecase.DecisionProposal`
+carries the wire value `"propose_panel"` (matching the tool's own name,
+the way `DecisionListCapabilities` matches `list_capabilities`), while the
+wire `kind` on `/api/plan`'s response is `"proposal"` (matching section 4's
+own wording, a noun for what came back rather than the verb that produced
+it). The two names differing was judged clearer than forcing one string to
+serve both a Go-side "what did the planner decide" enum and a wire-side
+"what should the browser draw" enum, which section 4 itself already treats
+as related but distinct concepts (a decision produces a result).
+
+**How the platform merges the model's view with the catalogue's.**
+`orchestrator.go`'s `proposalView` treats `Chart` and `Transform` as two
+independent slots, exactly as `domain.View` already documents them (P1,
+`docs/specs/dashboard.md`): the model's own `Chart` wins outright when
+given, an absent one is filled from `endpoint.ChartHint`, and `Transform`
+is _only ever_ the model's own - there is no catalogue-sourced transform to
+fall back to (a contract declares axes, never a transform - the same rule
+`chartViewFor` already encodes for a plain result). `Component` and
+`Title` use a simpler either/or: the model's non-zero value wins, otherwise
+`domain.Render` (not `RenderResult` - the endpoint has not been called and
+may never be, same as `Render`'s other caller in `call`) and
+`endpoint.DisplayNameOr(operationId)` respectively.
+
+**How the refusal happens.** No new sentinel. `Orchestrator.propose` looks
+`decision.Service`/`decision.OperationID` up against the caller's own
+already-narrowed `catalog` (`catalogFor`, A4 `docs/specs/auth.md`) and
+returns the same `ErrEndpointNotFound` `call`, `ask` and `Invoke` already
+return for an operation that does not exist or the person may not call -
+deliberately not a distinct "forbidden" sentinel, for the reason
+`TestInvokeRefusesAnOperationTheUserMayNotCallWithTheSameErrorAsUnknown`'s
+own doc comment gives: telling the two apart would let an error answer
+"does this exist?" for an operation the planner was never offered.
+`TestPlanProposalOnAnOperationTheUserMayNotCallFails`
+(`internal/usecase/orchestrator_propose_test.go`) is the test AC-N-105 asks
+for, even though the catalogue narrowing that makes it "cannot happen"
+already existed before this task.
+
+**The tool's own schema reuses `View`, not a third shape.** `chart` and
+`transform`'s JSON Schemas in `usecase.ProposePanelTool`
+(`internal/usecase/tools.go`) declare exactly the same fields the contract's
+`View` schema does (`docs/specs/dashboard.md` section 3) - `category`/
+`value`/`kind` and `groupBy`/`aggregate`/`field` - written out by hand
+rather than derived from the OpenAPI schema, since `usecase` cannot import
+`encoding/json` or the generated `openapi` package (layer order,
+`make guard-arch`) and a tool's `InputSchema` is a plain
+`map[string]any` the same way every other tool's already is.
+
+**A shared working tree.** This task's code (contract, `usecase`, both
+planner adapters, tests) landed inside `fbd258b`, "fix(web): let a number
+field be empty" - a concurrent session's commit, made while these files sat
+staged in the same git index. Not intentional, not hidden: the diff is
+there under that message, this entry is the correction, and
+`docs/plans/proposing.md`'s own Task 0 checklist points here. Nothing about
+that commit's own content (the number-field fix) is affected by this - the
+two changes touch disjoint files, `openapi.gen.go` and
+`web/src/shared/api/gen/platform.d.ts` aside, which are generated, not
+authored, and reflect both changes correctly either way.

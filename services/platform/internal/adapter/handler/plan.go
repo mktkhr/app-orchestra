@@ -192,7 +192,37 @@ func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
 		out.Options = toAPIOptions(result.Options)
 	}
 
+	if result.Kind == usecase.ResultKindProposal {
+		panel := toAPIProposedPanel(result)
+		out.Panel = &panel
+	}
+
 	return out, nil
+}
+
+// toAPIProposedPanel converts a usecase.Result carrying a ResultKindProposal
+// into the wire ProposedPanel: the same fields a saved Panel carries, minus
+// where it sits (docs/specs/proposing.md, section 4) - args defaults to an
+// empty object rather than nil, since ProposedPanel.Args is not a pointer
+// (the model may propose a panel with no arguments at all, and that is not
+// the same as the field being absent from the wire).
+//
+// result is a pointer, not the value toAPIPlanResult holds, for the same
+// gocritic hugeParam reason as toAPIPlanResult's own parameter.
+func toAPIProposedPanel(result *usecase.Result) openapi.ProposedPanel {
+	args := result.Args
+	if args == nil {
+		args = map[string]any{}
+	}
+
+	return openapi.ProposedPanel{
+		Service:     result.Service,
+		OperationId: result.OperationID,
+		Args:        args,
+		Component:   openapi.Component(result.Component),
+		Title:       result.Title,
+		View:        toAPIView(result.View),
+	}
 }
 
 // toAPIOptions converts a usecase.Result's catalogue-sourced options into

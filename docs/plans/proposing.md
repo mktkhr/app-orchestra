@@ -81,16 +81,19 @@ Spec section 3 and 4. Three things worth getting right:
 The stub planner answers with whichever decision its fixture names, so
 `make check` drives this path without a model (AC-N-106).
 
-- [ ] **Step 1** Add the `proposal` kind and its payload to the contract.
+- [x] **Step 1** Add the `proposal` kind and its payload to the contract.
       `make api-lint`, `make generate`.
-- [ ] **Step 2** Write the tests: the tool is offered; a `propose_panel`
+- [x] **Step 2** Write the tests: the tool is offered; a `propose_panel`
       call becomes a proposal with the model's own values; one that omits
       the view gets the catalogue's; one naming an operation outside the
       person's catalogue is refused; the JSON planner reaches the same
       decision shape as the tool-calling one. Run them, expect failure.
-- [ ] **Step 3** Implement.
-- [ ] **Step 4** Go gates green.
-- [ ] **Step 5** Commit: `feat(platform): let the model answer with a panel`
+- [x] **Step 3** Implement.
+- [x] **Step 4** Go gates green.
+- [x] **Step 5** Commit: `feat(platform): let the model answer with a panel`
+      (landed as part of `fbd258b`, see DECISIONS.md, 2026-09-13,
+      "propose_panel, and a shared working tree" for why the message
+      there doesn't say so)
 
 **Satisfies:** AC-N-105, AC-N-106, and AC-N-101 at the platform level.
 

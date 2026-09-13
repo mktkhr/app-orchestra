@@ -650,6 +650,31 @@ hand-written `json.RawMessage` for exactly this reason - see `DECISIONS.md`,
 four questions three times each, all through `ORCHESTRA_LLM_MODE=json`,
 zero retries needed after the fix).
 
+**Asking for a panel (`docs/specs/proposing.md`), Task 0 of
+`docs/plans/proposing.md`.** A fifth built-in tool, `propose_panel(service,
+operationId, args, component?, chart?, transform?, title?)`, alongside
+`ask_user` and `list_capabilities` (`usecase.ProposePanelTool`,
+`usecase.ToolsFor`): the model answers with a panel it composed rather than
+doing anything (N1). `usecase.Orchestrator.propose` maps a
+`DecisionProposal` onto `kind: "proposal"` - a fifth `PlanResult` kind
+beside `result`/`form`/`ask`/`none`, carrying a `panel` (the new
+`ProposedPanel` contract schema, reusing `View` for its chart axes and
+transform rather than inventing a second shape) - and fills in whatever the
+model left zero-valued from the catalogue: the component from
+`domain.Render`, the chart axes from `endpoint.ChartHint` when the contract
+declares them, the title from `DisplayNameOr`. A proposal naming an
+operation outside the caller's own narrowed catalogue fails with the same
+`ErrEndpointNotFound` every other unknown-or-forbidden operation already
+does (AC-N-105). Both planners reach `DecisionProposal`:
+`toolcall.Planner` maps the `propose_panel` tool call directly;
+`jsonmode.Planner` adds a fifth `kind: "propose_panel"` JSON shape,
+validated the same way a `call` answer's args already are. The stub planner
+needed no change - a table lookup already returns whichever `Decision` its
+fixture names, `DecisionProposal` included (AC-N-106). See `DECISIONS.md`,
+2026-09-13, "propose_panel: a fifth `kind`, filled in from the catalogue".
+Task 1 (the browser draws and places one) and Task 2 (end-to-end, and what
+the tool costs every other question) are not started.
+
 ## What works
 
 **Two services, each its own Go module, each a whole contract-first stack.**

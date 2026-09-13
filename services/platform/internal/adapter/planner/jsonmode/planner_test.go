@@ -201,6 +201,92 @@ func TestPlanMapsAskKindOntoADecisionAsk(t *testing.T) {
 	assert.Equal(t, "どのステータスですか？", decision.Question)
 }
 
+// TestPlanMapsProposePanelKindOntoADecisionProposal is section 3's jsonmode
+// half, and the M5/proposing.md claim that both planners reach the same
+// decision shape: the same fields toolcall's
+// TestPlanMapsProposePanelOntoADecisionProposal asserts on, reached from
+// this transport's own JSON object instead of a tool call.
+func TestPlanMapsProposePanelKindOntoADecisionProposal(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t,
+		`{"kind":"propose_panel","service":"inventory","operationId":"ListInventoryItems",`+
+			`"args":{"status":"quarantined"},"component":"chart",`+
+			`"chart":{"category":"status","value":"count","kind":"bar"},`+
+			`"transform":{"groupBy":"status","aggregate":"count"},`+
+			`"title":"ステータス別の在庫"}`,
+	))
+
+	decision, err := fixture.planner.Plan(context.Background(), "在庫をステータス別に棒グラフで置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
+	assert.Equal(t, "inventory", decision.Service)
+	assert.Equal(t, "ListInventoryItems", decision.OperationID)
+	assert.Equal(t, map[string]any{"status": "quarantined"}, decision.Args)
+	assert.Equal(t, domain.ComponentChart, decision.Component)
+	require.NotNil(t, decision.View)
+	require.NotNil(t, decision.View.Chart)
+	assert.Equal(t, "status", decision.View.Chart.Category)
+	assert.Equal(t, "count", decision.View.Chart.Value)
+	assert.Equal(t, domain.ChartKindBar, decision.View.Chart.Kind)
+	require.NotNil(t, decision.View.Transform)
+	assert.Equal(t, "status", decision.View.Transform.GroupBy)
+	assert.Equal(t, domain.AggregateCount, decision.View.Transform.Aggregate)
+	assert.Equal(t, "ステータス別の在庫", decision.Title)
+}
+
+// TestPlanMapsProposePanelWithNoOptionalFieldsToAZeroValuedDecision proves
+// the platform, not this planner, fills a left-out view in
+// (docs/specs/proposing.md, section 4): a "propose_panel" answer naming
+// nothing beyond the operation maps onto a Decision with no Component, no
+// View and no Title.
+func TestPlanMapsProposePanelWithNoOptionalFieldsToAZeroValuedDecision(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t,
+		`{"kind":"propose_panel","service":"inventory","operationId":"ListInventoryItems","args":{}}`,
+	))
+
+	decision, err := fixture.planner.Plan(context.Background(), "在庫の一覧を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
+	assert.Empty(t, decision.Component)
+	assert.Nil(t, decision.View)
+	assert.Empty(t, decision.Title)
+}
+
+// TestPlanProposePanelOnUnknownOperationReturnsAnError mirrors
+// TestPlanOnUnknownOperationReturnsAnError for propose_panel's own
+// validation path (decisionFromProposePanel).
+func TestPlanProposePanelOnUnknownOperationReturnsAnError(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t,
+		`{"kind":"propose_panel","service":"inventory","operationId":"NoSuchOperation","args":{}}`,
+	))
+
+	_, err := fixture.planner.Plan(context.Background(), "何か置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	require.Error(t, err)
+}
+
+// TestPlanProposePanelRejectsAnOutOfEnumArgument mirrors
+// TestPlanRetriesOnceOnAnEnumValueOutsideTheParameterAndQuotesItBack's own
+// validation, over propose_panel's args instead of a "call" answer's.
+func TestPlanProposePanelRejectsAnOutOfEnumArgument(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(),
+		chatContent(t,
+			`{"kind":"propose_panel","service":"inventory","operationId":"ListInventoryItems",`+
+				`"args":{"status":"nonexistent"}}`,
+		),
+		chatContent(t,
+			`{"kind":"propose_panel","service":"inventory","operationId":"ListInventoryItems",`+
+				`"args":{"status":"quarantined"}}`,
+		),
+	)
+
+	decision, err := fixture.planner.Plan(context.Background(), "検品保留の在庫を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	require.NoError(t, err)
+	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
+	assert.Equal(t, map[string]any{"status": "quarantined"}, decision.Args)
+	assert.Len(t, fixture.requests, 2, "the first, out-of-enum answer must have been rejected and retried")
+}
+
 func TestPlanMapsListCapabilitiesKindOntoADecisionListCapabilities(t *testing.T) {
 	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"list_capabilities","service":"inventory"}`))
 

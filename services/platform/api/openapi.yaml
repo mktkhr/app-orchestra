@@ -663,12 +663,13 @@ components:
     DecisionKind:
       type: string
       description: What the planner decided to do about a question.
-      enum: [result, form, ask, none]
+      enum: [result, form, ask, none, proposal]
       x-enum-labels:
         result: 結果
         form: フォーム
         ask: 質問
         none: 該当なし
+        proposal: 提案
     Component:
       type: string
       description: The widget the frontend renders the result with.
@@ -770,7 +771,10 @@ components:
         endpoint's contract declares `x-ui-hint.chart`, `view` (its `chart`
         half only - a contract declares axes, never a transform); `form`
         carries `schema`, `initial` and `target`; `ask` carries `question`,
-        `param` and `options`; `none` carries `message`.
+        `param` and `options`; `none` carries `message`; `proposal` carries
+        `panel` (docs/specs/proposing.md, section 4) - a plan result with a
+        panel attached, not a `result` with an extra field, since a result
+        answers a question and a proposal offers one to place.
       required:
         - kind
       properties:
@@ -821,6 +825,8 @@ components:
           description: The candidate values to choose from, when kind is "ask".
           items:
             $ref: "#/components/schemas/Option"
+        panel:
+          $ref: "#/components/schemas/ProposedPanel"
     InvokeRequest:
       type: object
       description: A confirmed call to execute.
@@ -985,6 +991,42 @@ components:
             narrow breakpoint's single column and single order (L7), so
             `narrowHeight`'s absence is meaningful and stays visible on the
             wire rather than collapsing into some number.
+        view:
+          $ref: "#/components/schemas/View"
+    ProposedPanel:
+      type: object
+      description: >
+        The panel a `propose_panel` call filled in (docs/specs/proposing.md,
+        section 3-4): the same call, component and view a saved Panel
+        carries, minus everything about where it sits (`position`, `width`,
+        `height`) - a proposal is not placed yet, so it has no position to
+        carry. The model's own values win where it gave them; everything it
+        left out is filled in from the catalogue, so the browser never has
+        to (component from `domain.Render`, the view's chart axes from
+        `x-ui-hint.chart` when the contract declares them, the title from
+        the operation's display name).
+      required:
+        - service
+        - operationId
+        - args
+        - component
+        - title
+      properties:
+        service:
+          type: string
+          description: The service's name, as configured in ORCHESTRA_SERVICES.
+        operationId:
+          type: string
+          description: The operation id, as declared in that service's contract.
+        args:
+          type: object
+          description: The call's arguments, the model's own or left empty.
+          additionalProperties: true
+        component:
+          $ref: "#/components/schemas/Component"
+        title:
+          type: string
+          description: The panel's title, the model's own or the operation's display name.
         view:
           $ref: "#/components/schemas/View"
     CreatePanelRequest:

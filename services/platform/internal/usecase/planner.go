@@ -11,13 +11,20 @@ import (
 // catalogue can do, or report that nothing in the catalogue fits.
 type DecisionKind string
 
-// The four things a Planner can decide (docs/specs/orchestration.md,
-// section 4). All four are acted on by Orchestrator.
+// The five things a Planner can decide (docs/specs/orchestration.md,
+// section 4; docs/specs/proposing.md, section 3-4). All five are acted on
+// by Orchestrator.
 const (
 	DecisionCall             DecisionKind = "call"
 	DecisionAsk              DecisionKind = "ask"
 	DecisionNone             DecisionKind = "none"
 	DecisionListCapabilities DecisionKind = "list_capabilities"
+	// DecisionProposal is what a propose_panel tool call (or its jsonmode
+	// equivalent) maps onto: the model answering with a panel it composed
+	// rather than doing anything (N1, docs/specs/proposing.md) - it is
+	// never invoked, never written, and Orchestrator.propose never
+	// touches the invoker over it.
+	DecisionProposal DecisionKind = "propose_panel"
 )
 
 // Answer is the user's answer to a previous ask_user question, resubmitted
@@ -53,6 +60,16 @@ type Decision struct {
 	Question string
 	Param    string
 	Options  []domain.Option
+
+	// Populated when Kind is DecisionProposal, from propose_panel's own
+	// optional arguments (docs/specs/proposing.md, section 3). Each is
+	// the model's own value when it gave one, and left zero/nil
+	// otherwise - Orchestrator.propose is what fills a zero value in from
+	// the catalogue, never the planner (section 4: "the platform fills
+	// in what the model left out").
+	Component domain.Component
+	View      *domain.View
+	Title     string
 }
 
 // Turn is one earlier question in the conversation, and what the platform
