@@ -50,6 +50,15 @@ type TurnFixture struct {
 	OperationID string
 }
 
+// Chart is PlanFixture.Chart: a propose fixture's own chart axes, mirroring
+// config.Chart the way Answer mirrors config.Answer - see PlanFixture's
+// doc comment for what it is for.
+type Chart struct {
+	Category string
+	Value    string
+	Kind     string
+}
+
 // PlanFixture is one entry of the stub planner's table
 // (internal/adapter/planner/stub): a question - together with the answers,
 // if any, it was resubmitted with, and the conversation, if any, it was
@@ -80,6 +89,23 @@ type PlanFixture struct {
 	Ask      bool
 	Question string
 	Param    string
+
+	// Propose, when true, builds a usecase.Decision{Kind: DecisionProposal}
+	// instead of the default DecisionCall - the stub-fixture equivalent of
+	// a propose_panel tool call (docs/specs/proposing.md, section 3).
+	// Checked before Ask in toDecision, so a fixture is exactly one of
+	// Ask, Propose or plain-call.
+	Propose bool
+	// Component, Chart and Title mirror propose_panel's own optional
+	// arguments, read the same way toolcall.decisionFromProposePanel reads
+	// a real tool call's: each is the model's own value when given, left
+	// zero/nil to mean the model gave none, so Orchestrator.propose's
+	// catalogue fallback runs exactly as it does for the real planner.
+	// See config.PlanFixture's doc comment for why Transform is not
+	// offered here.
+	Component string
+	Chart     *Chart
+	Title     string
 
 	Service     string
 	OperationID string
@@ -347,10 +373,24 @@ func toUsecaseTurns(turns []TurnFixture) []usecase.Turn {
 	return out
 }
 
-// toDecision builds the Decision one PlanFixture produces: an ask when
-// Ask is set, a call otherwise. See PlanFixture's doc comment for why an
-// ask fixture carries no options of its own.
+// toDecision builds the Decision one PlanFixture produces: a proposal when
+// Propose is set, an ask when Ask is set, a call otherwise - checked in
+// that order, so a fixture is exactly one of the three (PlanFixture.Propose's
+// doc comment). See PlanFixture's doc comment for why an ask fixture
+// carries no options of its own.
 func toDecision(f *PlanFixture) usecase.Decision {
+	if f.Propose {
+		return usecase.Decision{
+			Kind:        usecase.DecisionProposal,
+			Service:     f.Service,
+			OperationID: f.OperationID,
+			Args:        f.Args,
+			Component:   domain.Component(f.Component),
+			View:        toDomainView(f.Chart),
+			Title:       f.Title,
+		}
+	}
+
 	if f.Ask {
 		return usecase.Decision{
 			Kind:        usecase.DecisionAsk,
@@ -366,6 +406,27 @@ func toDecision(f *PlanFixture) usecase.Decision {
 		Service:     f.Service,
 		OperationID: f.OperationID,
 		Args:        f.Args,
+	}
+}
+
+// toDomainView builds a *domain.View from a propose fixture's Chart, or
+// nil when the fixture gave none - a proposal fixture with no chart must
+// map to a nil View, not an empty one, so Orchestrator.propose's catalogue
+// fallback (proposalView) exercises exactly as it does for the real
+// planner (docs/specs/proposing.md, section 4). Transform is always nil
+// here: see PlanFixture.Chart's doc comment for why this fixture shape
+// offers no transform.
+func toDomainView(chart *Chart) *domain.View {
+	if chart == nil {
+		return nil
+	}
+
+	return &domain.View{
+		Chart: &domain.Chart{
+			Category: chart.Category,
+			Value:    chart.Value,
+			Kind:     domain.ChartKind(chart.Kind),
+		},
 	}
 }
 

@@ -72,6 +72,10 @@ func toAppPlanFixtures(fixtures []config.PlanFixture) []app.PlanFixture {
 			Ask:         f.Ask,
 			Question:    f.Question,
 			Param:       f.Param,
+			Propose:     f.Propose,
+			Component:   f.Component,
+			Chart:       toAppChart(f.Chart),
+			Title:       f.Title,
 			Service:     f.Service,
 			OperationID: f.OperationID,
 			Args:        f.Args,
@@ -79,6 +83,16 @@ func toAppPlanFixtures(fixtures []config.PlanFixture) []app.PlanFixture {
 	}
 
 	return out
+}
+
+// toAppChart adapts config.Chart to app.Chart, or nil when fixture gave
+// none. See toAppServices.
+func toAppChart(chart *config.Chart) *app.Chart {
+	if chart == nil {
+		return nil
+	}
+
+	return &app.Chart{Category: chart.Category, Value: chart.Value, Kind: chart.Kind}
 }
 
 // toAppTurnFixtures adapts config.TurnFixture to app.TurnFixture. See

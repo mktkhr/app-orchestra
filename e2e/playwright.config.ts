@@ -42,6 +42,18 @@ const planFixtures = [
     service: "inventory",
     operationId: "ListInventoryItems",
   },
+  // proposing.spec.ts: a propose_panel-shaped fixture (docs/plans/proposing.md,
+  // Task 2), the same query/response WorkspacePage.test.tsx already exercises
+  // at the component level.
+  {
+    query: "在庫をステータス別に棒グラフで置いて",
+    propose: true,
+    service: "inventory",
+    operationId: "ListInventoryItems",
+    component: "chart",
+    title: "ステータス別の在庫",
+    chart: { category: "status", value: "count", kind: "bar" },
+  },
 ];
 
 // A file in its own temporary directory, per docs/specs/workspaces.md

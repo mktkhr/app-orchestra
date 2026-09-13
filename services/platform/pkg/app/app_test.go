@@ -202,6 +202,73 @@ func TestNewWiresThePlanFixtureThroughToAResult(t *testing.T) {
 	assert.Equal(t, "table", body.Component)
 }
 
+// TestNewWiresAProposePlanFixtureThroughToAProposalResult closes the gap
+// docs/plans/proposing.md Task 2 names: a stub-planner fixture can produce
+// a DecisionProposal, carrying its own component/chart/title through
+// Orchestrator.propose the same way a real propose_panel tool call would
+// (docs/specs/proposing.md, section 3-4) - this is what lets
+// e2e/src/proposing.test.ts and e2e/browser/proposing.spec.ts drive the
+// journey from the built binary without a model.
+func TestNewWiresAProposePlanFixtureThroughToAProposalResult(t *testing.T) {
+	fixture := fixtureService(t)
+
+	handler, err := app.New(&app.Config{
+		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
+		PlanFixtures: []app.PlanFixture{
+			{
+				Query:       "widgets as a bar chart please",
+				Propose:     true,
+				Service:     "fixture",
+				OperationID: "ListWidgets",
+				Args:        map[string]any{},
+				Component:   "chart",
+				Title:       "ウィジェットの棒グラフ",
+				Chart:       &app.Chart{Category: "status", Value: "count", Kind: "bar"},
+			},
+		},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets as a bar chart please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Kind  string `json:"kind"`
+		Panel struct {
+			Service     string         `json:"service"`
+			OperationID string         `json:"operationId"`
+			Component   string         `json:"component"`
+			Title       string         `json:"title"`
+			View        map[string]any `json:"view"`
+		} `json:"panel"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "proposal", body.Kind)
+	assert.Equal(t, "fixture", body.Panel.Service)
+	assert.Equal(t, "ListWidgets", body.Panel.OperationID)
+	assert.Equal(t, "chart", body.Panel.Component)
+	assert.Equal(t, "ウィジェットの棒グラフ", body.Panel.Title)
+	assert.Equal(t, map[string]any{
+		"chart": map[string]any{"category": "status", "value": "count", "kind": "bar"},
+	}, body.Panel.View)
+}
+
 // fixtureChatServer answers every chat-completions request with a tool
 // call naming ListWidgets, regardless of what tools or messages it was
 // sent - just enough to prove app.New wires the tool-calling planner in

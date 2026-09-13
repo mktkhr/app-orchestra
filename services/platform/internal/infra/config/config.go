@@ -88,6 +88,21 @@ type TurnFixture struct {
 	OperationID string `json:"operationId"`
 }
 
+// Chart is PlanFixture.Chart, decoded straight into the shape
+// pkg/app.Chart takes - see PlanFixture's doc comment for what it is for.
+// A plain, JSON-decodable struct rather than domain.Chart: this package
+// may not import internal/domain (see this file's own package doc
+// comment and docs/plans/proposing.md's "Gap you must close first" - no
+// other file under internal/infra/config imports it either), so the
+// conversion to a typed domain.Chart happens in pkg/app, the same seam
+// that already turns Args (a bare map[string]any here too) into whatever
+// the usecase layer needs.
+type Chart struct {
+	Category string `json:"category"`
+	Value    string `json:"value"`
+	Kind     string `json:"kind"`
+}
+
 // PlanFixture is one entry of ORCHESTRA_PLAN_FIXTURES, decoded straight
 // into the shape pkg/app.PlanFixture takes - see that type's doc comment
 // for what each field means.
@@ -99,6 +114,26 @@ type PlanFixture struct {
 	Ask      bool   `json:"ask"`
 	Question string `json:"question"`
 	Param    string `json:"param"`
+
+	// Propose, when true, builds a DecisionProposal (usecase.DecisionProposal)
+	// instead of the default DecisionCall - the fixture-table equivalent of
+	// a propose_panel tool call (docs/specs/proposing.md, section 3). A
+	// fixture is exactly one of Ask, Propose or plain-call: Propose is
+	// checked first (see pkg/app.toDecision), so setting both Ask and
+	// Propose on the same fixture just means Ask is never reached.
+	Propose bool `json:"propose"`
+	// Component, Chart and Title are propose_panel's own optional
+	// arguments (docs/specs/proposing.md, section 3): each is the "model's
+	// own value" a real propose_panel call would have given, left
+	// zero/nil here to mean the model gave none - Orchestrator.propose
+	// fills those in from the catalogue exactly as it does for the real
+	// planner (section 4). Transform is deliberately not offered: the
+	// plan's own chosen example (docs/plans/proposing.md, Task 2) is
+	// chart-only, and a fixture field with no test exercising it is a
+	// field nobody can tell still does anything.
+	Component string `json:"component"`
+	Chart     *Chart `json:"chart"`
+	Title     string `json:"title"`
 
 	Service     string         `json:"service"`
 	OperationID string         `json:"operationId"`

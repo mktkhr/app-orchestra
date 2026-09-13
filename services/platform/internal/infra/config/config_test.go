@@ -178,6 +178,37 @@ func TestLoadParsesPlanFixtures(t *testing.T) {
 	}, cfg.PlanFixtures[1])
 }
 
+// TestLoadParsesAProposePlanFixture is part of the Gap this subproject's
+// plan (docs/plans/proposing.md, Task 2) closes: ORCHESTRA_PLAN_FIXTURES
+// can name a propose fixture, carrying its own component/chart/title, the
+// same way it already carries an ask fixture's question/param above.
+func TestLoadParsesAProposePlanFixture(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv(
+		"ORCHESTRA_PLAN_FIXTURES",
+		`[{"query":"在庫をステータス別に棒グラフで置いて","propose":true,`+
+			`"service":"inventory","operationId":"SummarizeInventory","args":{},`+
+			`"component":"chart","title":"ステータス別の在庫",`+
+			`"chart":{"category":"status","value":"count","kind":"bar"}}]`,
+	)
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	require.Len(t, cfg.PlanFixtures, 1)
+	assert.Equal(t, config.PlanFixture{
+		Query:       "在庫をステータス別に棒グラフで置いて",
+		Propose:     true,
+		Service:     "inventory",
+		OperationID: "SummarizeInventory",
+		Args:        map[string]any{},
+		Component:   "chart",
+		Title:       "ステータス別の在庫",
+		Chart:       &config.Chart{Category: "status", Value: "count", Kind: "bar"},
+	}, cfg.PlanFixtures[0])
+}
+
 func TestLoadRejectsMalformedPlanFixtures(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
