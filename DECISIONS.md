@@ -3549,3 +3549,42 @@ distance between that and "nothing is broken" is exactly the set of things
 nobody has taught it to look at. This repository learned the same thing
 twice today already - a stale `schema.d.ts` exclude, and browser gates that
 had measured only the sign-in screen since September 12.
+
+## 2026-09-13 — the resize handle nobody could see
+
+**Context.** "パネルのリサイズはどこでできるの？" - asked of a screen that
+had just been reported as arranging panels by drag and by keyboard.
+
+**What it was.** The handle is there: 20px square, bottom-right of each
+panel, on the wide breakpoint. `react-grid-layout` draws it as a 5x5 corner
+mark made of two 2px borders in `rgba(0, 0, 0, 0.4)` - black, with no theme
+behind it. On the dark scheme that is black on `rgb(18, 18, 18)`. The only
+way to learn a panel could be resized was to read the source.
+
+**Why no gate caught it.** `make guard-layout`'s contrast rule measures
+`button, a[href], input, select, textarea`. The handle is a bare `span`.
+`docs/plans/layout.md` Task 2's own report said exactly that - "the handle
+is a plain `<span>` with no ARIA role, so it never enters the guard's
+Control list" - and treated it as the reason there was no failure. It is
+the reason the gate is silent, which is a reason to look by hand, not a
+finding of correctness. It was read and accepted in that form.
+
+**Decision.** `workspaceGrid.css` draws the mark in `currentColor` at 0.6,
+and a little larger than the library's five pixels. Measured in a browser in
+both schemes rather than reasoned about: `rgba(0, 0, 0, 0.87)` on white, and
+`rgb(255, 255, 255)` on `rgb(18, 18, 18)`.
+
+`--mui-palette-text-secondary` was tried first and is **not defined in this
+build** - the rule fell back to the library's own black and measured
+identically to the bug. A custom property that silently falls back is the
+same defect with more words in front of it; `currentColor` is the card's own
+themed text colour and cannot fail that way.
+
+**Left open, deliberately.** On the narrow breakpoint there is no resize at
+all, by `docs/specs/layout.md` section 5: "one column, one order, nothing to
+arrange". That argument covers width and order and says nothing about
+**height**, which is just as arrangeable on a phone and just as unavailable
+there. The spec's reasoning does not reach its own conclusion, which is the
+second time today a decision turned out not to have argued the thing it
+decided (the first was `useHashRoute`). Not changed here, because widening
+it is a product decision rather than a fix.

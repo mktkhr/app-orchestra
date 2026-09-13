@@ -21,3 +21,31 @@
 .react-grid-item.cssTransforms {
   transition-property: transform;
 }
+
+/*
+ * `react-grid-layout` draws its resize handle as a 5x5 corner mark made of
+ * two 2px borders in `rgba(0, 0, 0, 0.4)` - black, at forty percent, with
+ * no theme behind it. On the dark scheme that is black on near-black: the
+ * handle is there, is 20px square, and cannot be seen, so the only way to
+ * find out a panel can be resized is to read the source.
+ *
+ * `make guard-layout` does not catch this. Its contrast rule measures
+ * `button, a[href], input, select, textarea`, and the handle is a bare
+ * `span` - which is a reason to look at it by hand, not a reason to
+ * conclude it is fine. It was measured in a browser in both schemes.
+ *
+ * The mark is drawn in `currentColor` - the card's own text colour, which
+ * the theme already sets per scheme - rather than a named MUI custom
+ * property: `--mui-palette-text-secondary` does not exist in this build,
+ * and a variable that silently falls back to the library's black is the
+ * bug again with more words. It is also drawn a little larger than the
+ * library's five pixels, because a person has to find it before the
+ * keyboard alternative is a choice rather than the only way.
+ */
+.react-grid-item > .react-resizable-handle::after {
+  width: 8px;
+  height: 8px;
+  border-right-color: currentColor;
+  border-bottom-color: currentColor;
+  opacity: 0.6;
+}
