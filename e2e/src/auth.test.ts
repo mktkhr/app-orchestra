@@ -181,6 +181,7 @@ describe("a person reaches only the service they were granted (AC-A-103, AC-A-10
     expect(grantedPlan["kind"]).toBe("result");
     expect(grantedPlan["source"]).toEqual({
       service: "inventory",
+      serviceDisplayName: "在庫管理",
       operationId: "ListInventoryItems",
     });
 

@@ -119,6 +119,7 @@ describe("Conversation", () => {
       data: { items },
       source: {
         service: "inventory",
+        serviceDisplayName: "在庫管理",
         operationId: "listInventoryItems",
         args: { status: "allocated" },
       },
@@ -132,7 +133,7 @@ describe("Conversation", () => {
 
     await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
 
-    expect(await screen.findByText("inventory / listInventoryItems")).toBeTruthy();
+    expect(await screen.findByText("在庫管理 / listInventoryItems")).toBeTruthy();
     expect(await screen.findByText("itm-001")).toBeTruthy();
     expect(screen.queryByText("itm-011")).toBeNull();
 
@@ -148,7 +149,11 @@ describe("Conversation", () => {
       kind: "result",
       component: "table",
       data: { items: [{ id: "itm-001" }, { id: "itm-002" }] },
-      source: { service: "inventory", operationId: "listInventoryItems" },
+      source: {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "listInventoryItems",
+      },
     });
 
     render(
@@ -205,6 +210,7 @@ describe("Conversation", () => {
       data: { items: [{ id: "itm-001", status: "quarantined" }] },
       source: {
         service: "inventory",
+        serviceDisplayName: "在庫管理",
         operationId: "listInventoryItems",
         args: { status: "quarantined" },
       },

@@ -133,3 +133,23 @@ func TestEndpointDisplayNameOrFallsBackWhenTheContractDeclaresNone(t *testing.T)
 
 	assert.Equal(t, "List stock items.", e.DisplayNameOr("List stock items."))
 }
+
+// TestEndpointServiceDisplayNameOrPrefersItsOwnDisplayName is DECISIONS.md's
+// 2026-09-13 entry, one level up: a service's contract that declares
+// info.x-ui-hint.displayName wins over the identifier the caller would
+// otherwise have shown.
+func TestEndpointServiceDisplayNameOrPrefersItsOwnDisplayName(t *testing.T) {
+	e := domain.Endpoint{ServiceDisplayName: "在庫管理"}
+
+	assert.Equal(t, "在庫管理", e.ServiceDisplayNameOr("inventory"))
+}
+
+// TestEndpointServiceDisplayNameOrFallsBackWhenTheContractDeclaresNone is
+// the other half: a service's contract that says nothing about a display
+// name changes nothing a person already saw before this field existed -
+// the identifier itself.
+func TestEndpointServiceDisplayNameOrFallsBackWhenTheContractDeclaresNone(t *testing.T) {
+	e := domain.Endpoint{}
+
+	assert.Equal(t, "inventory", e.ServiceDisplayNameOr("inventory"))
+}

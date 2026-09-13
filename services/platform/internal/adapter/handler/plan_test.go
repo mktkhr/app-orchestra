@@ -44,12 +44,13 @@ func (f *fakeOrchestrator) Plan(
 
 func TestPostPlanRendersAResult(t *testing.T) {
 	orchestrator := &fakeOrchestrator{result: usecase.Result{
-		Kind:        usecase.ResultKindResult,
-		Component:   domain.ComponentTable,
-		Data:        map[string]any{"items": []any{}},
-		Service:     "inventory",
-		OperationID: "ListInventoryItems",
-		Args:        map[string]any{"status": "allocated"},
+		Kind:               usecase.ResultKindResult,
+		Component:          domain.ComponentTable,
+		Data:               map[string]any{"items": []any{}},
+		Service:            "inventory",
+		ServiceDisplayName: "在庫管理",
+		OperationID:        "ListInventoryItems",
+		Args:               map[string]any{"status": "allocated"},
 	}}
 
 	h := handler.NewPlan(orchestrator)
@@ -69,6 +70,7 @@ func TestPostPlanRendersAResult(t *testing.T) {
 	assert.Equal(t, map[string]any{"items": []any{}}, *body.Data)
 	require.NotNil(t, body.Source)
 	assert.Equal(t, "inventory", body.Source.Service)
+	assert.Equal(t, "在庫管理", body.Source.ServiceDisplayName)
 	assert.Equal(t, "ListInventoryItems", body.Source.OperationId)
 	require.NotNil(t, body.Source.Args)
 	assert.Equal(t, map[string]any{"status": "allocated"}, *body.Source.Args)
@@ -151,11 +153,12 @@ func TestPostPlanRendersAResultWithFields(t *testing.T) {
 
 func TestPostPlanRendersAForm(t *testing.T) {
 	orchestrator := &fakeOrchestrator{result: usecase.Result{
-		Kind:        usecase.ResultKindForm,
-		Service:     "inventory",
-		OperationID: "CreateInventoryItem",
-		Schema:      map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}},
-		Initial:     map[string]any{"name": "widget"},
+		Kind:               usecase.ResultKindForm,
+		Service:            "inventory",
+		ServiceDisplayName: "在庫管理",
+		OperationID:        "CreateInventoryItem",
+		Schema:             map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}},
+		Initial:            map[string]any{"name": "widget"},
 	}}
 
 	h := handler.NewPlan(orchestrator)
@@ -175,6 +178,7 @@ func TestPostPlanRendersAForm(t *testing.T) {
 	assert.Equal(t, map[string]any{"name": "widget"}, *body.Initial)
 	require.NotNil(t, body.Target)
 	assert.Equal(t, "inventory", body.Target.Service)
+	assert.Equal(t, "在庫管理", body.Target.ServiceDisplayName)
 	assert.Equal(t, "CreateInventoryItem", body.Target.OperationId)
 	assert.Nil(t, body.Source)
 	assert.Nil(t, body.Data)

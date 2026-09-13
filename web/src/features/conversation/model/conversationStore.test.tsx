@@ -136,7 +136,12 @@ describe("conversationStore", () => {
       kind: "result",
       component: "table",
       data: { items: [] },
-      source: { service: "inventory", operationId: "listInventoryItems", args: {} },
+      source: {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "listInventoryItems",
+        args: {},
+      },
     });
 
     render(
@@ -174,7 +179,12 @@ describe("conversationStore", () => {
       kind: "result",
       component: "table",
       data: { items: [] },
-      source: { service: "inventory", operationId: "listInventoryItems", args: {} },
+      source: {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "listInventoryItems",
+        args: {},
+      },
     });
 
     render(

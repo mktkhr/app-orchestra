@@ -139,6 +139,66 @@ func TestFetchConvertsUIHint(t *testing.T) {
 	assert.Empty(t, list.DisplayName)
 }
 
+// TestFetchConvertsServiceDisplayName is DECISIONS.md's 2026-09-13 entry,
+// one level up from TestFetchConvertsUIHint: a service's own
+// info.x-ui-hint.displayName carries onto every one of its endpoints,
+// operation-level DisplayName or not.
+func TestFetchConvertsServiceDisplayName(t *testing.T) {
+	server := fixtureServer(t)
+	defer server.Close()
+
+	source := specsourcehttp.New(
+		[]specsourcehttp.Service{{Name: "fixture", URL: server.URL}},
+		nil,
+	)
+
+	catalog, err := source.Fetch(context.Background())
+	require.NoError(t, err)
+
+	get, ok := catalog.Find("fixture", "getWidget")
+	require.True(t, ok)
+	assert.Equal(t, "フィクスチャ", get.ServiceDisplayName)
+
+	list, ok := catalog.Find("fixture", "listWidgets")
+	require.True(t, ok)
+	assert.Equal(t, "フィクスチャ", list.ServiceDisplayName,
+		"the service's own display name, unrelated to listWidgets' own (absent) operation-level one")
+}
+
+// TestFetchLeavesServiceDisplayNameEmptyWhenTheContractDeclaresNone is the
+// other half: a service whose info object carries no x-ui-hint at all
+// leaves every one of its endpoints' ServiceDisplayName empty -
+// ServiceDisplayNameOr is where a caller's own fallback happens
+// (domain/catalog.go), not the parser's.
+func TestFetchLeavesServiceDisplayNameEmptyWhenTheContractDeclaresNone(t *testing.T) {
+	doc := `openapi: 3.0.3
+info: {title: bare, version: '1'}
+paths:
+  /bare:
+    get:
+      operationId: getBare
+      x-orchestra-expose: true
+      responses:
+        "200": {description: n/a}
+`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := w.Write([]byte(doc)); err != nil {
+			t.Errorf("writing bare-info response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	source := specsourcehttp.New([]specsourcehttp.Service{{Name: "bare", URL: server.URL}}, nil)
+
+	catalog, err := source.Fetch(context.Background())
+	require.NoError(t, err)
+
+	bare, ok := catalog.Find("bare", "getBare")
+	require.True(t, ok)
+	assert.Empty(t, bare.ServiceDisplayName)
+}
+
 func TestFetchConvertsChartHint(t *testing.T) {
 	server := fixtureServer(t)
 	defer server.Close()

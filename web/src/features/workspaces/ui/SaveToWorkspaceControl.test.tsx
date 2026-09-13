@@ -14,6 +14,7 @@ vi.mock("@/shared/api/client", () => ({
 
 const source = {
   service: "inventory",
+  serviceDisplayName: "在庫管理",
   operationId: "listInventoryItems",
   args: { status: "allocated" },
 };

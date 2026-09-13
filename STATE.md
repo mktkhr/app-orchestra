@@ -4,6 +4,32 @@ _Last updated: 2026-09-13_
 
 ## Summary
 
+**Follow-up fix, one level up: a service has no Japanese name either, and
+that is closed too** (see `DECISIONS.md`, 2026-09-13). Same shape as the
+entry below, one level up: `inventory`/`attendance` showed raw wherever a
+_service_ appeared - `OperationPicker`'s group headers, `list_capabilities`'
+サービス column, a result's provenance (`Provenance.tsx`), the admin's
+permission grid (`ServiceCard.tsx`). `x-ui-hint` (already on an operation,
+D15) now also sits on a service's own `info` object
+(`docs/specs/orchestration.md` D16); `specsource/http` reads it once per
+service and copies it onto every one of that service's endpoints, the same
+way `Service` itself already is. `domain.Endpoint.ServiceDisplayNameOr(fallback)`
+mirrors `DisplayNameOr`; `CatalogEntry.serviceDisplayName`,
+`Operation.serviceDisplayName` and `Source.serviceDisplayName` (a
+`/api/plan` result's provenance) each fall back to `service` - the
+identifier - exactly where that screen already showed it, so a contract
+declaring none changes nothing. `service` itself never changes anywhere:
+`ORCHESTRA_SERVICES`, `source.service`, a `Permission` row, a `Panel`, and
+what `/api/invoke` resolves are all untouched. One exception: a saved
+`Panel` stores only the identifier and `POST /api/invoke` returns no
+`Source` at all, so `PanelResult.tsx`'s own hand-built provenance still
+reads the identifier there, same as `operationId` already does in that
+spot. `services/inventory` and `services/attendance` each declare one
+(在庫管理, 勤怠管理). Verified `make eval` was not run, no operation's
+`summary` changed, and `docker logs llama-swap`'s
+`POST /v1/chat/completions` count is unchanged across a full `make check`
+run. `make check` is green.
+
 **Follow-up fix: English showing through the panel builder is closed** (see
 `DECISIONS.md`, 2026-09-13). Two causes. (1) A bug: `usePanelFields.ts`'s
 `fieldOptionsFor` returned bare property names for the chart's axis pickers

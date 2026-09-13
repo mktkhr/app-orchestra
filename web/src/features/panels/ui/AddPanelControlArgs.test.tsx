@@ -22,6 +22,7 @@ vi.mock("@/shared/api/catalog", () => ({
  */
 const listEntry: CatalogEntry = {
   service: "inventory",
+  serviceDisplayName: "在庫管理",
   operationId: "ListInventoryItems",
   summary: "在庫一覧",
   displayName: "在庫一覧",

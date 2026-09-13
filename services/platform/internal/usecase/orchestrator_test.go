@@ -140,6 +140,8 @@ func TestPlanSafeCallInvokesAndRendersTheResult(t *testing.T) {
 	assert.Equal(t, domain.ComponentTable, result.Component)
 	assert.Equal(t, map[string]any{"items": []any{}}, result.Data)
 	assert.Equal(t, "inventory", result.Service)
+	assert.Equal(t, "inventory", result.ServiceDisplayName,
+		"inventoryCatalog declares no info.x-ui-hint.displayName, so this falls back to the identifier")
 	assert.Equal(t, "ListInventoryItems", result.OperationID)
 	assert.Equal(t, map[string]any{"status": "allocated"}, result.Args)
 
@@ -149,6 +151,32 @@ func TestPlanSafeCallInvokesAndRendersTheResult(t *testing.T) {
 
 	assert.Equal(t, "在庫の一覧を見せて", planner.query)
 	assert.NotEmpty(t, planner.tools, "the orchestrator must offer the planner the catalogue's tools")
+}
+
+// TestPlanSafeCallPrefersTheServicesOwnDisplayName is DECISIONS.md's
+// 2026-09-13 entry, one level up from an operation's own DisplayName: a
+// service whose contract declares info.x-ui-hint.displayName carries it
+// onto a safe call's result, for Provenance.tsx to read instead of the
+// identifier.
+func TestPlanSafeCallPrefersTheServicesOwnDisplayName(t *testing.T) {
+	catalog := inventoryCatalog()
+	for i := range catalog.Endpoints {
+		catalog.Endpoints[i].ServiceDisplayName = "在庫管理"
+	}
+
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}}
+	invoker := &fakeInvoker{data: map[string]any{"items": []any{}}}
+
+	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, "在庫管理", result.ServiceDisplayName)
 }
 
 // TestPlanWithNoTurnsBehavesExactlyAsBefore is AC-M-105: a question with no
@@ -448,10 +476,37 @@ func TestPlanUnsafeCallReturnsAFormWithoutInvoking(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindForm, result.Kind)
 	assert.Equal(t, "inventory", result.Service)
+	assert.Equal(t, "inventory", result.ServiceDisplayName,
+		"inventoryCatalog declares no info.x-ui-hint.displayName, so this falls back to the identifier")
 	assert.Equal(t, "CreateInventoryItem", result.OperationID)
 	assert.Equal(t, map[string]any{"name": "widget", "status": "allocated"}, result.Initial)
 	assert.Equal(t, map[string]any{"type": "object", "properties": map[string]any{}}, result.Schema)
 	assert.Zero(t, invoker.calls, "an unsafe call must never reach the service")
+}
+
+// TestPlanUnsafeCallFormPrefersTheServicesOwnDisplayName is
+// TestPlanSafeCallPrefersTheServicesOwnDisplayName's unsafe-call half:
+// formFor carries the same service display name onto the confirmation
+// form an unsafe call degrades to.
+func TestPlanUnsafeCallFormPrefersTheServicesOwnDisplayName(t *testing.T) {
+	catalog := inventoryCatalog()
+	for i := range catalog.Endpoints {
+		catalog.Endpoints[i].ServiceDisplayName = "在庫管理"
+	}
+
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "CreateInventoryItem",
+	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫を登録して", nil, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, "在庫管理", result.ServiceDisplayName)
 }
 
 // catalogWithCreateStatusEnum is inventoryCatalog plus a "status" property

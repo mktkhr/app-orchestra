@@ -90,19 +90,23 @@ func TestPlanListCapabilitiesWithNoServiceListsEveryEndpoint(t *testing.T) {
 	assert.Zero(t, invoker.calls, "list_capabilities must never call a service")
 }
 
-// TestPlanListCapabilitiesOperationColumnPrefersDisplayName is
-// DECISIONS.md's 2026-09-13 entry's list_capabilities half: the 操作
-// column shows x-ui-hint.displayName when the contract declares one,
-// rather than the operation id every row showed before this field
-// existed.
-func TestPlanListCapabilitiesOperationColumnPrefersDisplayName(t *testing.T) {
+// TestPlanListCapabilitiesColumnsPreferDisplayNames is DECISIONS.md's
+// 2026-09-13 entries' list_capabilities half, both levels at once: the
+// 操作 column shows x-ui-hint.displayName and the サービス column shows
+// its service's own info.x-ui-hint.displayName, when the contract
+// declares them, rather than the operation id/identifier every row showed
+// before either field existed. The filter itself still matches the
+// identifier decision.Service names, not the label -
+// capabilitiesItems' own doc comment on that.
+func TestPlanListCapabilitiesColumnsPreferDisplayNames(t *testing.T) {
 	catalog := domain.Catalog{Endpoints: []domain.Endpoint{
 		{
-			Service:     "inventory",
-			OperationID: "ListInventoryItems",
-			Summary:     "List stock items, optionally filtered by status.",
-			DisplayName: "在庫一覧",
-			Response:    &domain.Schema{Type: domain.SchemaTypeArray, Items: &domain.Schema{Type: domain.SchemaTypeObject}},
+			Service:            "inventory",
+			ServiceDisplayName: "在庫管理",
+			OperationID:        "ListInventoryItems",
+			Summary:            "List stock items, optionally filtered by status.",
+			DisplayName:        "在庫一覧",
+			Response:           &domain.Schema{Type: domain.SchemaTypeArray, Items: &domain.Schema{Type: domain.SchemaTypeObject}},
 		},
 	}}
 
@@ -121,6 +125,7 @@ func TestPlanListCapabilitiesOperationColumnPrefersDisplayName(t *testing.T) {
 	require.Len(t, items, 1)
 
 	assert.Equal(t, "在庫一覧", items[0]["operation"])
+	assert.Equal(t, "在庫管理", items[0]["service"])
 }
 
 func TestPlanListCapabilitiesWithServiceFiltersToThatService(t *testing.T) {

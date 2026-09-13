@@ -3,6 +3,14 @@ import type { Operation, Permission } from "@/shared/api/users";
 /** One service's operations, grouped for the grid (docs/specs/auth.md section 4). */
 export interface PermissionGroup {
   readonly service: string;
+  /**
+   * The service's own name for a person to read - every operation of one
+   * service carries the same `serviceDisplayName` (it comes from the
+   * service's own contract, not the operation's), so the group just reads
+   * it off the first one. `ServiceCard`'s header reads this, never
+   * `service` (DECISIONS.md, 2026-09-13).
+   */
+  readonly serviceDisplayName: string;
   readonly operations: readonly Operation[];
 }
 
@@ -28,5 +36,13 @@ export function groupByService(operations: readonly Operation[]): readonly Permi
     list.push(operation);
   }
 
-  return order.map((service) => ({ service, operations: bucket.get(service) ?? [] }));
+  return order.map((service) => {
+    const serviceOperations = bucket.get(service) ?? [];
+
+    return {
+      service,
+      serviceDisplayName: serviceOperations[0]?.serviceDisplayName ?? service,
+      operations: serviceOperations,
+    };
+  });
 }

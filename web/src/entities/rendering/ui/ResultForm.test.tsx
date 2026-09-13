@@ -30,7 +30,11 @@ const schema = {
   },
 };
 
-const target = { service: "inventory", operationId: "CreateInventoryItem" };
+const target = {
+  service: "inventory",
+  serviceDisplayName: "在庫管理",
+  operationId: "CreateInventoryItem",
+};
 const initial = { name: "テスト品", quantity: 5, status: "allocated" };
 
 describe("ResultForm", () => {
@@ -75,6 +79,7 @@ describe("ResultForm", () => {
       data: { name: "編集後の品名", quantity: 7, status: "allocated" },
       source: {
         service: "inventory",
+        serviceDisplayName: "在庫管理",
         operationId: "CreateInventoryItem",
         args: { name: "編集後の品名", quantity: 5, status: "allocated" },
       },

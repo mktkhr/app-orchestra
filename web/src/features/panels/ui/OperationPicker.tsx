@@ -20,6 +20,9 @@ function entryKey(entry: CatalogEntry): string {
  * Step 1 (`docs/specs/dashboard.md` section 6): every operation the
  * catalogue returned, grouped by service - an MUI `Autocomplete`'s own
  * `groupBy`, not a second grouping function of this feature's own.
+ * Grouped by `serviceDisplayName`, never the raw `service` identifier
+ * (DECISIONS.md, 2026-09-13) - a contract that declares none falls back
+ * to the identifier there, so this never shows blank.
  */
 export function OperationPicker({
   entries,
@@ -31,7 +34,7 @@ export function OperationPicker({
     <>
       <Autocomplete
         options={entries}
-        groupBy={(entry) => entry.service}
+        groupBy={(entry) => entry.serviceDisplayName}
         getOptionLabel={(entry) => entry.displayName || entry.operationId}
         isOptionEqualToValue={(option, candidate) => entryKey(option) === entryKey(candidate)}
         value={value}

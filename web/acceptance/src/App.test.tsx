@@ -26,7 +26,11 @@ function respond(input: RequestInfo | URL): Promise<Response> {
         kind: "result",
         component: "table",
         data: { items: [{ id: "itm-001", name: "ラベル用紙", status: "allocated" }] },
-        source: { service: "inventory", operationId: "ListInventoryItems" },
+        source: {
+          service: "inventory",
+          serviceDisplayName: "在庫管理",
+          operationId: "ListInventoryItems",
+        },
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     ),
@@ -60,7 +64,7 @@ describe("App", () => {
     // table (Task 13) carrying its provenance. Detail/form/choice are Tasks
     // 14-15.
     expect(await screen.findByText("在庫の一覧を見せて")).toBeTruthy();
-    expect(await screen.findByText("inventory / ListInventoryItems")).toBeTruthy();
+    expect(await screen.findByText("在庫管理 / ListInventoryItems")).toBeTruthy();
     expect(await screen.findByText("itm-001")).toBeTruthy();
   });
 });

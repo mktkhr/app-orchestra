@@ -57,6 +57,16 @@ Everything remaining sits outside all four subprojects above:
 
 ## Done
 
+- Follow-up fix, one level up: a service (`inventory`/`attendance`) had no
+  Japanese name either, shown raw in `OperationPicker`'s group headers,
+  `list_capabilities`' サービス column, a result's provenance
+  (`Provenance.tsx`) and the admin's permission grid (`ServiceCard.tsx`).
+  `x-ui-hint.displayName` (D15) now also sits on a service's own `info`
+  object (`docs/specs/orchestration.md` D16); `service` itself - the
+  identifier `ORCHESTRA_SERVICES`, `source.service`, a `Permission` and a
+  `Panel` all carry - never changes. See `STATE.md` and `DECISIONS.md`,
+  2026-09-13. `make check` is green; `make eval` was not run and no
+  operation's `summary` changed.
 - Follow-up fix: English showing through the panel builder. A bug
   (`fieldOptionsFor` in `usePanelFields.ts` threw away the `title` `fields`
   already carries for the chart/transform pickers) and a pre-existing

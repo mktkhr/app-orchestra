@@ -72,7 +72,12 @@ export function ResultForm({ schema, initial, target, onSubmitted }: ResultFormP
         // optional property does not accept an explicit undefined, and an
         // invoke result carries no fields when nothing can describe them.
         ...(result.fields === undefined ? {} : { fields: result.fields }),
-        source: { service: target.service, operationId: target.operationId, args: values },
+        source: {
+          service: target.service,
+          serviceDisplayName: target.serviceDisplayName,
+          operationId: target.operationId,
+          args: values,
+        },
       });
     });
 

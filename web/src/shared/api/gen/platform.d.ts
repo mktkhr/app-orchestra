@@ -353,6 +353,8 @@ export type components = {
         readonly Source: {
             /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
             readonly service: string;
+            /** @description The service's own name for a person to read - see `CatalogEntry.serviceDisplayName`, the same fallback rule (DECISIONS.md, 2026-09-13). Provenance.tsx reads this, never `service`. */
+            readonly serviceDisplayName: string;
             /** @description The operation id, as declared in that service's contract. */
             readonly operationId: string;
             /** @description The arguments the planner (or the user) supplied. */
@@ -497,6 +499,8 @@ export type components = {
         readonly Operation: {
             /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
             readonly service: string;
+            /** @description The service's own name for a person to read - see `CatalogEntry.serviceDisplayName`, the same fallback rule (DECISIONS.md, 2026-09-13). Groups the permission grid's cards. */
+            readonly serviceDisplayName: string;
             /** @description The operation id, as declared in that service's contract. */
             readonly operationId: string;
             /** @description The operation's summary, from its contract. */
@@ -506,6 +510,8 @@ export type components = {
         readonly CatalogEntry: {
             /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
             readonly service: string;
+            /** @description The service's own name for a person to read, from its contract's `info.x-ui-hint.displayName` (one level up from an operation's own, DECISIONS.md, 2026-09-13) when it declares one, falling back to `service` - the identifier - when it does not, exactly as `displayName` falls back to `summary`. Never blank. */
+            readonly serviceDisplayName: string;
             /** @description The operation id, as declared in that service's contract. */
             readonly operationId: string;
             /** @description The operation's summary, from its contract. This is the model-facing tool description (`usecase.ToolsFor`), in whatever language the contract happens to use - never translated for display (DECISIONS.md, 2026-09-13) - so a screen meant to read in Japanese shows `displayName`, not this. */

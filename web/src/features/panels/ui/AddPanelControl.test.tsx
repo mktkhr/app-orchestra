@@ -17,6 +17,7 @@ vi.mock("@/shared/api/catalog", () => ({
 
 const tableEntry: CatalogEntry = {
   service: "inventory",
+  serviceDisplayName: "在庫管理",
   operationId: "ListInventoryItems",
   summary: "在庫一覧",
   displayName: "在庫一覧",
@@ -36,6 +37,7 @@ const tableEntry: CatalogEntry = {
 
 const chartEntry: CatalogEntry = {
   service: "attendance",
+  serviceDisplayName: "勤怠管理",
   operationId: "SummarizeAttendance",
   summary: "出勤の集計",
   displayName: "出勤の集計",
@@ -66,7 +68,7 @@ describe("AddPanelControl", () => {
     vi.mocked(addPanel).mockReset();
   });
 
-  it("lists only the operations the catalogue returned, grouped by service", async () => {
+  it("lists only the operations the catalogue returned, grouped by the service's display name", async () => {
     const user = userEvent.setup();
 
     vi.mocked(getCatalog).mockResolvedValue([tableEntry, chartEntry]);
@@ -78,8 +80,10 @@ describe("AddPanelControl", () => {
 
     expect(await screen.findByText("在庫一覧")).toBeTruthy();
     expect(screen.getByText("出勤の集計")).toBeTruthy();
-    expect(screen.getByText("inventory")).toBeTruthy();
-    expect(screen.getByText("attendance")).toBeTruthy();
+    expect(screen.getByText("在庫管理")).toBeTruthy();
+    expect(screen.getByText("勤怠管理")).toBeTruthy();
+    expect(screen.queryByText("inventory")).toBeNull();
+    expect(screen.queryByText("attendance")).toBeNull();
     expect(screen.getAllByRole("option")).toHaveLength(2);
   });
 

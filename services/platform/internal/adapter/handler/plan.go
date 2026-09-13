@@ -153,8 +153,9 @@ func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
 
 		out.Data = &data
 		out.Source = &openapi.Source{
-			Service:     result.Service,
-			OperationId: result.OperationID,
+			Service:            result.Service,
+			ServiceDisplayName: result.ServiceDisplayName,
+			OperationId:        result.OperationID,
 		}
 
 		if len(result.Args) > 0 {
@@ -174,8 +175,9 @@ func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
 		schema := result.Schema
 		out.Schema = &schema
 		out.Target = &openapi.Source{
-			Service:     result.Service,
-			OperationId: result.OperationID,
+			Service:            result.Service,
+			ServiceDisplayName: result.ServiceDisplayName,
+			OperationId:        result.OperationID,
 		}
 
 		if len(result.Initial) > 0 {

@@ -20,9 +20,14 @@ describe("usePermissionGrid", () => {
 
   it("groups the catalogue by service and marks what the account already holds", async () => {
     vi.mocked(listOperations).mockResolvedValue([
-      { service: "inventory", operationId: "ListInventoryItems", summary: "List items" },
-      { service: "inventory", operationId: "CreateInventoryItem" },
-      { service: "attendance", operationId: "ListAttendance" },
+      {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "ListInventoryItems",
+        summary: "List items",
+      },
+      { service: "inventory", serviceDisplayName: "在庫管理", operationId: "CreateInventoryItem" },
+      { service: "attendance", serviceDisplayName: "勤怠管理", operationId: "ListAttendance" },
     ]);
     vi.mocked(getUserPermissions).mockResolvedValue([
       { service: "inventory", operationId: "ListInventoryItems" },
@@ -37,14 +42,27 @@ describe("usePermissionGrid", () => {
     expect(result.current.groups).toEqual([
       {
         service: "inventory",
+        serviceDisplayName: "在庫管理",
         operations: [
-          { service: "inventory", operationId: "ListInventoryItems", summary: "List items" },
-          { service: "inventory", operationId: "CreateInventoryItem" },
+          {
+            service: "inventory",
+            serviceDisplayName: "在庫管理",
+            operationId: "ListInventoryItems",
+            summary: "List items",
+          },
+          {
+            service: "inventory",
+            serviceDisplayName: "在庫管理",
+            operationId: "CreateInventoryItem",
+          },
         ],
       },
       {
         service: "attendance",
-        operations: [{ service: "attendance", operationId: "ListAttendance" }],
+        serviceDisplayName: "勤怠管理",
+        operations: [
+          { service: "attendance", serviceDisplayName: "勤怠管理", operationId: "ListAttendance" },
+        ],
       },
     ]);
     expect(result.current.granted.has("inventory ListInventoryItems")).toBe(true);
@@ -53,7 +71,7 @@ describe("usePermissionGrid", () => {
 
   it("toggles one operation on and off", async () => {
     vi.mocked(listOperations).mockResolvedValue([
-      { service: "inventory", operationId: "ListInventoryItems" },
+      { service: "inventory", serviceDisplayName: "在庫管理", operationId: "ListInventoryItems" },
     ]);
     vi.mocked(getUserPermissions).mockResolvedValue([]);
 
@@ -76,8 +94,8 @@ describe("usePermissionGrid", () => {
 
   it("grants every operation a service holds in one gesture, and revokes them all the same way", async () => {
     vi.mocked(listOperations).mockResolvedValue([
-      { service: "inventory", operationId: "ListInventoryItems" },
-      { service: "inventory", operationId: "CreateInventoryItem" },
+      { service: "inventory", serviceDisplayName: "在庫管理", operationId: "ListInventoryItems" },
+      { service: "inventory", serviceDisplayName: "在庫管理", operationId: "CreateInventoryItem" },
     ]);
     vi.mocked(getUserPermissions).mockResolvedValue([]);
 
@@ -102,7 +120,7 @@ describe("usePermissionGrid", () => {
 
   it("saves the whole granted set, replacing what the account held", async () => {
     vi.mocked(listOperations).mockResolvedValue([
-      { service: "inventory", operationId: "ListInventoryItems" },
+      { service: "inventory", serviceDisplayName: "在庫管理", operationId: "ListInventoryItems" },
     ]);
     vi.mocked(getUserPermissions).mockResolvedValue([]);
     vi.mocked(setUserPermissions).mockResolvedValue();

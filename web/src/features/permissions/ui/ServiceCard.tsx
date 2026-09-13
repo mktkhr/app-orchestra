@@ -37,7 +37,7 @@ export function ServiceCard({
   return (
     <Card variant="outlined">
       <CardHeader
-        title={group.service}
+        title={group.serviceDisplayName}
         avatar={
           <Checkbox
             checked={allGranted}
@@ -50,7 +50,7 @@ export function ServiceCard({
             // the 44px floor make guard-layout measures on the underlying
             // <input>.
             sx={{ p: "12px" }}
-            slotProps={{ input: { "aria-label": `${group.service}をすべて許可` } }}
+            slotProps={{ input: { "aria-label": `${group.serviceDisplayName}をすべて許可` } }}
           />
         }
       />

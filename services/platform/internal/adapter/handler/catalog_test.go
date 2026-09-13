@@ -36,12 +36,13 @@ func (f *fakeCatalog) For(_ context.Context, user *domain.User) ([]usecase.Catal
 func TestGetCatalogConvertsEveryEntryOntoTheWire(t *testing.T) {
 	c := &fakeCatalog{entries: []usecase.CatalogEntry{
 		{
-			Service:     "inventory",
-			OperationID: "ListInventoryItems",
-			Summary:     "List stock items.",
-			Component:   domain.ComponentTable,
-			Schema:      map[string]any{"type": "object"},
-			Fields:      map[string]any{"status": map[string]any{"type": "string"}},
+			Service:            "inventory",
+			ServiceDisplayName: "在庫管理",
+			OperationID:        "ListInventoryItems",
+			Summary:            "List stock items.",
+			Component:          domain.ComponentTable,
+			Schema:             map[string]any{"type": "object"},
+			Fields:             map[string]any{"status": map[string]any{"type": "string"}},
 		},
 		{
 			Service:     "inventory",
@@ -65,6 +66,7 @@ func TestGetCatalogConvertsEveryEntryOntoTheWire(t *testing.T) {
 	require.Len(t, out, 2)
 
 	assert.Equal(t, "inventory", out[0].Service)
+	assert.Equal(t, "在庫管理", out[0].ServiceDisplayName)
 	assert.Equal(t, "ListInventoryItems", out[0].OperationId)
 	assert.Equal(t, openapi.Component("table"), out[0].Component)
 	require.NotNil(t, out[0].Fields)

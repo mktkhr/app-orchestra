@@ -26,6 +26,7 @@ describe("toContextTurns", () => {
           data: { items: [] },
           source: {
             service: "inventory",
+            serviceDisplayName: "在庫管理",
             operationId: "listInventoryItems",
             args: { status: "quarantined" },
           },
@@ -54,7 +55,12 @@ describe("toContextTurns", () => {
           kind: "form",
           schema: {},
           initial: {},
-          target: { service: "inventory", operationId: "updateInventoryItem", args: { id: "1" } },
+          target: {
+            service: "inventory",
+            serviceDisplayName: "在庫管理",
+            operationId: "updateInventoryItem",
+            args: { id: "1" },
+          },
         },
       },
     ];
@@ -89,7 +95,11 @@ describe("toContextTurns", () => {
           kind: "result",
           component: "table",
           data: { items: [{ id: "itm-001" }] },
-          source: { service: "inventory", operationId: "listInventoryItems" },
+          source: {
+            service: "inventory",
+            serviceDisplayName: "在庫管理",
+            operationId: "listInventoryItems",
+          },
         },
       },
     ];
@@ -109,7 +119,11 @@ describe("toContextTurns", () => {
           kind: "result",
           component: "table",
           data: {},
-          source: { service: "inventory", operationId: "listInventoryItems" },
+          source: {
+            service: "inventory",
+            serviceDisplayName: "在庫管理",
+            operationId: "listInventoryItems",
+          },
         },
       },
       { id: "3", role: "question", text: "勤怠でも同じことして" },
@@ -120,7 +134,11 @@ describe("toContextTurns", () => {
           kind: "result",
           component: "table",
           data: {},
-          source: { service: "attendance", operationId: "listRecords" },
+          source: {
+            service: "attendance",
+            serviceDisplayName: "勤怠管理",
+            operationId: "listRecords",
+          },
         },
       },
     ];
@@ -151,7 +169,11 @@ describe("toContextTurns", () => {
           kind: "form",
           schema: {},
           initial: {},
-          target: { service: "inventory", operationId: "updateInventoryItem" },
+          target: {
+            service: "inventory",
+            serviceDisplayName: "在庫管理",
+            operationId: "updateInventoryItem",
+          },
         },
       },
       {
@@ -161,7 +183,11 @@ describe("toContextTurns", () => {
           kind: "result",
           component: "detail",
           data: { id: "1" },
-          source: { service: "inventory", operationId: "updateInventoryItem" },
+          source: {
+            service: "inventory",
+            serviceDisplayName: "在庫管理",
+            operationId: "updateInventoryItem",
+          },
         },
       },
     ];

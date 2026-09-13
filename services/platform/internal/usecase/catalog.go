@@ -11,9 +11,14 @@ import (
 // (docs/specs/dashboard.md, section 5): what GET /api/catalog lists, one
 // per endpoint of Catalog.For(ctx, user).
 type CatalogEntry struct {
-	Service     string
-	OperationID string
-	Summary     string
+	Service string
+	// ServiceDisplayName is what a person should read for the service
+	// itself: e.ServiceDisplayNameOr(Service), the same fallback shape as
+	// DisplayName one level up (DECISIONS.md, 2026-09-13). OperationPicker
+	// groups by this, never by Service.
+	ServiceDisplayName string
+	OperationID        string
+	Summary            string
 	// DisplayName is what a person should read for this operation:
 	// e.DisplayName when the contract declares one, otherwise Summary -
 	// the same fallback OperationPicker and the default panel title
@@ -85,13 +90,14 @@ func (c *Catalog) For(ctx context.Context, user *domain.User) ([]CatalogEntry, e
 // chart's or transform's field list).
 func toCatalogEntry(e *domain.Endpoint) CatalogEntry {
 	return CatalogEntry{
-		Service:     e.Service,
-		OperationID: e.OperationID,
-		Summary:     e.Summary,
-		DisplayName: e.DisplayNameOr(e.Summary),
-		Component:   domain.Render(e),
-		Schema:      inputSchemaFor(e),
-		Fields:      fieldsFor(e),
-		View:        chartViewFor(e),
+		Service:            e.Service,
+		ServiceDisplayName: e.ServiceDisplayNameOr(e.Service),
+		OperationID:        e.OperationID,
+		Summary:            e.Summary,
+		DisplayName:        e.DisplayNameOr(e.Summary),
+		Component:          domain.Render(e),
+		Schema:             inputSchemaFor(e),
+		Fields:             fieldsFor(e),
+		View:               chartViewFor(e),
 	}
 }

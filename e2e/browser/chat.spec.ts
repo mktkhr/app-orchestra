@@ -28,7 +28,7 @@ test("clicking the list example question renders a table (AC-E-101)", async ({ p
   // table naming the inventory operation that produced it, with rows from
   // the running dummy service's own in-memory fixture data.
   await expect(page.getByText("在庫の一覧を見せて", { exact: true })).toBeVisible();
-  await expect(page.getByText("inventory / ListInventoryItems")).toBeVisible();
+  await expect(page.getByText("在庫管理 / ListInventoryItems")).toBeVisible();
 
   const table = page.getByRole("table");
 

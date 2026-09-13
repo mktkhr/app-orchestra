@@ -671,11 +671,19 @@ components:
       description: Which endpoint of which service a call was, or would be, made against.
       required:
         - service
+        - serviceDisplayName
         - operationId
       properties:
         service:
           type: string
           description: The service's name, as configured in ORCHESTRA_SERVICES.
+        serviceDisplayName:
+          type: string
+          description: >
+            The service's own name for a person to read - see
+            `CatalogEntry.serviceDisplayName`, the same fallback rule
+            (DECISIONS.md, 2026-09-13). Provenance.tsx reads this, never
+            `service`.
         operationId:
           type: string
           description: The operation id, as declared in that service's contract.
@@ -951,10 +959,17 @@ components:
       required:
         - service
         - operationId
+        - serviceDisplayName
       properties:
         service:
           type: string
           description: The service's name, as configured in ORCHESTRA_SERVICES.
+        serviceDisplayName:
+          type: string
+          description: >
+            The service's own name for a person to read - see
+            `CatalogEntry.serviceDisplayName`, the same fallback rule
+            (DECISIONS.md, 2026-09-13). Groups the permission grid's cards.
         operationId:
           type: string
           description: The operation id, as declared in that service's contract.
@@ -971,12 +986,22 @@ components:
         - operationId
         - summary
         - displayName
+        - serviceDisplayName
         - component
         - schema
       properties:
         service:
           type: string
           description: The service's name, as configured in ORCHESTRA_SERVICES.
+        serviceDisplayName:
+          type: string
+          description: >
+            The service's own name for a person to read, from its
+            contract's `info.x-ui-hint.displayName` (one level up from an
+            operation's own, DECISIONS.md, 2026-09-13) when it declares
+            one, falling back to `service` - the identifier - when it does
+            not, exactly as `displayName` falls back to `summary`. Never
+            blank.
         operationId:
           type: string
           description: The operation id, as declared in that service's contract.

@@ -152,7 +152,11 @@ func adminList[TIn any, TOut any](
 // only the three fields the permission grid needs, not the parameters,
 // schemas or method the rest of the catalogue carries.
 func toAPIOperation(e *domain.Endpoint) openapi.Operation {
-	op := openapi.Operation{Service: e.Service, OperationId: e.OperationID}
+	op := openapi.Operation{
+		Service:            e.Service,
+		ServiceDisplayName: e.ServiceDisplayNameOr(e.Service),
+		OperationId:        e.OperationID,
+	}
 	if e.Summary != "" {
 		op.Summary = &e.Summary
 	}

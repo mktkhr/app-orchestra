@@ -21,7 +21,11 @@ describe("ConversationPanel", () => {
       kind: "result",
       component: "table",
       data: { items: [{ id: "itm-001" }] },
-      source: { service: "inventory", operationId: "listInventoryItems" },
+      source: {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "listInventoryItems",
+      },
     });
     vi.mocked(listWorkspaces).mockResolvedValue([]);
 
@@ -44,7 +48,11 @@ describe("ConversationPanel", () => {
       kind: "result",
       component: "table",
       data: { items: [{ id: "itm-001" }] },
-      source: { service: "inventory", operationId: "listInventoryItems" },
+      source: {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "listInventoryItems",
+      },
     });
     vi.mocked(listWorkspaces).mockResolvedValue([
       { id: "ws-1", name: "在庫ボード", panelCount: 0 },

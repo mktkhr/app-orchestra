@@ -95,6 +95,15 @@ type Endpoint struct {
 	// the contract's author wrote it in (DECISIONS.md, 2026-09-13). Empty
 	// when the contract declares none - see DisplayNameOr.
 	DisplayName string
+	// ServiceDisplayName is the endpoint's service's own
+	// info.x-ui-hint.displayName: a name for a person to read, one level
+	// up from DisplayName and read from the same extension one level up
+	// in the contract (the info object, not an operation) - the
+	// identifier Service names is what ORCHESTRA_SERVICES, source.service
+	// and a Permission row all carry, and stays exactly that (DECISIONS.md,
+	// 2026-09-13). Empty when the contract declares none - see
+	// ServiceDisplayNameOr.
+	ServiceDisplayName string
 }
 
 // DisplayNameOr returns e.DisplayName when the contract declares one,
@@ -106,6 +115,17 @@ type Endpoint struct {
 func (e *Endpoint) DisplayNameOr(fallback string) string {
 	if e.DisplayName != "" {
 		return e.DisplayName
+	}
+
+	return fallback
+}
+
+// ServiceDisplayNameOr returns e.ServiceDisplayName when the service's
+// contract declares one, otherwise fallback - the same shape as
+// DisplayNameOr, one level up (DECISIONS.md, 2026-09-13).
+func (e *Endpoint) ServiceDisplayNameOr(fallback string) string {
+	if e.ServiceDisplayName != "" {
+		return e.ServiceDisplayName
 	}
 
 	return fallback

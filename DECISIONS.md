@@ -2759,3 +2759,123 @@ English summary. Verified `make eval` was not run and no operation's
 `POST /v1/chat/completions` count is unchanged across a full `make check`
 run, matching the existing AC-E-202 guarantee this subproject does not
 touch.
+
+## 2026-09-13 A service has no Japanese name either, and info.x-ui-hint.displayName
+
+**Context.** The panel builder's own follow-up: `inventory` and `attendance`
+are shown raw wherever a _service_ appears, not just wherever an _operation_
+does - `OperationPicker`'s group headers, `list_capabilities`' サービス
+column, a result's provenance, and the admin's permission grid, all grouped
+or labelled by the bare identifier. The previous entry (above) gave an
+_operation_ a name; this does the same one level up, for the _service_ that
+holds it, and extends D15 rather than inventing a parallel mechanism
+(`docs/specs/orchestration.md` D16).
+
+**Where the name comes from, and why not the alternatives.** Three
+candidates were checked:
+
+- `ORCHESTRA_SERVICES` - rejected. It is where an operator points the
+  platform at a URL; naming a Japanese label there conflates "where do I
+  find you" with "what do I call you for a person," and every other label
+  in this product already lives in the contract instead
+  (`x-enum-labels`, a JSON Schema property's `title`, D15's own
+  `x-ui-hint.displayName`).
+- `info.title` - checked and rejected. `services/inventory/api/openapi.yaml`'s
+  `info.title` is `Inventory API` today: an OpenAPI-conventional API name,
+  not a Japanese label, and `grep -rn "\.Title\b" services/platform/internal`
+  turns up nothing that reads `openapi3.T.Info.Title` anywhere in this
+  repository - adopting it as the display name would mean either renaming
+  it away from an "API name" (which is what `info.title` is _for_,
+  everywhere else this format is read) or living with "Inventory API"
+  showing up as a group header, neither of which is what a person wants
+  to read.
+- `info.x-ui-hint.displayName` - chosen. It sits exactly one level up from
+  an operation's own `x-ui-hint.displayName` (D15), the same extension,
+  the same object shape, read the same leniently: absent, non-object or
+  non-string all mean "no display name," never a fetch error, matching
+  `component`'s own leniency and D15's before it. A service that declares
+  none behaves exactly as it did before this field existed.
+
+**What must not change, verified.** `service` remains the identifier -
+`ORCHESTRA_SERVICES`' own key, what `source.service` carries in a plan
+result's provenance, what a `Permission` row and a `Panel` name, and what
+`/api/invoke` resolves against. None of those readers changed; only what a
+screen shows _alongside_ the identifier does. Checked separately (the same
+way the previous entry checked `summary`): no operation's `summary`
+changed, and neither `usecase.ToolsFor`, `internal/adapter/planner/toolcall/planner.go`,
+nor `internal/adapter/planner/jsonmode/planner.go`'s `renderCatalog` were
+touched - the model still sees the same tool descriptions it always did.
+`docker logs llama-swap`'s `POST /v1/chat/completions` count was checked
+before and after a full `make check` run and is unchanged, matching the
+existing AC-E-202 guarantee.
+
+**The carriers.** `specsource/http.parseSpec` reads
+`info.x-ui-hint.displayName` once per service (`serviceDisplayName`,
+sharing `uiHint`'s own extraction of the `x-ui-hint` object rather than
+duplicating it) and sets it on every one of that service's
+`domain.Endpoint`s - the same way `Service` itself is already set once per
+loop and copied onto each endpoint. `domain.Endpoint.ServiceDisplayNameOr(fallback)`
+mirrors `DisplayNameOr` exactly. From there, three callers each ask for
+their own fallback, one per place "The defect" named:
+
+- `usecase.toCatalogEntry` asks for `e.ServiceDisplayNameOr(e.Service)`
+  (`CatalogEntry.ServiceDisplayName`, required, never blank) - read by
+  `OperationPicker.tsx`'s `groupBy` (was `entry.service`, now
+  `entry.serviceDisplayName`) and, through `usePermissionGrid`'s
+  `Operation`, the same field name and fallback, `ServiceCard.tsx`'s card
+  header and its "すべて許可" checkbox's `aria-label` (was `group.service`).
+- `orchestrator.capabilitiesItems` asks for `e.ServiceDisplayNameOr(e.Service)`
+  for the サービス column's _value_ - the filter itself still matches
+  `decision.Service` against the identifier `e.Service`, unchanged, so a
+  person naming a service by its Japanese name in a follow-up is a
+  question this entry does not answer (D11's own territory, untouched).
+  `list_capabilities`' synthetic `"platform"` pseudo-service (D14) names no
+  real contract to read a hint from, so its `ServiceDisplayName` just
+  repeats `"platform"` - the same value the サービス column already showed
+  for it.
+- `usecase.Result` (from `orchestrator.invokeAndRender` and `formFor`)
+  carries `ServiceDisplayName` the same way `Service` already does, into
+  `openapi.Source` (`toAPIPlanResult`'s `source` and `target`, both), which
+  `Provenance.tsx` reads (`source.serviceDisplayName`, never
+  `source.service`) for a chat/plan result's provenance and a submitted
+  form's own re-post of its target.
+
+**The one place that still reads the identifier: a saved panel.** `Panel`
+stores only `service`/`operationId` (W2, `docs/specs/workspaces.md`) and
+`POST /api/invoke` - what `PanelResult.tsx` calls to redraw a saved panel -
+answers with no `Source` at all (`InvokeResult` carries `component`/`data`/
+`fields`, nothing naming the endpoint). `PanelResult.tsx` already built its
+own `Source` literal by hand from the panel's own identifiers before this
+field existed; it now sets `serviceDisplayName` to that same identifier,
+which is not a fallback hack bolted on top - it is the honest answer to
+"what name is available here," the same one `operationId` already gives in
+that exact spot, and the smallest change that keeps `Source.serviceDisplayName`
+uniformly required rather than introducing an optional field whose absence
+every other reader would need to handle. Threading the catalogue (or the
+contract's own hint) into `usecase.Workspaces`/`GET /api/workspaces` just to
+enrich this one provenance line would be a materially larger carrier than
+anything "The defect" named as broken, and the identifier is exactly what
+this spot already showed - unlike the four call sites above, no person
+reads a raw `inventory` here today where a name was expected instead.
+
+**The dummy services get one.** `services/inventory/api/openapi.yaml`'s
+`info` gains `x-ui-hint: {displayName: 在庫管理}`;
+`services/attendance/api/openapi.yaml`'s gains `x-ui-hint: {displayName: 勤怠管理}`.
+
+**Consequences.** `GET /api/catalog`'s `CatalogEntry` and `GET /api/operations`'
+`Operation` both gain `serviceDisplayName` (required); `Source` gains it
+too (required, all three of `orchestrator.invokeAndRender`, `formFor` and
+`PanelResult.tsx`'s own literal set it). Every test literal across
+`services/platform` and `web` that builds one of these three shapes by
+hand now sets `serviceDisplayName` alongside `service` - a mechanical,
+wide-but-shallow diff, not a design change. `AddPanelControl.test.tsx`'s
+pinned assertion moved from `screen.getByText("inventory")` to
+`screen.getByText("在庫管理")`; `PermissionGrid.test.tsx` similarly, plus its
+"すべて許可" checkbox's name; `Provenance.test.tsx`, `Conversation.test.tsx`,
+`App.test.tsx` and both `e2e/browser` specs that asserted a raw
+`"inventory / ListInventoryItems"` provenance string now assert
+`"在庫管理 / ListInventoryItems"`. `e2e/src/{auth,context,orchestration}.test.ts`'s
+`source` equality checks against the running dummy services gained
+`serviceDisplayName: "在庫管理"`/`"勤怠管理"`. Verified `make eval` was not run;
+verified no operation's `summary` changed; verified `docker logs llama-swap`'s
+`POST /v1/chat/completions` count is unchanged across a full `make check` run.

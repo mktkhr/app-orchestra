@@ -47,6 +47,7 @@ describe("ResultChoice", () => {
       data: { items: [{ id: "itm-001", status: "quarantined" }] },
       source: {
         service: "inventory",
+        serviceDisplayName: "在庫管理",
         operationId: "listInventoryItems",
         args: { status: "quarantined" },
       },

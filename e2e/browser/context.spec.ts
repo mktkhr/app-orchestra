@@ -24,11 +24,11 @@ test("a follow-up naming no service stays on the service the first question used
   await page.getByRole("button", { name: "在庫の一覧を見せて" }).click();
 
   await expect(page.getByText("在庫の一覧を見せて", { exact: true })).toBeVisible();
-  await expect(page.getByText("inventory / ListInventoryItems").first()).toBeVisible();
+  await expect(page.getByText("在庫管理 / ListInventoryItems").first()).toBeVisible();
 
   await page.getByLabel("質問を入力").fill("検品保留のものだけ見せて");
   await page.getByRole("button", { name: "送信" }).click();
 
   await expect(page.getByText("検品保留のものだけ見せて", { exact: true })).toBeVisible();
-  await expect(page.getByText("inventory / ListInventoryItems").last()).toBeVisible();
+  await expect(page.getByText("在庫管理 / ListInventoryItems").last()).toBeVisible();
 });

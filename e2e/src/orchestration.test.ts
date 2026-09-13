@@ -176,7 +176,11 @@ describe("the built product answers a question end to end (AC-E-101)", () => {
 
     expect(body.kind).toBe("result");
     expect(body.component).toBe("table");
-    expect(body.source).toEqual({ service: "inventory", operationId: "ListInventoryItems" });
+    expect(body.source).toEqual({
+      service: "inventory",
+      serviceDisplayName: "在庫管理",
+      operationId: "ListInventoryItems",
+    });
     expect(Array.isArray(body.data.items)).toBe(true);
     expect(body.data.items.length).toBeGreaterThan(0);
   });

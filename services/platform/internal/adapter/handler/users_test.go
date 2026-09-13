@@ -188,7 +188,7 @@ func TestUsersSetUserPermissionsReturnsAnErrorForAGenuineFailure(t *testing.T) {
 
 func TestUsersListOperationsReturnsTheWholeCatalogue(t *testing.T) {
 	admin := &fakeAdmin{operationsResult: []domain.Endpoint{
-		{Service: "inventory", OperationID: "ListInventoryItems", Summary: "List items"},
+		{Service: "inventory", ServiceDisplayName: "在庫管理", OperationID: "ListInventoryItems", Summary: "List items"},
 		{Service: "attendance", OperationID: "ListAttendance"},
 	}}
 	h := handler.NewUsers(admin)
@@ -200,10 +200,13 @@ func TestUsersListOperationsReturnsTheWholeCatalogue(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, list, 2)
 	assert.Equal(t, "inventory", list[0].Service)
+	assert.Equal(t, "在庫管理", list[0].ServiceDisplayName)
 	assert.Equal(t, "ListInventoryItems", list[0].OperationId)
 	require.NotNil(t, list[0].Summary)
 	assert.Equal(t, "List items", *list[0].Summary)
 	assert.Nil(t, list[1].Summary)
+	assert.Equal(t, "attendance", list[1].ServiceDisplayName,
+		"a service that declares no display name falls back to its identifier")
 }
 
 func TestUsersListOperationsReturns403ForANonAdmin(t *testing.T) {

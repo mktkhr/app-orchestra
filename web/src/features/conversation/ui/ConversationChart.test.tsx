@@ -26,7 +26,12 @@ describe("Conversation, a chart result", () => {
   it("draws a chart result with no view configured, and offers the axes to the save slot", async () => {
     const user = userEvent.setup();
     const view = { chart: { category: "status", value: "count", kind: "bar" as const } };
-    const source = { service: "inventory", operationId: "countByStatus", args: {} };
+    const source = {
+      service: "inventory",
+      serviceDisplayName: "在庫管理",
+      operationId: "countByStatus",
+      args: {},
+    };
 
     vi.mocked(postPlan).mockResolvedValue({
       kind: "result",

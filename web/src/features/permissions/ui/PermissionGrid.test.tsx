@@ -19,17 +19,29 @@ describe("PermissionGrid", () => {
     vi.mocked(setUserPermissions).mockReset();
   });
 
-  it("groups operations under their own service", async () => {
+  it("groups operations under their own service's display name, not its identifier", async () => {
     vi.mocked(listOperations).mockResolvedValue([
-      { service: "inventory", operationId: "ListInventoryItems", summary: "在庫の一覧" },
-      { service: "attendance", operationId: "ListAttendance", summary: "出勤の一覧" },
+      {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "ListInventoryItems",
+        summary: "在庫の一覧",
+      },
+      {
+        service: "attendance",
+        serviceDisplayName: "勤怠管理",
+        operationId: "ListAttendance",
+        summary: "出勤の一覧",
+      },
     ]);
     vi.mocked(getUserPermissions).mockResolvedValue([]);
 
     render(<PermissionGrid userId="usr-1" />);
 
-    expect(await screen.findByText("inventory")).toBeTruthy();
-    expect(screen.getByText("attendance")).toBeTruthy();
+    expect(await screen.findByText("在庫管理")).toBeTruthy();
+    expect(screen.getByText("勤怠管理")).toBeTruthy();
+    expect(screen.queryByText("inventory")).toBeNull();
+    expect(screen.queryByText("attendance")).toBeNull();
     expect(screen.getByText("在庫の一覧")).toBeTruthy();
     expect(screen.getByText("出勤の一覧")).toBeTruthy();
   });
@@ -38,8 +50,18 @@ describe("PermissionGrid", () => {
     const user = userEvent.setup();
 
     vi.mocked(listOperations).mockResolvedValue([
-      { service: "inventory", operationId: "ListInventoryItems", summary: "在庫の一覧" },
-      { service: "inventory", operationId: "CreateInventoryItem", summary: "在庫の作成" },
+      {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "ListInventoryItems",
+        summary: "在庫の一覧",
+      },
+      {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "CreateInventoryItem",
+        summary: "在庫の作成",
+      },
     ]);
     vi.mocked(getUserPermissions).mockResolvedValue([]);
 
@@ -47,7 +69,7 @@ describe("PermissionGrid", () => {
 
     await screen.findByText("在庫の一覧");
 
-    await user.click(screen.getByRole("checkbox", { name: "inventoryをすべて許可" }));
+    await user.click(screen.getByRole("checkbox", { name: "在庫管理をすべて許可" }));
 
     expect(screen.getByRole("checkbox", { name: "在庫の一覧" })).toHaveProperty("checked", true);
     expect(screen.getByRole("checkbox", { name: "在庫の作成" })).toHaveProperty("checked", true);
@@ -57,7 +79,12 @@ describe("PermissionGrid", () => {
     const user = userEvent.setup();
 
     vi.mocked(listOperations).mockResolvedValue([
-      { service: "inventory", operationId: "ListInventoryItems", summary: "在庫の一覧" },
+      {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "ListInventoryItems",
+        summary: "在庫の一覧",
+      },
     ]);
     vi.mocked(getUserPermissions).mockResolvedValue([]);
     vi.mocked(setUserPermissions).mockResolvedValue();

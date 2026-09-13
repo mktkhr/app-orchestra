@@ -3,6 +3,8 @@ info:
   title: Fixture API
   version: 0.1.0
   description: A minimal contract used only to test the catalogue converter.
+  x-ui-hint:
+    displayName: フィクスチャ
 servers:
   - url: /
 tags:

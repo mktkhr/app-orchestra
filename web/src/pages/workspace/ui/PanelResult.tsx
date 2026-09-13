@@ -87,7 +87,19 @@ export function PanelResult({ panel }: PanelResultProps): JSX.Element {
       }
     >
       <Provenance
-        source={{ service: panel.service, operationId: panel.operationId, args: panel.args }}
+        source={{
+          service: panel.service,
+          // A saved Panel stores only the identifier (W2,
+          // docs/specs/workspaces.md) - it never re-fetches the catalogue
+          // just to find the service's display name (P9,
+          // docs/specs/dashboard.md), so this reads the same as it always
+          // has here: the identifier, unlike the chat/plan provenance
+          // above it, which does carry the contract's own name
+          // (DECISIONS.md, 2026-09-13).
+          serviceDisplayName: panel.service,
+          operationId: panel.operationId,
+          args: panel.args,
+        }}
       />
       {loading ? (
         <Stack direction="row" sx={{ justifyContent: "center", py: 2 }}>

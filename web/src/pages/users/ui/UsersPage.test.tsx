@@ -24,7 +24,12 @@ describe("UsersPage", () => {
 
     vi.mocked(listUsers).mockResolvedValue([{ id: "usr-1", name: "やまだ", role: "user" }]);
     vi.mocked(listOperations).mockResolvedValue([
-      { service: "inventory", operationId: "ListInventoryItems", summary: "在庫の一覧" },
+      {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "ListInventoryItems",
+        summary: "在庫の一覧",
+      },
     ]);
     vi.mocked(getUserPermissions).mockResolvedValue([]);
 

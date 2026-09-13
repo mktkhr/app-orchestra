@@ -6,6 +6,8 @@ info:
     Dummy inventory service: stock items. Exists so the orchestration
     platform has a real endpoint to plan against. See
     docs/specs/orchestration.md.
+  x-ui-hint:
+    displayName: 在庫管理
 servers:
   - url: /
     description: The inventory service serves its own API and its own contract.

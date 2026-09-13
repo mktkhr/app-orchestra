@@ -182,7 +182,11 @@ describe("a follow-up naming no service is answered from the previous one (AC-M-
     const first = await postPlan(inventoryQuestion);
 
     expect(first.kind).toBe("result");
-    expect(first.source).toEqual({ service: "inventory", operationId: "ListInventoryItems" });
+    expect(first.source).toEqual({
+      service: "inventory",
+      serviceDisplayName: "在庫管理",
+      operationId: "ListInventoryItems",
+    });
 
     const turns = [
       {
@@ -196,14 +200,22 @@ describe("a follow-up naming no service is answered from the previous one (AC-M-
     const followUp = await postPlan(followUpQuestion, turns);
 
     expect(followUp.kind).toBe("result");
-    expect(followUp.source).toEqual({ service: "inventory", operationId: "ListInventoryItems" });
+    expect(followUp.source).toEqual({
+      service: "inventory",
+      serviceDisplayName: "在庫管理",
+      operationId: "ListInventoryItems",
+    });
   });
 
   it("asks about attendance, then the very same follow-up wording, and stays on attendance", async () => {
     const first = await postPlan(attendanceQuestion);
 
     expect(first.kind).toBe("result");
-    expect(first.source).toEqual({ service: "attendance", operationId: "ListAttendanceRecords" });
+    expect(first.source).toEqual({
+      service: "attendance",
+      serviceDisplayName: "勤怠管理",
+      operationId: "ListAttendanceRecords",
+    });
 
     const turns = [
       {
@@ -219,6 +231,7 @@ describe("a follow-up naming no service is answered from the previous one (AC-M-
     expect(followUp.kind).toBe("result");
     expect(followUp.source).toEqual({
       service: "attendance",
+      serviceDisplayName: "勤怠管理",
       operationId: "ListAttendanceRecords",
     });
   });

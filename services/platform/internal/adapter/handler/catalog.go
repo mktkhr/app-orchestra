@@ -51,12 +51,13 @@ func (h *Catalog) GetCatalog(
 // CatalogEntry.
 func toAPICatalogEntry(e *usecase.CatalogEntry) openapi.CatalogEntry {
 	out := openapi.CatalogEntry{
-		Service:     e.Service,
-		OperationId: e.OperationID,
-		Summary:     e.Summary,
-		DisplayName: e.DisplayName,
-		Component:   openapi.Component(e.Component),
-		Schema:      e.Schema,
+		Service:            e.Service,
+		ServiceDisplayName: e.ServiceDisplayName,
+		OperationId:        e.OperationID,
+		Summary:            e.Summary,
+		DisplayName:        e.DisplayName,
+		Component:          openapi.Component(e.Component),
+		Schema:             e.Schema,
 	}
 
 	if len(e.Fields) > 0 {

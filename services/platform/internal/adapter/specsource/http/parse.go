@@ -53,6 +53,11 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 		return nil, nil
 	}
 
+	var svcDisplayName string
+	if doc.Info != nil {
+		svcDisplayName = serviceDisplayName(doc.Info.Extensions)
+	}
+
 	paths := doc.Paths.Keys()
 	sort.Strings(paths)
 
@@ -74,17 +79,18 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 			}
 
 			endpoints = append(endpoints, domain.Endpoint{
-				Service:     service,
-				OperationID: op.OperationID,
-				Method:      method,
-				Path:        path,
-				Summary:     op.Summary,
-				Parameters:  convertParameters(op.Parameters),
-				RequestBody: convertRequestBody(op.RequestBody),
-				Response:    convertResponse(op.Responses),
-				UIHint:      component,
-				ChartHint:   chart,
-				DisplayName: displayName,
+				Service:            service,
+				OperationID:        op.OperationID,
+				Method:             method,
+				Path:               path,
+				Summary:            op.Summary,
+				Parameters:         convertParameters(op.Parameters),
+				RequestBody:        convertRequestBody(op.RequestBody),
+				Response:           convertResponse(op.Responses),
+				UIHint:             component,
+				ChartHint:          chart,
+				DisplayName:        displayName,
+				ServiceDisplayName: svcDisplayName,
 			})
 		}
 	}
@@ -302,24 +308,14 @@ func isExposed(extensions map[string]any) bool {
 // there is nothing to fail loudly about. chart is not given the same
 // leniency; see errMalformedChartHint.
 func uiHint(extensions map[string]any) (domain.Component, *domain.Chart, string, error) {
-	raw, ok := extensions[extUIHint]
-	if !ok {
-		return "", nil, "", nil
-	}
-
-	m, ok := raw.(map[string]any)
-	if !ok {
+	m := extractUIHint(extensions)
+	if m == nil {
 		return "", nil, "", nil
 	}
 
 	var component string
 	if s, ok := m["component"].(string); ok {
 		component = s
-	}
-
-	var displayName string
-	if s, ok := m["displayName"].(string); ok {
-		displayName = s
 	}
 
 	var chart *domain.Chart
@@ -333,7 +329,49 @@ func uiHint(extensions map[string]any) (domain.Component, *domain.Chart, string,
 		chart = c
 	}
 
-	return domain.Component(component), chart, displayName, nil
+	return domain.Component(component), chart, displayNameOf(m), nil
+}
+
+// serviceDisplayName reads x-ui-hint.displayName off a service's own
+// info object - the same extension uiHint reads off an operation, one
+// level up (docs/specs/orchestration.md D16; DECISIONS.md, 2026-09-13).
+// It shares uiHint's leniency: absent, a non-object x-ui-hint, or a
+// non-string displayName all mean "no display name", never an error -
+// every domain.Endpoint of the service simply falls back to Service (see
+// domain.Endpoint.ServiceDisplayNameOr), exactly as an operation without
+// one falls back to Summary or its operation id.
+func serviceDisplayName(extensions map[string]any) string {
+	return displayNameOf(extractUIHint(extensions))
+}
+
+// extractUIHint reads the x-ui-hint object off any extensions map - an
+// operation's or, one level up, a service's own info object. Absent, or a
+// non-object value, both yield nil: "no hints at all", the one case
+// uiHint and serviceDisplayName each need to tell apart from "hints, but
+// no displayName among them".
+func extractUIHint(extensions map[string]any) map[string]any {
+	raw, ok := extensions[extUIHint]
+	if !ok {
+		return nil
+	}
+
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	return m
+}
+
+// displayNameOf reads displayName off an already-extracted x-ui-hint
+// object (see extractUIHint). A nil m or a non-string value both yield "",
+// meaning "no display name" to every caller.
+func displayNameOf(m map[string]any) string {
+	if s, ok := m["displayName"].(string); ok {
+		return s
+	}
+
+	return ""
 }
 
 // parseChartHint converts x-ui-hint.chart into a domain.Chart. hasChart is

@@ -165,6 +165,46 @@ func TestCatalogEntryDisplayNamePrefersTheContractsOwnDisplayName(t *testing.T) 
 	assert.Equal(t, "在庫一覧", entry.DisplayName)
 }
 
+// TestCatalogEntryServiceDisplayNameFallsBackToService is DECISIONS.md's
+// 2026-09-13 entry's catalogue half, one level up: an endpoint whose
+// service declares no info.x-ui-hint.displayName still gives
+// OperationPicker's group headers something to show - the identifier
+// itself, exactly what they already showed before this field existed.
+func TestCatalogEntryServiceDisplayNameFallsBackToService(t *testing.T) {
+	c := usecase.NewCatalog(inventoryCatalog(), &fakePermissionStore{})
+
+	entries, err := c.For(t.Context(), adminUser())
+	require.NoError(t, err)
+
+	entry := findCatalogEntry(t, entries, "ListInventoryItems")
+
+	assert.Equal(t, "inventory", entry.ServiceDisplayName)
+}
+
+// TestCatalogEntryServiceDisplayNamePrefersTheContractsOwnDisplayName is
+// the other half: a service's contract that declares
+// info.x-ui-hint.displayName wins over its identifier.
+func TestCatalogEntryServiceDisplayNamePrefersTheContractsOwnDisplayName(t *testing.T) {
+	catalog := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:            "inventory",
+			ServiceDisplayName: "在庫管理",
+			OperationID:        "ListInventoryItems",
+			Summary:            "List stock items, optionally filtered by status.",
+			Response:           &domain.Schema{Type: domain.SchemaTypeObject},
+		},
+	}}
+
+	c := usecase.NewCatalog(catalog, &fakePermissionStore{})
+
+	entries, err := c.For(t.Context(), adminUser())
+	require.NoError(t, err)
+
+	entry := findCatalogEntry(t, entries, "ListInventoryItems")
+
+	assert.Equal(t, "在庫管理", entry.ServiceDisplayName)
+}
+
 // TestCatalogEntryOmitsFieldsWhenTheResponseDescribesNone matches
 // /api/plan's own rule for the same field: an endpoint whose response has
 // nothing FieldsSchema can describe (an unsafe create, here) carries no

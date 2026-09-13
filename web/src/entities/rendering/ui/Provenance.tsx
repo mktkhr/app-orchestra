@@ -18,9 +18,13 @@ interface ProvenanceProps {
 
 /**
  * A result's origin: which service and operation produced it (AC-F-106).
- * When the planner supplied arguments, they are hidden behind an expander
- * rather than shown outright — a filtered list and its unfiltered sibling
- * should not look different at a glance.
+ * The service half reads `source.serviceDisplayName`, never
+ * `source.service` (the identifier), the same rule OperationPicker's
+ * grouping and list_capabilities' サービス column follow (DECISIONS.md,
+ * 2026-09-13); `operationId` itself is left as the identifier here,
+ * unchanged. When the planner supplied arguments, they are hidden behind
+ * an expander rather than shown outright — a filtered list and its
+ * unfiltered sibling should not look different at a glance.
  *
  * The expander is a controlled `Accordion` that renders `AccordionDetails`
  * only while open, rather than leaving MUI to hide it with CSS: the
@@ -37,7 +41,7 @@ export function Provenance({ source }: ProvenanceProps): JSX.Element {
   return (
     <Stack spacing={0.5} sx={{ mb: 1 }}>
       <Typography variant="caption" color="text.secondary">
-        {`${source.service} / ${source.operationId}`}
+        {`${source.serviceDisplayName} / ${source.operationId}`}
       </Typography>
       {args.length === 0 ? null : (
         <Accordion

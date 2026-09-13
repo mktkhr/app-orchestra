@@ -6,6 +6,8 @@ info:
     Dummy attendance service: attendance records. Exists so the orchestration
     platform has a real endpoint to plan against. See
     docs/specs/orchestration.md.
+  x-ui-hint:
+    displayName: 勤怠管理
 servers:
   - url: /
     description: The attendance service serves its own API and its own contract.

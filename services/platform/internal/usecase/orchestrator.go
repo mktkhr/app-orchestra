@@ -32,8 +32,14 @@ type Result struct {
 
 	// Populated when Kind is ResultKindResult or ResultKindForm: which
 	// endpoint the result came from, or the form would submit to.
-	Service     string
-	OperationID string
+	Service string
+	// ServiceDisplayName is Service's own display name -
+	// endpoint.ServiceDisplayNameOr(Service) - carried alongside it for
+	// the same reason DisplayName is carried alongside OperationID one
+	// level up (DECISIONS.md, 2026-09-13): Provenance.tsx reads this,
+	// never Service.
+	ServiceDisplayName string
+	OperationID        string
 
 	// Populated when Kind is ResultKindResult.
 	Component domain.Component
@@ -370,11 +376,12 @@ func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, 
 // is for.
 func formFor(endpoint *domain.Endpoint, decision *Decision) Result {
 	return Result{
-		Kind:        ResultKindForm,
-		Service:     decision.Service,
-		OperationID: decision.OperationID,
-		Schema:      inputSchemaFor(endpoint),
-		Initial:     decision.Args,
+		Kind:               ResultKindForm,
+		Service:            decision.Service,
+		ServiceDisplayName: endpoint.ServiceDisplayNameOr(decision.Service),
+		OperationID:        decision.OperationID,
+		Schema:             inputSchemaFor(endpoint),
+		Initial:            decision.Args,
 	}
 }
 
@@ -458,12 +465,19 @@ func capabilitiesFields() map[string]any {
 // everything the platform has.
 func (o *Orchestrator) listCapabilities(catalog domain.Catalog, decision *Decision) Result {
 	return Result{
-		Kind:        ResultKindResult,
-		Service:     "platform",
-		OperationID: "list_capabilities",
-		Component:   domain.ComponentTable,
-		Data:        map[string]any{"items": capabilitiesItems(catalog, decision.Service)},
-		Fields:      capabilitiesFields(),
+		Kind: ResultKindResult,
+		// "platform" is not a configured service - list_capabilities is
+		// the platform's own built-in tool (D14, docs/specs/orchestration.md)
+		// - so there is no contract to read a display name from, and none
+		// to fall back from either: ServiceDisplayName just repeats
+		// Service, exactly as this Provenance already read before
+		// ServiceDisplayName existed.
+		Service:            "platform",
+		ServiceDisplayName: "platform",
+		OperationID:        "list_capabilities",
+		Component:          domain.ComponentTable,
+		Data:               map[string]any{"items": capabilitiesItems(catalog, decision.Service)},
+		Fields:             capabilitiesFields(),
 	}
 }
 
@@ -504,7 +518,7 @@ func capabilitiesItems(c domain.Catalog, service string) []map[string]any {
 	for i := range endpoints {
 		e := &endpoints[i]
 		items[i] = map[string]any{
-			paramService: e.Service,
+			paramService: e.ServiceDisplayNameOr(e.Service),
 			"operation":  e.DisplayNameOr(e.OperationID),
 			"summary":    e.Summary,
 		}
@@ -533,14 +547,15 @@ func (o *Orchestrator) invokeAndRender(
 	}
 
 	return Result{
-		Kind:        ResultKindResult,
-		Component:   domain.RenderResult(endpoint),
-		Data:        data,
-		Service:     service,
-		OperationID: operationID,
-		Args:        args,
-		Fields:      fieldsFor(endpoint),
-		View:        chartViewFor(endpoint),
+		Kind:               ResultKindResult,
+		Component:          domain.RenderResult(endpoint),
+		Data:               data,
+		Service:            service,
+		ServiceDisplayName: endpoint.ServiceDisplayNameOr(service),
+		OperationID:        operationID,
+		Args:               args,
+		Fields:             fieldsFor(endpoint),
+		View:               chartViewFor(endpoint),
 	}, nil
 }
 
