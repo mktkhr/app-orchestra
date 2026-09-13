@@ -1335,6 +1335,69 @@ panels in it" was confirmed by running `make guard-a11y` (and
 workspace with a panel in it" screen (Task 2 Step 4) is in `SCREENS`, and
 both gates pass green against it.
 
+**`docs/specs/layout.md` section 5a (a panel's height on the narrow
+breakpoint is a second number).** `narrowHeight` joins `width`/`height` on
+`Panel`, `CreatePanelRequest` and `UpdatePanelRequest` - optional and
+nullable on the wire (`openapi.yaml`), unlike `width`/`height`, which
+always resolve to a default: `domain.Panel.NarrowHeight` is a `*int`, nil
+meaning "no narrow height of its own", and stays nil rather than being
+defaulted the way `AddPanel` defaults `Width`/`Height` (AC-L-108).
+`ensurePanelsSizeColumns` (`migrate.go`) is extended with a third column,
+`narrow_height`, added the same idempotent way as `width`/`height` -
+`TestNewOpensADatabaseFileWrittenBeforeSizeColumnsExisted` (renamed in
+spirit, not in name) now also proves a pre-existing file's panel reads
+back with a nil `NarrowHeight`. `usecase.Workspaces.AddPanel`/`UpdatePanel`
+clamp only a `NarrowHeight` the caller actually sent, through the same
+`domain.ClampPanelHeight` `Height` uses (extracted into `clampPatchSize` to
+keep `UpdatePanel` under golangci-lint's `gocyclo` limit).
+
+`web/src/pages/workspace/model/buildPanelLayout.ts`'s `resolvedHeight`
+reads `narrowHeight` only on the narrow breakpoint (`interactive: false`,
+the same flag `WorkspaceGrid` already passes as `wide`), falling back to
+`height` exactly the way a missing `height` itself falls back to `1` -
+`finiteOr`'s own rule, applied twice. `arrangement.ts` gained
+`narrowResizeChange` (starts from `height` when `narrowHeight` is unset,
+the same fallback) and `useArrangement` a `narrowResizeBy`, PATCHing only
+`{ narrowHeight }` - never `width` or `height`.
+
+**Order was kept on the narrow breakpoint; width and pointer resizing were
+not.** Section 5/5a/L7 say the narrow breakpoint's grid is static and has
+"no order that differs" - but that reads as "no _separate_ narrow order",
+not "reordering is meaningless there": a stack of one column still has an
+order, moving a panel changes what a person sees on their phone exactly as
+it does on a desktop, and `position` is already a single field shared
+across both breakpoints (L7). So `WorkspaceGrid` now wires `onMove` (the
+keyboard move control) on both breakpoints unconditionally, and only
+`onResize` differs: on narrow it is a handler that reads only
+`deltaHeight` and calls `narrowResizeBy`, so Shift+Left/Right (which would
+change `width`, a field the narrow breakpoint has nothing to set, L7) is a
+no-op there rather than reaching for a column that does not exist.
+`isDraggable`/`isResizable` on `GridLayout` itself stay `wide`-only -
+pointer dragging and resizing-by-handle are still exactly what section 5
+excludes; only the keyboard control's own reach changed.
+
+Tests: `buildPanelLayout.test.ts` (AC-L-107/108, null and non-finite
+`narrowHeight`), `arrangement.test.ts` (`narrowResizeChange`),
+`useArrangement.test.ts` (`narrowResizeBy` PATCHes only `narrowHeight`),
+`WorkspaceGrid.test.tsx` (a narrow-breakpoint keyboard test - `matchMedia`
+mocked to `matches: false` - moves by `ArrowRight` and resizes only
+`narrowHeight` by `Shift+ArrowDown`), and on the Go side unit tests in
+`usecase/workspaces_test.go`, `adapter/handler/workspace_test.go` and the
+repository layer (`store_test.go`, extended;
+`store_panelsize_test.go`, new - `store_test.go` passed `guard-filelen`'s
+1000-line limit once this slice's tests were added, so panel
+view/size/migration tests were split out into their own file, the same
+kind of split `permissions_test.go`/`sessions_test.go`/`users_test.go`
+already are for their own sources).
+
+**Verified live**, not just by test: a phone-width (375px) panel's
+`narrowHeight` was set to 4 via the keyboard control's Shift+ArrowDown
+(three nudges from the height-1 starting point `resolvedHeight`'s own
+fallback draws), read back through `/api/workspaces/{id}` as
+`{ height: 1, narrowHeight: 4 }`, and the same workspace at 1280px drew
+the panel at its original one row tall - the desktop untouched by the
+phone-only edit, screenshotted both ways.
+
 ## What does not exist yet
 
 Past `docs/plans/auth.md` Task 2: there is no `/api/users` yet (Task 3), no

@@ -38,15 +38,21 @@ func ensurePanelsViewColumn(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// ensurePanelsSizeColumns adds panels.width and panels.height when either
-// is missing, the same way ensurePanelsViewColumn adds panels.view -
-// docs/plans/layout.md, Task 0. A panel written before this slice has
-// neither column, and must still open and read back with a nil width and
-// height (see loadPanels/scanPanel, which turn that NULL into
-// domain.DefaultPanelWidth/DefaultPanelHeight, AC-L-104) rather than
-// failing to open at all.
+// ensurePanelsSizeColumns adds panels.width, panels.height and
+// panels.narrow_height when any is missing, the same way
+// ensurePanelsViewColumn adds panels.view - docs/plans/layout.md, Task 0,
+// extended by the narrow-height slice (docs/specs/layout.md, section 5a) to
+// cover the third column the same way rather than adding a fourth migration
+// function that would just repeat this one's own loop. A panel written
+// before width and height existed has neither column, and must still open
+// and read back with a nil width and height (see loadPanels/scanPanel,
+// which turn that NULL into domain.DefaultPanelWidth/DefaultPanelHeight,
+// AC-L-104); a panel written before narrow_height existed must likewise
+// still open and read back with a nil NarrowHeight - which, unlike width and
+// height, is not turned into any default at all (AC-L-108, see
+// domain.Panel's own doc comment).
 func ensurePanelsSizeColumns(ctx context.Context, db *sql.DB) error {
-	for _, column := range []string{"width", "height"} {
+	for _, column := range []string{"width", "height", "narrow_height"} {
 		has, err := panelsHasColumn(ctx, db, column)
 		if err != nil {
 			return fmt.Errorf("checking panels.%s: %w", column, err)

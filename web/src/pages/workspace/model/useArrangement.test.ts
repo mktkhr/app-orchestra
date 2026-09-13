@@ -87,4 +87,38 @@ describe("useArrangement", () => {
 
     expect(result.current.panels[0]).toMatchObject({ width: 8, height: 2 });
   });
+
+  // AC-L-107: narrowResizeBy PATCHes only narrowHeight, and leaves the
+  // panel's own width and height out of the request entirely.
+  it("narrowResizeBy PATCHes only narrowHeight, leaving width and height alone", () => {
+    const panels = [panel({ id: "first", position: 0, width: 6, height: 3 })];
+    const { result } = renderHook(() => useArrangement("ws-1", panels));
+
+    result.current.narrowResizeBy("first", 1);
+
+    expect(vi.mocked(patchPanel)).toHaveBeenCalledExactlyOnceWith("ws-1", "first", {
+      narrowHeight: 4,
+    });
+  });
+
+  it("narrowResizeBy shows the change immediately, and leaves height untouched", () => {
+    const panels = [panel({ id: "first", position: 0, width: 6, height: 3 })];
+    const { result, rerender } = renderHook(({ panels: p }) => useArrangement("ws-1", p), {
+      initialProps: { panels },
+    });
+
+    result.current.narrowResizeBy("first", 1);
+    rerender({ panels });
+
+    expect(result.current.panels[0]).toMatchObject({ narrowHeight: 4, height: 3 });
+  });
+
+  it("narrowResizeBy does nothing for a panel id that is not in the workspace", () => {
+    const panels = [panel({ id: "first", position: 0 })];
+    const { result } = renderHook(() => useArrangement("ws-1", panels));
+
+    result.current.narrowResizeBy("missing", 1);
+
+    expect(vi.mocked(patchPanel)).not.toHaveBeenCalled();
+  });
 });

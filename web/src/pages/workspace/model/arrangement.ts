@@ -18,6 +18,18 @@ export interface PanelSizeChange {
   readonly height: number;
 }
 
+/**
+ * The one field a narrow-breakpoint resize changes (`docs/specs/layout.md`
+ * section 5a) - `narrowHeight` alone, never `width` or `height`: there is no
+ * width to set on the narrow breakpoint's single column (L7), and changing
+ * a panel's narrow height must leave its wide `height` exactly as it was
+ * (AC-L-107).
+ */
+export interface PanelNarrowHeightChange {
+  readonly id: string;
+  readonly narrowHeight: number;
+}
+
 /** Clamp width to the grid's own range - the same range the platform clamps to (Task 0). */
 export function clampWidth(width: number): number {
   return Math.min(Math.max(width, MIN_WIDTH), MAX_WIDTH);
@@ -118,4 +130,19 @@ export function resizeChange(
     width: clampWidth(panel.width + deltaWidth),
     height: clampHeight(panel.height + deltaHeight),
   };
+}
+
+/**
+ * Resizing `panel` by keyboard on the narrow breakpoint: `narrowHeight`
+ * alone, nudged by `delta` rows and clamped - section 5a's own control,
+ * the one dimension left to arrange there (L7). Starts from `panel.height`
+ * when `panel.narrowHeight` is not yet set, the same fallback
+ * `buildPanelLayout` draws with (AC-L-108), so the first nudge moves the
+ * panel from wherever it was already drawing rather than jumping from an
+ * implicit zero.
+ */
+export function narrowResizeChange(panel: WorkspacePanel, delta: number): PanelNarrowHeightChange {
+  const current = panel.narrowHeight ?? panel.height;
+
+  return { id: panel.id, narrowHeight: clampHeight(current + delta) };
 }

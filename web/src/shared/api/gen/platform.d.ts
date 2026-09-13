@@ -477,6 +477,8 @@ export type components = {
             readonly width: number;
             /** @description The panel's span in grid rows (docs/specs/layout.md, section 3). Clamped to at least 1 by the platform, never rejected. A panel saved before this field existed reads back as 1. */
             readonly height: number;
+            /** @description The panel's span in grid rows on the narrow breakpoint (docs/specs/layout.md, section 5a). Absent or null on a panel with no narrow height of its own - it then draws at `height` on both breakpoints (AC-L-108), exactly as it did before this field existed. Unlike `width` and `height`, this never resolves to a default value of its own: there is nothing to override on the narrow breakpoint's single column and single order (L7), so `narrowHeight`'s absence is meaningful and stays visible on the wire rather than collapsing into some number. */
+            readonly narrowHeight?: number | null;
             readonly view?: components["schemas"]["View"];
         };
         /** @description A call to save as a new panel, appended after this workspace's others. */
@@ -496,6 +498,8 @@ export type components = {
             readonly width?: number;
             /** @description The panel's span in grid rows. Left out, the panel is one row tall; below 1, it is clamped up to 1. */
             readonly height?: number;
+            /** @description The panel's span in grid rows on the narrow breakpoint (docs/specs/layout.md, section 5a). Left out, the panel draws at `height` on both breakpoints; below 1, it is clamped up to 1. */
+            readonly narrowHeight?: number;
             readonly view?: components["schemas"]["View"];
         };
         /** @description Fields to change on an existing panel (docs/specs/dashboard.md, P11, section 6a). Only the fields named here change - an absent field leaves that column alone (AC-P-108). `service` and `operationId` are deliberately not properties of this schema: a panel's operation is fixed once it is made (P13), and a request cannot even ask to change it. */
@@ -513,6 +517,8 @@ export type components = {
             readonly width?: number;
             /** @description The panel's new height in grid rows; below 1, it is clamped up to 1. */
             readonly height?: number;
+            /** @description The panel's new height in grid rows on the narrow breakpoint (docs/specs/layout.md, section 5a); below 1, it is clamped up to 1. Changing it leaves `height` exactly as it was (AC-L-107). */
+            readonly narrowHeight?: number;
             /** @description The panel's new view. Naming it explicitly as `null` removes the view; leaving this property out of the request body leaves the existing view as it was - "absent" and "null" are different values here, not different ways of saying the same thing, since only one of them can mean "take the view away" (section 6a). */
             readonly view?: components["schemas"]["View"] | null;
         };

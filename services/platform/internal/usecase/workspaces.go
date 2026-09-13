@@ -216,6 +216,16 @@ func (w *Workspaces) AddPanel(
 	panel.Width = domain.ClampPanelWidth(panel.Width)
 	panel.Height = domain.ClampPanelHeight(panel.Height)
 
+	// Unlike Width/Height, an absent NarrowHeight (nil) is left alone
+	// rather than defaulted: it is a genuine "no narrow height of its own"
+	// (docs/specs/layout.md, section 5a, AC-L-108), not a zero collapsed
+	// from "the caller said nothing". Only a value the caller actually
+	// sent is clamped.
+	if panel.NarrowHeight != nil {
+		clamped := domain.ClampPanelHeight(*panel.NarrowHeight)
+		panel.NarrowHeight = &clamped
+	}
+
 	saved, err := w.store.AddPanel(ctx, workspaceID, &panel)
 	if err != nil {
 		return domain.Panel{}, fmt.Errorf("adding a panel to workspace %s: %w", workspaceID, err)
@@ -287,20 +297,7 @@ func (w *Workspaces) UpdatePanel(
 		patch.Title = &title
 	}
 
-	// Only a Width/Height the caller actually named is clamped - patch's
-	// own nil-means-unchanged already keeps an absent field off the SET
-	// list the store builds, so there is nothing here to default the way
-	// AddPanel does; clamping a value that was sent is the only job left
-	// (docs/plans/layout.md, Task 0).
-	if patch.Width != nil {
-		clamped := domain.ClampPanelWidth(*patch.Width)
-		patch.Width = &clamped
-	}
-
-	if patch.Height != nil {
-		clamped := domain.ClampPanelHeight(*patch.Height)
-		patch.Height = &clamped
-	}
+	clampPatchSize(&patch)
 
 	updated, found, err := w.store.UpdatePanel(ctx, workspaceID, panelID, patch)
 	if err != nil {
@@ -312,6 +309,33 @@ func (w *Workspaces) UpdatePanel(
 	}
 
 	return updated, nil
+}
+
+// clampPatchSize clamps only a Width, Height or NarrowHeight the caller
+// actually named on patch - patch's own nil-means-unchanged already keeps
+// an absent field off the SET list the store builds, so there is nothing
+// here to default the way AddPanel does; clamping a value that was sent is
+// the only job left (docs/plans/layout.md, Task 0; docs/specs/layout.md,
+// section 5a for NarrowHeight). Split out of UpdatePanel to keep that
+// function's own cyclomatic complexity under golangci-lint's gocyclo limit
+// (harness/quality/go/golangci.yml) - three near-identical "if set, clamp
+// and replace" blocks read the same either way, just without adding to the
+// one function's branch count.
+func clampPatchSize(patch *domain.PanelPatch) {
+	if patch.Width != nil {
+		clamped := domain.ClampPanelWidth(*patch.Width)
+		patch.Width = &clamped
+	}
+
+	if patch.Height != nil {
+		clamped := domain.ClampPanelHeight(*patch.Height)
+		patch.Height = &clamped
+	}
+
+	if patch.NarrowHeight != nil {
+		clamped := domain.ClampPanelHeight(*patch.NarrowHeight)
+		patch.NarrowHeight = &clamped
+	}
 }
 
 // DeletePanel removes one panel from a workspace. Deleting from a

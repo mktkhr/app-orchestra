@@ -3910,3 +3910,131 @@ unchanged across every run, including the two that failed on contention.
 **Done.** Every criterion in `docs/specs/routing.md` section 7 has a test
 that runs in `make check`, and a workspace's address can be pasted to
 somebody else - the plan's own closing line.
+
+## 2026-09-13 `docs/specs/layout.md` section 5a: `narrowHeight`, and why order stays live on a phone
+
+**What was built.** `narrowHeight` on `Panel`, `CreatePanelRequest` and
+`UpdatePanelRequest` (`openapi.yaml`) - optional and nullable on the wire,
+unlike `width`/`height`, which are optional on write but always resolve to
+a default on read. `domain.Panel.NarrowHeight` is a `*int`: nil means "no
+narrow height of its own", and stays nil through `AddPanel`/`UpdatePanel`
+rather than being defaulted the way `Width`/`Height` are - the whole point
+of AC-L-108 is that "unset" has to survive all the way to the frontend, not
+collapse into some number at the boundary that set it. `PanelPatch`'s own
+doc comment already explained why `Width`/`Height`/`Position` are plain
+pointers, not a `**View`-shaped tri-state - `NarrowHeight` follows the same
+rule for the same reason, extended rather than re-argued.
+
+`ensurePanelsSizeColumns` (`internal/adapter/repository/sqlite/migrate.go`)
+gets a third column, `narrow_height`, added to its existing loop rather
+than a fourth near-identical migration function -
+`TestNewOpensADatabaseFileWrittenBeforeSizeColumnsExisted` (store_test.go,
+extended, not duplicated) now also proves a file written before any of the
+three columns existed reads its panel back with a nil `NarrowHeight`, not a
+default. `usecase.Workspaces.AddPanel`/`UpdatePanel` clamp only a
+`NarrowHeight` the caller actually sent, through the same
+`domain.ClampPanelHeight` `Height` uses (same range: at least 1, no upper
+bound - section 3's own argument for height applies unchanged to its narrow
+counterpart). The three-field clamp in `UpdatePanel` pushed its cyclomatic
+complexity to 16, one over golangci-lint's `gocyclo` limit of 15
+(`harness/quality/go/golangci.yml`) - extracted into `clampPatchSize` rather
+than suppressed; `UpdatePanel` itself is unchanged in behaviour.
+
+`web/src/pages/workspace/model/buildPanelLayout.ts`'s new `resolvedHeight`
+reads `narrowHeight` only when `interactive` is `false` (the narrow
+breakpoint - the same flag `WorkspaceGrid` already passes as `wide`,
+inverted, doing double duty rather than adding a second parameter that
+would just repeat it), and only when it is a finite number - the same
+finiteness check `finiteOr` already applies to `width`/`height`, extended
+rather than trusted as a special case, for the same reason that comment
+gives: a response missing the field, or sending `null`, must fall back
+rather than reach `react-grid-layout` as `NaN` (the defect this file's own
+comment already records, 2026-09-13's own earlier entry). `arrangement.ts`
+gained `narrowResizeChange` (starts nudging from `height` when
+`narrowHeight` is not yet set - the same fallback `resolvedHeight` draws
+with, so the first keyboard nudge moves the panel from wherever it was
+already drawing rather than jumping from an implicit zero) and
+`useArrangement` a `narrowResizeBy`, which PATCHes `{ narrowHeight }` alone
+through a new `applyNarrowHeight` - distinct from `applySize` so a wide
+`height` override already held is never clobbered by a narrow-only change
+and vice versa.
+
+**The question the task asked to be answered explicitly: does moving a
+panel earlier or later stay available on a phone?** Yes. Section 5 and L7
+say the narrow breakpoint has "no order that differs" from the wide one -
+but read against section 6 ("reordering is `position` on the panels that
+moved... not a renumbering of a whole workspace") and against what a
+single column actually is, that is an argument that there is no _second_
+order to maintain, not that reordering is meaningless there. A stack of
+one column still has an order: moving a panel up or down changes what a
+person scrolling their phone sees, exactly as it does on a desktop, and
+`position` is already the one field both breakpoints share (L7's own
+point - width and order "stay single numbers, shared across both
+breakpoints"). Refusing to let a phone move a panel would not be "nothing
+to arrange" the way refusing a phone a _width_ to set is (there
+genuinely is no second dimension there); it would be withholding an
+operation on a field that already exists and already means the same thing
+on both screens, for no reason section 5 or L7 actually give. So
+`WorkspaceGrid` now wires `onMove` unconditionally (both breakpoints), and
+only `onResize` differs by breakpoint: on narrow it is a handler that reads
+only `deltaHeight` (discarding `deltaWidth` entirely) and calls
+`narrowResizeBy`, so Shift+Left/Right - which would ask to change `width`,
+a field the narrow breakpoint has nothing to set (L7) - is a silent no-op
+there rather than a crash or a write to a column that should never move.
+`GridLayout`'s own `isDraggable`/`isResizable` stay `wide`-only: pointer
+dragging and resizing-by-handle are exactly what section 5 excludes on the
+narrow breakpoint, and neither changed. Only the keyboard control's own
+reach changed, and only for the one field (`narrowHeight`) section 5a
+argues is meaningful there.
+
+**`store_test.go` split.** Adding this slice's own repository tests pushed
+`store_test.go` to 1072 lines, over `harness/quality/file-length.txt`'s
+1000-line limit (`guard-filelen`). Rather than trim tests, panel
+view/size/migration round-trip tests (`viewForRoundTrip` through the file's
+end, including `newPanelForUpdateTest` and its own callers) moved to a new
+`store_panelsize_test.go` - the same kind of split
+`permissions_test.go`/`sessions_test.go`/`users_test.go` already are for
+their own sources, not a new pattern. Both files stay under the limit
+(390 and 699 lines).
+
+**A design choice not taken: no way to clear `narrowHeight` back to unset
+once it is set.** `View`'s own `**View` tri-state exists because naming it
+`null` has to mean something different from leaving it out - "remove the
+view" is a real, distinct request. `narrowHeight` was given the same
+"optional, nullable" wording in the task, and the _response_ schema is
+genuinely nullable (a resolved `Panel` can carry `narrowHeight: null`,
+unlike `width`/`height`, which never are) - but the two _write_ schemas
+(`CreatePanelRequest`/`UpdatePanelRequest`) keep `narrowHeight` a plain
+optional integer, the same shape `width`/`height` already have there:
+absent means "leave/skip", present means "set to this, clamped". Nobody
+asked for "revert to matching height" as an operation, and adding a second
+tri-state field to `PanelPatch` for a case the spec never raises would be
+exactly the kind of complexity `docs/specs/layout.md` section 7
+("deliberately excluded") argues against elsewhere in this same feature.
+If a person ever needs to unset a narrow height explicitly rather than
+setting it back to match `height` by hand, that is the next PATCH shape to
+add - not implied by anything built here.
+
+**Verified live**, not just by test. Signed in as `admin`, made a fresh
+workspace, added a table panel (starts at `height: 1`, no `narrowHeight`,
+Task 0's own default), narrowed the viewport to 375px, focused the panel's
+own keyboard arrange control and pressed Shift+ArrowDown three times.
+`GET /api/workspaces/{id}` (through the page's own `fetch`, sharing its
+session cookie) read the panel back as `{ height: 1, narrowHeight: 4 }`.
+Widened the viewport to 1280px without touching anything else: the same
+panel drew at one row tall, screenshotted both ways - the desktop
+untouched by an edit made on the phone, which is the whole point section
+5a argues for.
+
+**`make check`, twice - the first failed on two things this change itself
+introduced, not on flake.** `guard-generated` failed once because
+`openapi.yaml` had changed but nothing was staged yet (`git diff
+--exit-code` compares the working tree to the index, so an uncommitted
+contract change always shows as "stale" until `git add`); `services-lint`
+failed once on `UpdatePanel`'s `gocyclo` (see `clampPatchSize` above) and
+once on a `newexpr`/`modernize` finding for a local `intPtr` helper
+(deleted; the repository already uses a generic `new(v)` builtin
+elsewhere in this Go 1.27 codebase for exactly this). Both fixed, then a
+clean, `-k`-free run. `docker logs llama-swap`'s `POST /v1/chat/completions`
+count: 79514 before this task's first `make check` and 79514 after the
+final one - unchanged.

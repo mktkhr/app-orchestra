@@ -76,10 +76,17 @@ const DRAGGABLE_CANCEL = "button, a, input, select, textarea";
  * without waiting on a reload.
  *
  * On the narrow breakpoint every panel spans the single column (AC-L-105)
- * and the grid is static - `docs/specs/layout.md` section 5: one column,
- * one order, nothing to arrange, and no way to drag the page sideways by
- * accident. `onMove`/`onResize` are left undefined there, which is what
- * tells `PanelActions` to draw no arrange control at all.
+ * and the grid is static by pointer - `docs/specs/layout.md` section 5:
+ * no dragging, no resizing by a handle, and no way to drag the page
+ * sideways by accident. That is not "nothing to arrange" for every field,
+ * though (section 5a): a stack of one column still has an order, and a
+ * panel there still has a height worth changing, so `PanelActions`' own
+ * keyboard control stays wired in on the narrow breakpoint too - `onMove`
+ * still swaps two panels' shared `position` (the same field the wide
+ * breakpoint moves, L7: there is no separate "narrow order"), and
+ * `onResize` here is `narrowResizeBy`, not `resizeBy` - it touches only
+ * `narrowHeight`, never `width` (nothing to set, one column) or the wide
+ * breakpoint's own `height` (AC-L-107).
  *
  * The container's width is measured with `useElementSize` (the same hook
  * `PanelResult` reads for `ResultChart`, AC-L-106) rather than through
@@ -108,6 +115,7 @@ export function WorkspaceGrid({ workspaceId, panels }: WorkspaceGridProps): JSX.
     onResizeStop,
     moveTo,
     resizeBy,
+    narrowResizeBy,
   } = useArrangement(workspaceId, panels);
   const layout = buildPanelLayout(arranged, columns, wide);
   const ordered = arranged.toSorted((left, right) => left.position - right.position);
@@ -133,8 +141,14 @@ export function WorkspaceGrid({ workspaceId, panels }: WorkspaceGridProps): JSX.
             <PanelResult
               workspaceId={workspaceId}
               panel={panel}
-              onMove={wide ? moveTo : undefined}
-              onResize={wide ? resizeBy : undefined}
+              onMove={moveTo}
+              onResize={
+                wide
+                  ? resizeBy
+                  : (panelId, _deltaWidth, deltaHeight) => {
+                      narrowResizeBy(panelId, deltaHeight);
+                    }
+              }
             />
           </div>
         ))}

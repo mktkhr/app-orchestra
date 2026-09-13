@@ -479,6 +479,9 @@ func TestWorkspacesAddPanelDefaultsAnUnsetSizeToTheDomainDefault(t *testing.T) {
 	require.NotNil(t, store.addPanelIn)
 	assert.Equal(t, domain.DefaultPanelWidth, store.addPanelIn.Width)
 	assert.Equal(t, domain.DefaultPanelHeight, store.addPanelIn.Height)
+	assert.Nil(t, store.addPanelIn.NarrowHeight,
+		"a panel with no narrow height of its own must reach the store with a nil NarrowHeight, "+
+			"not a default the way Width/Height get one (docs/specs/layout.md, section 5a, AC-L-108)")
 }
 
 // TestWorkspacesAddPanelClampsAnOutOfRangeSize is the same case for a
@@ -489,14 +492,19 @@ func TestWorkspacesAddPanelClampsAnOutOfRangeSize(t *testing.T) {
 	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
 	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
 
+	zeroNarrowHeight := 0
+
 	_, err := w.AddPanel(t.Context(), owner(), "ws-1", &domain.Panel{
-		Service: "inventory", OperationID: "ListInventoryItems", Width: 40, Height: 0,
+		Service: "inventory", OperationID: "ListInventoryItems", Width: 40, Height: 0, NarrowHeight: &zeroNarrowHeight,
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, store.addPanelIn)
 	assert.Equal(t, domain.MaxPanelWidth, store.addPanelIn.Width, "a width of 40 must clamp down to the maximum")
 	assert.Equal(t, domain.MinPanelHeight, store.addPanelIn.Height, "a height of 0 must clamp up to the minimum")
+	require.NotNil(t, store.addPanelIn.NarrowHeight)
+	assert.Equal(t, domain.MinPanelHeight, *store.addPanelIn.NarrowHeight,
+		"a narrow height of 0 must clamp up to the minimum, the same as height")
 }
 
 // TestWorkspacesUpdatePanelClampsAWidthTheCallerNamed proves UpdatePanel
@@ -523,10 +531,10 @@ func TestWorkspacesUpdatePanelClampsAWidthTheCallerNamed(t *testing.T) {
 }
 
 // TestWorkspacesUpdatePanelLeavesSizeUnnamedFieldsNil proves a PATCH that
-// never names Width, Height or Position reaches the store with all three
-// nil - absent-means-unchanged, the same as Args/Component/View
-// (docs/specs/dashboard.md, P11; AC-P-108) - so the store never overwrites
-// a column the caller said nothing about.
+// never names Width, Height, NarrowHeight or Position reaches the store
+// with all four nil - absent-means-unchanged, the same as
+// Args/Component/View (docs/specs/dashboard.md, P11; AC-P-108) - so the
+// store never overwrites a column the caller said nothing about.
 func TestWorkspacesUpdatePanelLeavesSizeUnnamedFieldsNil(t *testing.T) {
 	store := &fakeWorkspaceStore{
 		getResult:        panelWorkspace(),
@@ -544,7 +552,57 @@ func TestWorkspacesUpdatePanelLeavesSizeUnnamedFieldsNil(t *testing.T) {
 	require.NotNil(t, store.updatePanelIn)
 	assert.Nil(t, store.updatePanelIn.Width)
 	assert.Nil(t, store.updatePanelIn.Height)
+	assert.Nil(t, store.updatePanelIn.NarrowHeight)
 	assert.Nil(t, store.updatePanelIn.Position)
+}
+
+// TestWorkspacesUpdatePanelClampsNarrowHeightTheCallerNamed is
+// TestWorkspacesUpdatePanelClampsAWidthTheCallerNamed's own case for
+// NarrowHeight - a caller that is not this repository's own frontend can
+// send 0 here just as easily as an out-of-range width (docs/specs/layout.md,
+// section 5a).
+func TestWorkspacesUpdatePanelClampsNarrowHeightTheCallerNamed(t *testing.T) {
+	store := &fakeWorkspaceStore{
+		getResult:        panelWorkspace(),
+		getFound:         true,
+		updatePanelFound: true,
+		updatePanelOut:   domain.Panel{ID: "pnl-1", NarrowHeight: new(domain.MinPanelHeight)},
+	}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	narrowHeight := 0
+
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{NarrowHeight: &narrowHeight})
+
+	require.NoError(t, err)
+	require.NotNil(t, store.updatePanelIn)
+	require.NotNil(t, store.updatePanelIn.NarrowHeight)
+	assert.Equal(t, domain.MinPanelHeight, *store.updatePanelIn.NarrowHeight,
+		"a narrow height of 0 must clamp up to the minimum")
+}
+
+// TestWorkspacesUpdatePanelNarrowHeightLeavesHeightAlone is AC-L-107 at the
+// usecase level: a PATCH naming only NarrowHeight reaches the store with
+// Height nil - unchanged - proving the wide breakpoint's own height is
+// untouched by a narrow-height edit (docs/specs/layout.md, section 5a).
+func TestWorkspacesUpdatePanelNarrowHeightLeavesHeightAlone(t *testing.T) {
+	store := &fakeWorkspaceStore{
+		getResult:        panelWorkspace(),
+		getFound:         true,
+		updatePanelFound: true,
+		updatePanelOut:   domain.Panel{ID: "pnl-1", Height: 3, NarrowHeight: new(1)},
+	}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	narrowHeight := 1
+
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{NarrowHeight: &narrowHeight})
+
+	require.NoError(t, err)
+	require.NotNil(t, store.updatePanelIn)
+	require.NotNil(t, store.updatePanelIn.NarrowHeight)
+	assert.Equal(t, 1, *store.updatePanelIn.NarrowHeight)
+	assert.Nil(t, store.updatePanelIn.Height, "changing NarrowHeight must leave Height nil - unchanged")
 }
 
 // TestWorkspacesUpdatePanelPassesPositionThrough proves a PATCH naming a

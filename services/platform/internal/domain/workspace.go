@@ -99,6 +99,17 @@ type Panel struct {
 	// never set, always at least MinPanelHeight once persisted, clamped
 	// the same way Width is.
 	Height int
+	// NarrowHeight is the panel's span in grid rows on the narrow
+	// breakpoint (docs/specs/layout.md, section 5a) - a second, independent
+	// number from Height, not a per-breakpoint copy of it: changing one
+	// leaves the other exactly as it was (AC-L-107). Unlike Width and
+	// Height, nil is a value this field keeps rather than resolves away: a
+	// panel with no narrow height of its own draws at Height on both
+	// breakpoints (AC-L-108, exactly how every panel drew before this
+	// field existed), so "not set" has to stay visible all the way to
+	// buildPanelLayout rather than collapsing into some number here. When
+	// set, it is at least MinPanelHeight, clamped the same way Height is.
+	NarrowHeight *int
 	// View is how the panel draws its result, beside Args which says what
 	// to fetch (docs/specs/dashboard.md, P1). Nil on every panel saved
 	// before this slice, and on every panel whose component needs nothing
@@ -134,19 +145,25 @@ type Panel struct {
 // internal/adapter/handler is where a wire UpdatePanelRequest's
 // nullable.Nullable[View] becomes one of this type's three states.
 //
-// Width, Height and Position are plain "was this field sent at all"
-// pointers, the same as Title/Args/Component, not a third pointer-to-
-// pointer state like View: an integer has no "explicitly clear it" request
-// distinct from "leave it alone" the way naming a view `null` does (there
-// is no null width to ask for - only absent-means-unchanged, or a value to
-// clamp and store), so nil-means-unchanged is the whole of what these
-// three fields need (docs/plans/layout.md, Task 0; see DECISIONS.md).
+// Width, Height, NarrowHeight and Position are plain "was this field sent
+// at all" pointers, the same as Title/Args/Component, not a third pointer-
+// to-pointer state like View: an integer has no "explicitly clear it"
+// request distinct from "leave it alone" the way naming a view `null` does
+// (there is no null width to ask for - only absent-means-unchanged, or a
+// value to clamp and store), so nil-means-unchanged is the whole of what
+// these four fields need (docs/plans/layout.md, Task 0; see DECISIONS.md).
+// NarrowHeight's own Panel field is already a *int for a different reason
+// (Panel's doc comment) - PanelPatch.NarrowHeight nil still only ever means
+// "leave it alone" here, the contract deliberately gives no way to send
+// this field back to "no narrow height of its own" once it has been set
+// (docs/specs/layout.md, section 5a; DECISIONS.md, 2026-09-13).
 type PanelPatch struct {
-	Title     *string
-	Args      map[string]any
-	Component *string
-	View      **View
-	Width     *int
-	Height    *int
-	Position  *int
+	Title        *string
+	Args         map[string]any
+	Component    *string
+	View         **View
+	Width        *int
+	Height       *int
+	NarrowHeight *int
+	Position     *int
 }

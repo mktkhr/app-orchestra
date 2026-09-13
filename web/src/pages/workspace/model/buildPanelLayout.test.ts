@@ -90,4 +90,49 @@ describe("buildPanelLayout", () => {
 
     expect(layout).toEqual([{ i: "missing", x: 0, y: 0, w: 12, h: 1, static: true }]);
   });
+
+  // AC-L-107: a panel's narrow height draws on the narrow breakpoint
+  // without touching what it draws as on the wide one.
+  it("draws narrowHeight on the narrow breakpoint, and height on the wide one, for the same panel", () => {
+    const withNarrowHeight = panel({ id: "pnl-1", height: 3, narrowHeight: 1 });
+
+    const wide = buildPanelLayout([withNarrowHeight], 12, true);
+    const narrow = buildPanelLayout([withNarrowHeight], 1, false);
+
+    expect(wide[0]?.h).toBe(3);
+    expect(narrow[0]?.h).toBe(1);
+  });
+
+  // AC-L-108: no narrow height of its own is as tall as height, on both
+  // breakpoints - exactly how every panel saved before this field existed
+  // drew.
+  it("draws at height on both breakpoints when narrowHeight is absent (AC-L-108)", () => {
+    const withoutNarrowHeight = panel({ id: "pnl-1", height: 3 });
+
+    const wide = buildPanelLayout([withoutNarrowHeight], 12, true);
+    const narrow = buildPanelLayout([withoutNarrowHeight], 1, false);
+
+    expect(wide[0]?.h).toBe(3);
+    expect(narrow[0]?.h).toBe(3);
+  });
+
+  it("draws at height on the narrow breakpoint when narrowHeight is null", () => {
+    const withNullNarrowHeight = panel({ id: "pnl-1", height: 3, narrowHeight: null });
+
+    const narrow = buildPanelLayout([withNullNarrowHeight], 1, false);
+
+    expect(narrow[0]?.h).toBe(3);
+  });
+
+  it("falls back to height on the narrow breakpoint when narrowHeight is not a finite number", () => {
+    const invalidNarrowHeight = panel({
+      id: "pnl-1",
+      height: 3,
+      narrowHeight: Number.NaN,
+    });
+
+    const narrow = buildPanelLayout([invalidNarrowHeight], 1, false);
+
+    expect(narrow[0]?.h).toBe(3);
+  });
 });

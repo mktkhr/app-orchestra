@@ -6,6 +6,7 @@ import {
   clampHeight,
   clampWidth,
   moveChanges,
+  narrowResizeChange,
   positionChanges,
   resizeChange,
   sizeChange,
@@ -118,6 +119,33 @@ describe("resizeChange", () => {
       id: "pnl-1",
       width: 1,
       height: 1,
+    });
+  });
+});
+
+describe("narrowResizeChange", () => {
+  it("nudges narrowHeight by delta, clamped, leaving width and height out entirely", () => {
+    expect(narrowResizeChange(panel({ height: 1, narrowHeight: 1 }), 1)).toEqual({
+      id: "pnl-1",
+      narrowHeight: 2,
+    });
+    expect(narrowResizeChange(panel({ height: 1, narrowHeight: 1 }), -1)).toEqual({
+      id: "pnl-1",
+      narrowHeight: 1,
+    });
+  });
+
+  it("starts from height when narrowHeight is not yet set, the same fallback buildPanelLayout draws with", () => {
+    expect(narrowResizeChange(panel({ height: 3 }), 1)).toEqual({
+      id: "pnl-1",
+      narrowHeight: 4,
+    });
+  });
+
+  it("starts from height when narrowHeight is null", () => {
+    expect(narrowResizeChange(panel({ height: 3, narrowHeight: null }), -1)).toEqual({
+      id: "pnl-1",
+      narrowHeight: 2,
     });
   });
 });

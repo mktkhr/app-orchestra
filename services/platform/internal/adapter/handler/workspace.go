@@ -230,17 +230,18 @@ func toAPIPanel(p *domain.Panel) openapi.Panel {
 	}
 
 	return openapi.Panel{
-		Id:          p.ID,
-		WorkspaceId: p.WorkspaceID,
-		Service:     p.Service,
-		OperationId: p.OperationID,
-		Args:        args,
-		Component:   openapi.Component(p.Component),
-		Title:       p.Title,
-		Position:    p.Position,
-		Width:       p.Width,
-		Height:      p.Height,
-		View:        toAPIView(p.View),
+		Id:           p.ID,
+		WorkspaceId:  p.WorkspaceID,
+		Service:      p.Service,
+		OperationId:  p.OperationID,
+		Args:         args,
+		Component:    openapi.Component(p.Component),
+		Title:        p.Title,
+		Position:     p.Position,
+		Width:        p.Width,
+		Height:       p.Height,
+		NarrowHeight: p.NarrowHeight,
+		View:         toAPIView(p.View),
 	}
 }
 
@@ -277,15 +278,23 @@ func toDomainPanel(workspaceID string, body *openapi.CreatePanelRequest) *domain
 		Args:        body.Args,
 		Width:       width,
 		Height:      height,
-		View:        toDomainView(body.View),
+		// body.NarrowHeight is threaded straight across, unlike
+		// Width/Height above: it is already a *int on the wire, and nil
+		// here means the same thing it means everywhere else this field
+		// travels - "no narrow height of its own" - rather than a zero
+		// collapsed from "the caller said nothing" (see domain.Panel's own
+		// doc comment).
+		NarrowHeight: body.NarrowHeight,
+		View:         toDomainView(body.View),
 	}
 }
 
 // toDomainPanelPatch converts an UpdatePanelRequest into the
 // domain.PanelPatch usecase.Workspaces.UpdatePanel takes. Title, Args,
-// Component, Position, Width and Height are plain "was this field sent at
-// all" pointers, straight off the generated (already-optional) wire type -
-// Position, Width and Height need no third state the way View does (see
+// Component, Position, Width, Height and NarrowHeight are plain "was this
+// field sent at all" pointers, straight off the generated (already-optional)
+// wire type - Position, Width, Height and NarrowHeight need no third state
+// the way View does (see
 // domain.PanelPatch's own doc comment), so body.Position/Width/Height are
 // assigned across unchanged. View is the one field with a
 // third state to translate: body.View is a
@@ -310,6 +319,7 @@ func toDomainPanelPatch(body *openapi.UpdatePanelRequest) domain.PanelPatch {
 	patch.Position = body.Position
 	patch.Width = body.Width
 	patch.Height = body.Height
+	patch.NarrowHeight = body.NarrowHeight
 
 	if body.View.IsSpecified() {
 		var view *domain.View

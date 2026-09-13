@@ -20,12 +20,23 @@ interface PanelActionsProps {
   readonly onSaved: (panel: WorkspacePanel) => void;
   /**
    * The keyboard half of arranging a workspace (`docs/specs/layout.md`
-   * AC-L-103), wired in by `WorkspaceGrid` only on the wide breakpoint -
-   * omitted, `ArrangeControl` draws nothing, the same "no control for
-   * nothing to do" the narrow breakpoint already applies to dragging
-   * itself (section 5).
+   * AC-L-103), wired in by `WorkspaceGrid` on both breakpoints: a stack of
+   * one column still has an order worth moving a panel within, and a
+   * height worth changing (section 5a) - only pointer dragging and
+   * resizing-by-handle are the narrow breakpoint's own "nothing to do"
+   * (section 5). Left `undefined`, this control draws nothing at all; both
+   * props are optional together for exactly that case, not because either
+   * breakpoint omits one on its own.
    */
   readonly onMove?: ((panelId: string, direction: "previous" | "next") => void) | undefined;
+  /**
+   * On the wide breakpoint, both the panel's `width` and `height`,
+   * `deltaWidth`/`deltaHeight` apart. On the narrow one, `WorkspaceGrid`
+   * wires this to a handler that only ever reads `deltaHeight` and changes
+   * `narrowHeight` - there is no width to change on one column (L7), so a
+   * Shift+Left/Right on a phone is a no-op there rather than reaching for a
+   * field that does not exist.
+   */
   readonly onResize?:
     | ((panelId: string, deltaWidth: number, deltaHeight: number) => void)
     | undefined;

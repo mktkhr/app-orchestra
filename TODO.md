@@ -59,16 +59,26 @@ the next item off "Next".
    (`harness/guard` is not this agent's to reconfigure); whoever has
    standing to edit it should add the directive to `suppressions.sh`'s own
    `pattern`.
-7. **`docs/specs/layout.md` section 5 ("one column, one order") only
-   argues arrangement, not height, for the narrow breakpoint.** Its case
-   for a single column at 375px is that a phone's width cannot hold a
-   second one; a panel's _height_ is exactly as arrangeable there (nothing
-   about a narrow viewport stops a panel from being made taller or
-   shorter) and the spec says nothing about it either way. Recorded here,
-   found while closing the routing subproject, so it is not lost before
-   somebody next touches layout on a phone.
 
 ## Done
+
+- **`docs/specs/layout.md` section 5a: a panel's height on the narrow
+  breakpoint is a second number, `narrowHeight`, editable by keyboard**
+  (AC-L-107, AC-L-108) - closes the gap item 7 above used to record.
+  `Panel`/`CreatePanelRequest`/`UpdatePanelRequest` gained `narrowHeight`
+  (`openapi.yaml`); `ensurePanelsSizeColumns` (`migrate.go`) adds the third
+  column the same idempotent way as `width`/`height`;
+  `usecase.Workspaces` clamps only a value the caller actually sent, same
+  as `height`; `buildPanelLayout` reads `narrowHeight` only on the narrow
+  breakpoint, falling back to `height` when it is absent or non-finite
+  (AC-L-108); `useArrangement` gained `narrowResizeBy`, PATCHing only
+  `{ narrowHeight }`. Order (`position`) stays arrangeable by keyboard on
+  the narrow breakpoint too - a one-column stack still has an order worth
+  moving a panel within - only pointer dragging, pointer resizing, and
+  changing `width` stay excluded there (`docs/specs/layout.md` section 5,
+  L7). Verified live at 375px and 1280px: setting `narrowHeight` on a
+  phone left `height` exactly as it was on desktop. See `STATE.md` and
+  `DECISIONS.md`, 2026-09-13.
 
 - **`docs/plans/routing.md` Task 0: the platform serves `index.html` for
   any address it does not otherwise answer** (`docs/specs/routing.md`

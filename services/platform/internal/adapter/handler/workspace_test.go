@@ -496,6 +496,96 @@ func TestUpdatePanelLeavesWidthHeightAndPositionNilWhenAbsent(t *testing.T) {
 	assert.Nil(t, fake.updatePanelIn.Width)
 	assert.Nil(t, fake.updatePanelIn.Height)
 	assert.Nil(t, fake.updatePanelIn.Position)
+	assert.Nil(t, fake.updatePanelIn.NarrowHeight)
+}
+
+// TestUpdatePanelPassesNarrowHeightThroughWithoutHeight is AC-L-107 at the
+// handler boundary: a body naming only narrowHeight reaches the usecase
+// with NarrowHeight set and Height nil - unchanged (docs/specs/layout.md,
+// section 5a).
+func TestUpdatePanelPassesNarrowHeightThroughWithoutHeight(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	narrowHeight := 1
+
+	resp, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{
+		Id: "ws-1", PanelId: "pnl-1",
+		Body: &openapi.UpdatePanelRequest{NarrowHeight: &narrowHeight},
+	})
+
+	require.NoError(t, err)
+	require.IsType(t, openapi.UpdatePanel200JSONResponse{}, resp)
+	require.NotNil(t, fake.updatePanelIn.NarrowHeight)
+	assert.Equal(t, 1, *fake.updatePanelIn.NarrowHeight)
+	assert.Nil(t, fake.updatePanelIn.Height, "naming only narrowHeight must leave height nil - unchanged")
+}
+
+// TestAddPanelPassesNarrowHeightThrough is
+// TestAddPanelPassesWidthAndHeightThrough's own case for narrowHeight.
+func TestAddPanelPassesNarrowHeightThrough(t *testing.T) {
+	fake := &fakeWorkspaces{addPanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	narrowHeight := 1
+
+	_, err := h.AddPanel(t.Context(), openapi.AddPanelRequestObject{
+		Id: "ws-1",
+		Body: &openapi.CreatePanelRequest{
+			Service: "inventory", OperationId: "ListInventoryItems", Component: "table", Title: "検品保留の在庫",
+			NarrowHeight: &narrowHeight,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, fake.addPanelIn)
+	require.NotNil(t, fake.addPanelIn.NarrowHeight)
+	assert.Equal(t, 1, *fake.addPanelIn.NarrowHeight)
+}
+
+// TestAddPanelWithNoNarrowHeightLeavesItNil proves toDomainPanel does not
+// invent a NarrowHeight the way it does not invent a Width/Height default
+// either - AC-L-108 starts here: a panel built with no narrowHeight at all
+// reaches the usecase with a nil NarrowHeight.
+func TestAddPanelWithNoNarrowHeightLeavesItNil(t *testing.T) {
+	fake := &fakeWorkspaces{addPanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	_, err := h.AddPanel(t.Context(), openapi.AddPanelRequestObject{
+		Id: "ws-1",
+		Body: &openapi.CreatePanelRequest{
+			Service: "inventory", OperationId: "ListInventoryItems", Component: "table", Title: "検品保留の在庫",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, fake.addPanelIn)
+	assert.Nil(t, fake.addPanelIn.NarrowHeight)
+}
+
+// TestAddPanelRendersNarrowHeight proves toAPIPanel puts a panel's
+// NarrowHeight on the wire Panel it returns, and that a nil one renders as
+// absent rather than some default (AC-L-108).
+func TestAddPanelRendersNarrowHeight(t *testing.T) {
+	narrowHeight := 1
+	fake := &fakeWorkspaces{addPanelResult: domain.Panel{
+		ID: "pnl-1", WorkspaceID: "ws-1", Service: "inventory", OperationID: "ListInventoryItems",
+		Component: "table", Title: "検品保留の在庫", Position: 1, Width: 6, Height: 3, NarrowHeight: &narrowHeight,
+	}}
+	h := handler.NewWorkspace(fake)
+
+	resp, err := h.AddPanel(t.Context(), openapi.AddPanelRequestObject{
+		Id: "ws-1",
+		Body: &openapi.CreatePanelRequest{
+			Service: "inventory", OperationId: "ListInventoryItems", Component: "table", Title: "検品保留の在庫",
+		},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.AddPanel201JSONResponse)
+	require.True(t, ok)
+	require.NotNil(t, body.NarrowHeight)
+	assert.Equal(t, 1, *body.NarrowHeight)
 }
 
 // TestAddPanelPassesWidthAndHeightThrough proves toDomainPanel forwards an

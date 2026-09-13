@@ -6,10 +6,12 @@ import { patchPanel } from "@/shared/api/panels";
 
 import {
   moveChanges,
+  narrowResizeChange,
   positionChanges,
   resizeChange,
   sizeChange,
   type MoveDirection,
+  type PanelNarrowHeightChange,
   type PanelPositionChange,
   type PanelSizeChange,
 } from "./arrangement";
@@ -18,6 +20,7 @@ interface PanelOverride {
   readonly position?: number;
   readonly width?: number;
   readonly height?: number;
+  readonly narrowHeight?: number;
 }
 
 export interface Arrangement {
@@ -31,6 +34,12 @@ export interface Arrangement {
   readonly moveTo: (panelId: string, direction: MoveDirection) => void;
   /** The keyboard half's resize (AC-L-103). */
   readonly resizeBy: (panelId: string, deltaWidth: number, deltaHeight: number) => void;
+  /**
+   * The narrow breakpoint's own resize (`docs/specs/layout.md` section 5a):
+   * `narrowHeight` alone, nudged by `delta` rows - never `width` or the
+   * wide breakpoint's own `height` (AC-L-107).
+   */
+  readonly narrowResizeBy: (panelId: string, delta: number) => void;
 }
 
 /**
@@ -100,6 +109,17 @@ export function useArrangement(
     void patchPanel(workspaceId, change.id, { width: change.width, height: change.height });
   };
 
+  // Distinct from applySize: it touches only narrowHeight, so a wide
+  // height an override already holds is never clobbered by a narrow-only
+  // change, and vice versa (AC-L-107).
+  const applyNarrowHeight = (change: PanelNarrowHeightChange): void => {
+    setOverrides((current) => ({
+      ...current,
+      [change.id]: { ...current[change.id], narrowHeight: change.narrowHeight },
+    }));
+    void patchPanel(workspaceId, change.id, { narrowHeight: change.narrowHeight });
+  };
+
   const onDragStop = (layout: Layout[]): void => {
     applyPositions(positionChanges(arranged, layout));
   };
@@ -122,5 +142,15 @@ export function useArrangement(
     applySize(resizeChange(panel, deltaWidth, deltaHeight));
   };
 
-  return { panels: arranged, onDragStop, onResizeStop, moveTo, resizeBy };
+  const narrowResizeBy = (panelId: string, delta: number): void => {
+    const panel = arranged.find((candidate) => candidate.id === panelId);
+
+    if (panel === undefined) {
+      return;
+    }
+
+    applyNarrowHeight(narrowResizeChange(panel, delta));
+  };
+
+  return { panels: arranged, onDragStop, onResizeStop, moveTo, resizeBy, narrowResizeBy };
 }

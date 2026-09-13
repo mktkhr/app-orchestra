@@ -128,4 +128,66 @@ describe("WorkspaceGrid", () => {
       height: 1,
     });
   });
+
+  // docs/specs/layout.md section 5a / AC-L-107: on the narrow breakpoint,
+  // order still moves (a stack of one column still has an order) but a
+  // resize touches only narrowHeight - never width (nothing to set on one
+  // column, L7) and never the wide breakpoint's own height.
+  it("on the narrow breakpoint, still moves by keyboard but resizes only narrowHeight", async () => {
+    const matchMedia = window.matchMedia;
+    window.matchMedia = (query: string): MediaQueryList => {
+      const target = new EventTarget();
+
+      return Object.assign(target, {
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: (): void => {
+          /* deprecated; @mui/material's useMediaQuery only calls addEventListener */
+        },
+        removeListener: (): void => {
+          /* deprecated; @mui/material's useMediaQuery only calls removeEventListener */
+        },
+      }) as MediaQueryList;
+    };
+
+    try {
+      vi.mocked(postInvoke).mockResolvedValue({ component: "table", data: { items: [] } });
+      vi.mocked(patchPanel).mockResolvedValue(panel());
+      const user = userEvent.setup();
+
+      render(
+        <WorkspaceGrid
+          workspaceId="ws-1"
+          panels={[
+            panel({ id: "first", position: 0, height: 1, title: "一番目" }),
+            panel({ id: "second", position: 1, height: 1, title: "二番目" }),
+          ]}
+        />,
+      );
+
+      await screen.findByText("一番目");
+
+      const moveButton = screen.getByLabelText("一番目をキーボードで並べ替え・サイズ変更");
+      await user.tab();
+
+      while (document.activeElement !== moveButton) {
+        await user.tab();
+      }
+
+      await user.keyboard("{ArrowRight}");
+
+      expect(vi.mocked(patchPanel)).toHaveBeenCalledWith("ws-1", "first", { position: 1 });
+      expect(vi.mocked(patchPanel)).toHaveBeenCalledWith("ws-1", "second", { position: 0 });
+
+      vi.mocked(patchPanel).mockClear();
+      await user.keyboard("{Shift>}{ArrowDown}{/Shift}");
+
+      expect(vi.mocked(patchPanel)).toHaveBeenCalledExactlyOnceWith("ws-1", "first", {
+        narrowHeight: 2,
+      });
+    } finally {
+      window.matchMedia = matchMedia;
+    }
+  });
 });

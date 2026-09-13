@@ -972,6 +972,19 @@ components:
             The panel's span in grid rows (docs/specs/layout.md, section 3).
             Clamped to at least 1 by the platform, never rejected. A panel
             saved before this field existed reads back as 1.
+        narrowHeight:
+          type: integer
+          nullable: true
+          description: >
+            The panel's span in grid rows on the narrow breakpoint
+            (docs/specs/layout.md, section 5a). Absent or null on a panel
+            with no narrow height of its own - it then draws at `height` on
+            both breakpoints (AC-L-108), exactly as it did before this field
+            existed. Unlike `width` and `height`, this never resolves to a
+            default value of its own: there is nothing to override on the
+            narrow breakpoint's single column and single order (L7), so
+            `narrowHeight`'s absence is meaningful and stays visible on the
+            wire rather than collapsing into some number.
         view:
           $ref: "#/components/schemas/View"
     CreatePanelRequest:
@@ -1012,6 +1025,12 @@ components:
           description: >
             The panel's span in grid rows. Left out, the panel is one row
             tall; below 1, it is clamped up to 1.
+        narrowHeight:
+          type: integer
+          description: >
+            The panel's span in grid rows on the narrow breakpoint
+            (docs/specs/layout.md, section 5a). Left out, the panel draws at
+            `height` on both breakpoints; below 1, it is clamped up to 1.
         view:
           $ref: "#/components/schemas/View"
     UpdatePanelRequest:
@@ -1049,6 +1068,12 @@ components:
           description: >
             The panel's new height in grid rows; below 1, it is clamped up
             to 1.
+        narrowHeight:
+          type: integer
+          description: >
+            The panel's new height in grid rows on the narrow breakpoint
+            (docs/specs/layout.md, section 5a); below 1, it is clamped up to
+            1. Changing it leaves `height` exactly as it was (AC-L-107).
         view:
           type: object
           allOf:

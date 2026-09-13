@@ -20,7 +20,7 @@ import (
 
 // panelColumns is the column list loadPanels and loadPanel both select, in
 // the order scanPanel expects them.
-const panelColumns = "id, workspace_id, service, operation_id, component, title, args, position, width, height, view"
+const panelColumns = "id, workspace_id, service, operation_id, component, title, args, position, width, height, narrow_height, view"
 
 // panelIDAndWorkspaceIDArgs is the two extra query arguments
 // UpdatePanel's own WHERE clause always adds, beyond one per SET fragment
@@ -257,31 +257,49 @@ func (s *Store) AddPanel(ctx context.Context, workspaceID string, p *domain.Pane
 
 	widthValue := marshalPanelSize(p.Width)
 	heightValue := marshalPanelSize(p.Height)
+	narrowHeightValue := marshalNullableInt(p.NarrowHeight)
 
 	if _, err := s.db.ExecContext(
 		ctx,
 		`INSERT INTO panels (id, workspace_id, service, operation_id, component, title, args, position,
-		                     width, height, view)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                     width, height, narrow_height, view)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, workspaceID, p.Service, p.OperationID, p.Component, p.Title, string(argsJSON), p.Position,
-		widthValue, heightValue, viewValue,
+		widthValue, heightValue, narrowHeightValue, viewValue,
 	); err != nil {
 		return domain.Panel{}, fmt.Errorf("adding panel to workspace %s: %w", workspaceID, err)
 	}
 
 	return domain.Panel{
-		ID:          id,
-		WorkspaceID: workspaceID,
-		Service:     p.Service,
-		OperationID: p.OperationID,
-		Component:   p.Component,
-		Title:       p.Title,
-		Args:        args,
-		Position:    p.Position,
-		Width:       width,
-		Height:      height,
-		View:        p.View,
+		ID:           id,
+		WorkspaceID:  workspaceID,
+		Service:      p.Service,
+		OperationID:  p.OperationID,
+		Component:    p.Component,
+		Title:        p.Title,
+		Args:         args,
+		Position:     p.Position,
+		Width:        width,
+		Height:       height,
+		NarrowHeight: p.NarrowHeight,
+		View:         p.View,
 	}, nil
+}
+
+// marshalNullableInt encodes a panel's NarrowHeight into the nullable
+// narrow_height column: nil - "no narrow height of its own" - becomes SQL
+// NULL, the same way marshalView turns a nil View into one. Unlike
+// marshalPanelSize, there is no 0-means-unset case to translate: p is
+// already a *int, so "the caller said nothing" and "the caller said 0" are
+// already distinct by the time this runs, and usecase.Workspaces has
+// already clamped whatever non-nil value it holds (docs/specs/layout.md,
+// section 5a).
+func marshalNullableInt(p *int) sql.NullInt64 {
+	if p == nil {
+		return sql.NullInt64{}
+	}
+
+	return sql.NullInt64{Int64: int64(*p), Valid: true}
 }
 
 // marshalPanelSize encodes a panel's Width or Height into the nullable
@@ -464,6 +482,10 @@ func updatePanelSets(patch domain.PanelPatch) ([]panelSetClause, error) {
 		sets = append(sets, panelSetClause{"height = ?", *patch.Height})
 	}
 
+	if patch.NarrowHeight != nil {
+		sets = append(sets, panelSetClause{"narrow_height = ?", *patch.NarrowHeight})
+	}
+
 	if patch.View != nil {
 		viewValue, err := marshalView(*patch.View)
 		if err != nil {
@@ -542,16 +564,17 @@ type rowScanner interface {
 // order - decoding its args and (when the column is non-NULL) its view.
 func scanPanel(scanner rowScanner) (domain.Panel, error) {
 	var (
-		p            domain.Panel
-		argsJSON     string
-		widthColumn  sql.NullInt64
-		heightColumn sql.NullInt64
-		viewColumn   sql.NullString
+		p                  domain.Panel
+		argsJSON           string
+		widthColumn        sql.NullInt64
+		heightColumn       sql.NullInt64
+		narrowHeightColumn sql.NullInt64
+		viewColumn         sql.NullString
 	)
 
 	if err := scanner.Scan(
 		&p.ID, &p.WorkspaceID, &p.Service, &p.OperationID, &p.Component, &p.Title, &argsJSON, &p.Position,
-		&widthColumn, &heightColumn, &viewColumn,
+		&widthColumn, &heightColumn, &narrowHeightColumn, &viewColumn,
 	); err != nil {
 		return domain.Panel{}, fmt.Errorf("scanning panel: %w", err)
 	}
@@ -575,6 +598,16 @@ func scanPanel(scanner rowScanner) (domain.Panel, error) {
 	p.Height = domain.DefaultPanelHeight
 	if heightColumn.Valid {
 		p.Height = int(heightColumn.Int64)
+	}
+
+	// A NULL narrow_height column - every panel saved before this field
+	// existed, and every panel with no narrow height of its own - stays a
+	// nil NarrowHeight rather than being given a default the way Width and
+	// Height are: it draws at Height on both breakpoints instead
+	// (docs/specs/layout.md, section 5a, AC-L-108).
+	if narrowHeightColumn.Valid {
+		narrowHeight := int(narrowHeightColumn.Int64)
+		p.NarrowHeight = &narrowHeight
 	}
 
 	// A NULL column - every panel saved before this slice, and every
