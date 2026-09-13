@@ -35,8 +35,7 @@ repository owns, in a server it wrote, three lines long.
 | **R1** | A screen's address is a path. `/`, `/workspaces/{id}`, `/users` - not `#workspace-{id}`. An address a person can read, paste and bookmark is the thing a URL is for.                                               |
 | **R2** | The platform serves `index.html` for any request that is not an API route and is not a file it has. A missing asset still answers 404: a request for a `.js` that does not exist must not be handed HTML to parse. |
 | **R3** | `react-router` does the routing. The alternative is the History API by hand, which is thirty lines until the first redirect, the first nested route, and the first time a route needs data before it renders.      |
-| **R4** | The hash addresses keep working, by redirecting once on arrival. Somebody has those links open right now; a URL that stops working is the thing R1 exists to prevent, and it would be odd to start by doing it.    |
-| **R5** | Signing in is not a route. `AuthGate` decides whether anybody sees a screen at all, and it already does; making the sign-in screen an address would mean deciding what to do with the address somebody came for.   |
+| **R4** | Signing in is not a route. `AuthGate` decides whether anybody sees a screen at all, and it already does; making the sign-in screen an address would mean deciding what to do with the address somebody came for.   |
 
 ## 3. The addresses
 
@@ -53,6 +52,10 @@ this" is better than a link that silently does nothing.
 
 An address that matches nothing renders the chat, which is what the hash
 router does today.
+
+The old `#workspace-{id}` and `#users` addresses are not kept working. A
+hash that means nothing to the router is a hash the router ignores, so such
+a link lands on the chat rather than on an error. Nothing redirects it.
 
 ## 4. The server's part
 
@@ -80,7 +83,7 @@ produce and a guard can say so if one ever does.
 - **The conversation's key** (`docs/specs/context.md` M6). One per screen:
   `"chat"`, and one per workspace id. The id comes from the route rather
   than the hash, and nothing else moves.
-- **`AuthGate`** (R5).
+- **`AuthGate`** (R4).
 - **Every API path.** No contract changes in this subproject at all.
 
 ## 6. Deliberately excluded
@@ -97,12 +100,10 @@ produce and a guard can say so if one ever does.
 - **AC-R-101** `/workspaces/{id}` typed into a fresh browser, or reloaded,
   draws that workspace. Same for `/users`.
 - **AC-R-102** A missing asset answers 404, not HTML.
-- **AC-R-103** An old `#workspace-{id}` address arrives at
-  `/workspaces/{id}`, once, without a second entry in the history.
-- **AC-R-104** `GET /api/...` is untouched: no API path is shadowed by the
+- **AC-R-103** `GET /api/...` is untouched: no API path is shadowed by the
   fallback, including one that does not exist, which must still answer as
   the API and not as the application.
-- **AC-R-105** A person with no session still reaches the sign-in screen
+- **AC-R-104** A person with no session still reaches the sign-in screen
   from any address, and lands where they were going after signing in.
 
 ## 8. Harness work this implies

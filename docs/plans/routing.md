@@ -8,8 +8,7 @@ works when they reload.
 
 **Architecture:** The platform serves `index.html` for anything that is not
 an API route and not a file it has; `react-router` reads the path;
-`useHashRoute` goes, and the hash addresses redirect once so nobody's open
-tab breaks.
+`useHashRoute` goes, and the old hash addresses are not kept working.
 
 **Spec:** `docs/specs/routing.md`. Acceptance criteria: its section 7.
 
@@ -67,7 +66,7 @@ that appears to exist.
 - [ ] **Step 3** Go gates green.
 - [ ] **Step 4** Commit: `feat(platform): serve the application at any address`
 
-**Satisfies:** AC-R-102, AC-R-104.
+**Satisfies:** AC-R-102, AC-R-103.
 
 ---
 
@@ -106,32 +105,7 @@ workspace id.
 
 ---
 
-### Task 2: nobody's link breaks
-
-**Files:**
-
-- Modify: `web/src/app/`, tests
-
-**Consumes:** Task 1.
-
-**Produces:** `#workspace-{id}` and `#users` arriving at their paths, once,
-replacing rather than pushing (AC-R-103).
-
-R4's whole argument is that a subproject about addresses should not start by
-breaking the addresses people already have.
-
-- [ ] **Step 1** Write the test: arriving at `/#workspace-abc` ends at
-      `/workspaces/abc` with one history entry, not two; arriving at
-      `/#users` ends at `/users`; a hash that means nothing is left alone.
-- [ ] **Step 2** Implement.
-- [ ] **Step 3** Web gates green.
-- [ ] **Step 4** Commit: `feat(web): keep the old addresses working`
-
-**Satisfies:** AC-R-103.
-
----
-
-### Task 3: end to end, and the gates move
+### Task 2: end to end, and the gates move
 
 **Files:**
 
@@ -150,26 +124,26 @@ path, and the journey: sign in, open a workspace, reload, still there.
 - [ ] **Step 2** Move `e2e/browser/*.spec.ts` to paths.
 - [ ] **Step 3** Write `e2e/src/routing.test.ts` against the built binary:
       the index for an unknown path, 404 for a missing asset, the API
-      unshadowed (AC-R-102, AC-R-104).
+      unshadowed (AC-R-102, AC-R-103).
 - [ ] **Step 4** Write the browser journey: sign in, open a workspace by
-      its path, reload, still there; and AC-R-105 — with no session, any
+      its path, reload, still there; and AC-R-104 — with no session, any
       address reaches the sign-in screen and lands where it was going after
       signing in.
 - [ ] **Step 5** `make check` in full — every gate green, and no request
       added to the model's log.
 - [ ] **Step 6** Commit: `test(e2e): reload an address and stay there`
 
-**Satisfies:** AC-R-101, AC-R-102, AC-R-104, AC-R-105, and section 7 end to
-end.
+**Satisfies:** AC-R-101, AC-R-102, AC-R-103, AC-R-104, and section 7 end
+to end.
 
 ---
 
 ## Order and parallelism
 
 Task 0 is the platform's and lands first, harmless on its own. Task 1 needs
-it. Task 2 needs 1. Task 3 needs all of it, and is where the gates move —
-doing that earlier would leave them pointing at addresses the product does
-not have yet.
+it. Task 2 needs all of it, and is where the gates move — doing that
+earlier would leave them pointing at addresses the product does not have
+yet.
 
 ## Done
 
