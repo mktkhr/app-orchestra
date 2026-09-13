@@ -3139,3 +3139,100 @@ across `web/src/features/panels`, `web/src/features/workspaces` and
 `web/src/pages/workspace` - all gained `width: 12, height: 1` (or a shared
 `panel()` factory's defaults, in `PanelResult.test.tsx`). None of them
 exercise a grid or a control yet; that is Tasks 1-2.
+
+## 2026-09-13 — react-grid-layout 1.5.4, pinned exactly, and the ref that arrived too late
+
+**Context.** `docs/plans/layout.md` Task 1 adds the grid a panel's
+`width`/`height`/`position` (Task 0) draw into. Two things worth
+settling rather than rediscovering: which of the library's two very
+different major lines to take, and a real bug the task's own AC-L-106
+check caught along the way.
+
+**Decision, the version.** `react-grid-layout@1.5.4` (latest `1.x`) plus
+`@types/react-grid-layout@1.3.6`, both pinned exactly (`web/package.json`),
+the way `@mui/x-charts` was and for the same reason (2026-09-12, above): a
+caret has nothing holding it down and resolves to whatever is latest.
+`2.x` is a from-scratch, hooks-based rewrite with its own bundled types (no
+`@types/react-grid-layout` needed - the npm package for that version line
+is a deprecated stub saying so) and no `Responsive`/`WidthProvider` classic
+API at all. `1.x` is what `docs/specs/layout.md` section 5 actually asks
+for - one breakpoint, a static narrow grid, dragging turned off - and it is
+the version every current tutorial and Stack Overflow answer means by "react
+grid layout," which matters for a library Task 2 still owes a keyboard
+half to. `@types/react-grid-layout@1.3.6` rather than the newest `1.3.x`:
+its own dist tag carries a `ts6.0` alias, matching this repository's pinned
+`typescript@6.0.3` (`DECISIONS.md`, 2026-09-10) exactly. The library's own
+`export = ReactGridLayout` (namespace-merged with a class) typechecks
+cleanly as `import GridLayout, { WidthProvider } from "react-grid-layout"`
+under this repository's `moduleResolution: "bundler"` with no
+`esModuleInterop` set - confirmed by `make web-lint`, not assumed; no cast
+of any kind was needed anywhere in `WorkspaceGrid.tsx` or
+`buildPanelLayout.ts`.
+
+**Decision, one breakpoint through MUI, not the library's own map.**
+`WorkspaceGrid.tsx` wraps `WidthProvider(GridLayout)` (not `Responsive`) and
+picks `12` or `1` columns off a single `useMediaQuery("(min-width:600px)")`
+read - MUI's own `sm`, matching `PanelResult`'s existing pattern of naming
+it directly rather than through `useTheme`, for `import/max-dependencies`.
+`docs/specs/layout.md` section 5 argues against a breakpoint map explicitly
+("not a per-breakpoint layout per panel... a number to keep in sync per
+panel nobody asked for"), so reaching for the library's own
+multi-breakpoint machinery here would reopen a question the spec already
+closed. `pages/workspace/model/buildPanelLayout.ts` is the one function
+that turns `panels` + `columns` into a `Layout[]`: sort by `position` first
+(`docs/specs/layout.md` L3 - never the order the API happened to return),
+then pack left to right, clamping every panel's own `width` down to
+`columns` and wrapping to a new row when the next one would not fit.
+Passing `columns: 1` for the narrow breakpoint needs no second branch: the
+clamp already forces every panel to span the single column (AC-L-105), and
+the wrap condition never fires because nothing is ever wider than the one
+column it was just clamped to.
+
+**The stylesheet.** `react-grid-layout/css/styles.css` was read end to end
+before importing it (a bundler import, not a CDN request - `docs/specs/
+layout.md` section 9). It declares no background and no text colour
+anywhere: transitions, an absolute-position rule, a translucent red
+`.react-grid-placeholder` (drag ghost) and grey `rgba(0,0,0,0.4)`
+resize-handle corner arrows. All of the coloured rules apply only to
+markup the library renders while dragging or resizing, or to resize
+handles specifically - none of which exist yet with `isDraggable={false}`/
+`isResizable={false}` (Task 1 is read-only by both the grid's own props and
+every item's own `static: true`). `make guard-layout` passing under both
+colour schemes here is therefore not yet evidence about this stylesheet;
+Task 2, which turns dragging and resizing on, is where its resize-handle
+contrast and the drag placeholder's visibility actually get exercised for
+the first time.
+
+**`PanelCardShell` stopped sizing to its own content.** Not because it
+imposed an explicit width - it never did - but because it imposed an
+intrinsic _height_: `Card`/`CardContent` sized to fit whatever was inside,
+which was fine in a `Stack` of blocks and wrong inside a
+`react-grid-layout` item, which is already the exact pixel box `width`
+columns by `height` rows computes. A short panel left the rest of its cell
+blank; a tall one would have spilled past it instead of scrolling
+(`docs/specs/layout.md` section 7's "a panel taller than the rows it is
+given scrolls inside its own card" needs a scroll region to exist at all).
+`PanelCardShell` now sets `height: "100%"`, lays itself out as a flex
+column, and gives `CardContent` `flexGrow: 1` and `overflow: "auto"`.
+
+**AC-L-106 was checked by hand against a running platform, and it failed
+once before it passed.** `PanelResult.tsx` sized `ResultChart` off
+`useMediaQuery("(min-width:600px)")` (`docs/plans/dashboard.md` Task 5) -
+one binary choice keyed to the _viewport_, which cannot distinguish a
+`width: 12` panel from a `width: 6` one sitting on the same screen. Replaced
+with a new `shared/lib/useElementSize.ts` (`ResizeObserver`) that measures
+the chart's own rendered box directly and passes that to `ResultChart`,
+which has taken an explicit size from its caller since Task 5 already.
+The first version of that hook used a plain `useRef` and an effect with an
+empty dependency array - and against a real platform (two chart panels of
+the same operation, `width: 12` and `width: 6`, both invoking
+`ListInventoryItems`), both drew the fixed 320×240 default regardless.
+Cause, found by adding a `window`-exposed debug value rather than guessing:
+`PanelResult` does not render the measured `Box` until a result has
+loaded, so the effect ran once at mount, read `ref.current` as still
+`null`, and never created the observer - the node arriving later changed
+nothing, because nothing was watching for that. The fix is a callback ref
+backed by `useState` (`setNode` on attach), so the effect's dependency is
+"the node changed," not "the component mounted." Re-measured after the
+fix: 896×626 and 416×626 respectively, and each `BarChart`'s own `<svg>`
+matched those numbers exactly.

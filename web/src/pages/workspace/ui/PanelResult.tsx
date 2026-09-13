@@ -1,7 +1,7 @@
 import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
-import useMediaQuery from "@mui/material/useMediaQuery";
 import { useState, type JSX } from "react";
 
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/entities/rendering";
 import { PanelCardShell, usePanelInvoke } from "@/entities/workspace";
 import type { WorkspacePanel } from "@/shared/api/client";
+import { useElementSize } from "@/shared/lib/useElementSize";
 
 import { PanelActions } from "./PanelActions";
 
@@ -22,20 +23,18 @@ interface PanelResultProps {
 }
 
 /**
- * `ResultChart`'s size, for a panel: bigger than its own default on a screen wide enough for
- * that to fit beside the panel's other chrome, and small enough on a phone to sit inside a
- * `PanelCardShell`'s `CardContent` without pushing the card wider than the viewport - checked
- * at 375px (`docs/plans/dashboard.md` Task 5, `make guard-layout`). `600px` is MUI's own default
- * `sm` breakpoint (`app/ui/Shell.tsx` reads the same one, as `theme.breakpoints.up("sm")`, for
- * its drawer) - named directly here rather than through `useTheme` so this file's import count
- * stays under `import/max-dependencies` (`eslint`). `ResultChart`'s own default (320×240) is
- * sized for its own tests, rendering the chart alone with no card around it to leave room for;
- * a panel's card has padding this component's caller does not, so it needs its own number
- * rather than reusing that default outright.
+ * `ResultChart`'s size, for a panel: the chart's own container, measured
+ * (`useElementSize`), not a guess from the viewport (`docs/plans/dashboard.md`
+ * Task 5, `docs/specs/layout.md` AC-L-106). `WorkspaceGrid` gives every panel
+ * a `react-grid-layout` box that is exactly `width` columns by `height` rows,
+ * so a wider panel's box is wider and this reads that directly - a media
+ * query keyed to the viewport, which this used before, cannot tell a
+ * `width: 12` panel from a `width: 6` one on the same screen; only the
+ * panel's own rendered box can. Zero (`useElementSize`'s own "not measured
+ * yet" value - true in every unit test, since `happy-dom` has no layout
+ * engine to fire a resize) falls back to `undefined`, which is `ResultChart`'s
+ * own signal to use its original fixed default instead of drawing at 0×0.
  */
-const WIDE_BREAKPOINT_QUERY = "(min-width:600px)";
-const NARROW_CHART_SIZE = { width: 260, height: 200 } as const;
-const WIDE_CHART_SIZE = { width: 560, height: 320 } as const;
 
 /**
  * One workspace panel, fully assembled: `entities/workspace`'s card shell
@@ -71,7 +70,12 @@ const WIDE_CHART_SIZE = { width: 560, height: 320 } as const;
 export function PanelResult({ workspaceId, panel }: PanelResultProps): JSX.Element {
   const [current, setCurrent] = useState(panel);
   const { loading, refreshing, error, result, refresh } = usePanelInvoke(current);
-  const chartSize = useMediaQuery(WIDE_BREAKPOINT_QUERY) ? WIDE_CHART_SIZE : NARROW_CHART_SIZE;
+  const [chartRef, chartSize] = useElementSize<HTMLDivElement>();
+  // `0` is `useElementSize`'s "not measured yet" value, not a real box size
+  // (see the comment above) - `undefined` here lets `ResultChart` fall back
+  // to its own fixed default instead of drawing at zero width or height.
+  const chartWidth = chartSize.width > 0 ? chartSize.width : undefined;
+  const chartHeight = chartSize.height > 0 ? chartSize.height : undefined;
 
   const view = current.view;
   const chart = view?.chart;
@@ -127,15 +131,17 @@ export function PanelResult({ workspaceId, panel }: PanelResultProps): JSX.Eleme
           fields={result.fields}
         />
       ) : (
-        <ResultChart
-          data={groupedRows ?? rowsFromData(result.data)}
-          category={chart.category}
-          value={chart.value}
-          kind={chart.kind}
-          title={current.title}
-          width={chartSize.width}
-          height={chartSize.height}
-        />
+        <Box ref={chartRef} sx={{ width: "100%", height: "100%" }}>
+          <ResultChart
+            data={groupedRows ?? rowsFromData(result.data)}
+            category={chart.category}
+            value={chart.value}
+            kind={chart.kind}
+            title={current.title}
+            {...(chartWidth === undefined ? {} : { width: chartWidth })}
+            {...(chartHeight === undefined ? {} : { height: chartHeight })}
+          />
+        </Box>
       )}
     </PanelCardShell>
   );

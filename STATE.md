@@ -1,6 +1,6 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-13_
+_Last updated: 2026-09-13 (`docs/plans/layout.md` Task 1)_
 
 ## Summary
 
@@ -1084,6 +1084,60 @@ fixtures across `web/src/features/**` and `web/src/pages/workspace/**`
 gained `width: 12, height: 1` to satisfy the now-required wire fields;
 nothing draws differently yet - `WorkspacePage.tsx`'s grid and
 `PanelCardShell.tsx`'s controls are Tasks 1-2.
+
+**`docs/plans/layout.md` Task 1 (the workspace is a grid, read-only).**
+`react-grid-layout` (`1.5.4`, pinned exactly like `@mui/x-charts` -
+`DECISIONS.md`, 2026-09-12) plus `@types/react-grid-layout` (`1.3.6`, the
+last real definitions before the package became a deprecated stub for the
+library's own-typed `2.x` line). `pages/workspace/ui/WorkspaceGrid.tsx`
+wraps `WidthProvider(GridLayout)` from the library, picking `12` or `1`
+columns off a single `useMediaQuery("(min-width:600px)")` read (MUI's own
+`sm`, named directly the way `PanelResult` already does, not through
+`useTheme`, for `import/max-dependencies`) rather than the library's own
+multi-breakpoint `Responsive` component - `docs/specs/layout.md` section 5
+asks for exactly one breakpoint. `pages/workspace/model/buildPanelLayout.ts`
+is the pure function that turns `panels` + `columns` into a `Layout[]`: sorts
+by `position` first (never the order the API returned them in), then packs
+left to right, clamping each panel's `width` to `columns` and wrapping to a
+new row when the next one would not fit - passing `columns: 1` alone gives
+the narrow breakpoint every panel spanning the single column (AC-L-105),
+with no separate branch. Every item comes out `static: true`, and the grid
+itself is `isDraggable={false}`/`isResizable={false}` - Task 1 is read-only
+by both belt and suspenders; Task 2 turns both on and adds the keyboard
+half `docs/specs/layout.md` section 4 owes for taking the dependency.
+`react-grid-layout/css/styles.css` (a real bundler import, not a CDN
+request) paints no colour of its own - checked against the built CSS
+directly: transitions, an absolute-position rule, a translucent red drag
+placeholder and grey resize-handle corner arrows, all inert while
+`isDraggable`/`isResizable` are false, so `make guard-layout`'s contrast
+checks (both colour schemes) have nothing new to see from it yet; that
+changes in Task 2 once handles actually render.
+
+Two more things this task's own AC-L-106 forced: `PanelCardShell.tsx`
+(`entities/workspace`) now fills its box (`height: "100%"`, a flex column,
+`CardContent` as the `flexGrow` scroll region) instead of sizing to its
+content, because a `react-grid-layout` item is already the exact pixel box
+`width`/`height` say it should be and the old shell left the rest of a
+short panel's cell blank while a tall one would have spilled past it
+(`docs/specs/layout.md` section 7's "scrolls inside its own card" needed
+this scroll region to exist at all). And `PanelResult.tsx`'s chart size,
+which used to come from one viewport media query (`WIDE_BREAKPOINT_QUERY`,
+560×320 or 260×200 - unable to tell a `width: 12` panel from a `width: 6`
+one on the same screen), now comes from a new
+`shared/lib/useElementSize.ts` hook that measures the chart's own rendered
+box with `ResizeObserver` and feeds that straight to `ResultChart`
+(`docs/plans/dashboard.md` Task 5 already made it take its size from its
+caller). Confirmed by hand against a running platform, not merely built:
+two chart panels of the same catalogue operation, `width: 12` and `width:
+6`, ended up measured at 896×626 and 416×626 respectively, and the
+`<svg>` each `BarChart` drew matched those numbers exactly. That check
+first failed - both panels drew the fixed 320×240 default - because
+`useElementSize`'s first version used a plain `useRef` with an effect run
+once (`[]` deps): `PanelResult` does not render the measured `Box` until a
+result has loaded, so the ref the effect read was still `null` at the time
+it ran and the observer was never created. The fix was a callback ref
+backed by state (`setNode` on attach) so the effect's own dependency is
+"the node changed," not "the component mounted once."
 
 ## What does not exist yet
 

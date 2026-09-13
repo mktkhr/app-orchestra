@@ -5,16 +5,23 @@ _Keep three lists. Move items, do not duplicate them._
 ## In progress
 
 `docs/plans/layout.md` (FR-F-4, `docs/specs/layout.md`): a panel decides how
-wide and tall it is, and what order the panels come in. Task 0 is done - see
-"Done" below. Tasks 1-3 remain:
+wide and tall it is, and what order the panels come in. Tasks 0-1 are done -
+see "Done" below. Tasks 2-3 remain:
 
-- Task 1: the workspace draws as a CSS grid (`WorkspacePage.tsx`), each
-  panel spanning its own width/height in position order.
-- Task 2: `PanelCardShell.tsx` grows the width/height/move controls that
-  make PATCH calls against Task 0's contract.
-- Task 3: `e2e/` coverage for the whole slice.
+- Task 2: `PanelCardShell.tsx`/`WorkspaceGrid.tsx` grow dragging and
+  resizing (pointer, through `react-grid-layout`'s own handles, now that
+  Task 1 turned them off) and a keyboard path to the same two operations
+  (`docs/specs/layout.md` section 4's own condition on taking the
+  dependency, AC-L-103) - both `PATCH`ing only the panels that moved,
+  through Task 0's contract. Also due: seed a panel into
+  `harness/quality/browser/screens.ts`'s "a workspace" entry (still empty
+  today, per `DECISIONS.md` 2026-09-13) so `make guard-a11y` actually
+  exercises drag/resize/keyboard controls rather than an empty grid -
+  argued in `DECISIONS.md`, committed with `ORCHESTRA_ALLOW_HARNESS_CHANGE=1`.
+- Task 3: `e2e/` coverage for the whole slice, plus confirming Task 2's
+  harness seed landed.
 
-`make check` (not `-k`) is fully green with Task 0 in place.
+`make check` (not `-k`) is fully green with Tasks 0-1 in place.
 
 ## Next
 
@@ -83,6 +90,27 @@ Everything remaining sits outside all four subprojects above:
   fixtures across `web/src/features/**` and `web/src/pages/workspace/**`
   gained `width`/`height` to satisfy the now-required wire fields; nothing
   draws differently yet (Tasks 1-2).
+
+- `docs/plans/layout.md` Task 1: the workspace draws as a
+  `react-grid-layout` grid, read-only. `react-grid-layout` `1.5.4` +
+  `@types/react-grid-layout` `1.3.6`, both pinned exactly. New
+  `pages/workspace/ui/WorkspaceGrid.tsx` (one `useMediaQuery` picks 12 or 1
+  columns, MUI's own `sm`) and `pages/workspace/model/buildPanelLayout.ts`
+  (pure: sorts by `position`, packs left to right, clamps every width to
+  `columns` - `columns: 1` alone gives the narrow breakpoint AC-L-105 with
+  no separate branch). Every grid item is `static`, and
+  `isDraggable`/`isResizable` are both `false` - Task 2's job. Also
+  landed, both forced by AC-L-106: `PanelCardShell.tsx` fills its grid
+  item's box (`height: "100%"`, a scrolling `CardContent`) instead of
+  sizing to content, and `PanelResult.tsx`'s chart size now comes from a
+  new `shared/lib/useElementSize.ts` (`ResizeObserver`, callback-ref
+  backed) measuring the chart's own rendered box, replacing a viewport
+  media query that could not tell a wide panel from a narrow one on the
+  same screen. Confirmed by hand against a running platform: two chart
+  panels, `width: 12` and `width: 6`, measured 896×626 and 416×626 and
+  drew `<svg>`s at exactly those sizes - see `STATE.md` for the bug this
+  caught (a plain `useRef` effect that ran before the measured element
+  ever mounted) and the fix.
 
 - `docs/specs/dashboard.md` section 6a, P11-P13: a panel can be changed
   after it is made. `PATCH /api/workspaces/{id}/panels/{panelId}`

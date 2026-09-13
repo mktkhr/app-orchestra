@@ -132,22 +132,22 @@ it is not a CDN request. **Look at what it paints** and confirm
 On the narrow breakpoint the grid is static (spec section 5): one column, one
 order, nothing to arrange, and no way to drag the page sideways by accident.
 
-- [ ] **Step 1** Add the dependency. Pin it exactly, the way
+- [x] **Step 1** Add the dependency. Pin it exactly, the way
       `@mui/x-charts` was and for the same reason (`DECISIONS.md`,
       2026-09-12). `make check` must still pass `guard-ui`, `guard-fsd` and
       `guard-duplication`.
-- [ ] **Step 2** Write the test: three panels of widths 12, 6 and 6 draw one
+- [x] **Step 2** Write the test: three panels of widths 12, 6 and 6 draw one
       full-width row and two beside each other; at 375px all three span the
       single column; a panel with no width draws full width (AC-L-104,
       AC-L-105). Run it, expect failure.
-- [ ] **Step 3** Implement, read-only.
-- [ ] **Step 4** Check AC-L-106 by hand and say what you saw: a wider panel
+- [x] **Step 3** Implement, read-only.
+- [x] **Step 4** Check AC-L-106 by hand and say what you saw: a wider panel
       should draw a _wider chart_, because `ResultChart` takes its size from
       its caller since `docs/plans/dashboard.md` Task 5. If it draws the same
       chart in a wider box, that is this task's bug to fix.
-- [ ] **Step 5** Web gates green, then `make build`, `make guard-browser`,
+- [x] **Step 5** Web gates green, then `make build`, `make guard-browser`,
       `make guard-a11y`, `make guard-layout`.
-- [ ] **Step 6** Commit: `feat(web): draw a workspace as a grid`
+- [x] **Step 6** Commit: `feat(web): draw a workspace as a grid`
 
 **Satisfies:** AC-L-104, AC-L-105, AC-L-106.
 
