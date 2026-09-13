@@ -59,7 +59,10 @@ async function pickOperation(
   summary: string,
 ): Promise<void> {
   await user.click(await screen.findByRole("combobox", { name: "操作" }));
-  await user.click(await screen.findByText(summary));
+  // An option now shows its name and its summary underneath (AC-K-102),
+  // so its accessible name is both lines - a `RegExp` matches within that
+  // rather than requiring the whole thing.
+  await user.click(await screen.findByRole("option", { name: new RegExp(summary, "u") }));
 }
 
 describe("AddPanelControl", () => {
@@ -78,8 +81,12 @@ describe("AddPanelControl", () => {
 
     await user.click(await screen.findByRole("combobox", { name: "操作" }));
 
-    expect(await screen.findByText("在庫一覧")).toBeTruthy();
-    expect(screen.getByText("出勤の集計")).toBeTruthy();
+    // Each option now shows its name and its summary underneath it
+    // (AC-K-102) - in these fixtures the same string, so `getAllByText`
+    // rather than `getByText`/`findByText`, which throw on more than one
+    // match.
+    expect((await screen.findAllByText("在庫一覧")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("出勤の集計").length).toBeGreaterThan(0);
     expect(screen.getByText("在庫管理")).toBeTruthy();
     expect(screen.getByText("勤怠管理")).toBeTruthy();
     expect(screen.queryByText("inventory")).toBeNull();
@@ -234,5 +241,34 @@ describe("AddPanelControl", () => {
 
     expect(await screen.findByText("パネル名を入力してください。")).toBeTruthy();
     expect(addPanel).not.toHaveBeenCalled();
+  });
+
+  it("shows only the picker before an operation is picked, and its arguments, component, name and the transform's switch alone after (AC-K-103)", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getCatalog).mockResolvedValue([tableEntry]);
+
+    render(<AddPanelControl workspaceId="ws-1" onAdded={() => {}} />);
+    await openBuilder(user);
+
+    // Before an operation is picked: the picker, and nothing else.
+    expect(screen.getByRole("combobox", { name: "操作" })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "パネル名" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "表示方法" })).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull();
+
+    await pickOperation(user, "在庫一覧");
+
+    // After: its arguments, how to draw it, its name.
+    expect(await screen.findByLabelText(/キーワード/u)).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "表示方法" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "パネル名" })).toBeTruthy();
+
+    // The transform is on screen as its own switch alone - not its three
+    // fields, which apply to nothing until the switch is on.
+    expect(screen.getByRole("switch", { name: "集計してから描画する" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "グループ化する項目" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "集計方法" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "集計する項目" })).toBeNull();
   });
 });

@@ -38,7 +38,10 @@ async function pickOperation(
   summary: string,
 ): Promise<void> {
   await user.click(await screen.findByRole("combobox", { name: "操作" }));
-  await user.click(await screen.findByText(summary));
+  // An option now shows its name and its summary underneath (AC-K-102),
+  // so its accessible name is both lines - a `RegExp` matches within that
+  // rather than requiring the whole thing.
+  await user.click(await screen.findByRole("option", { name: new RegExp(summary, "u") }));
 }
 
 async function selectFromDropdown(

@@ -14,7 +14,13 @@ the next item off "Next".
    panel by asking rather than through the builder, is not started -
    nothing in `docs/plans/` or `docs/specs/` targets it yet.
 2. A genre/domain layer above individual services - grouping services by
-   what they are for, rather than listing every one flat.
+   what they are for, rather than listing every one flat. Deferred again by
+   `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
+   exposed operation in `services/inventory` carries the single tag `items`
+   and every one in `services/attendance` carries `records`, so this would
+   group nothing beyond what `OperationPicker`'s own `groupBy` (off
+   `serviceDisplayName`) already does. Worth building once a service
+   carries more than one tag over its own exposed operations.
 3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
@@ -60,8 +66,41 @@ the next item off "Next".
    standing to edit it should add the directive to `suppressions.sh`'s own
    `pattern`.
 
+7. **`<Typography color="text.secondary">` is a silent no-op almost
+   everywhere it is written** - the component's own `color` prop only
+   recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
+   (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
+   dot-path form is valid only inside `sx`. `OperationLabel.tsx`,
+   `ResultDetail.tsx`, `ResultTable.tsx`, `ResultChart.tsx`,
+   `PermissionGrid.tsx`, `WorkspacePicker.tsx`, `TurnList.tsx`,
+   `SavedNotice.tsx`, `ExampleQuestions.tsx` and `Provenance.tsx` all pass
+   the dot form today, so every one of those "secondary" lines actually
+   renders at full `text.primary` opacity (`rgba(0, 0, 0, 0.87)` on light,
+   confirmed live) rather than the dimmer `text.secondary` the code reads
+   as asking for. Found while building `OperationPicker.tsx`'s new summary
+   line (`docs/specs/picking.md` K2, fixed there with `color="textSecondary"` -
+   see `DECISIONS.md`, 2026-09-13) and not fixed in the other ten files:
+   none of them fail a check (the mistake reads darker, not lower-contrast,
+   so `make guard-a11y` sees nothing wrong), and touching ten files outside
+   this task's own scope for one commit was the wrong trade. TypeScript
+   does not catch it either - the prop's type falls back to `(string & {})`
+   for exactly this reason.
+
 ## Done
 
+- **`docs/specs/picking.md`: the panel picker searches more than its own
+  label, an option states its summary, and the transform stays a switch
+  alone until it is on** (AC-K-101 through AC-K-104). `OperationPicker.tsx`
+  gained `filterOptions` (MUI's own `createFilterOptions({ stringify })`
+  over a display name, service display name, operation id, summary and the
+  titles of the fields the operation returns) and a two-line
+  `renderOption`. K3 (the transform starting collapsed) and K4 (the genre
+  layer, still deferred) needed no code change - see `STATE.md` and
+  `DECISIONS.md`, 2026-09-13, for what was already true before this task
+  touched it. Verified live: typing 数量 into a real workspace's picker
+  found `ListInventoryItems`, `CreateInventoryItem` and
+  `GetInventoryItem` - every operation whose response carries a field
+  titled that, none of which have it in their own name.
 - **`docs/specs/layout.md` section 5a: a panel's height on the narrow
   breakpoint is a second number, `narrowHeight`, editable by keyboard**
   (AC-L-107, AC-L-108) - closes the gap item 7 above used to record.

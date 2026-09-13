@@ -158,7 +158,10 @@ describe("WorkspacePage", () => {
     await screen.findByRole("heading", { name: "在庫ボード" });
     await user.click(screen.getByRole("button", { name: "パネルを追加" }));
     await user.click(await screen.findByRole("combobox", { name: "操作" }));
-    await user.click(await screen.findByText("在庫一覧"));
+    // An option now shows its name and its summary underneath (AC-K-102),
+    // so its accessible name is both lines - a `RegExp` matches within
+    // that rather than requiring the whole thing.
+    await user.click(await screen.findByRole("option", { name: /在庫一覧/u }));
     await user.click(await screen.findByRole("button", { name: "追加" }));
 
     expect(await screen.findByRole("button", { name: "パネルを追加" })).toBeTruthy();

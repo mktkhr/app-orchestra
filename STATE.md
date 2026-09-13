@@ -1,7 +1,9 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-13 (`docs/plans/routing.md` closed - Task 2's own
-steps 3-5, see below and `DECISIONS.md`)_
+_Last updated: 2026-09-13 (`docs/specs/picking.md` implemented - the
+operation picker searches more than its own label and shows an option's
+summary, and the transform stays collapsed behind its switch; see below and
+`DECISIONS.md`)_
 
 ## Summary
 
@@ -1478,6 +1480,65 @@ did before this work found the gap.
   `**/src/shared/api/gen/**` (or one `exclude *.d.ts` line scoped the same way
   `*.gen.go` is) to `file-length.txt`, matching the two sibling policies. Task 4
   is otherwise fully green - see `TODO.md`.
+
+## Picking something to put on a dashboard (docs/specs/picking.md), a ninth subproject
+
+**The operation picker matches what a person types, not only what it
+displays** (K1, section 3; AC-K-101). `OperationPicker.tsx`
+(`features/panels/ui`) builds one searchable string per catalogue entry -
+its display name, its service's display name, its operation id, its
+summary, and the titles of the fields it returns (`fieldOptionsFor`, the
+same rule `TransformFields`' own dropdowns already used) - and hands it to
+MUI's `createFilterOptions({ stringify })`. That function's own defaults
+(`ignoreCase: true`, `matchFrom: "any"`, i.e. plain `String.includes`) are
+already exactly the plain substring, case-insensitive match section 3 asks
+for, so this is `Autocomplete`'s own `filterOptions` prop, not a second
+filter written over the array upstream. Verified live against the running
+inventory/attendance contracts (not only the unit fixtures): typing 数量
+into a workspace's picker found `ListInventoryItems`, `CreateInventoryItem`
+and `GetInventoryItem` - every operation whose response schema carries a
+field titled 数量 - none of which have 数量 in their own display name.
+
+**An option shows its name and its summary underneath** (K2, section 4;
+AC-K-102). `renderOption` draws two lines - `variant="body2"` for the name,
+`variant="caption" color="textSecondary"` for the summary - inside the
+option `<li>`'s own padding, so the row grows taller rather than the row's
+own hit target shrinking. Checked live in both colour schemes rather than
+assumed: the option is ~54px tall (well past the 44px floor
+`layout.spec.ts` enforces elsewhere), and the summary's colour measures
+`rgba(0, 0, 0, 0.6)` on light and MUI's default `text.secondary` on dark -
+both comfortably past 4.5:1 on their own default backgrounds, since this
+app's theme (`app/theme.ts`) does not override either palette. The summary
+stays untranslated English, unchanged, as section 4 requires - the
+contract's wart, not this screen's.
+
+**The transform was already a switch alone** (K3, section 5; AC-K-103).
+Reading `TransformFields.tsx` and `AddPanelForm.tsx` before touching
+either: `usePanelFields`'s `transformEnabled` already starts `false`
+(`emptyFieldValues`, `panelFieldValues.ts`), and `TransformFields` already
+renders its own three fields only inside `{enabled && (...)}`. Section 5's
+claim that "the transform is the one that does not" start collapsed did not
+hold against this codebase's own state - a real gap between the spec's
+narrative and the code it describes, not a defect this task introduced or
+had to fix (`DECISIONS.md`, 2026-09-13). Left unchanged; a dedicated test
+(`AddPanelControl.test.tsx`, "shows only the picker before an operation is
+picked...") now pins AC-K-103 explicitly, which nothing did before this.
+
+**The genre layer (K4) stays deferred**, unchanged from section 2/6: every
+exposed operation in `services/inventory` carries `items` and every one in
+`services/attendance` carries `records`, so grouping by tag would still
+produce exactly one group per service - what `OperationPicker`'s own
+`groupBy` already does off `serviceDisplayName`.
+
+Three tests already querying an option by its visible text
+(`AddPanelControl.test.tsx`, `AddPanelControlArgs.test.tsx`,
+`AddPanelControlTransform.test.tsx`, `WorkspacePage.test.tsx`) moved from
+`findByText(summary)` to `findByRole("option", { name: new RegExp(summary,
+"u") })`: these fixtures set `summary` equal to `displayName`, so an
+option's now-two-line text duplicates it and a plain text query throws on
+"more than one match" rather than picking the wrong one. A query fix, not a
+behaviour change - `docs/specs/dashboard.md` section 10's own criteria
+(AC-P-101 through AC-P-112) still pass unedited otherwise (AC-K-104).
 
 ## The eval suite (docs/specs/eval.md), a fifth subproject about the tests
 

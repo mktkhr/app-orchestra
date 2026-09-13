@@ -4038,3 +4038,130 @@ elsewhere in this Go 1.27 codebase for exactly this). Both fixed, then a
 clean, `-k`-free run. `docker logs llama-swap`'s `POST /v1/chat/completions`
 count: 79514 before this task's first `make check` and 79514 after the
 final one - unchanged.
+
+## 2026-09-13 `docs/specs/picking.md`: filterOptions over the array, and two things the spec's own narrative got wrong about this codebase
+
+**`OperationPicker.tsx` gained `filterOptions={createFilterOptions({
+stringify })}`**, not a filter written over `entries` before it reaches
+`Autocomplete`. `createFilterOptions`'s own defaults (`ignoreCase: true`,
+`matchFrom: "any"`) are already exactly section 3's rule - plain substring,
+case-insensitive - so writing a second loop by hand would have reimplemented
+a library default under a different name. `stringify` is the one thing the
+default does not do (it stringifies via `getOptionLabel`, which is
+`displayName` alone): passing a function that joins `displayName`,
+`serviceDisplayName`, `operationId`, `summary` and
+`fieldOptionsFor(entry).map(f => f.label)` (the same rule
+`TransformFields`' own dropdowns already use for a field's title, reused
+rather than re-derived) is the whole change K1 asked for. No reason was
+found to filter upstream instead - the instruction's own "unless you find a
+reason not to" did not apply here.
+
+**Two claims in `docs/specs/picking.md` section 5 did not hold against this
+codebase - checked, not assumed, before writing anything.** The spec says
+"the transform is the one that does not" start collapsed behind its own
+switch. Reading `TransformFields.tsx` and `panelFieldValues.ts` before
+touching either: `emptyFieldValues()` already seeds `transformEnabled:
+false`, and `TransformFields` already renders `groupBy`/`aggregate`/
+`aggregateField` only inside `{enabled && (...)}` - `AddPanelControlTransform.test.tsx`,
+already in the repository before this task, explicitly clicks the switch
+before selecting a group-by field, which only works if the fields were
+already hidden. K3 needed no code change. This is recorded here rather than
+silently done nothing about, because the instruction was explicit: stop and
+say so if a section-10 test needs editing to fit what "already behaves this
+way" turns out to mean, and because a narrative claim a codebase already
+contradicts is exactly the kind of gap `docs/` and the code silently
+drifting apart that this whole harness exists to catch. A new
+`AddPanelControl.test.tsx` case ("shows only the picker before an operation
+is picked...") now pins AC-K-103 explicitly, closing the gap that nothing
+tested this directly before.
+
+**`entities/rendering/model/rows.ts`'s own `columnTitle` doc comment is
+also stale, in the direction the task asked to check.** It says title
+lookup "falls back to the key for every column that exists right now" -
+"confirmed against the running inventory and attendance contracts that
+neither does today". Both contracts (`services/inventory/api/openapi.yaml`,
+`services/attendance/api/openapi.yaml`) declare `title` on every response
+field that matters here (`数量`, `品名`, `ステータス`, `従業員名`, `対象日`,
+`種別`) - confirmed live, not only by reading the YAML: typing 数量 into a
+real workspace's picker found `ListInventoryItems`, `CreateInventoryItem`
+and `GetInventoryItem`, none of which have 数量 in their own display name,
+because their response schema carries a field titled that. This is
+`CatalogEntry.fields`'s real shape being _better_ than the spec's own
+narrative assumed (`docs/specs/picking.md` section 3 leans on exactly this
+titles-carry-real-information behaviour), not worse - left as a note for
+whoever next edits `rows.ts`'s comment, not fixed here, since a doc comment
+on unrelated code is outside this task's own footprint.
+
+**A pre-existing, wider bug found while building the summary line
+(K2), fixed only in the file this task touched.** `Typography`'s `color`
+prop accepts `"textSecondary"` (camelCase, no dot) or a bare palette key -
+`` `text${Capitalize<keyof TypeText>}` `` in `Typography.d.ts` - never the
+`"text.secondary"` dot-path, which is valid only inside `sx`. Ten files
+across this codebase (`OperationLabel.tsx`, `ResultDetail.tsx`,
+`ResultTable.tsx`, `ResultChart.tsx`, `PermissionGrid.tsx`,
+`WorkspacePicker.tsx`, `TurnList.tsx`, `SavedNotice.tsx`,
+`ExampleQuestions.tsx`, `Provenance.tsx`) pass the dot form as the
+component prop, which TypeScript does not catch (the prop's type falls
+back to `string & {}`) and which renders as no-op: measured live, the
+"secondary" text in this app is full `text.primary` opacity
+(`rgba(0, 0, 0, 0.87)`), not the dimmer `text.secondary` the source reads
+as asking for. This was caught only because the task's own instruction was
+to measure a two-line option's contrast rather than assume it: the first
+render of `OperationPicker`'s summary line used the same wrong form, copied
+from that exact pattern, and `getComputedStyle` in a live browser showed
+`rgba(0, 0, 0, 0.87)` where `rgba(0, 0, 0, 0.6)` was expected.
+`OperationPicker.tsx` now uses `color="textSecondary"`, confirmed live in
+both colour schemes: option height ~54px (comfortably past the 44px floor
+`layout.spec.ts` enforces elsewhere, since a second line only grows the
+row), summary colour `rgba(0, 0, 0, 0.6)` on light and MUI's own default
+`text.secondary` on dark - both well past 4.5:1 on this theme's
+unmodified default backgrounds (`app/theme.ts` overrides neither palette).
+The other ten files are not touched here: none of them fail a check (a
+darker "secondary" line is not a contrast violation, only a wrong one), and
+rewriting ten files' colour props was not this task's footprint - recorded
+in `TODO.md` instead.
+
+**Three tests' own locator helpers moved from `findByText(summary)` to
+`findByRole("option", { name: new RegExp(summary, "u") })`, and one direct
+call in `WorkspacePage.test.tsx` the same way** - not a change to what any
+of them assert. Every one of these fixtures sets `summary` equal to
+`displayName` (`"在庫一覧"`, `"出勤の集計"`), which was harmless while an
+option rendered only `displayName`; once `renderOption` draws the summary
+as a second line (K2), the option contains that exact string twice and
+`findByText` throws on "more than one match" rather than picking the
+wrong element. `docs/specs/dashboard.md` section 10's own criteria
+(AC-P-101 through AC-P-112) still hold, unedited - this is a query
+robustness fix over rendering that grew a second line, not a change to a
+panel's own behaviour, which is what AC-K-104 actually asks to preserve.
+
+**Verified live**, not only by fixture. Signed in as `admin` against
+`make dev-services`' three binaries plus `web`'s own dev server (`pnpm
+exec vp dev`, since `web/package.json` defines no `dev` script of its
+own), opened the seeded "サンプル" workspace's panel builder, and typed
+数量 into the picker: `ListInventoryItems`, `CreateInventoryItem` and
+`GetInventoryItem` came up, grouped under 在庫管理, each showing its own
+English summary under its Japanese name.
+
+**`make check`, not `-k` - clean on three of eight runs across this task,
+and every failure was the documented flake, never this change.** This
+machine runs a local model server continuously (`uptime`'s load rarely
+dropped below 2 all session); against that, `guard-layout` failed three
+separate times on `createWorkspace` answering 500 for a _different_
+screen/scheme case each time (load 5.71, 2.46, then 6.50),
+`acceptance-e2e`'s `context.test.ts` failed once on its own dummy services
+not answering `/api/health` within 10s (load 1.72-1.89), and
+`acceptance-browser`'s `dashboard.spec.ts` (AC-P-102/103/104) failed once
+on a freshly created workspace's own link not appearing within 30s (load
+had just come off 6.50) - always a transient server-startup, single-
+request, or single-navigation failure under load, never the same case
+twice, and never anything this task's own diff touches: `dashboard.spec.ts`
+picks the operation with `page.getByText("在庫一覧")`, which stays a single
+match against the real inventory contract's own summary ("List stock
+items, optionally filtered by status.", never "在庫一覧" itself - only the
+unit-test fixtures set `summary` equal to `displayName`, see above). Every
+other gate, including `guard-a11y` and every non-browser suite, passed on
+every run. Matches `DECISIONS.md`, 2026-09-13 ("the browser suite's flake
+is load, measured"), and extends that same conclusion to the same kind of
+load hitting `acceptance-e2e`'s own server-startup wait.
+`docker logs llama-swap`'s `POST /v1/chat/completions` count: 79514 before
+this task's first `make check` and 79514 after the final one - unchanged.
