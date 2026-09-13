@@ -178,6 +178,13 @@ DEV_SERVICE_PORTS = inventory=8081 attendance=8082
 DEV_PLATFORM_PORT = 8080
 DEV_DB_PATH = $(HOME)/.local/state/app-orchestra/workspaces.db
 DEV_ADMIN_PASSWORD = dev-only-admin-password
+# Without these the platform builds no real planner: every question answers
+# "none", from a server that passes its own health check. Missing them once
+# looked exactly like the product having forgotten how to think.
+# services/platform/.air.toml carries the same two - air reads a literal
+# string and cannot read a Make variable, so they agree by hand.
+DEV_LLM_BASE_URL = http://localhost:11435/v1
+DEV_LLM_MODEL = qwen3.5-9b-q8
 
 # ORCHESTRA_SERVICES as the platform wants it, built from DEV_SERVICE_PORTS
 # so the two cannot disagree.
@@ -219,11 +226,11 @@ dev-services: services-build ## (Re)start every dummy service on its dev port, d
 	  if ss -lptn "sport = :$(DEV_PLATFORM_PORT)" -H 2>/dev/null | grep -q pid=; then \
 	    echo "dev-services: air restarted the platform"; \
 	  else \
-	    setsid env ORCHESTRA_SERVICES=$(dev_services_env) ORCHESTRA_DB_PATH=$(DEV_DB_PATH) ORCHESTRA_ADMIN_PASSWORD=$(DEV_ADMIN_PASSWORD) ORCHESTRA_SECURE_COOKIE=false ./services/platform/bin/api </dev/null >/tmp/orchestra-platform.log 2>&1 & \
+	    setsid env ORCHESTRA_SERVICES=$(dev_services_env) ORCHESTRA_LLM_BASE_URL=$(DEV_LLM_BASE_URL) ORCHESTRA_LLM_MODEL=$(DEV_LLM_MODEL) ORCHESTRA_DB_PATH=$(DEV_DB_PATH) ORCHESTRA_ADMIN_PASSWORD=$(DEV_ADMIN_PASSWORD) ORCHESTRA_SECURE_COOKIE=false ./services/platform/bin/api </dev/null >/tmp/orchestra-platform.log 2>&1 & \
 	    sleep 3; \
 	    curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$(DEV_PLATFORM_PORT)/api/health" \
 	      || { echo "dev-services: the platform did not come up - see /tmp/orchestra-platform.log"; exit 1; }; \
-	    echo "dev-services: platform on :$(DEV_PLATFORM_PORT), log /tmp/orchestra-platform.log"; \
+	    echo "dev-services: platform on :$(DEV_PLATFORM_PORT) planning with $(DEV_LLM_MODEL), log /tmp/orchestra-platform.log"; \
 	  fi; \
 	fi
 

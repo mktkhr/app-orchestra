@@ -4404,3 +4404,134 @@ reports it by name and fails; with it removed the guard passes. The
 registry is empty of coverage directives today, because the one that
 prompted this was fixed by deleting the branch instead - which is what rule
 2 asks for, and what an unreachable branch deserves.
+
+## 2026-09-14 `docs/plans/proposing.md` closes
+
+**Context.** Task 2, the last of three, needed the journey end to end
+(`e2e/src/proposing.test.ts`, `e2e/browser/proposing.spec.ts`) and, per
+`docs/specs/proposing.md` section 9, a measurement of what offering
+`propose_panel` in every request's tool list costs every other question -
+not skippable, since it is the only thing that can say so.
+
+Driving either e2e file through the _built binary_, rather than an
+in-process Go test, needed a gap closed first: `ORCHESTRA_PLAN_FIXTURES`'s
+pipeline (`internal/infra/config.PlanFixture` → `cmd/api.
+toAppPlanFixtures` → `pkg/app.PlanFixture` → `pkg/app.toDecision`) could
+only ever produce `DecisionAsk` or `DecisionCall` - there was no way to
+make the stub planner hand back a `DecisionProposal` from a fixture, even
+though the stub itself (`internal/adapter/planner/stub`) has supported an
+arbitrary `Decision` per table entry since Task 0. `PlanFixture` gained
+`Propose`/`Component`/`Chart`/`Title` fields, mirrored through all three
+types the same way `Ask`/`Question`/`Param` already are, and `toDecision`
+builds a `DecisionProposal` when `Propose` is set, checked ahead of `Ask` -
+a fixture is exactly one of ask/propose/call, never more than one.
+
+**Decision.** Close the subproject. `docs/specs/proposing.md` section 7's
+six criteria each have a test - AC-N-101 end to end now, in both new
+files; AC-N-102's write-nothing-until-placed half completes at the e2e
+layer what `orchestrator_propose_test.go`'s `invoker.calls` assertion
+already proved for the no-service-call half; AC-N-103 through AC-N-106
+were already covered by Task 0/1's own tests (`orchestrator_propose_test.go`,
+`tools_test.go`, `stub_test.go`, `ProposalControl.test.tsx`,
+`ConversationProposal.test.tsx`, `ConversationPanel.test.tsx`) - see
+`STATE.md` for the full mapping.
+
+**Consequences.** `no-enum-value` moved outside its measured band between
+before and after - see the entry immediately below, which is this
+decision's other half and stands on its own because a flat result would
+have been just as worth recording. `TODO.md`'s "In progress" is empty
+again.
+
+## 2026-09-14 `propose_panel` and `no-enum-value`: a move outside the band
+
+**Context.** `docs/specs/proposing.md` section 9: `propose_panel` rides in
+every request's tool list, on every question, whether or not a workspace
+is open. `make eval`'s corpus - not code review, not intuition - is what
+can say whether one more tool definition changed how the model answers a
+question that has nothing to do with panels. `no-enum-value` is the
+corpus's own worst-behaved case: judged on `reject` rather than `accept`
+precisely because its split would not hold still even at n=10 (see
+`TODO.md`'s open silent-filter defect item), and only narrowed to a
+15-22/30 band over nine samples at n=30 (`docs/specs/eval.md` section 4a).
+
+Measured `make eval` at `0d2a5bf` (a worktree, immediately before Task 0's
+first commit) and again at `0d96ce9` (this subproject's last, full
+`make check` green, `docker logs llama-swap`'s count unchanged across it):
+
+```
+                              before (0d2a5bf)         after (0d96ce9)
+no-enum-value            10/30 accept  17/30 reject   14/30 accept  13/30 reject
+no-enum-value-attendance  0/10 accept   8/10 reject    0/10 accept   5/10 reject
+every other case                              unchanged (10/10 or 9/10 accept, 0/10 reject)
+```
+
+**Decision.** Report the move plainly rather than explain it away:
+`no-enum-value`'s reject count read 17/30 before, inside the 15-22 band,
+and 13/30 after - outside it. That is what section 9 asked this
+measurement to be able to say, and it said it. `no-enum-value-attendance`
+(not itself banded - `TODO.md`'s defect item records its own wide,
+never-banded spread, 5-9/10 across six ten-run samples taken during D15)
+also read lower after (5/10 against 8/10 before), consistent in direction
+though not itself dispositive at n=10.
+
+Not treated as proof that `propose_panel` alone caused it: one before/after
+pair is one sample of a case whose own spread the defect item already
+documents as wide, and `no-enum-value` was already this corpus's least
+stable member before this subproject touched anything. But every other
+case in the corpus held exactly steady across the same two runs, which is
+the fact that keeps this from being dismissed as the same noise - if
+`propose_panel`'s presence were inert here, `no-enum-value` had the same
+chance to land inside its band as every other case had of staying put, and
+it did not.
+
+**Consequences.** `e2e/eval/baseline.json` is untouched - recording a new
+baseline is `make eval-accept`, a human's act, not this session's to take.
+`TODO.md`'s open silent-filter defect item (`no-enum-value`'s
+already-known instability) is the right place a future session should
+look before spending more tool description budget on `propose_panel`
+itself: this result says the tool moved something, not which of the two
+already-unstable cases' many candidate causes moved it. A third measurement
+
+- one more `make eval` at HEAD, no code change - would say whether 13/30
+  is itself stable or another point in the same wide spread; not run here,
+  since one before/after pair is what section 9 asked for and a third run
+  either confirms or complicates it without changing what ships.
+
+## 2026-09-14 — a dev server that passed its health check and understood nothing
+
+**Context.** "全ての質問にNONEが返ってる気がする." Every question, any
+wording, `kind: "none"`.
+
+**What it was.** `make dev-services`, added earlier the same day to stop a
+stale platform serving a stale catalogue, started the platform without
+`ORCHESTRA_LLM_BASE_URL` or `ORCHESTRA_LLM_MODEL`. With no model configured
+`pkg/app` builds no real planner, and a stub with no fixtures answers `none`
+to everything. `services/platform/.air.toml` carries both; the target was
+written by copying the rest of that command line and not those two.
+
+`GET /api/health` answered 200 throughout. The process was up, the catalogue
+was current, every service was reachable, and the product had simply
+forgotten how to think.
+
+**Decision.** `DEV_LLM_BASE_URL` and `DEV_LLM_MODEL` join the other dev
+variables, and the target's own success line now names the model:
+`dev-services: platform on :8080 planning with qwen3.5-9b-q8`. A line that
+prints what it configured is a line that shows what it forgot.
+
+**Consequences.** The same shape as the trap this target exists to close,
+built into the target itself: something that looks healthy from the outside
+while being wrong on the inside, with a green check in front of it. The
+health endpoint answers whether the process is serving, which is not a
+question about whether it can do anything - and there is no check anywhere
+that a configured planner is a real one.
+
+Verified by asking, not by reading the environment: 検品保留の在庫を見せて
+answers `result`/`ListInventoryItems`, 何ができるの？ answers
+`result`/`list_capabilities`.
+
+Worth knowing: this was found by the person using the product, while an
+eval measurement was in flight in the same repository. Had it not been, the
+"after" half of `docs/specs/proposing.md` section 9's measurement could have
+been taken against a platform that answered `none` to everything - a number
+that would have looked like a catastrophic regression caused by the tool
+being measured.
