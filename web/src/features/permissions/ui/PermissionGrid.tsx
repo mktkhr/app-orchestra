@@ -67,7 +67,7 @@ export function PermissionGrid({ userId }: PermissionGridProps): JSX.Element {
         </Button>
         {saving ? <CircularProgress size={20} aria-label="保存中" /> : null}
         {saved && !saving ? (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="textSecondary">
             保存しました
           </Typography>
         ) : null}

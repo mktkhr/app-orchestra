@@ -13,7 +13,7 @@ export function SavedNotice({ name }: SavedNoticeProps): JSX.Element {
   return (
     <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", mt: 1 }}>
       <CheckCircleIcon color="success" fontSize="small" />
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         {`「${name}」に保存しました`}
       </Typography>
     </Stack>

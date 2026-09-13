@@ -40,7 +40,7 @@ export function Provenance({ source }: ProvenanceProps): JSX.Element {
 
   return (
     <Stack spacing={0.5} sx={{ mb: 1 }}>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" color="textSecondary">
         {`${source.serviceDisplayName} / ${source.operationId}`}
       </Typography>
       {args.length === 0 ? null : (
@@ -56,7 +56,7 @@ export function Provenance({ source }: ProvenanceProps): JSX.Element {
             expandIcon={<ExpandMoreIcon fontSize="small" />}
             sx={{ minHeight: 0, px: 0 }}
           >
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="textSecondary">
               引数を表示
             </Typography>
           </AccordionSummary>

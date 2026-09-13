@@ -90,7 +90,7 @@ export function OperationPicker({
                  * `color="textSecondary"` (camelCase, no dot) - Typography's
                  * own prop accepts `text${Capitalize<keyof TypeText>}`
                  * (`Typography.d.ts`), never the sx-only `"text.secondary"`
-                 * dot path every other `color="text.secondary"` in this
+                 * dot path every other `color="textSecondary"` in this
                  * codebase actually passes (DECISIONS.md, 2026-09-13): that
                  * string matches no known color and Typography silently
                  * keeps its default (`text.primary`, 0.87 alpha), measured

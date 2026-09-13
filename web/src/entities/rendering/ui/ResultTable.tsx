@@ -61,7 +61,7 @@ export function ResultTable({ data, fields }: ResultTableProps): JSX.Element {
 
   if (firstRow === undefined) {
     return (
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         結果は0件です。
       </Typography>
     );

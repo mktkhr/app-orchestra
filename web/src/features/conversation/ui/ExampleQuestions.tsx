@@ -14,7 +14,7 @@ interface ExampleQuestionsProps {
 export function ExampleQuestions({ onSelect, disabled }: ExampleQuestionsProps): JSX.Element {
   return (
     <Stack spacing={2}>
-      <Typography variant="body1" color="text.secondary">
+      <Typography variant="body1" color="textSecondary">
         まだ質問がありません。例えばこんなことを聞けます。
       </Typography>
       <Stack spacing={1} sx={{ alignItems: "flex-start" }}>

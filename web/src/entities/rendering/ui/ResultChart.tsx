@@ -115,7 +115,7 @@ export function ResultChart({
 
   if (points.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         結果は0件です。
       </Typography>
     );

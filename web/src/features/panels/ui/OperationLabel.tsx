@@ -20,7 +20,7 @@ interface OperationLabelProps {
  */
 export function OperationLabel({ entry }: OperationLabelProps): JSX.Element {
   return (
-    <Typography variant="body2" color="text.secondary">
+    <Typography variant="body2" color="textSecondary">
       操作: {entry.serviceDisplayName} / {entry.displayName || entry.operationId}
       （変更できません）
     </Typography>

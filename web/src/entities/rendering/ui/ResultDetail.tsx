@@ -31,7 +31,7 @@ export function ResultDetail({ data, fields }: ResultDetailProps): JSX.Element {
 
   if (entries.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         表示できる項目がありません。
       </Typography>
     );

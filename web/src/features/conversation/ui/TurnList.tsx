@@ -152,7 +152,7 @@ function AnswerResult({
   if (result.kind === "none") {
     return (
       <Paper elevation={1} sx={{ p: 2 }}>
-        <Typography variant="overline" color="text.secondary">
+        <Typography variant="overline" color="textSecondary">
           {result.kind}
         </Typography>
         <Typography variant="body1">{result.message}</Typography>
@@ -205,7 +205,7 @@ function AnswerResult({
   // fields. Shows what kind of answer came back rather than nothing.
   return (
     <Paper elevation={1} sx={{ p: 2 }}>
-      <Typography variant="overline" color="text.secondary">
+      <Typography variant="overline" color="textSecondary">
         {result.kind}
       </Typography>
       <Alert severity="info" sx={{ mt: 1 }}>

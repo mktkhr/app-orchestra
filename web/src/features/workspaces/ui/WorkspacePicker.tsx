@@ -33,7 +33,7 @@ export function WorkspacePicker({
 }: WorkspacePickerProps): JSX.Element {
   if (!loaded) {
     return (
-      <Typography variant="body2" color="text.secondary">
+      <Typography variant="body2" color="textSecondary">
         ワークスペースを読み込んでいます…
       </Typography>
     );

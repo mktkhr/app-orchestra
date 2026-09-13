@@ -4165,3 +4165,42 @@ is load, measured"), and extends that same conclusion to the same kind of
 load hitting `acceptance-e2e`'s own server-startup wait.
 `docker logs llama-swap`'s `POST /v1/chat/completions` count: 79514 before
 this task's first `make check` and 79514 after the final one - unchanged.
+
+## 2026-09-13 — color="text.secondary" was doing nothing, everywhere
+
+**Context.** `docs/specs/picking.md`'s implementation copied the
+codebase's existing way of drawing a quieter line of text - `<Typography
+color="text.secondary">` - and, checking the contrast it was told to check
+rather than assuming it, found the colour was not secondary at all.
+
+**Measured, in the built application, in both schemes.** The sentence on
+the users screen that uses it:
+
+```
+before   light rgba(0, 0, 0, 0.87)      dark rgb(255, 255, 255)
+after    light rgba(0, 0, 0, 0.6)       dark rgba(255, 255, 255, 0.7)
+```
+
+The "before" line is the **primary** text colour. `Typography`'s `color`
+prop takes a theme colour name - `"textSecondary"` - not a palette path;
+the dotted form is accepted, resolves to nothing, and leaves the element at
+its inherited colour. It fails silently, which is why fourteen of them
+accumulated.
+
+`sx={{ color: "text.secondary" }}` is the form that does take a path, and
+it is not what any of these were written as.
+
+**Decision.** All fourteen become `color="textSecondary"`, not only the one
+the picker added. A secondary line rendered at full emphasis is the whole
+screen shouting, and it was in every result's provenance, every empty
+state, and the users screen.
+
+**Consequences.** Nothing in the harness catches this, and it is worth
+saying why rather than adding a rule for it. `make guard-a11y` measures
+contrast against a floor: text that is _too readable_ passes. `make
+guard-layout` measures controls, and none of these are controls. A lint
+rule that knew which prop takes a path and which takes a name would be a
+rule about one library's API, which is what a type would be better at - and
+MUI's own types accept both, because `sx`-style shorthands are valid on
+some props and not this one. What caught it was being told to look at a
+colour with a browser instead of trusting the code.

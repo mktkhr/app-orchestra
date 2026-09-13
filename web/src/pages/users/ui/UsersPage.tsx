@@ -27,7 +27,7 @@ export function UsersPage(): JSX.Element {
         </Box>
         <Box sx={{ flexGrow: 1 }}>
           {selectedId === null ? (
-            <Typography color="text.secondary">
+            <Typography color="textSecondary">
               権限を設定するアカウントを選んでください。
             </Typography>
           ) : (
