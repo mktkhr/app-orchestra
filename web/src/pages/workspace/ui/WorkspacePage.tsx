@@ -58,7 +58,7 @@ export function WorkspacePage({ workspaceId }: WorkspacePageProps): JSX.Element 
       />
       <AddPanelControl workspaceId={workspaceId} onAdded={addedPanels.add} />
       <Divider />
-      <ConversationPanel defaultWorkspaceId={workspaceId} />
+      <ConversationPanel defaultWorkspaceId={workspaceId} onPanelPlaced={addedPanels.add} />
     </Stack>
   );
 }

@@ -8,7 +8,7 @@ import type { PlanResult } from "@/shared/api/client";
 import { useConversation } from "../model/conversationContext";
 import { ExampleQuestions } from "./ExampleQuestions";
 import { QuestionForm } from "./QuestionForm";
-import { TurnList, type SaveControlSlotProps } from "./TurnList";
+import { TurnList, type ProposalSlotProps, type SaveControlSlotProps } from "./TurnList";
 
 interface ConversationProps {
   /**
@@ -27,6 +27,14 @@ interface ConversationProps {
    * that has no save control to offer.
    */
   readonly renderSaveControl?: ((props: SaveControlSlotProps) => ReactNode) | undefined;
+  /**
+   * Draws a `proposal` answer turn's form - forwarded straight to
+   * `TurnList`. Left undefined by any screen with no workspace to place a
+   * proposal on (N4, AC-N-104): the chat screen never passes this, so its
+   * own conversation draws no proposal even when the platform hands it
+   * one, without this component having to know why.
+   */
+  readonly renderProposal?: ((props: ProposalSlotProps) => ReactNode) | undefined;
 }
 
 /**
@@ -37,6 +45,7 @@ interface ConversationProps {
 export function Conversation({
   conversationKey,
   renderSaveControl,
+  renderProposal,
 }: ConversationProps): JSX.Element {
   const { turns, pending, error, ask, submitForm, newConversation } =
     useConversation(conversationKey);
@@ -65,6 +74,7 @@ export function Conversation({
             turns={turns}
             onFormSubmitted={handleFormSubmitted}
             renderSaveControl={renderSaveControl}
+            renderProposal={renderProposal}
           />
           <Button variant="outlined" onClick={newConversation} sx={{ alignSelf: "flex-start" }}>
             新しい会話

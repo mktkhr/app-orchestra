@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { addPanel, getWorkspace, postInvoke } from "@/shared/api/client";
+import { addPanel, getWorkspace, postInvoke, postPlan } from "@/shared/api/client";
 import { getCatalog } from "@/shared/api/catalog";
 
 import { ConversationProvider } from "@/features/conversation";
@@ -13,6 +13,7 @@ vi.mock("@/shared/api/client", () => ({
   getWorkspace: vi.fn<typeof getWorkspace>(),
   postInvoke: vi.fn<typeof postInvoke>(),
   addPanel: vi.fn<typeof addPanel>(),
+  postPlan: vi.fn<typeof postPlan>(),
 }));
 
 vi.mock("@/shared/api/catalog", () => ({
@@ -174,6 +175,76 @@ describe("WorkspacePage", () => {
     });
     await waitFor(() => {
       expect(screen.getByText("itm-9")).toBeTruthy();
+    });
+  });
+
+  it("places a proposal asked for in the workspace's own chat, and shows it in the grid", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(getWorkspace).mockResolvedValue({ id: "ws-1", name: "在庫ボード", panels: [] });
+    vi.mocked(postPlan).mockResolvedValue({
+      kind: "proposal",
+      panel: {
+        service: "inventory",
+        operationId: "SummarizeInventory",
+        args: {},
+        component: "chart",
+        title: "ステータス別の在庫",
+        view: { chart: { category: "status", value: "count", kind: "bar" } },
+      },
+    });
+    vi.mocked(getCatalog).mockResolvedValue([
+      {
+        service: "inventory",
+        serviceDisplayName: "在庫管理",
+        operationId: "SummarizeInventory",
+        summary: "在庫の集計",
+        displayName: "在庫の集計",
+        component: "table",
+        schema: { type: "object", required: [], properties: {} },
+        fields: { status: { type: "string" }, count: { type: "number" } },
+      },
+    ]);
+    vi.mocked(addPanel).mockResolvedValue({
+      id: "pnl-new",
+      workspaceId: "ws-1",
+      service: "inventory",
+      operationId: "SummarizeInventory",
+      args: {},
+      component: "chart",
+      title: "ステータス別の在庫",
+      position: 0,
+      width: 12,
+      height: 1,
+      view: { chart: { category: "status", value: "count", kind: "bar" } },
+    });
+    vi.mocked(postInvoke).mockResolvedValue({
+      component: "chart",
+      data: { items: [{ status: "allocated", count: 3 }] },
+    });
+
+    render(
+      <ConversationProvider>
+        <WorkspacePage workspaceId="ws-1" />
+      </ConversationProvider>,
+    );
+
+    await screen.findByRole("heading", { name: "在庫ボード" });
+    await user.type(screen.getByLabelText("質問を入力"), "在庫をステータス別に棒グラフで置いて");
+    await user.click(screen.getByRole("button", { name: "送信" }));
+
+    await user.click(await screen.findByRole("button", { name: "配置" }));
+
+    expect(addPanel).toHaveBeenCalledWith("ws-1", {
+      service: "inventory",
+      operationId: "SummarizeInventory",
+      args: {},
+      component: "chart",
+      title: "ステータス別の在庫",
+      view: { chart: { category: "status", value: "count", kind: "bar" } },
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("ステータス別の在庫").length).toBeGreaterThan(0);
     });
   });
 });

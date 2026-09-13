@@ -672,8 +672,78 @@ validated the same way a `call` answer's args already are. The stub planner
 needed no change - a table lookup already returns whichever `Decision` its
 fixture names, `DecisionProposal` included (AC-N-106). See `DECISIONS.md`,
 2026-09-13, "propose_panel: a fifth `kind`, filled in from the catalogue".
-Task 1 (the browser draws and places one) and Task 2 (end-to-end, and what
-the tool costs every other question) are not started.
+
+**Task 1 of `docs/plans/proposing.md`: the person sees the proposal and
+places it.** A `proposal` answer turn draws `features/panels`' own form -
+`AddPanelForm`, the same component `AddPanelControl` (create) and
+`EditPanelControl` (edit) already open - a third time, over what the
+platform filled in rather than over nothing or an existing panel
+(`docs/specs/dashboard.md` P12, P7; `docs/specs/proposing.md` section 5).
+The new `ProposalControl` (`features/panels/ui`) matches the proposal's
+`service`/`operationId` against the loaded catalogue exactly as
+`EditPanelDialogContent` does for an existing panel, then hands
+`AddPanelForm` a new `usePanelProposal` hook - `usePanelEditor`'s own shape,
+seeded from the proposal instead of a saved panel, posting through
+`POST /api/workspaces/{id}/panels` (`addPanel`) instead of `PATCH`. The
+operation is stated rather than offered (`operationLocked`, P13's own
+reasoning), and the save control reads "配置" - placing a proposal, not
+merely editing a panel already on the workspace - via a new `saveLabel`
+override on `AddPanelForm`. Editing any field before pressing it changes
+exactly what gets posted, so a proposal edited before being placed is
+placed as edited (AC-N-103); once placed, the form is replaced by a plain
+confirmation so the same proposal cannot be placed twice.
+
+**Only a workspace's own conversation offers one (N4, AC-N-104), decided in
+`widgets/conversation`'s `ConversationPanel`, not in `TurnList`.**
+`TurnList`/`Conversation` (`features/conversation`) gained a `renderProposal`
+slot, the same pattern `renderSaveControl` already established for the same
+reason: the form comes from `features/panels`, a sibling feature
+`features/conversation` cannot import (`make guard-fsd`). `TurnList` itself
+carries no notion of a workspace at all - it only ever asks "was I handed
+something to draw a proposal with", and draws nothing (not a broken
+control, not the generic "missing information" fallback) when it was not.
+`ConversationPanel` is where a workspace's presence or absence is actually
+known - `pages/chat` calls it with no id, `pages/workspace` always with one
+
+- so it supplies `renderProposal` (wired to the new `ProposalControl`) only
+  when its own `defaultWorkspaceId` is defined; `pages/chat` therefore never
+  offers one, without `Conversation`/`TurnList` needing to know why.
+  `WorkspacePage` passes `onPanelPlaced={addedPanels.add}` - the same
+  callback `AddPanelControl` already uses - so a panel placed from the chat
+  appears in the grid immediately, the same as one added through the
+  button.
+
+**`usePanelSave` (`features/panels/model/panelSubmit.ts`) is a new hook
+shared by `usePanelBuilder`, `usePanelEditor` and `usePanelProposal`.**
+All three built (checking what's missing, assembling the request, posting
+it, calling back on success) the same way past the one call each of them
+makes; pulling that logic into `PanelPayload`/`buildPayload`/`usePanelSave`
+(plus `buildAddPanelRequest`, shared by the two hooks that `POST` rather
+than `PATCH`) is what keeps `usePanelProposal` - structurally almost
+identical to `usePanelEditor` otherwise - from tripping
+`make guard-duplication` (`harness/quality/duplication.txt`, `minNodes 60`).
+Verified: `make guard-duplication` passes.
+
+Tests: `ProposalControl.test.tsx` (the form seeded from the proposal, the
+operation stated not offered, placing it as filled in or as edited
+(AC-N-103), and the catalogue's own load error); `ConversationProposal.test.tsx`
+(split out of `Conversation.test.tsx`, at its own `max-lines` budget) for
+the slot itself and AC-N-104's "no renderProposal, no proposal, no throw";
+`ConversationPanel.test.tsx` and `WorkspacePage.test.tsx` gained one test
+each for the composed, end-to-end shape - asking from a workspace's chat,
+pressing 配置, and the panel showing in the grid.
+
+`make guard-a11y`/`make guard-layout` were run against the built product
+with a proposal turn on screen (a workspace with a panel already in it, per
+the task's own instruction) - both green with no changes needed: the new
+furniture is `AddPanelForm`'s existing JSX subtree, already measured
+wherever `AddPanelControl`/`EditPanelControl` open it, drawn inline in a
+`Paper` the same way a `form`/`ask` answer turn already is - no new control,
+no new colour, nothing this pair had not already checked.
+
+Task 2 (the end-to-end journey through `e2e/`, and measuring what offering
+`propose_panel` in every request costs every other question) is not
+started.
 
 ## What works
 

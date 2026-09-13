@@ -26,6 +26,15 @@ import type { components } from "./gen/platform";
  */
 export type UpdatePanelRequest = components["schemas"]["UpdatePanelRequest"];
 
+/**
+ * The panel a `propose_panel` call filled in (`docs/specs/proposing.md`
+ * section 3-4), carried on a `PlanResult` whose `kind` is `"proposal"`.
+ * Everything a saved `WorkspacePanel` already has, minus `position`,
+ * `width` and `height` - a proposal is not placed yet, so it has no
+ * position to carry.
+ */
+export type ProposedPanel = components["schemas"]["ProposedPanel"];
+
 /** The body of a successful PATCH /api/workspaces/{id}/panels/{panelId}. */
 export type PanelUpdated = MethodResponse<
   typeof client,

@@ -124,14 +124,14 @@ decides what a turn can be — and say why you put it there.
 Placing it is `POST /api/workspaces/{id}/panels`, unchanged. The model is
 not in that request.
 
-- [ ] **Step 1** Write the test: a proposal turn draws the form filled in;
+- [x] **Step 1** Write the test: a proposal turn draws the form filled in;
       pressing the control posts the panel and the workspace shows it;
       editing before placing places the edit (AC-N-103); the chat screen's
       conversation draws no proposal even when handed one (AC-N-104).
-- [ ] **Step 2** Implement.
-- [ ] **Step 3** Web gates green, then `make build`, `make guard-browser`,
+- [x] **Step 2** Implement.
+- [x] **Step 3** Web gates green, then `make build`, `make guard-browser`,
       `make guard-a11y`, `make guard-layout`.
-- [ ] **Step 4** Commit: `feat(web): accept a panel the model filled in`
+- [x] **Step 4** Commit: `feat(web): accept a panel the model filled in`
 
 **Satisfies:** AC-N-102, AC-N-103, AC-N-104.
 

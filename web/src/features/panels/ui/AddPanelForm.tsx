@@ -24,6 +24,14 @@ interface AddPanelFormProps {
    * altogether rather than betting it clears the threshold.
    */
   readonly operationLocked?: boolean;
+  /**
+   * The save control's own label, overriding the `operationLocked`
+   * default ("保存"). `ProposalControl` passes "配置" - placing a
+   * proposal, not merely editing an existing panel, even though the
+   * operation is locked the same way (`docs/specs/proposing.md` section
+   * 5's "one control that places it").
+   */
+  readonly saveLabel?: string;
 }
 
 /**
@@ -38,7 +46,11 @@ interface AddPanelFormProps {
  * form would be a second place for the chart's axes and the transform's
  * fields to get out of step with the first.
  */
-export function AddPanelForm({ builder, operationLocked = false }: AddPanelFormProps): JSX.Element {
+export function AddPanelForm({
+  builder,
+  operationLocked = false,
+  saveLabel,
+}: AddPanelFormProps): JSX.Element {
   return (
     <Stack spacing={2} sx={{ mt: 1 }}>
       {operationLocked && builder.entry !== null ? (
@@ -99,7 +111,7 @@ export function AddPanelForm({ builder, operationLocked = false }: AddPanelFormP
             error={builder.error}
             submitting={builder.submitting}
             onSave={builder.handleSave}
-            saveLabel={operationLocked ? "保存" : "追加"}
+            saveLabel={saveLabel ?? (operationLocked ? "保存" : "追加")}
           />
         </>
       )}

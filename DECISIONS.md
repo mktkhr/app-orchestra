@@ -4305,3 +4305,78 @@ that commit's own content (the number-field fix) is affected by this - the
 two changes touch disjoint files, `openapi.gen.go` and
 `web/src/shared/api/gen/platform.d.ts` aside, which are generated, not
 authored, and reflect both changes correctly either way.
+
+## 2026-09-13 a proposal is the builder's form again, and where N4 lives
+
+**Context.** `docs/plans/proposing.md` Task 1: the browser draws a
+`proposal` answer turn as `features/panels`' own form, already filled in,
+with one control that places it (`docs/specs/proposing.md` section 5), and
+only a workspace's own conversation offers one at all (N4, AC-N-104). Two
+questions the task itself left to the implementer:
+
+**Where "only a workspace offers this" is decided.** The task's own prompt
+poses it as a choice between "the component that draws a turn" (`TurnList`,
+`features/conversation`) and "the thing that decides what a turn can be".
+Put it in neither, in the sense of writing a workspace check inside either
+one - it lives in `widgets/conversation`'s `ConversationPanel`, which
+already makes the analogous call for `renderSaveControl`. The reasoning:
+`TurnList`/`Conversation` cannot import `features/panels` at all (`make
+guard-fsd` - `features/conversation` may not import a sibling feature), so
+they were never going to be the place that names `ProposalControl`
+regardless of workspace logic; they only ever ask "was I handed a
+`renderProposal` slot", the same question they already ask about
+`renderSaveControl`, and draw nothing when the answer is no. Whether that
+slot exists is entirely `ConversationPanel`'s call, because it is the one
+place that already holds both facts a decision here needs: which screen is
+asking (`pages/chat` calls it with no workspace id, `pages/workspace`
+always with one - `defaultWorkspaceId`) and how to place a panel
+(`features/panels`, which this widget now composes a third feature with,
+alongside `features/conversation` and `features/workspaces`). Concretely:
+`renderProposal` is only ever passed when `defaultWorkspaceId !== undefined`;
+`pages/chat` therefore never offers a proposal, without `TurnList` needing
+a workspace concept at all, and a `kind: "proposal"` result reaching the
+chat screen (a future planner change, a stale contract, or just this
+task's own test for AC-N-104) draws nothing - not a broken control, not
+the generic "this answer is missing information" fallback every other
+unhandled shape gets - because `AnswerResult` treats "no slot" and "no
+panel" as the same case.
+
+**The form is opened inline, not behind a toggle or a dialog.**
+`AddPanelControl` sits behind a "パネルを追加" button and `EditPanelControl`
+behind a dialog, because both start from a state with nothing to show yet.
+A proposal has no such state - N3 already says it _is_ the open form - so
+`ProposalControl` renders the catalogue's spinner, its load error, or
+`AddPanelForm` directly, the same way a `kind: "form"`/`kind: "ask"` answer
+turn already draws `ResultForm`/`ResultChoice` directly inside its `Paper`,
+with no button of its own to press first. Once placed, the form is
+replaced by a plain success `Alert` rather than staying on screen armed to
+post the same proposal a second time.
+
+**`usePanelSave` was pulled out of `usePanelBuilder`/`usePanelEditor`
+before `usePanelProposal` was written, not after.** A third hook built the
+same way `usePanelBuilder` (create) and `usePanelEditor` (edit) already
+are - check `missingBeforeSave`, build the request from
+`compactArgs`/`buildView`, post, call back - was always going to structurally
+match `usePanelEditor` past the one call each makes, which is exactly what
+`make guard-duplication`'s `dupl`-style check (`harness/quality/duplication.txt`,
+`minNodes 60`) exists to catch: two functions whose node-type sequence is
+identical for 60+ nodes, ignoring names and literals. Writing
+`usePanelProposal` first and finding out from the guard would have meant
+choosing, under a failing gate, whether to weaken the guard (rule 2
+forbids it) or refactor blind; refactoring first - `panelSubmit.ts`'s
+`PanelPayload`/`buildPayload`/`usePanelSave`, plus `buildAddPanelRequest`
+for the two hooks that `POST` rather than `PATCH` - meant
+`usePanelBuilder` and `usePanelEditor` could be re-verified green
+(`make web-test`, `make guard-duplication`) _before_ `usePanelProposal`
+existed to compare against, and `usePanelProposal` itself came out short
+enough (seed the fields, stand up a single-entry `catalog`, call
+`usePanelSave`) that there was nothing left in it for the guard to flag.
+
+**The save control reads "配置", not "追加" or "保存".** `AddPanelForm`
+already picks between those two off `operationLocked`; a proposal is
+`operationLocked` the same way an edit is (a proposal already named its
+operation), but placing one is a different act worth its own word - not
+adding a new panel from scratch, not editing one already on the workspace.
+`AddPanelForm` gained a `saveLabel` override for exactly this one caller,
+rather than a third `operationLocked`-like flag, since the label is the
+only thing that differs.

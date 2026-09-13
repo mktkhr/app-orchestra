@@ -5,13 +5,13 @@ _Keep three lists. Move items, do not duplicate them._
 ## In progress
 
 **FR-F-5: asking the chat to add a panel** (`docs/plans/proposing.md`,
-`docs/specs/proposing.md`). Task 0 (the model can answer with a panel) is
-done - see `STATE.md` and `DECISIONS.md`, 2026-09-13. Task 1 (the browser
-draws the proposal as the builder's own form, filled in, and places it) and
-Task 2 (the end-to-end journey, and measuring what offering `propose_panel`
-in every request costs every other question - `docs/specs/proposing.md`
-section 9) are next; Task 1 needs Task 0, Task 2 needs both, nothing runs
-in parallel.
+`docs/specs/proposing.md`). Task 0 (the model can answer with a panel) and
+Task 1 (the browser draws the proposal as the builder's own form, filled
+in, and places it) are done - see `STATE.md` and `DECISIONS.md`,
+2026-09-13. Task 2 (the end-to-end journey through `e2e/`, and measuring
+what offering `propose_panel` in every request costs every other question -
+`docs/specs/proposing.md` section 9) is next; it needs both, and nothing
+else runs in parallel with it.
 
 ## Next
 

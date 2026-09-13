@@ -2,32 +2,16 @@ import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 
-import {
-  Provenance,
-  RenderedResult,
-  ResultChart,
-  ResultChoice,
-  ResultForm,
-  rowsFromData,
-} from "@/entities/rendering";
-import type { Component, PlanResult } from "@/shared/api/client";
+import { ResultChoice, ResultForm } from "@/entities/rendering";
+import type { PlanResult } from "@/shared/api/client";
 
 import type { Turn } from "../model/turn";
+import type { ProposalSlot, SaveControlSlot } from "./answerSlots";
+import { renderResultAnswer } from "./renderResultAnswer";
 
-/**
- * What a `table`/`detail` result answer needs the save control drawn with -
- * exactly the provenance and widget it is already showing, plus the
- * question that produced it as the title's default.
- */
-export interface SaveControlSlotProps {
-  readonly source: NonNullable<PlanResult["source"]>;
-  readonly component: Component;
-  /** The answer's own `view` (only a chart-hinted result carries one), forwarded so saving it carries the axes too (AC-P-105). */
-  readonly view?: PlanResult["view"];
-  readonly defaultTitle: string;
-}
+export type { ProposalSlotProps, SaveControlSlotProps } from "./answerSlots";
 
 interface TurnListProps {
   readonly turns: readonly Turn[];
@@ -38,16 +22,8 @@ interface TurnListProps {
    * into `features/conversation` for the `Turn` type or `setTurns` itself.
    */
   readonly onFormSubmitted: (result: PlanResult) => void;
-  /**
-   * Draws a result turn's "save to a workspace" control. Left as a slot,
-   * rather than this list importing `SaveToWorkspaceControl` itself,
-   * because that control lives in `features/workspaces` and
-   * `features/conversation` cannot import a sibling feature
-   * (`make guard-fsd`). The page that owns both features
-   * (`widgets/conversation`) supplies the slot; undefined draws no control
-   * at all, which is what `Conversation`'s own tests render without.
-   */
-  readonly renderSaveControl?: ((props: SaveControlSlotProps) => ReactNode) | undefined;
+  readonly renderSaveControl?: SaveControlSlot | undefined;
+  readonly renderProposal?: ProposalSlot | undefined;
 }
 
 /** The conversation's turns, in order: a question, then the answer to it. */
@@ -55,6 +31,7 @@ export function TurnList({
   turns,
   onFormSubmitted,
   renderSaveControl,
+  renderProposal,
 }: TurnListProps): JSX.Element {
   return (
     <Stack spacing={2}>
@@ -65,6 +42,7 @@ export function TurnList({
           nearestQuestion={nearestQuestion(turns, index)}
           onFormSubmitted={onFormSubmitted}
           renderSaveControl={renderSaveControl}
+          renderProposal={renderProposal}
         />
       ))}
     </Stack>
@@ -103,7 +81,8 @@ interface TurnItemProps {
   readonly turn: Turn;
   readonly nearestQuestion: string;
   readonly onFormSubmitted: (result: PlanResult) => void;
-  readonly renderSaveControl?: ((props: SaveControlSlotProps) => ReactNode) | undefined;
+  readonly renderSaveControl?: SaveControlSlot | undefined;
+  readonly renderProposal?: ProposalSlot | undefined;
 }
 
 function TurnItem({
@@ -111,6 +90,7 @@ function TurnItem({
   nearestQuestion: question,
   onFormSubmitted,
   renderSaveControl,
+  renderProposal,
 }: TurnItemProps): JSX.Element {
   if (turn.role === "question") {
     return (
@@ -126,6 +106,7 @@ function TurnItem({
       originalQuery={question}
       onFormSubmitted={onFormSubmitted}
       renderSaveControl={renderSaveControl}
+      renderProposal={renderProposal}
     />
   );
 }
@@ -134,21 +115,42 @@ interface AnswerResultProps {
   readonly result: PlanResult;
   readonly originalQuery: string;
   readonly onFormSubmitted: (result: PlanResult) => void;
-  readonly renderSaveControl?: ((props: SaveControlSlotProps) => ReactNode) | undefined;
+  readonly renderSaveControl?: SaveControlSlot | undefined;
+  readonly renderProposal?: ProposalSlot | undefined;
 }
 
 /**
  * One answer turn's body, dispatched on `result.kind`/`result.component`.
- * Split out of `TurnItem` so each render path - `none`, table, detail,
- * form, choice, and the fallback - stays a small `if`, not one function
- * long enough to trip `max-lines-per-function`.
+ * Split out of `TurnItem` so each render path - `proposal`, `none`, table,
+ * detail, form, choice, and the fallback - stays a small `if`, not one
+ * function long enough to trip `max-lines-per-function`.
  */
 function AnswerResult({
   result,
   originalQuery,
   onFormSubmitted,
   renderSaveControl,
-}: AnswerResultProps): JSX.Element {
+  renderProposal,
+}: AnswerResultProps): JSX.Element | null {
+  if (result.kind === "proposal") {
+    // No `renderProposal` (the chat screen, N4/AC-N-104) or no `panel`
+    // (a deployment whose contract allows a `proposal` with none - not a
+    // case the platform ever produces, but this list draws only what it
+    // can) draws nothing at all for this turn, rather than a broken
+    // control or the generic "missing information" fallback below: a
+    // screen this feature offers no proposal on should look like it never
+    // came up, not like something failed to render.
+    if (result.panel === undefined || renderProposal === undefined) {
+      return null;
+    }
+
+    return (
+      <Paper elevation={1} sx={{ p: 2 }}>
+        {renderProposal({ panel: result.panel })}
+      </Paper>
+    );
+  }
+
   if (result.kind === "none") {
     return (
       <Paper elevation={1} sx={{ p: 2 }}>
@@ -213,85 +215,4 @@ function AnswerResult({
       </Alert>
     </Paper>
   );
-}
-
-/**
- * The `kind: "result"` branches of `AnswerResult` - `table`, `detail` and
- * `chart` - split into their own function so `AnswerResult` stays under
- * `max-lines-per-function`. Returns null for a `component`/`data`
- * combination this deployment's contract allows but that carries none of
- * what any of the three widgets needs, so the caller falls through to
- * `AnswerResult`'s own generic fallback instead of this one duplicating it.
- *
- * `chart` only reaches here when the contract declares `x-ui-hint.chart`
- * (`domain.Render`); the result then carries `view.chart` - axes only,
- * never a transform (AC-P-105). Each branch also draws the
- * `renderSaveControl` slot (AC-W-101) when the result has a `source` to
- * save - `chart` forwards its own `view` too, so saving carries the
- * contract's axes onto the new panel (AC-P-105's second half).
- */
-function renderResultAnswer(
-  result: PlanResult,
-  originalQuery: string,
-  renderSaveControl?: (props: SaveControlSlotProps) => ReactNode,
-): JSX.Element | null {
-  if (result.component === "table" && result.source !== undefined && result.data !== undefined) {
-    return (
-      <Paper elevation={1} sx={{ p: 2 }}>
-        <Provenance source={result.source} />
-        <RenderedResult component={result.component} data={result.data} fields={result.fields} />
-        {renderSaveControl?.({
-          source: result.source,
-          component: result.component,
-          defaultTitle: originalQuery,
-        })}
-      </Paper>
-    );
-  }
-
-  if (result.component === "detail" && result.data !== undefined) {
-    return (
-      <Paper elevation={1} sx={{ p: 2 }}>
-        {result.source === undefined ? null : <Provenance source={result.source} />}
-        <RenderedResult component={result.component} data={result.data} fields={result.fields} />
-        {result.source === undefined
-          ? null
-          : renderSaveControl?.({
-              source: result.source,
-              component: result.component,
-              defaultTitle: originalQuery,
-            })}
-      </Paper>
-    );
-  }
-
-  if (
-    result.component === "chart" &&
-    result.source !== undefined &&
-    result.data !== undefined &&
-    result.view?.chart !== undefined
-  ) {
-    const chart = result.view.chart;
-
-    return (
-      <Paper elevation={1} sx={{ p: 2 }}>
-        <Provenance source={result.source} />
-        <ResultChart
-          data={rowsFromData(result.data)}
-          category={chart.category}
-          value={chart.value}
-          kind={chart.kind}
-          title={originalQuery}
-        />
-        {renderSaveControl?.({
-          source: result.source,
-          component: result.component,
-          view: result.view,
-          defaultTitle: originalQuery,
-        })}
-      </Paper>
-    );
-  }
-
-  return null;
 }

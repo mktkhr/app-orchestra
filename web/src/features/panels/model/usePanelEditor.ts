@@ -1,12 +1,9 @@
-import { useState } from "react";
-
 import type { WorkspacePanel } from "@/shared/api/client";
 import type { CatalogEntry } from "@/shared/api/catalog";
 import { patchPanel, type UpdatePanelRequest } from "@/shared/api/panels";
-import { useSubmission } from "@/shared/lib/useSubmission";
 
 import type { PanelFormState } from "./panelFormState";
-import { buildView, compactArgs } from "./panelViewRequest";
+import { usePanelSave } from "./panelSubmit";
 import type { Catalog } from "./useCatalog";
 import { usePanelFields } from "./usePanelFields";
 
@@ -30,6 +27,10 @@ import { usePanelFields } from "./usePanelFields";
  * out whenever the form has no chart or transform configured - "remove
  * the view", not "leave it alone" (section 6a) - since a fully-restated
  * form has no "leave it alone" case for a field it is actively showing.
+ *
+ * The save button's own behaviour - what is still missing, building the
+ * request, posting it - is `usePanelSave` (`panelSubmit.ts`), shared with
+ * `usePanelBuilder` and `usePanelProposal`.
  */
 export function usePanelEditor(
   workspaceId: string,
@@ -44,8 +45,6 @@ export function usePanelEditor(
     component: panel.component,
     ...(panel.view === undefined ? {} : { view: panel.view }),
   });
-  const { submitting, error, run } = useSubmission();
-  const [incomplete, setIncomplete] = useState<string | null>(null);
 
   const catalog: Catalog = {
     loaded: true,
@@ -60,41 +59,21 @@ export function usePanelEditor(
     },
   };
 
-  const handleSave = (): void => {
-    const missing = fields.missingBeforeSave();
-
-    if (missing !== null) {
-      setIncomplete(missing);
-
-      return;
-    }
-
-    setIncomplete(null);
-
-    void run(async () => {
-      const view = buildView(
-        fields.component,
-        fields.category,
-        fields.value,
-        fields.kind,
-        fields.transformEnabled,
-        fields.groupBy,
-        fields.aggregate,
-        fields.aggregateField,
-      );
-
+  const save = usePanelSave<WorkspacePanel>(
+    fields,
+    entry,
+    (_entry, payload) => {
       const request: UpdatePanelRequest = {
-        title: fields.title.trim(),
-        args: compactArgs(entry.schema, fields.argsValues),
-        component: fields.component,
-        view: view ?? null,
+        title: payload.title,
+        args: payload.args,
+        component: payload.component,
+        view: payload.view ?? null,
       };
 
-      const updated = await patchPanel(workspaceId, panel.id, request);
+      return patchPanel(workspaceId, panel.id, request);
+    },
+    onSaved,
+  );
 
-      onSaved(updated);
-    });
-  };
-
-  return { catalog, ...fields, submitting, error: error ?? incomplete, handleSave };
+  return { catalog, ...fields, ...save };
 }
