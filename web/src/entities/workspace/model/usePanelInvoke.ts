@@ -43,8 +43,19 @@ interface PanelInvoke {
  * render, so a second click arriving before that render would otherwise
  * read the stale `false` and fire a second request. The ref has no such
  * delay.
+ *
+ * `enabled` gates every call this hook makes, on mount and on `refresh`
+ * alike (`docs/specs/dashboard.md` P14, AC-P-111): the caller
+ * (`PanelResult`) passes `false` while it does not yet know the panel's
+ * operation is safe to auto-invoke, and permanently for one it has learned
+ * is not - `docs/specs/orchestration.md` D8's rule, that the model (and,
+ * here, the mere act of opening or refreshing a dashboard) never runs an
+ * unsafe operation, applied to a panel. `loading` stays `true` the whole
+ * time `enabled` is `false`, which is exactly right while the caller is
+ * still checking: it only ever flips to a form or an error once that
+ * caller stops waiting on this hook altogether.
  */
-export function usePanelInvoke(panel: WorkspacePanel): PanelInvoke {
+export function usePanelInvoke(panel: WorkspacePanel, enabled: boolean): PanelInvoke {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,15 +93,17 @@ export function usePanelInvoke(panel: WorkspacePanel): PanelInvoke {
       }
     };
 
-    void load();
+    if (enabled) {
+      void load();
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [panel]);
+  }, [panel, enabled]);
 
   const refresh = (): void => {
-    if (inFlightRef.current) {
+    if (!enabled || inFlightRef.current) {
       return;
     }
     inFlightRef.current = true;

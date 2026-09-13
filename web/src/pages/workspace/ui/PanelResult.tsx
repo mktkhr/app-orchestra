@@ -1,21 +1,13 @@
-import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import CircularProgress from "@mui/material/CircularProgress";
-import Stack from "@mui/material/Stack";
 import { useState, type JSX } from "react";
 
-import {
-  applyTransform,
-  Provenance,
-  RenderedResult,
-  ResultChart,
-  rowsFromData,
-} from "@/entities/rendering";
-import { PanelCardShell, usePanelInvoke } from "@/entities/workspace";
-import type { WorkspacePanel } from "@/shared/api/client";
-import { useElementSize } from "@/shared/lib/useElementSize";
+import { Provenance } from "@/entities/rendering";
+import { PanelCardShell, useCatalogEntry, usePanelInvoke } from "@/entities/workspace";
+import type { PlanResult, WorkspacePanel } from "@/shared/api/client";
 
 import { PanelActions } from "./PanelActions";
+import { PanelInvokedBody } from "./PanelInvokedBody";
+import { PanelQuickAddBody } from "./PanelQuickAddBody";
 
 interface PanelResultProps {
   readonly workspaceId: string;
@@ -26,20 +18,6 @@ interface PanelResultProps {
     | ((panelId: string, deltaWidth: number, deltaHeight: number) => void)
     | undefined;
 }
-
-/**
- * `ResultChart`'s size, for a panel: the chart's own container, measured
- * (`useElementSize`), not a guess from the viewport (`docs/plans/dashboard.md`
- * Task 5, `docs/specs/layout.md` AC-L-106). `WorkspaceGrid` gives every panel
- * a `react-grid-layout` box that is exactly `width` columns by `height` rows,
- * so a wider panel's box is wider and this reads that directly - a media
- * query keyed to the viewport, which this used before, cannot tell a
- * `width: 12` panel from a `width: 6` one on the same screen; only the
- * panel's own rendered box can. Zero (`useElementSize`'s own "not measured
- * yet" value - true in every unit test, since `happy-dom` has no layout
- * engine to fire a resize) falls back to `undefined`, which is `ResultChart`'s
- * own signal to use its original fixed default instead of drawing at 0×0.
- */
 
 /**
  * One workspace panel, fully assembled: `entities/workspace`'s card shell
@@ -71,6 +49,24 @@ interface PanelResultProps {
  * "edited then reloaded draws as edited" holds for the reload half because
  * the platform itself now has the change; this state is what makes it
  * true without one first, for the tab already open.
+ *
+ * `useCatalogEntry` decides, before anything else here does, whether
+ * `current`'s operation is unsafe (`docs/specs/dashboard.md` P14, section
+ * 6b): `usePanelInvoke`'s own `enabled` stays `false` until that lookup
+ * resolves, so a safe panel's first `/api/invoke` never races ahead of the
+ * check, and stays `false` forever once the lookup says `form` - an unsafe
+ * operation is answered by `PanelQuickAddBody`'s form, never by this
+ * card's own mount or its refresh control, which for that case only
+ * clears the last submission instead of calling anything (AC-P-111).
+ *
+ * The body - `PanelInvokedBody` or `PanelQuickAddBody` - sits in a `Box`
+ * that fills whatever height `PanelCardShell`'s `CardContent` has left
+ * (`flexGrow: 1`, `minHeight: 0`) and scrolls on its own only when nothing
+ * inside it already does: a table's own `TableContainer` is the one
+ * scroller for a table result (`ResultTable`'s own doc comment), so this
+ * box stays `overflow: "hidden"` for that case and falls back to
+ * `overflow: "auto"` for every other shape a result or a form can take
+ * (`docs/specs/dashboard.md` P15, AC-P-112).
  */
 export function PanelResult({
   workspaceId,
@@ -79,26 +75,25 @@ export function PanelResult({
   onResize,
 }: PanelResultProps): JSX.Element {
   const [current, setCurrent] = useState(panel);
-  const { loading, refreshing, error, result, refresh } = usePanelInvoke(current);
-  const [chartRef, chartSize] = useElementSize<HTMLDivElement>();
-  // `0` is `useElementSize`'s "not measured yet" value, not a real box size
-  // (see the comment above) - `undefined` here lets `ResultChart` fall back
-  // to its own fixed default instead of drawing at zero width or height.
-  const chartWidth = chartSize.width > 0 ? chartSize.width : undefined;
-  const chartHeight = chartSize.height > 0 ? chartSize.height : undefined;
+  const [submitted, setSubmitted] = useState<PlanResult | null>(null);
+  const catalog = useCatalogEntry(current.service, current.operationId);
+  const unsafeEntry =
+    catalog.ready && catalog.entry?.component === "form" ? catalog.entry : undefined;
+  // Not just `unsafeEntry === undefined`: before `catalog.ready` flips
+  // true, `unsafeEntry` reads `undefined` too - "not yet known to be
+  // unsafe" is not the same claim as "known to be safe", and the first
+  // render would otherwise enable `usePanelInvoke` for the one instant it
+  // takes the catalogue lookup to resolve (`docs/specs/dashboard.md` P14,
+  // AC-P-111).
+  const { loading, refreshing, error, result, refresh } = usePanelInvoke(
+    current,
+    catalog.ready && unsafeEntry === undefined,
+  );
 
-  const view = current.view;
-  const chart = view?.chart;
-  const transform = view?.transform;
-
-  // Applied here, where the result's rows arrive, before the code below decides which
-  // component to draw them with - `applyTransform` itself has no opinion on that, and
-  // `entities/rendering` exposes it for exactly this reason (see `transform.ts`'s own
-  // comment: this call and the panel builder's preview are its only two callers).
-  const groupedRows =
-    result === null || transform === undefined
-      ? undefined
-      : applyTransform(rowsFromData(result.data), transform);
+  const isTableResult =
+    unsafeEntry === undefined
+      ? result !== null && current.view?.chart === undefined && result.component === "table"
+      : submitted !== null && submitted.component === "table";
 
   return (
     <PanelCardShell
@@ -107,8 +102,14 @@ export function PanelResult({
         <PanelActions
           workspaceId={workspaceId}
           panel={current}
-          refreshing={refreshing}
-          onRefresh={refresh}
+          refreshing={unsafeEntry === undefined && refreshing}
+          onRefresh={
+            unsafeEntry === undefined
+              ? refresh
+              : () => {
+                  setSubmitted(null);
+                }
+          }
           onSaved={setCurrent}
           onMove={onMove}
           onResize={onResize}
@@ -130,31 +131,32 @@ export function PanelResult({
           args: current.args,
         }}
       />
-      {loading ? (
-        <Stack direction="row" sx={{ justifyContent: "center", py: 2 }}>
-          <CircularProgress size={24} aria-label="読み込み中" />
-        </Stack>
-      ) : null}
-      {error === null ? null : <Alert severity="error">{error}</Alert>}
-      {result === null ? null : chart === undefined ? (
-        <RenderedResult
-          component={result.component}
-          data={groupedRows === undefined ? result.data : { rows: groupedRows }}
-          fields={result.fields}
-        />
-      ) : (
-        <Box ref={chartRef} sx={{ width: "100%", height: "100%" }}>
-          <ResultChart
-            data={groupedRows ?? rowsFromData(result.data)}
-            category={chart.category}
-            value={chart.value}
-            kind={chart.kind}
+      <Box
+        sx={{
+          flexGrow: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: isTableResult ? "hidden" : "auto",
+        }}
+      >
+        {unsafeEntry === undefined ? (
+          <PanelInvokedBody
+            loading={loading}
+            error={error}
+            result={result}
+            view={current.view}
             title={current.title}
-            {...(chartWidth === undefined ? {} : { width: chartWidth })}
-            {...(chartHeight === undefined ? {} : { height: chartHeight })}
           />
-        </Box>
-      )}
+        ) : (
+          <PanelQuickAddBody
+            entry={unsafeEntry}
+            initialArgs={current.args}
+            submitted={submitted}
+            onSubmitted={setSubmitted}
+          />
+        )}
+      </Box>
     </PanelCardShell>
   );
 }

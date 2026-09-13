@@ -3588,3 +3588,142 @@ there. The spec's reasoning does not reach its own conclusion, which is the
 second time today a decision turned out not to have argued the thing it
 decided (the first was `useHashRoute`). Not changed here, because widening
 it is a product decision rather than a fix.
+
+## 2026-09-13 — a panel that wrote rows nobody asked for
+
+**Context.** A person built a panel over `CreateInventoryItem` with
+complete arguments. Every time they opened the workspace, and every time
+they pressed the panel's refresh control, `usePanelInvoke` posted the
+panel's call to `POST /api/invoke` - which runs whatever it is given. The
+person only noticed because their first attempt had incomplete arguments
+and errored; a complete one would have written a row silently, over and
+over. Measured against `services/inventory`'s in-memory store before
+touching any code: 8 rows.
+
+**What makes a panel "unsafe."** The panel itself carries a `component`
+field (`Panel.Component`), and it is tempting to read `component === "form"`
+there as the signal. It is the wrong source: P11 lets a person `PATCH` a
+panel's `component` to any value the `Component` enum allows, and nothing
+on the server checks it against the operation behind it
+(`services/platform/internal/adapter/handler/workspace.go`'s patch path
+takes `body.Component` and writes it through unchecked). A panel over
+`CreateInventoryItem` could be made to carry `component: "table"` by a
+crafted `PATCH`, or simply by whatever the builder happened to send at
+creation time - checked, and confirmed: `panelFieldRules.componentOptionsFor`
+only offers one option for an unsafe entry, so today's builder cannot
+produce that panel, but "the builder does not offer it today" is not the
+same claim as "the field cannot hold it."
+
+`CatalogEntry.component`, from `GET /api/catalog`, is the source that
+cannot drift: `usecase.toCatalogEntry` sets it to `domain.Render(e)` fresh,
+every call, straight from the operation's own contract - `Render` returns
+`ComponentForm` exactly when `e.RequestBody != nil` (unless a UI hint or
+chart hint overrides it), which is the same test D8/section 6b's "unsafe"
+already means. Nothing about a `Panel` row feeds into that computation, so
+there is nothing stored on the panel that could disagree with it. The
+browser-side fix (`entities/workspace/model/useCatalogEntry.ts`) looks up
+the panel's own `service`+`operationId` in that list and reads `component`
+from there, never from `WorkspacePanel.component`.
+
+**The race this has to avoid.** Looking the operation up in the catalogue
+is itself an async `GET /api/invoke` down the browser knows nothing yet -
+`usePanelInvoke` must not invoke while that lookup is in flight, or a fast
+`/api/invoke` could still win a race against a slow catalogue fetch and
+write the very row this fix removes. `usePanelInvoke` gained a required
+`enabled` argument gating its mount effect and its `refresh` both;
+`PanelResult` computes it as `catalog.ready && unsafeEntry === undefined` -
+not merely `unsafeEntry === undefined`, which reads `undefined` before
+`ready` too and would have re-opened the exact race for one render's worth
+of window (caught by a test failing 2 calls instead of 1 before this line
+was corrected).
+
+**The form.** An unsafe panel now draws `entities/rendering`'s `ResultForm`
+
+- the same component the chat already draws for a `kind: "form"` answer -
+  seeded from the panel's own saved `args`, over the catalogue entry's own
+  `schema` (`PanelQuickAddBody.tsx`). Submitting is the button press D8
+  means; the panel's refresh control, for this case, only clears the last
+  submission back to a blank form rather than calling anything, so `AC-P-111`
+  holds for a refresh exactly as it does for a mount.
+
+**A catalogue fetch that fails** (network, an expired session) is read the
+same as "operation not found" - `usePanelInvoke` falls back to its old,
+safe-by-default behaviour rather than blocking every panel on a screen
+whenever `/api/catalog` hiccups. This is a deliberate asymmetry: it means
+the one race window this fix cannot close is a `/api/catalog` outage
+coinciding with a workspace holding an unsafe panel, which is strictly
+narrower than the defect being fixed (a hiccup, not "every load"), and a
+panel with no catalogue entry has no `schema` to draw a form from anyway.
+
+**Measured live**, `services/inventory`'s in-memory store, before and
+after, through the built web app served by `pnpm exec vp -C web dev`
+proxying to a freshly rebuilt platform (`make dev-services`): **8 rows**
+before touching anything; a panel created over `CreateInventoryItem` with
+complete arguments (`name`, `status`, `quantity`); opening the workspace a
+second time (navigating away and back) - **8 rows**, zero `POST /api/invoke`
+requests in the browser's own network log; pressing "更新" (refresh) - still
+**8 rows**, still zero requests; pressing "送信" (submit) once - exactly one
+`POST /api/invoke`, **9 rows**.
+
+## 2026-09-13 — two scrollbars around one table
+
+**Context.** `entities/workspace/ui/PanelCardShell.tsx`'s `CardContent`
+carried `overflow: "auto"` so a panel would scroll inside its own card
+rather than growing past the grid cell `WorkspaceGrid` gave it. Every
+table result also draws inside a MUI `TableContainer`
+(`entities/rendering/ui/ResultTableGrid.tsx`), which is its own scroll
+boundary once given a table taller than its box. A panel with more rows
+than fit showed a scrollbar around the whole card and, inside that, a
+second one around the table.
+
+**Where the one scroller lives.** The result's own container, not the
+card's content area - `docs/specs/dashboard.md` P15 says the same, in
+different words ("whatever the result renders decides where its own
+overflow goes"). `PanelCardShell`'s `CardContent` is generic: a chart, a
+detail list, a form and a table all pass through it, and only a table
+paginates its rows down to a bounded page size that can still exceed a
+small panel's height. Making `CardContent` the sole scroller would mean
+scrolling the "拡大表示" button and the pagination control away with the
+rows they belong next to; making the table's own `TableContainer` the
+scroller keeps both pinned in view and lets a wide table keep scrolling
+sideways in its own box (`TableContainer`'s own default), which
+`make guard-layout`'s sideways-scroll check already requires regardless of
+this fix.
+
+`CardContent` (`PanelCardShell.tsx`) changed to `overflow: "hidden"` plus
+`display: "flex"`/`flexDirection: "column"`/`minHeight: 0`, so it fills the
+grid's box without introducing its own scrollbar.
+`ResultTableGrid.tsx`'s `TableContainer` gained `flexGrow: 1`, `minHeight:
+0` and `overflow: "auto"`; `ResultTable.tsx`'s own `Stack` gained `height:
+"100%"`/`minHeight: 0`, and its button row and `ResultTablePagination`
+both gained `flexShrink: 0` so the table alone gives up height when the
+three do not fit. `PanelResult.tsx` wraps whichever body it draws in one
+more `flexGrow: 1`/`minHeight: 0` `Box`, switching that box's own
+`overflow` to `"hidden"` for a table result (the `TableContainer` owns
+scrolling then) and `"auto"` for everything else (chart, detail, form,
+loading, error) that has not been given its own scroll story - the same
+"whatever the result renders decides" reasoning, applied one level up for
+the cases that do not yet decide anything for themselves.
+
+**A11y regression caught and fixed in the same pass.** Once
+`TableContainer` could actually overflow, `make guard-a11y` failed with
+`scrollable-region-focusable` (WCAG 2.1.1): a scrollable region with
+nothing focusable inside it is unreachable by keyboard. `TableContainer`
+gained `tabIndex={0}`. A second failure, `.MuiTablePagination-root` itself
+(MUI's own styles give it `overflow: "auto"` unconditionally), came from
+`flexShrink`'s default of `1` applying to _every_ flex item, including the
+pagination row - without `flexShrink: 0` there, a tight panel squeezed the
+pagination control below its own content's natural height and it started
+scrolling itself. Both are `make guard-a11y` failures now, not hypothetical
+ones - reproduced and fixed by running the guard, not by reasoning about
+CSS in the abstract.
+
+**Verified live** through the same running app as the defect-1 check
+above: a panel over `ListInventoryItems` sized to one grid row, holding
+more items than fit. Measured with `getComputedStyle`/`scrollHeight`/
+`clientHeight` on the live DOM: the card's `CardContent` measured
+`scrollHeight: 290` against `clientHeight: 290` (`overflow: hidden` - it
+does not scroll), while its `TableContainer` measured `scrollHeight: 334`
+against `clientHeight: 108` (`overflow: auto`, `tabIndex: 0` - it does,
+and is reachable by keyboard). The pagination control's bounding box sat
+entirely within the card's own, at every point during that scroll.

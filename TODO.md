@@ -4,8 +4,9 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-Nothing. `docs/plans/layout.md` closed (Task 3, this session) - see "Done"
-below.
+Nothing. Two defects reported against the dashboard (a panel writing rows
+nobody asked for, two scrollbars around one table) are fixed this session -
+see "Done" below and `DECISIONS.md`, 2026-09-13.
 
 ## Next
 
@@ -60,6 +61,30 @@ below.
 
 ## Done
 
+- **Defect fix: a panel over an unsafe operation no longer calls
+  `/api/invoke` on its own** (`docs/specs/dashboard.md` P14, section 6b,
+  AC-P-111). `usePanelInvoke` (`entities/workspace`) takes a new `enabled`
+  argument gating both its mount effect and its `refresh`; `PanelResult`
+  computes it from a new `useCatalogEntry` lookup (`GET /api/catalog`,
+  matched by `service`+`operationId`) rather than from the panel's own
+  `component` - see `DECISIONS.md`, 2026-09-13 for why the catalogue entry
+  is the only source that cannot drift. An unsafe panel draws
+  `entities/rendering`'s `ResultForm` instead (`PanelQuickAddBody`), seeded
+  from the panel's saved arguments; submitting is what calls `/api/invoke`.
+  Measured live, before and after one submission: `services/inventory`'s
+  in-memory store held 8 rows before, 8 after opening the workspace twice
+  and pressing refresh, 9 after the one deliberate submit.
+- **Defect fix: a panel now has exactly one scroller**
+  (`docs/specs/dashboard.md` P15, AC-P-112). `PanelCardShell`'s
+  `CardContent` no longer scrolls itself (`overflow: "hidden"`, a flex
+  column); `ResultTable`/`ResultTableGrid` give the table's own
+  `TableContainer` the scrolling box instead (`flexGrow: 1`, `overflow:
+"auto"`, `tabIndex={0}` for `make guard-a11y`'s
+  `scrollable-region-focusable`), with the "拡大表示" button and the
+  pagination pinned outside it (`flexShrink: 0`) so pagination stays
+  reachable. Verified live: a table panel too small for its rows scrolls
+  only inside `TableContainer` (`scrollHeight` 334 vs `clientHeight` 108),
+  while `CardContent` does not (290/290).
 - `docs/plans/layout.md` Task 0: a panel carries `width` (grid columns,
   1-12) and `height` (grid rows), and `position` is now `PATCH`-writable.
   Defaults (full width, one row) live once in `domain` (`DefaultPanelWidth`/

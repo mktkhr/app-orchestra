@@ -1,12 +1,22 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import type { getCatalog } from "@/shared/api/catalog";
 import { postInvoke, type WorkspacePanel } from "@/shared/api/client";
 
 import { PanelResult } from "./PanelResult";
 
 vi.mock("@/shared/api/client", () => ({
   postInvoke: vi.fn<typeof postInvoke>(),
+}));
+
+// The default catalogue is empty: `useCatalogEntry` finds no entry for any
+// panel, which `PanelResult` reads as safe-to-invoke, so every test below
+// behaves exactly as before defect 1's fix (docs/specs/dashboard.md P14).
+// The unsafe-operation behaviour has its own suite,
+// `PanelResultUnsafeOperation.test.tsx` (split out for `max-lines`).
+vi.mock("@/shared/api/catalog", () => ({
+  getCatalog: vi.fn<typeof getCatalog>().mockResolvedValue([]),
 }));
 
 function panel(overrides: Partial<WorkspacePanel> = {}): WorkspacePanel {
@@ -161,8 +171,9 @@ describe("PanelResult", () => {
       />,
     );
 
-    await screen.findByText("検品保留の在庫");
-    expect(container.querySelectorAll(".MuiBarChart-element")).toHaveLength(1);
+    await waitFor(() => {
+      expect(container.querySelectorAll(".MuiBarChart-element")).toHaveLength(1);
+    });
     // A chart draws its own figcaption; it does not also draw a table alongside it.
     expect(container.querySelectorAll("table")).toHaveLength(0);
   });
@@ -218,9 +229,10 @@ describe("PanelResult", () => {
       />,
     );
 
-    await screen.findByText("検品保留の在庫");
     // Grouped into two bars ("allocated", "staged"), not the three raw rows.
-    expect(container.querySelectorAll(".MuiBarChart-element")).toHaveLength(2);
+    await waitFor(() => {
+      expect(container.querySelectorAll(".MuiBarChart-element")).toHaveLength(2);
+    });
   });
 
   it("draws exactly what it draws today when the panel carries no view at all (AC-P-106)", async () => {
@@ -278,5 +290,11 @@ describe("PanelResult", () => {
     expect(postInvoke).toHaveBeenCalledTimes(1);
 
     resolveRefresh?.({ component: "table", data: { items: [{ id: "itm-001" }] } });
+    // Settles the refresh fully before the test ends: an unawaited resolve
+    // here left a pending state update to land during whichever test ran
+    // next, inflating that test's own `postInvoke` count.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "更新" })).toBeTruthy();
+    });
   });
 });

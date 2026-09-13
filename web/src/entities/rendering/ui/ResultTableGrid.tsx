@@ -23,10 +23,36 @@ interface ResultTableGridProps {
   readonly fields?: Fields | undefined;
 }
 
-/** The rows of a table result, as an MUI `Table`. */
+/**
+ * The rows of a table result, as an MUI `Table`.
+ *
+ * `flexGrow: 1` / `minHeight: 0` / `overflow: "auto"` are what let this be
+ * the one scroller a panel's table draws (`ResultTable`'s own doc comment,
+ * `docs/specs/dashboard.md` P15): inside `ResultTable`'s `height: "100%"`
+ * `Stack`, this fills whatever is left after the "拡大表示" button and the
+ * pagination below it, and scrolls its own rows - both vertically, when
+ * there are more than fit, and sideways (`TableContainer`'s own default),
+ * when a column set is wider than the box, rather than the page
+ * (`make guard-layout`). Outside that `Stack` (the chat, `ResultTableDialog`)
+ * `flexGrow`/`minHeight` are flex-only properties that no-op without a flex
+ * parent, so this draws exactly as it did before there.
+ *
+ * `tabIndex={0}` is what keeps that scrolling reachable by keyboard, not
+ * only by pointer or touch: a bounded, overflowing region with no
+ * focusable element inside the part that scrolls is
+ * `make guard-a11y`'s own `scrollable-region-focusable` violation
+ * (axe-core, WCAG 2.1.1) - harmless before this file could ever actually
+ * overflow, and live the moment P15 gave it a height to overflow inside
+ * (DECISIONS.md, 2026-09-13).
+ */
 export function ResultTableGrid({ columns, rows, fields }: ResultTableGridProps): JSX.Element {
   return (
-    <TableContainer component={Paper} variant="outlined">
+    <TableContainer
+      component={Paper}
+      variant="outlined"
+      tabIndex={0}
+      sx={{ flexGrow: 1, minHeight: 0, overflow: "auto" }}
+    >
       <Table size="small">
         <TableHead>
           <TableRow>

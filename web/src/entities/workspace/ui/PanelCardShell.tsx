@@ -30,17 +30,38 @@ interface PanelCardShellProps {
  * (`docs/plans/layout.md` Task 1): `WorkspaceGrid` draws each panel inside
  * a `react-grid-layout` item that is already the exact pixel box `width`
  * and `height` say it should be, and this card is meant to fill that box
- * rather than leave the rest of it blank or, worse, spill past it. The
- * `flexDirection: "column"` plus `overflow: "auto"` on the content is what
- * makes a panel whose content is taller than the rows it was given scroll
- * inside its own card instead of growing the card and pushing every panel
- * below it down (`docs/specs/layout.md` section 7).
+ * rather than leave the rest of it blank or, worse, spill past it.
+ *
+ * `CardContent` no longer scrolls itself (`docs/specs/dashboard.md` P15,
+ * DECISIONS.md 2026-09-13): it used to carry its own `overflow: "auto"`,
+ * on top of the scrollbar a tall table already draws around itself
+ * (`entities/rendering/ui/ResultTableGrid.tsx`'s `TableContainer`), so a
+ * panel with more rows than fit showed two. `CardContent` still
+ * `flexGrow`s to fill the height the grid gave the card, and is still a
+ * column flexbox - `minHeight: 0` is what lets a flex child (the caller's
+ * own scrolling body, in `PanelResult`) shrink below its content's
+ * intrinsic height instead of forcing this box to grow past its own,
+ * which is what `overflow: "hidden"` here would otherwise clip against.
+ * `overflow: "hidden"` itself is deliberate, not a leftover default: it is
+ * what keeps this box from re-introducing the outer scrollbar `P15`
+ * removes, now that AC-P-112's one scroller lives one level down, in
+ * whatever result is actually drawn.
  */
 export function PanelCardShell({ title, children, action }: PanelCardShellProps): JSX.Element {
   return (
     <Card variant="outlined" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <CardHeader title={title} action={action} />
-      <CardContent sx={{ flexGrow: 1, overflow: "auto" }}>{children}</CardContent>
+      <CardContent
+        sx={{
+          flexGrow: 1,
+          minHeight: 0,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {children}
+      </CardContent>
     </Card>
   );
 }

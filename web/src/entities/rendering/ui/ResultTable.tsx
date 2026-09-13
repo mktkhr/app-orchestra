@@ -31,6 +31,27 @@ interface ResultTableProps {
  * `fields[column].title` when the schema declares one, and a cell prefers
  * `fields[column].enumLabels[value]` when the column is an enum with a
  * label for that value — otherwise both fall back to the raw key/value.
+ *
+ * The outer `Stack` carries `height: "100%"` and `ResultTableGrid`'s own
+ * `TableContainer` carries `flexGrow: 1` / `overflow: "auto"`
+ * (`docs/specs/dashboard.md` P15, DECISIONS.md 2026-09-13): inside a
+ * panel, whose card gives this a definite height to fill, that makes the
+ * rows scroll in their own box while the "拡大表示" button above and the
+ * pagination below stay in place - one scroller, not the card's and the
+ * table's both, and the pagination stays reachable rather than scrolling
+ * away with the rows. Outside a panel (the chat, where nothing bounds this
+ * component's height) `height: "100%"` resolves against an indefinite
+ * ancestor and is a no-op, so this draws exactly as it did before there.
+ *
+ * The button row and `ResultTablePagination` both carry `flexShrink: 0`:
+ * a flex item shrinks by default, and `TableContainer` is meant to be the
+ * only one of the three that gives up height when the three together do
+ * not fit the `Stack`'s own. Without it, `MuiTablePagination-root` -
+ * whose MUI-own styles already carry `overflow: "auto"` unconditionally -
+ * gets squeezed below its content's natural height and genuinely
+ * overflows itself, which is a second scrollbar exactly as unreachable by
+ * keyboard as the one P15 already removed (`make guard-a11y`'s own
+ * `scrollable-region-focusable`, DECISIONS.md 2026-09-13).
  */
 export function ResultTable({ data, fields }: ResultTableProps): JSX.Element {
   const rows = rowsFromData(data);
@@ -53,8 +74,8 @@ export function ResultTable({ data, fields }: ResultTableProps): JSX.Element {
   );
 
   return (
-    <Stack spacing={1}>
-      <Stack direction="row" sx={{ justifyContent: "flex-end" }}>
+    <Stack spacing={1} sx={{ height: "100%", minHeight: 0 }}>
+      <Stack direction="row" sx={{ justifyContent: "flex-end", flexShrink: 0 }}>
         <Button
           size="small"
           startIcon={<FullscreenIcon />}
@@ -66,7 +87,12 @@ export function ResultTable({ data, fields }: ResultTableProps): JSX.Element {
         </Button>
       </Stack>
       <ResultTableGrid columns={columns} rows={pageRows} fields={fields} />
-      <ResultTablePagination rowCount={rows.length} page={page} onPageChange={setPage} />
+      <ResultTablePagination
+        rowCount={rows.length}
+        page={page}
+        onPageChange={setPage}
+        sx={{ flexShrink: 0 }}
+      />
       <ResultTableDialog
         open={expanded}
         onClose={() => {

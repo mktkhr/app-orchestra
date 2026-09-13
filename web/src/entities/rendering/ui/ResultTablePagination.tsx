@@ -1,4 +1,5 @@
 import TablePagination from "@mui/material/TablePagination";
+import type { SxProps, Theme } from "@mui/material/styles";
 import type { JSX } from "react";
 
 export const RESULT_TABLE_ROWS_PER_PAGE = 10;
@@ -7,6 +8,8 @@ interface ResultTablePaginationProps {
   readonly rowCount: number;
   readonly page: number;
   readonly onPageChange: (page: number) => void;
+  /** `ResultTable`'s own `flexShrink: 0` (see its doc comment) - absent for `ResultTableDialog`, which is not a flex column. */
+  readonly sx?: SxProps<Theme>;
 }
 
 /**
@@ -19,6 +22,7 @@ export function ResultTablePagination({
   rowCount,
   page,
   onPageChange,
+  sx,
 }: ResultTablePaginationProps): JSX.Element {
   return (
     <TablePagination
@@ -27,6 +31,7 @@ export function ResultTablePagination({
       page={page}
       rowsPerPage={RESULT_TABLE_ROWS_PER_PAGE}
       rowsPerPageOptions={[RESULT_TABLE_ROWS_PER_PAGE]}
+      sx={sx}
       onPageChange={(_event, newPage) => {
         onPageChange(newPage);
       }}

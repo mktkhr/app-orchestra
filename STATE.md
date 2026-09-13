@@ -1,8 +1,26 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-13 (`docs/plans/layout.md` Task 3 - subproject closed)_
+_Last updated: 2026-09-13 (two dashboard defects fixed - see below and
+`DECISIONS.md`)_
 
 ## Summary
+
+**A panel over an unsafe operation never calls `/api/invoke` on its own,
+and a panel has exactly one scroller** (`docs/specs/dashboard.md` P14/P15,
+AC-P-111/AC-P-112; `DECISIONS.md`, 2026-09-13, two entries). `PanelResult`
+(`pages/workspace/ui`) looks the panel's operation up in `GET /api/catalog`
+(`entities/workspace/model/useCatalogEntry.ts`) - the only source that
+cannot drift, since a `Panel`'s own `component` is a person's editable
+display choice, not a safety signal - and gates `usePanelInvoke`'s new
+`enabled` argument on that lookup resolving to something other than
+`component: "form"`. An unsafe panel draws `PanelQuickAddBody.tsx`
+(`entities/rendering`'s `ResultForm`, seeded from the panel's saved args)
+instead, and its own refresh control clears a submitted result back to a
+blank form rather than calling anything. `PanelCardShell`'s `CardContent`
+no longer scrolls itself; `ResultTable`/`ResultTableGrid`'s
+`TableContainer` does, with `tabIndex={0}` for `make guard-a11y` and
+`flexShrink: 0` on the pagination control and button row so pagination
+never gets squeezed into scrolling itself.
 
 **A panel can be changed after it is made** (`docs/specs/dashboard.md`
 section 6a, P11-P13; see `DECISIONS.md`, 2026-09-13). Three pieces:
