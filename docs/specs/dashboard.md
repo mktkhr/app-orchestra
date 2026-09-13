@@ -30,21 +30,23 @@ proved anything about services that were not.
 
 ## 2. Decisions taken here
 
-|         | Decision                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **P1**  | A panel carries a view as well as a call. W1 said a panel is a saved call; it now also says how to draw it. The call says what to fetch, the view says what to show, and neither stores the answer (W2 holds).                                                                                                                                                                              |
-| **P2**  | The view's defaults come from the contract and the person overrides them. `x-ui-hint` gains `chart`; where a contract declares one, a chat answer draws as a chart with nothing configured. Where the person disagrees, the panel's own view wins.                                                                                                                                          |
-| **P3**  | A panel may carry exactly one transformation: group by a field, aggregate another. Not a pipeline. It runs in the browser, so the platform is still a thing that routes and renders and not a thing that computes.                                                                                                                                                                          |
-| **P4**  | Charts come from `@mui/x-charts` - bar, line and pie. It is MUI's own package, so `AGENTS.md` rule 6 is satisfied without arguing a new dependency past it.                                                                                                                                                                                                                                 |
-| **P5**  | A chart draws rows, never a scalar. Its input is the same object array a table renders: one field names the category, one holds the value. Statistics tiles are excluded (section 9).                                                                                                                                                                                                       |
-| **P6**  | A person builds a panel from their own catalogue, read from a new `GET /api/catalog`. `GET /api/operations` stays what it is - the admin's flat list for the permission grid, which is a different question.                                                                                                                                                                                |
-| **P7**  | Building a panel reuses the form that already draws a create. Arguments come from the same `inputSchemaFor` output an unsafe call's form is built from. A second form would be a second set of bugs.                                                                                                                                                                                        |
-| **P8**  | A manually built panel never reaches the planner. W4 said a person presses a button and the planner learns nothing about workspaces; here the person also picks the operation, so there is nothing left to decide.                                                                                                                                                                          |
-| **P9**  | `GET /api/catalog`'s `CatalogEntry` carries `displayName` alongside `summary`, from the contract's `x-ui-hint.displayName` (`docs/specs/orchestration.md` D15) falling back to `summary` when a contract declares none. `OperationPicker` and a panel's default title read `displayName`, never `summary` - `summary` is the model-facing tool description, not a person-facing name (D15). |
-| **P10** | `CatalogEntry` also carries `serviceDisplayName` (`docs/specs/orchestration.md` D16), from the service's own `info.x-ui-hint.displayName`, falling back to `service` (the identifier) when the service's contract declares none. `OperationPicker` groups by `serviceDisplayName`, never by `service` - the same reasoning P9 gives one level up.                                           |
-| **P11** | A panel can be changed after it is made. `PATCH /api/workspaces/{id}/panels/{panelId}` replaces only the fields its body names. Not `PUT`: a body that must carry every field to change one is a body a caller assembles from a stale read, and the field it silently reverts is the one somebody else just set.                                                                            |
-| **P12** | Editing a panel is the builder's own form, opened over that panel. Not a second form and not a second set of controls - the same argument P7 makes for reusing the create form, applied to itself.                                                                                                                                                                                          |
-| **P13** | A panel's service and operation are not editable. Every other field is about that operation - these arguments, this component, these axes - so swapping it leaves a panel whose fields describe something it no longer does. A different operation is a different panel, and making one is what the builder is for.                                                                         |
+|         | Decision                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P1**  | A panel carries a view as well as a call. W1 said a panel is a saved call; it now also says how to draw it. The call says what to fetch, the view says what to show, and neither stores the answer (W2 holds).                                                                                                                                                                                                        |
+| **P2**  | The view's defaults come from the contract and the person overrides them. `x-ui-hint` gains `chart`; where a contract declares one, a chat answer draws as a chart with nothing configured. Where the person disagrees, the panel's own view wins.                                                                                                                                                                    |
+| **P3**  | A panel may carry exactly one transformation: group by a field, aggregate another. Not a pipeline. It runs in the browser, so the platform is still a thing that routes and renders and not a thing that computes.                                                                                                                                                                                                    |
+| **P4**  | Charts come from `@mui/x-charts` - bar, line and pie. It is MUI's own package, so `AGENTS.md` rule 6 is satisfied without arguing a new dependency past it.                                                                                                                                                                                                                                                           |
+| **P5**  | A chart draws rows, never a scalar. Its input is the same object array a table renders: one field names the category, one holds the value. Statistics tiles are excluded (section 9).                                                                                                                                                                                                                                 |
+| **P6**  | A person builds a panel from their own catalogue, read from a new `GET /api/catalog`. `GET /api/operations` stays what it is - the admin's flat list for the permission grid, which is a different question.                                                                                                                                                                                                          |
+| **P7**  | Building a panel reuses the form that already draws a create. Arguments come from the same `inputSchemaFor` output an unsafe call's form is built from. A second form would be a second set of bugs.                                                                                                                                                                                                                  |
+| **P8**  | A manually built panel never reaches the planner. W4 said a person presses a button and the planner learns nothing about workspaces; here the person also picks the operation, so there is nothing left to decide.                                                                                                                                                                                                    |
+| **P9**  | `GET /api/catalog`'s `CatalogEntry` carries `displayName` alongside `summary`, from the contract's `x-ui-hint.displayName` (`docs/specs/orchestration.md` D15) falling back to `summary` when a contract declares none. `OperationPicker` and a panel's default title read `displayName`, never `summary` - `summary` is the model-facing tool description, not a person-facing name (D15).                           |
+| **P10** | `CatalogEntry` also carries `serviceDisplayName` (`docs/specs/orchestration.md` D16), from the service's own `info.x-ui-hint.displayName`, falling back to `service` (the identifier) when the service's contract declares none. `OperationPicker` groups by `serviceDisplayName`, never by `service` - the same reasoning P9 gives one level up.                                                                     |
+| **P11** | A panel can be changed after it is made. `PATCH /api/workspaces/{id}/panels/{panelId}` replaces only the fields its body names. Not `PUT`: a body that must carry every field to change one is a body a caller assembles from a stale read, and the field it silently reverts is the one somebody else just set.                                                                                                      |
+| **P12** | Editing a panel is the builder's own form, opened over that panel. Not a second form and not a second set of controls - the same argument P7 makes for reusing the create form, applied to itself.                                                                                                                                                                                                                    |
+| **P13** | A panel's service and operation are not editable. Every other field is about that operation - these arguments, this component, these axes - so swapping it leaves a panel whose fields describe something it no longer does. A different operation is a different panel, and making one is what the builder is for.                                                                                                   |
+| **P14** | A panel never invokes an unsafe operation. It draws that operation's form and waits for a person to press the button - `docs/specs/orchestration.md` D8 and section 8b, applied to a panel: a panel re-runs itself every time the workspace is opened and every time it is refreshed, so an unsafe panel with complete arguments writes a row on every load. Measured, not feared: 8 rows before, 9 after one invoke. |
+| **P15** | A panel has one scroller. The card does not scroll its own content while the content scrolls too; whatever the result renders decides where its own overflow goes, inside the height the grid gave the panel.                                                                                                                                                                                                         |
 
 ## 3. What a panel is now
 
@@ -201,6 +203,29 @@ The form is the builder's own, opened over the panel rather than over
 nothing (P12). A second form would be a second place for the chart's axes
 and the transform's fields to get out of step with the first.
 
+### 6b. A panel that would change something
+
+A panel is a saved call and opening a workspace runs every one of them
+(W1, W2). That is right for a question and dangerous for anything else: an
+unsafe operation with its arguments filled in would write a row every time
+somebody opened the dashboard, and again on every refresh, with the card
+reporting success each time.
+
+This is not a hypothetical. `POST /api/invoke` runs whatever it is given -
+that is its whole purpose, and `docs/specs/orchestration.md` D8 is what
+keeps it honest: the model never runs an unsafe operation, a person presses
+the button. Section 8b extended that to `ask_user`. A panel had been left
+out of it, and a panel is the one thing here that calls without being asked.
+
+So a panel whose operation is unsafe draws the form, exactly as an unsafe
+answer does in the chat, and submitting it is the button press D8 means. The
+schema comes from the same `GET /api/catalog` the builder already reads
+(section 5); nothing new is stored on the panel.
+
+A person who wants a create on their dashboard gets one - a quick-add tile,
+which is a reasonable thing to want. What they do not get is a dashboard
+that quietly fills a table every time it is opened.
+
 ## 7. Contract
 
 ```
@@ -294,6 +319,13 @@ the builder applies it to show a preview. Two callers, one function.
   is - the same error, telling nobody what exists.
 - **AC-P-110** A panel edited and then reloaded draws as edited, not as it
   was before.
+
+- **AC-P-111** A panel over an unsafe operation draws that operation's form
+  and calls nothing when the workspace is opened or the panel refreshed;
+  submitting the form is what calls it.
+- **AC-P-112** A panel's content scrolls in one place. Opening a workspace
+  whose panel holds more rows than fit does not produce a scrollbar around
+  the result as well as inside it.
 
 ## 11. Harness work this implies
 
