@@ -80,4 +80,14 @@ describe("buildPanelLayout", () => {
     expect(buildPanelLayout(panels, 12, false)[0]?.static).toBe(true);
     expect(buildPanelLayout(panels, 12, true)[0]?.static).toBe(false);
   });
+  it("falls back to a drawable span when width or height is not a number", () => {
+    // A response missing width/height - an older platform, a proxy, anything
+    // partial - used to reach react-grid-layout as NaN, which computes a
+    // container 16px tall for a 360px panel and draws every element after it
+    // underneath, silently. Measured on a real screen; see DECISIONS.md.
+    const { width: _width, height: _height, ...missing } = panel({ id: "missing" });
+    const layout = buildPanelLayout([missing], 12);
+
+    expect(layout).toEqual([{ i: "missing", x: 0, y: 0, w: 12, h: 1, static: true }]);
+  });
 });

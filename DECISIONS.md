@@ -3491,3 +3491,61 @@ the frontend's own routing - not a follow-up to this one.
 **Decision.** The user has already chosen `react-router` for that future
 subproject. Recorded here, in `TODO.md`'s "Next" list, and nowhere a
 future session would need to re-survey routing libraries to find it.
+
+## 2026-09-13 — a broken screen, and what it was actually made of
+
+**Context.** A photograph of the workspace screen on a phone: panel cards
+drawn over the page's own buttons and over the conversation, one panel
+reporting 結果の取得に失敗しました. `make check` was green, every gate
+included, and the subproject had just been reported complete.
+
+**What it was.** Measured rather than guessed at, through Playwright against
+the running dev server: `.react-grid-layout`'s inline height was **16px**
+while the item inside it was **234px**, and nine elements after the grid sat
+underneath it. 16px is what `react-grid-layout` computes for **zero rows**,
+so the layout it was given had no usable height. `buildPanelLayout` computes
+`Math.max(panel.height, 1)`, and `panel.height` was `undefined`:
+`Math.max(undefined, 1)` is `NaN`.
+
+It was `undefined` because the platform process serving the page had started
+at 10:03 and the columns were added at 15:31. **The screen was a stale dev
+process, not the committed product.** Restarting it gave a 392px container,
+a 360px item, no overlap and no sideways scroll at either width.
+
+**Three things were still wrong, and are fixed.**
+
+1. **A missing field collapsed the screen silently.** `width` and `height`
+   are required on the wire, but an older platform, a proxy or any partial
+   response turned into `NaN` and an unusable page with nothing saying so.
+   `buildPanelLayout` now falls back to the span a panel with no size has
+   always drawn as, and its parameter type says `width`/`height` are
+   optional - the tolerance is promised by the type rather than asserted at
+   one call site.
+2. **`make dev-services` did not restart the platform.** It touched a source
+   to nudge air and printed advice. Air was alive all day and restarting
+   nothing, so the advice was all it did. It now asks the only question that
+   matters - whether the process holding the port started **before the
+   binary it is meant to be running** - because "is air running" was true
+   and useless, and "does the port answer" was true and worse: an
+   hours-old platform answers `/api/health` perfectly while serving a
+   catalogue from before the rebuild. That is the trap itself.
+3. Nothing in the browser gates detects one element drawn over another.
+
+**A gate was attempted for (3) and withdrawn.** `layout.spec.ts` grew a check
+that asked `document.elementFromPoint` at each control's centre and reported
+anything else drawn there. It was reverted, because it was measured and it
+failed twice over: with the defect deliberately reintroduced, `guard-layout`
+stayed **green**; and on a healthy screen it reported two controls as covered
+when `elementFromPoint` returned an _ancestor_, which covers nothing. A gate
+that misses the bug it was written for and cries wolf besides is worse than
+no gate - it gets routed around, and then it is not there for the bug it
+would have caught. The finding is recorded so the next attempt starts from
+it rather than from scratch; the case itself is pinned where it can be, as a
+unit test on `buildPanelLayout`.
+
+**The lesson that is not about code.** Every gate was green and the product
+was unusable on a phone. Green means "nothing I check is broken", and the
+distance between that and "nothing is broken" is exactly the set of things
+nobody has taught it to look at. This repository learned the same thing
+twice today already - a stale `schema.d.ts` exclude, and browser gates that
+had measured only the sign-in screen since September 12.

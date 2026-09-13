@@ -175,6 +175,13 @@ dev-platform: $(AIR) ## Run the platform under air, rebuilding on change (ORCHES
 # Make variable; the two have to agree, and this comment is where you find
 # the other one.
 DEV_SERVICE_PORTS = inventory=8081 attendance=8082
+DEV_PLATFORM_PORT = 8080
+DEV_DB_PATH = $(HOME)/.local/state/app-orchestra/workspaces.db
+DEV_ADMIN_PASSWORD = dev-only-admin-password
+
+# ORCHESTRA_SERVICES as the platform wants it, built from DEV_SERVICE_PORTS
+# so the two cannot disagree.
+dev_services_env = $(shell echo $(foreach sp,$(DEV_SERVICE_PORTS),$(firstword $(subst =, ,$(sp)))=http://localhost:$(lastword $(subst =, ,$(sp)))) | tr " " ,)
 
 dev-services: services-build ## (Re)start every dummy service on its dev port, detached, so a contract change takes effect (not quiet: they are servers)
 	for sp in $(DEV_SERVICE_PORTS); do \
@@ -190,8 +197,37 @@ dev-services: services-build ## (Re)start every dummy service on its dev port, d
 	  code=$$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$$port/openapi.yaml" || true); \
 	  [ "$$code" = "200" ] || { echo "dev-services: :$$port answered $$code, not 200 — see its log"; exit 1; }; \
 	done
-	touch services/platform/cmd/api/main.go
-	echo "dev-services: a service's contract lives in its binary and the platform reads it once, at startup — the touch above makes air restart it; with no air running, restart the platform yourself"
+	@# A service's contract lives in its binary and the platform reads every
+	@# one of them once, at startup - so a rebuilt service needs the platform
+	@# restarted too. That gap was hit three times in one day, each time
+	@# looking like a product bug, so this closes it rather than printing
+	@# advice about it.
+	@#
+	@# What is asked is not "is air running" and not "does the port answer":
+	@# air stayed alive all day while failing to restart anything, and a
+	@# platform started hours ago answers /api/health perfectly while serving
+	@# a catalogue from before the rebuild. What is asked is whether the
+	@# process serving the port started before the binary it is meant to be
+	@# running. If it did, it is stopped - air respawns it when air is
+	@# working, and this starts it when air is not.
+	pid=$$(ss -lptn "sport = :$(DEV_PLATFORM_PORT)" -H 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1); \
+	binary=$$(stat -c %Y ./services/platform/bin/api); \
+	if [ -n "$$pid" ] && [ "$$(stat -c %Y /proc/$$pid)" -ge "$$binary" ]; then \
+	  echo "dev-services: platform on :$(DEV_PLATFORM_PORT) is newer than its binary, left alone"; \
+	else \
+	  if [ -n "$$pid" ]; then echo "dev-services: platform on :$(DEV_PLATFORM_PORT) predates its binary, stopping it (pid $$pid)"; kill "$$pid"; sleep 2; fi; \
+	  if ss -lptn "sport = :$(DEV_PLATFORM_PORT)" -H 2>/dev/null | grep -q pid=; then \
+	    echo "dev-services: air restarted the platform"; \
+	  else \
+	    setsid env ORCHESTRA_SERVICES=$(dev_services_env) ORCHESTRA_DB_PATH=$(DEV_DB_PATH) ORCHESTRA_ADMIN_PASSWORD=$(DEV_ADMIN_PASSWORD) ORCHESTRA_SECURE_COOKIE=false ./services/platform/bin/api </dev/null >/tmp/orchestra-platform.log 2>&1 & \
+	    sleep 3; \
+	    curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$(DEV_PLATFORM_PORT)/api/health" \
+	      || { echo "dev-services: the platform did not come up - see /tmp/orchestra-platform.log"; exit 1; }; \
+	    echo "dev-services: platform on :$(DEV_PLATFORM_PORT), log /tmp/orchestra-platform.log"; \
+	  fi; \
+	fi
+
+
 
 ## ---------------------------------------------------------------- web
 web-fmt: ## oxfmt in place (all workspace packages)
