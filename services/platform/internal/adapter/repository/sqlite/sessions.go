@@ -25,7 +25,9 @@ type Sessions struct {
 }
 
 // NewSessions opens (creating, if needed) the SQLite file at path and
-// applies the embedded schema, the same as Store.New - see openDB.
+// applies the embedded schema, the same as Store.New - see that function's
+// own doc comment for when a caller should use NewSessionsFromDB (Open)
+// instead.
 func NewSessions(path string) (*Sessions, error) {
 	db, err := openDB(path)
 	if err != nil {
@@ -33,6 +35,12 @@ func NewSessions(path string) (*Sessions, error) {
 	}
 
 	return &Sessions{db: db}, nil
+}
+
+// NewSessionsFromDB builds a Sessions over db, already open - see
+// Store.NewFromDB and Open.
+func NewSessionsFromDB(db *sql.DB) *Sessions {
+	return &Sessions{db: db}
 }
 
 // Close releases the underlying database connection.

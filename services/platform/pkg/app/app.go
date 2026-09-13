@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -271,17 +272,21 @@ func build(
 		return nil, fmt.Errorf("building the catalogue: %w", err)
 	}
 
-	permissions, err := newPermissionStore(cfg.DBPath)
+	// One *sql.DB for cfg.DBPath, shared by every store below - not one
+	// each (docs/specs/storage.md, S1, AC-S-102): four separate
+	// connections to the same file, each with its own single-connection
+	// pool, is what let a workspace write and a session read collide as
+	// "database is locked" under real concurrency (that spec, section 2).
+	db, err := sqlitestore.Open(cfg.DBPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening the database: %w", err)
 	}
 
-	workspaceHandler, err := newWorkspaceHandler(cfg.DBPath, catalog, permissions)
-	if err != nil {
-		return nil, err
-	}
+	permissions := newPermissionStore(db)
 
-	authenticator, sessions, users, err := newAuth(cfg)
+	workspaceHandler := newWorkspaceHandler(db, catalog, permissions)
+
+	authenticator, sessions, users, err := newAuth(db, cfg.AdminPassword)
 	if err != nil {
 		return nil, err
 	}
@@ -441,78 +446,56 @@ func toUsecaseAnswers(answers []Answer) []usecase.Answer {
 	return out
 }
 
-// newWorkspaceHandler opens the workspace store at dbPath and wraps it in
-// the workspaces usecase and its handler, so a bad ORCHESTRA_DB_PATH (an
-// unwritable directory, say) fails startup here rather than on the first
-// request that touches it - the same reason newPlanner's catalogue fetch
-// happens eagerly, above. build has already rejected an empty dbPath
-// itself (ErrMissingDBPath), so this always opens a real store.
+// newWorkspaceHandler wraps db (already open on cfg.DBPath - see build) in
+// the workspaces usecase and its handler.
 //
-// permissions is threaded in from build, which now opens it before this
-// call rather than after: Workspaces.AddPanel narrows the catalogue by the
-// caller's own permissions the same way Orchestrator.Invoke does
+// permissions is threaded in from build, which opens it before this call:
+// Workspaces.AddPanel narrows the catalogue by the caller's own
+// permissions the same way Orchestrator.Invoke does
 // (docs/specs/dashboard.md, AC-P-107), and needs a PermissionStore to do
 // it.
 //
-// The store, once opened, is never closed: it lives for the process's
-// lifetime, same as the catalogue and the invoker's HTTP client above,
-// with nothing in this package's own lifecycle to close it from.
-func newWorkspaceHandler(
-	dbPath string, catalog domain.Catalog, permissions usecase.PermissionStore,
-) (*handler.Workspace, error) {
-	store, err := sqlitestore.New(dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening the workspace store: %w", err)
-	}
+// db, once opened, is never closed: it lives for the process's lifetime,
+// same as the catalogue and the invoker's HTTP client above, with nothing
+// in this package's own lifecycle to close it from.
+func newWorkspaceHandler(db *sql.DB, catalog domain.Catalog, permissions usecase.PermissionStore) *handler.Workspace {
+	store := sqlitestore.NewFromDB(db)
 
-	return handler.NewWorkspace(usecase.NewWorkspaces(store, catalog, permissions)), nil
+	return handler.NewWorkspace(usecase.NewWorkspaces(store, catalog, permissions))
 }
 
-// newPermissionStore opens the permissions table in the SQLite file at
-// dbPath, the same file newWorkspaceHandler and newAuth open their own
-// tables in, so a bad ORCHESTRA_DB_PATH fails startup here too, for the
-// same reason.
-func newPermissionStore(dbPath string) (usecase.PermissionStore, error) {
-	store, err := sqlitestore.NewPermissions(dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening the permission store: %w", err)
-	}
-
-	return store, nil
+// newPermissionStore wraps db (already open on cfg.DBPath - see build) as
+// a usecase.PermissionStore, the same file newWorkspaceHandler and newAuth
+// wrap their own tables of.
+func newPermissionStore(db *sql.DB) usecase.PermissionStore {
+	return sqlitestore.NewPermissionsFromDB(db)
 }
 
 // newAuth builds what Task 2's session endpoints, and Task 3's admin ones,
 // need - a usecase.Authenticator, a usecase.SessionStore and the
 // *sqlitestore.Users store itself (which also satisfies usecase.UserStore,
 // for GET /api/users - handler.NewUsers's own Admin usecase, wired in
-// build), all backed by the SQLite file at cfg.DBPath. build has already
-// rejected an empty DBPath itself (ErrMissingDBPath), so sessions is
-// always a real, non-nil store by the time it reaches
+// build), all wrapping db (already open on cfg.DBPath - see build).
+// sessions is always a real, non-nil store by the time it reaches
 // httpserver.NewRouter - there is no longer a nil case for requireSession
 // to answer by running every request as a fixed admin (see that function's
 // doc comment for why that bypass was removed entirely, not just made
 // harder to reach).
 //
-// Opening the accounts table also seeds the first admin from
-// cfg.AdminPassword when none exists yet (docs/specs/auth.md, section 3;
+// Wrapping the accounts table also seeds the first admin from
+// adminPassword when none exists yet (docs/specs/auth.md, section 3;
 // docs/plans/auth.md, Task 0, Step 3) - so a bad ORCHESTRA_ADMIN_PASSWORD
-// fails startup here, the same reason newWorkspaceHandler's store open and
-// newPlanner's catalogue fetch do, above.
-func newAuth(cfg *Config) (usecase.Authenticator, usecase.SessionStore, *sqlitestore.Users, error) {
-	users, err := sqlitestore.NewUsers(cfg.DBPath)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("opening the user store: %w", err)
-	}
+// fails startup here, the same reason newPlanner's catalogue fetch does,
+// above.
+func newAuth(db *sql.DB, adminPassword string) (usecase.Authenticator, usecase.SessionStore, *sqlitestore.Users, error) {
+	users := sqlitestore.NewUsersFromDB(db)
 
-	authenticator, err := local.New(context.Background(), users, adminUserName, cfg.AdminPassword)
+	authenticator, err := local.New(context.Background(), users, adminUserName, adminPassword)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("seeding the admin account: %w", err)
 	}
 
-	sessions, err := sqlitestore.NewSessions(cfg.DBPath)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("opening the session store: %w", err)
-	}
+	sessions := sqlitestore.NewSessionsFromDB(db)
 
 	return authenticator, sessions, users, nil
 }

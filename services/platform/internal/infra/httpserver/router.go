@@ -39,6 +39,7 @@ func NewRouter(si openapi.StrictServerInterface, staticDir string, sessions Sess
 	apiMux := http.NewServeMux()
 	apiHandler := validator(openapi.HandlerFromMux(openapi.NewStrictHandler(si, nil), apiMux))
 	apiHandler = requireSession(sessions, apiHandler)
+	apiHandler = logInternalServerErrors(apiHandler)
 
 	root := http.NewServeMux()
 	root.Handle("/api/", apiHandler)

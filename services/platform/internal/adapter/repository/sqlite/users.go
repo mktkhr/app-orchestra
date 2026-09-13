@@ -32,7 +32,8 @@ type Users struct {
 }
 
 // NewUsers opens (creating, if needed) the SQLite file at path and applies
-// the embedded schema, the same as Store.New - see openDB.
+// the embedded schema, the same as Store.New - see that function's own
+// doc comment for when a caller should use NewUsersFromDB (Open) instead.
 func NewUsers(path string) (*Users, error) {
 	db, err := openDB(path)
 	if err != nil {
@@ -40,6 +41,12 @@ func NewUsers(path string) (*Users, error) {
 	}
 
 	return &Users{db: db}, nil
+}
+
+// NewUsersFromDB builds a Users over db, already open - see Store.NewFromDB
+// and Open.
+func NewUsersFromDB(db *sql.DB) *Users {
+	return &Users{db: db}
 }
 
 // Close releases the underlying database connection.

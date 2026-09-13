@@ -4535,3 +4535,56 @@ eval measurement was in flight in the same repository. Had it not been, the
 been taken against a platform that answered `none` to everything - a number
 that would have looked like a catastrophic regression caused by the tool
 being measured.
+
+## 2026-09-14 — a correction: the browser suite's flake was never load
+
+**Context.** 2026-09-13's entry ("the browser suite's flake is load,
+measured", above) read eight clean runs on a quiet machine as evidence that
+`maxOpenConns = 1` plus six parallel Playwright workers was not the cause
+of two observed failures, and decided to change nothing. That reading was
+honest given what it measured, and it was wrong: it measured a machine that
+was never asked to do the thing that actually breaks.
+
+**What eight clean runs could not show.** `docs/specs/storage.md` asked the
+question directly instead of by inference: forty concurrent requests, each
+resolving a session and writing a row, against a platform started exactly
+the way the browser gates start one. `services/platform/acceptance/storage_test.go`'s
+`TestConcurrentSessionReadsAndWritesAllSucceed` failed 8, 10 and 19 times
+out of 40 across three runs against the code as it stood - `SQLITE_BUSY`,
+in `requireSession`'s own session read, the same "database is locked" the
+2026-09-13 entry already knew the mechanism of but did not think to
+provoke on purpose. Eight quiet-machine runs of the full browser suite
+never reached anywhere near forty concurrent requests on one file; they
+measured the suite's typical case, not its worst one.
+
+**The actual defect**, in `internal/adapter/repository/sqlite`: `Store`,
+`Users`, `Sessions` and `Permissions` each opened their own `*sql.DB` on
+the same file - `maxOpenConns = 1`'s own comment claimed one connection
+avoided exactly this failure, while the package opened four. Nothing set a
+`busy_timeout`, so a held lock failed instantly instead of being waited
+for. Nothing set `journal_mode`, so the file ran in `delete` mode, where a
+writer excludes every reader. Fixed: one `*sql.DB` per file, shared by
+every store (`pkg/app.build` now calls a new `sqlitestore.Open` once and
+threads it through each store's `NewFromDB` constructor), `_journal_mode=WAL`
+and `_busy_timeout=5000` on the DSN. The same acceptance test passed ten of
+ten runs afterward, and `make guard-layout` - the gate the original three
+500s were seen on - passed ten consecutive runs.
+
+**What was right, and what was wrong, in the earlier entry.** Right: the
+mechanism (one file, one connection, a session read on every request) was
+already named correctly, and the decision to measure rather than guess was
+the correct method. Wrong: the conclusion that "load" explained the
+failures, drawn from a measurement that never created the concurrency the
+defect needed to show itself - eight passes under conditions that could
+not fail is not evidence that failure is rare, only that it did not happen
+under those particular conditions. `maxOpenConns = 1` itself was not the
+mistake; opening it four times over was.
+
+**Consequences.** This entry corrects 2026-09-13's rather than replacing
+it, per this repository's own rule that a wrong reading stays on the
+record with what it got wrong made explicit - deleting it would lose the
+useful part, which is exactly how "eight clean runs" produced a confident
+wrong answer. A future flake investigation should read both: the mechanism
+2026-09-13 named, and the reminder here that a measurement has to reproduce
+the load the defect needs, not just run in the defect's absence and call
+the silence a result.

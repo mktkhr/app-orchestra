@@ -75,6 +75,20 @@ Nothing - see "Next" for what is queued.
 
 ## Done
 
+- **`docs/specs/storage.md` closes: one `*sql.DB` per database file, WAL, a
+  busy timeout, and a 500 that reaches the log** (AC-S-101 through
+  AC-S-104). `pkg/app.build` now opens `ORCHESTRA_DB_PATH` once
+  (`sqlitestore.Open`) and hands that one connection to `Store`, `Users`,
+  `Sessions` and `Permissions` via a `NewFromDB` constructor apiece,
+  instead of each opening its own; the DSN also carries
+  `_journal_mode=WAL` and `_busy_timeout=5000`. A new
+  `internal/infra/httpserver/logging.go` middleware logs any 500 with the
+  error that caused it. Forty concurrent requests that each resolve a
+  session and write a row failed 8-19 of 40 times before this and ten of
+  ten after (`services/platform/acceptance/storage_test.go`);
+  `make guard-layout` passed ten consecutive runs afterward. See
+  `STATE.md` and `DECISIONS.md`, 2026-09-14 (a correction to 2026-09-13's
+  "the browser suite's flake is load, measured", not a deletion of it).
 - **`docs/plans/proposing.md` closes: FR-F-5, asking the chat to add a
   panel** (`docs/specs/proposing.md` section 7, AC-N-101 through AC-N-106
   all covered end to end). Task 2's journeys (`e2e/src/proposing.test.ts`,

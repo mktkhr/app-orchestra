@@ -13,6 +13,12 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	// httpserver.logInternalServerErrors logs a 500 through slog's
+	// process-wide default rather than a logger threaded through
+	// pkg/app.Config - see that function's own doc comment
+	// (docs/specs/storage.md, S4) - so main sets the default here, once,
+	// before anything can serve a request.
+	slog.SetDefault(logger)
 
 	cfg, err := config.Load()
 	if err != nil {

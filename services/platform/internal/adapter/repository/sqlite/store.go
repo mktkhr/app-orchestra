@@ -30,9 +30,37 @@ const panelIDAndWorkspaceIDArgs = 2
 
 // maxOpenConns keeps every query on one connection. modernc.org/sqlite
 // serialises writes at the file level regardless, and one connection
-// avoids "database is locked" errors from two goroutines racing to open
-// the file - a small, single-process platform has no need of a pool.
+// avoids two goroutines racing to open a second, independent connection
+// to the same file - a small, single-process platform has no need of a
+// pool. This alone does not avoid "database is locked": that also needs
+// every store on the file to share this one connection (Open, below, is
+// how pkg/app.build makes that true - AC-S-102), a busy_timeout so a lock
+// held for a moment is waited for rather than reported as a failure, and
+// WAL so a reader and a writer are not each other's problem
+// (docs/specs/storage.md, S1-S3).
 const maxOpenConns = 1
+
+// dsnPragmas is the query string every openDB DSN carries, in the form
+// modernc.org/sqlite documents (its "DSN" section): the mattn-compatible
+// shorthand keys, one pragma per key, applied to every new physical
+// connection the *sql.DB opens - not just the first, which matters here
+// only in principle (maxOpenConns keeps this at one connection for the
+// process's lifetime) but is how the driver validates the values before
+// opening anything, rather than accepting a typo silently.
+//
+//   - _journal_mode=WAL (S2): a writer no longer excludes every reader,
+//     which is the shape of every request this spec is about - a session
+//     read that must not queue behind a workspace write.
+//   - _busy_timeout=5000 (S3): five seconds is long enough that no honest
+//     contention on a single small file reaches a person as an error, and
+//     short enough that a lock held that long is a bug, not a timeout to
+//     raise further.
+//
+// Confirmed against the pinned version (modernc.org/sqlite v1.58.0,
+// services/platform/go.mod) directly: opening a fresh file with this DSN
+// and reading back PRAGMA journal_mode and PRAGMA busy_timeout reports
+// "wal" and 5000.
+const dsnPragmas = "?_journal_mode=WAL&_busy_timeout=5000"
 
 // ErrWorkspaceNotFound is returned by AddPanel when the named workspace
 // does not exist - the same rule Task 1's handler turns into a 404, and
@@ -49,6 +77,12 @@ type Store struct {
 // embedded schema. The schema is idempotent (every statement is "IF NOT
 // EXISTS"), so New is safe to call every time the platform starts - there
 // is no migration tool to run first (section 6).
+//
+// New opens its own connection: a caller that needs it to share a file
+// with another store of this package's - pkg/app.build, so a workspace
+// read and a session read never contend for two different *sql.DB values
+// on the same file (docs/specs/storage.md, AC-S-102) - calls Open itself
+// and hands the result to NewFromDB instead.
 func New(path string) (*Store, error) {
 	db, err := openDB(path)
 	if err != nil {
@@ -58,15 +92,33 @@ func New(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// openDB opens (creating, if needed) the SQLite file at path and applies
-// the embedded schema - every table this package knows about, not just the
-// ones the caller is about to use, since the schema is idempotent and
-// there is only one file (docs/specs/auth.md, section 10: "the accounts
-// are rows in the file the workspaces already use"). Shared by every store
-// type in this package (Store, Users, Sessions, Permissions) so the "open,
-// set the connection limit, apply the schema" sequence is written once.
+// NewFromDB builds a Store over db, already open - see New's own doc
+// comment, and Open.
+func NewFromDB(db *sql.DB) *Store {
+	return &Store{db: db}
+}
+
+// Open opens (creating, if needed) the SQLite file at path, with the
+// pragmas dsnPragmas names, and applies the embedded schema and
+// migrations - exactly what New does for its own private connection, but
+// returned as a plain *sql.DB so a caller that needs more than one store
+// on the same file can open it once and hand that one connection to each
+// store's own NewFromDB (NewUsersFromDB, NewSessionsFromDB,
+// NewPermissionsFromDB) - see those functions, and pkg/app.build, which is
+// the only caller in this codebase that needs to (AC-S-102: "the process
+// opens one *sql.DB for its database file, however many stores read it").
+func Open(path string) (*sql.DB, error) {
+	return openDB(path)
+}
+
+// openDB opens (creating, if needed) the SQLite file at path, with the
+// pragmas dsnPragmas names, and applies the embedded schema - every table
+// this package knows about, not just the ones the caller is about to use,
+// since the schema is idempotent and there is only one file
+// (docs/specs/auth.md, section 10: "the accounts are rows in the file the
+// workspaces already use"). Shared by New and Open.
 func openDB(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", path+dsnPragmas)
 	if err != nil {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
 	}

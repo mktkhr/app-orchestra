@@ -16,7 +16,9 @@ type Permissions struct {
 }
 
 // NewPermissions opens (creating, if needed) the SQLite file at path and
-// applies the embedded schema, the same as Store.New - see openDB.
+// applies the embedded schema, the same as Store.New - see that function's
+// own doc comment for when a caller should use NewPermissionsFromDB (Open)
+// instead.
 func NewPermissions(path string) (*Permissions, error) {
 	db, err := openDB(path)
 	if err != nil {
@@ -24,6 +26,12 @@ func NewPermissions(path string) (*Permissions, error) {
 	}
 
 	return &Permissions{db: db}, nil
+}
+
+// NewPermissionsFromDB builds a Permissions over db, already open - see
+// Store.NewFromDB and Open.
+func NewPermissionsFromDB(db *sql.DB) *Permissions {
+	return &Permissions{db: db}
 }
 
 // Close releases the underlying database connection.

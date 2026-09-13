@@ -1,10 +1,67 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-14 (`docs/plans/proposing.md` closed - the workspace
-chat can be asked for a panel and the model answers with one, filled in;
-see below and `DECISIONS.md`)_
+_Last updated: 2026-09-14 (`docs/specs/storage.md` closed - one `*sql.DB`
+per database file, WAL, a busy timeout, and a 500 that reaches the log; see
+below and `DECISIONS.md`)_
 
 ## Summary
+
+**`docs/specs/storage.md` is closed - the eleventh subproject, and the
+correction to 2026-09-13's "load, measured" reading.** Forty concurrent
+requests that each resolve a session and write a row (`TestConcurrentSessionReadsAndWritesAllSucceed`,
+`services/platform/acceptance/storage_test.go`) failed 8-19 of 40 times
+against the code as it stood, with `SQLITE_BUSY` in `requireSession`'s own
+session read - confirmed by running it, not assumed. Three causes, all in
+`internal/adapter/repository/sqlite`: `Store`, `Users`, `Sessions` and
+`Permissions` each opened their own `*sql.DB` on the same file (`New`,
+`NewUsers`, `NewSessions`, `NewPermissions` each called `openDB`
+independently); nothing set a `busy_timeout`; nothing set `journal_mode`.
+
+**S1 (one `*sql.DB`, AC-S-102).** `openDB` is unchanged as the private
+worker every path-taking constructor calls, but a new exported `Open(path)
+(*sql.DB, error)` returns the same kind of handle for a caller that needs
+to share it, and each store gained a second constructor -
+`NewFromDB`/`NewUsersFromDB`/`NewSessionsFromDB`/`NewPermissionsFromDB` -
+that wraps an already-open `*sql.DB` instead of opening its own.
+`pkg/app.build` now calls `sqlitestore.Open(cfg.DBPath)` once and threads
+that one `db` through `newWorkspaceHandler`, `newPermissionStore` and
+`newAuth`, which no longer take a path or return an error for opening (only
+`newAuth` can still fail, seeding the admin account). No package-level
+mutable state: a `sync.Mutex`-guarded registry keyed by path was the first
+design, and `gochecknoglobals` (`harness/quality/go/golangci.yml`'s own
+"guardrails against agent shortcuts") correctly refused it - the two extra
+constructors per store, called once from `pkg/app.build`, replace it
+without any global. Every existing test that calls `New`/`NewUsers`/
+`NewSessions`/`NewPermissions` with its own path is untouched (AC-S-104):
+they still open their own private connection, exactly as before.
+
+**S2/S3 (WAL and a five-second busy timeout).** Both are DSN query
+parameters modernc.org/sqlite documents and validates itself -
+`?_journal_mode=WAL&_busy_timeout=5000`, appended to the path `openDB`
+already opened - confirmed directly against the pinned driver version
+(v1.58.0) by opening a file with this DSN and reading `PRAGMA journal_mode`
+/ `PRAGMA busy_timeout` back (`wal`, `5000`); also pinned as a test
+(`TestOpenAppliesThePragmasEveryStoreNeeds`,
+`internal/adapter/repository/sqlite/store_internal_test.go`).
+
+**S4 (a 500 reaches the log, AC-S-103).** A new `internal/infra/httpserver/logging.go`:
+`logInternalServerErrors` wraps the whole `/api/` handler chain (outside
+`requireSession`, so it also catches that middleware's own 500) in a
+`responseRecorder` that captures the status and, only for a 5xx, the body -
+every 500 this codebase writes already carries its cause as
+`openapi.ErrorResponse.Message` (`writeSessionError`, and every
+`*500JSONResponse` `plan.go`/`invoke.go`/`workspace.go`/`users.go` write) -
+and logs it through `slog.Default()`. `cmd/api/main.go` now calls
+`slog.SetDefault(logger)` once, at startup, so that default is the same
+JSON handler cmd/api already logs with, rather than adding a logger
+parameter to `pkg/app.Config`.
+
+**Measured, not assumed, in both directions.** The acceptance test above
+failed reliably before this change and passed ten times in a row after it;
+`make guard-layout` - the intermittent 500 this spec exists to remove - was
+run ten consecutive times after the fix and passed every time. See
+`DECISIONS.md`, 2026-09-14, for the correction to the 2026-09-13 "load,
+measured" entry this result overturns.
 
 **`docs/plans/proposing.md` is closed - FR-F-5, asking the chat to add a
 panel** (`docs/specs/proposing.md` section 7, AC-N-101 through AC-N-106).
@@ -1551,6 +1608,24 @@ fallback draws), read back through `/api/workspaces/{id}` as
 `{ height: 1, narrowHeight: 4 }`, and the same workspace at 1280px drew
 the panel at its original one row tall - the desktop untouched by the
 phone-only edit, screenshotted both ways.
+
+**Storage (`docs/specs/storage.md`), the eleventh subproject: one `*sql.DB`
+per database file, not four.** `internal/adapter/repository/sqlite`'s
+`Store`, `Users`, `Sessions` and `Permissions` used to each open their own
+connection to the same `ORCHESTRA_DB_PATH` file - `pkg/app.build` now opens
+it once (`sqlitestore.Open`) and hands that one `*sql.DB` to each store's
+`NewFromDB` constructor, alongside WAL (`_journal_mode=WAL`) and a
+five-second busy timeout (`_busy_timeout=5000`), both DSN parameters
+modernc.org/sqlite validates itself. A new `internal/infra/httpserver/logging.go`
+middleware logs any 500 - from any handler, `requireSession`'s own included -
+with the body that named its cause, through `slog.Default()`
+(`cmd/api/main.go` now calls `slog.SetDefault`). Forty concurrent requests
+that each resolve a session and write a row failed 8-19 of 40 times before
+this change and ten of ten times after
+(`services/platform/acceptance/storage_test.go`); `make guard-layout` - the
+symptom that motivated the spec - passed ten consecutive runs afterward.
+See `DECISIONS.md`, 2026-09-14, correcting 2026-09-13's "the browser
+suite's flake is load, measured".
 
 ## What does not exist yet
 
