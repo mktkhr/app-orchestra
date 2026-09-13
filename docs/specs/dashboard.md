@@ -42,6 +42,9 @@ proved anything about services that were not.
 | **P8**  | A manually built panel never reaches the planner. W4 said a person presses a button and the planner learns nothing about workspaces; here the person also picks the operation, so there is nothing left to decide.                                                                                                                                                                          |
 | **P9**  | `GET /api/catalog`'s `CatalogEntry` carries `displayName` alongside `summary`, from the contract's `x-ui-hint.displayName` (`docs/specs/orchestration.md` D15) falling back to `summary` when a contract declares none. `OperationPicker` and a panel's default title read `displayName`, never `summary` - `summary` is the model-facing tool description, not a person-facing name (D15). |
 | **P10** | `CatalogEntry` also carries `serviceDisplayName` (`docs/specs/orchestration.md` D16), from the service's own `info.x-ui-hint.displayName`, falling back to `service` (the identifier) when the service's contract declares none. `OperationPicker` groups by `serviceDisplayName`, never by `service` - the same reasoning P9 gives one level up.                                           |
+| **P11** | A panel can be changed after it is made. `PATCH /api/workspaces/{id}/panels/{panelId}` replaces only the fields its body names. Not `PUT`: a body that must carry every field to change one is a body a caller assembles from a stale read, and the field it silently reverts is the one somebody else just set.                                                                            |
+| **P12** | Editing a panel is the builder's own form, opened over that panel. Not a second form and not a second set of controls - the same argument P7 makes for reusing the create form, applied to itself.                                                                                                                                                                                          |
+| **P13** | A panel's service and operation are not editable. Every other field is about that operation - these arguments, this component, these axes - so swapping it leaves a panel whose fields describe something it no longer does. A different operation is a different panel, and making one is what the builder is for.                                                                         |
 
 ## 3. What a panel is now
 
@@ -170,12 +173,41 @@ once, and the ones that do not apply are not there. A person who picked
 The panel is created through the endpoint that already exists
 (`POST /api/workspaces/{id}/panels`), which gains `view`.
 
+### 6a. A panel is not finished when it is made
+
+A panel built from a form is a panel built from guesses. The axis that
+looked right names the wrong field; the title that read well in the builder
+reads badly in a card beside five others; the argument left empty should
+have been filled in. None of that is worth losing a panel over.
+
+`docs/specs/workspaces.md` section 9 excluded editing a panel's arguments in
+place, and its reason was sound when it was written: "ask the question again
+and save the answer; two ways to say the same thing is one more than this
+needs." That reason is gone. A panel no longer comes only from a question -
+section 6 is a form a person fills in by hand - so asking again is not the
+other way of saying the same thing any more. It is the only way, and it
+costs the whole panel.
+
+So a panel can be changed: its title, its arguments, which component draws
+it, and its view (P11). `PATCH` rather than `PUT`, because a caller that has
+to send every field to change one sends the fields it last read, and quietly
+reverts whatever changed in between.
+
+What cannot change is the operation the panel calls (P13). `position` is not
+edited here either, for the opposite reason - it is not something a person
+types - and belongs to the layout half (section 9).
+
+The form is the builder's own, opened over the panel rather than over
+nothing (P12). A second form would be a second place for the chart's axes
+and the transform's fields to get out of step with the first.
+
 ## 7. Contract
 
 ```
-GET  /api/catalog                        new (section 5)
-POST /api/workspaces/{id}/panels         + view
-GET  /api/workspaces/{id}                panels carry view
+GET   /api/catalog                                 new (section 5)
+POST  /api/workspaces/{id}/panels                  + view
+PATCH /api/workspaces/{id}/panels/{panelId}        new (section 6a)
+GET   /api/workspaces/{id}                         panels carry view
 ```
 
 `Component` gains `chart`. `x-ui-hint` gains `chart`, alongside the
@@ -221,10 +253,10 @@ the builder applies it to show a preview. Two callers, one function.
   either an endpoint that returns one or a transform that reduces rows to
   one, and the second is a second transform (section 4).
 - **A transformation pipeline.** Section 4 argues it.
-- **Editing a panel's view in place.** Rebuilding is the same form and the
-  same five steps. This is the weakest of the exclusions here - picking one
-  wrong axis costs a whole panel - and it is the first thing to add if it
-  is annoying in practice.
+- **Editing a panel's view in place** - no longer excluded. This was the
+  weakest exclusion here, recorded with the note that it was "the first
+  thing to add if it is annoying in practice". It was. Section 6a and
+  P11-P13 are where it went.
 - **Asking the chat to add a panel** (FR-F-5). The workspace screen has a
   conversation already, and it answers questions; making it manipulate the
   workspace is a planner change, which P8 is specifically not.
@@ -254,6 +286,14 @@ the builder applies it to show a preview. Two callers, one function.
   draws.
 - **AC-P-107** A person may not build a panel over an operation they may
   not call, through this endpoint any more than through `/api/invoke`.
+
+- **AC-P-108** A panel's title, arguments, component and view can each be
+  changed after it is made, and only the fields the request names change.
+- **AC-P-109** A `PATCH` naming an operation the person may not call, or a
+  panel belonging to somebody else, is refused exactly the way adding one
+  is - the same error, telling nobody what exists.
+- **AC-P-110** A panel edited and then reloaded draws as edited, not as it
+  was before.
 
 ## 11. Harness work this implies
 
