@@ -6,11 +6,13 @@
 **Goal:** A person decides how wide and how tall each panel is, and what
 order the panels come in, and it is still that way after a reload.
 
-**Architecture:** A panel gains `width` and `height`, spans in a CSS grid,
-and `position` (which has existed unused since `docs/specs/workspaces.md`
-W5) becomes the order. All three are saved through the `PATCH` that already
-exists. No grid engine and no dragging — `docs/specs/layout.md` section 4 is
-the argument.
+**Architecture:** A panel gains `width` and `height`, spans in
+`react-grid-layout`'s grid, and `position` (which has existed unused since
+`docs/specs/workspaces.md` W5) becomes the order. All three are saved through
+the `PATCH` that already exists. `docs/specs/layout.md` section 4 records
+that this was first planned without the library and reversed, and what the
+reversal owes: **every arrangement a drag can express, a keyboard must
+express too**, measured by `make guard-a11y`.
 
 **Spec:** `docs/specs/layout.md`. Acceptance criteria: its section 8.
 
@@ -111,65 +113,86 @@ frontend will send one.
 
 **Files:**
 
-- Modify: `web/src/pages/workspace/ui/WorkspacePage.tsx`,
+- Modify: `web/package.json` (`react-grid-layout` and its types),
+  `web/src/pages/workspace/ui/WorkspacePage.tsx`,
   `web/src/entities/workspace/ui/PanelCardShell.tsx`, tests
 
 **Consumes:** Task 0.
 
-**Produces:** panels drawn in a CSS grid — twelve columns where there is
-room, one where there is not (L4) — each spanning its own `width` and
-`height`, in `position` order.
+**Produces:** panels drawn in `react-grid-layout` — twelve columns where
+there is room, one where there is not (L4) — each spanning its own `width`
+and `height`, in `position` order. Read-only in this task: nothing is
+dragged yet, and nothing is saved.
 
-MUI's `Box` with `display: "grid"`, not a third-party grid. A panel's span is
-clamped to the columns that exist, so a `width: 12` panel on a phone is one
-full-width panel and not a sideways scroll.
+`react-grid-layout` ships its own CSS. Import it the way the bundler wants;
+it is not a CDN request. **Look at what it paints** and confirm
+`make guard-layout`'s contrast rules still hold under both colour schemes
+(spec section 9) — the design system did not write that stylesheet.
 
-- [ ] **Step 1** Write the test: three panels of widths 12, 6 and 6 draw one
+On the narrow breakpoint the grid is static (spec section 5): one column, one
+order, nothing to arrange, and no way to drag the page sideways by accident.
+
+- [ ] **Step 1** Add the dependency. Pin it exactly, the way
+      `@mui/x-charts` was and for the same reason (`DECISIONS.md`,
+      2026-09-12). `make check` must still pass `guard-ui`, `guard-fsd` and
+      `guard-duplication`.
+- [ ] **Step 2** Write the test: three panels of widths 12, 6 and 6 draw one
       full-width row and two beside each other; at 375px all three span the
       single column; a panel with no width draws full width (AC-L-104,
       AC-L-105). Run it, expect failure.
-- [ ] **Step 2** Implement.
-- [ ] **Step 3** Check AC-L-106 by hand and say what you saw: a wider panel
+- [ ] **Step 3** Implement, read-only.
+- [ ] **Step 4** Check AC-L-106 by hand and say what you saw: a wider panel
       should draw a _wider chart_, because `ResultChart` takes its size from
       its caller since `docs/plans/dashboard.md` Task 5. If it draws the same
       chart in a wider box, that is this task's bug to fix.
-- [ ] **Step 4** Web gates green, then `make build`, `make guard-browser`,
+- [ ] **Step 5** Web gates green, then `make build`, `make guard-browser`,
       `make guard-a11y`, `make guard-layout`.
-- [ ] **Step 5** Commit: `feat(web): draw a workspace as a grid`
+- [ ] **Step 6** Commit: `feat(web): draw a workspace as a grid`
 
 **Satisfies:** AC-L-104, AC-L-105, AC-L-106.
 
 ---
 
-### Task 2: a person changes the size and the order
+### Task 2: a person arranges it, with a mouse or without one
 
 **Files:**
 
-- Modify: `web/src/entities/workspace/ui/PanelCardShell.tsx`,
-  `web/src/pages/workspace/`, `web/src/shared/api/`, tests
+- Modify: `web/src/pages/workspace/`,
+  `web/src/entities/workspace/ui/PanelCardShell.tsx`,
+  `web/src/shared/api/`, tests
+- Modify: `harness/quality/browser/screens.ts` (see Step 4)
 
 **Consumes:** Tasks 0-1.
 
-**Produces:** on each panel's card, a control for its width, one for its
-height, and two that move it earlier and later — saved through the `PATCH`
-the panel already has (L5).
+**Produces:** dragging and resizing, saved through the `PATCH` each panel
+already has (L5) — **and a keyboard path to everything a drag can do**.
 
-Moving a panel swaps `position` with its neighbour: two `PATCH`es, not a
-renumbering of the workspace (spec section 6). Moving the first panel earlier
-does nothing and says nothing (AC-L-103) — there is no error to show for
-something that cannot happen, so the control is simply absent at the ends
-rather than present and inert. A disabled contained button has no edge
-`make guard-layout` can see, which is the other reason.
+The keyboard half is not a nicety bolted on at the end; it is what
+`docs/specs/layout.md` section 4 says this dependency owes, and AC-L-103 is
+the criterion. `react-grid-layout`'s own handles are mouse-first, so decide
+how a keyboard moves and resizes a panel and say why you chose that shape.
+Whatever it is, `make guard-a11y` has to pass on a workspace **with panels in
+it**, which means Step 4.
 
-- [ ] **Step 1** Write the test: changing a width `PATCH`es that panel and
-      redraws it; moving a panel down `PATCH`es two panels and swaps them on
-      screen; the first panel has no "earlier" control and the last none for
-      "later" (AC-L-101, AC-L-102, AC-L-103). Run it, expect failure.
-- [ ] **Step 2** Implement.
-- [ ] **Step 3** Web gates green, then `make build`, `make guard-browser`,
-      `make guard-a11y`, `make guard-layout` — every new control is measured
-      by both, at 375px among others.
-- [ ] **Step 4** Commit: `feat(web): size and order a workspace's panels`
+A drag that ends writes only the panels whose geometry changed — not a
+renumbering of the workspace (spec section 6): a request that rewrites six
+rows to change one can lose the other five. A drag that is still in flight
+writes nothing.
+
+- [ ] **Step 1** Write the test: a drag that ends `PATCH`es the panels that
+      moved and no others; a resize `PATCH`es one panel; the arrangement
+      survives a reload (AC-L-101, AC-L-102).
+- [ ] **Step 2** Implement the pointer half.
+- [ ] **Step 3** Implement the keyboard half, and test it by keyboard alone —
+      no pointer events in that test at all.
+- [ ] **Step 4** `harness/quality/browser/screens.ts` measures an **empty**
+      workspace today, so neither browser gate has ever seen a panel. Seed
+      one there so AC-L-103 is evidence rather than an assertion. It is a
+      harness change: argue it in `DECISIONS.md` and commit with
+      `ORCHESTRA_ALLOW_HARNESS_CHANGE=1`. Expect it to find things.
+- [ ] **Step 5** Web gates green, then `make build`, `make guard-browser`,
+      `make guard-a11y`, `make guard-layout`.
+- [ ] **Step 6** Commit: `feat(web): arrange a workspace by drag or by key`
 
 **Satisfies:** AC-L-101, AC-L-102, AC-L-103.
 
@@ -193,12 +216,8 @@ make one wide, move it first, reload, see it wide and first.
       survived.
 - [ ] **Step 2** Write the browser journey, including a 375px pass
       (AC-L-105).
-- [ ] **Step 3** Decide whether `harness/quality/browser/screens.ts` should
-      seed a panel so the browser gates measure a workspace with something in
-      it rather than an empty one (`DECISIONS.md`, 2026-09-13 records that it
-      does not today). If yes, it is a harness change: explain it in
-      `DECISIONS.md` and commit with `ORCHESTRA_ALLOW_HARNESS_CHANGE=1`. If
-      no, say why in your report.
+- [ ] **Step 3** Confirm Task 2 Step 4 actually landed: both browser gates
+      measure a workspace with a panel in it, not an empty one.
 - [ ] **Step 4** `make check` in full — every gate green, and no request
       added to the model's log.
 - [ ] **Step 5** Commit: `test(e2e): arrange a workspace and reload it`
@@ -212,6 +231,10 @@ make one wide, move it first, reload, see it wide and first.
 Task 0 blocks everything. Task 1 needs it. Task 2 needs 0 and 1. Task 3
 needs all of it. Nothing here runs in parallel, and the subproject is small
 enough that it does not need to.
+
+Task 2 is the one that can run long. Its pointer half is what the library
+does for you; its keyboard half is what the library does not, and it is the
+half `docs/specs/layout.md` section 4 spent the dependency on.
 
 ## Done
 
