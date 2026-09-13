@@ -20,6 +20,11 @@ import { PanelActions } from "./PanelActions";
 interface PanelResultProps {
   readonly workspaceId: string;
   readonly panel: WorkspacePanel;
+  /** Threaded straight through to `PanelActions` - see its own doc comment. */
+  readonly onMove?: ((panelId: string, direction: "previous" | "next") => void) | undefined;
+  readonly onResize?:
+    | ((panelId: string, deltaWidth: number, deltaHeight: number) => void)
+    | undefined;
 }
 
 /**
@@ -67,7 +72,12 @@ interface PanelResultProps {
  * the platform itself now has the change; this state is what makes it
  * true without one first, for the tab already open.
  */
-export function PanelResult({ workspaceId, panel }: PanelResultProps): JSX.Element {
+export function PanelResult({
+  workspaceId,
+  panel,
+  onMove,
+  onResize,
+}: PanelResultProps): JSX.Element {
   const [current, setCurrent] = useState(panel);
   const { loading, refreshing, error, result, refresh } = usePanelInvoke(current);
   const [chartRef, chartSize] = useElementSize<HTMLDivElement>();
@@ -100,6 +110,8 @@ export function PanelResult({ workspaceId, panel }: PanelResultProps): JSX.Eleme
           refreshing={refreshing}
           onRefresh={refresh}
           onSaved={setCurrent}
+          onMove={onMove}
+          onResize={onResize}
         />
       }
     >

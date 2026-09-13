@@ -1,0 +1,23 @@
+/*
+ * `react-grid-layout/css/styles.css` (imported by `WorkspaceGrid.tsx` right
+ * before this file, so this rule wins) transitions `.react-grid-item`'s
+ * `width`/`height` over 200ms - meant to smooth a drag or a resize. It also
+ * fires on a plain prop change, including `WidthProvider`'s own corrective
+ * re-measurement right after mount: the first paint sizes the grid off an
+ * unmeasured guess, and the real width - the container's, once the browser
+ * has actually laid it out - arrives a tick later and is what this
+ * transition then animates into over that same 200ms.
+ *
+ * `docs/plans/layout.md` Task 2 Step 4's seeded panel is what exposed this:
+ * on the narrow breakpoint the guessed width was wide enough that the
+ * 200ms slide into the correct one was, for that whole window, a page that
+ * scrolled sideways - `make guard-layout`'s AC-L-105 check measures once,
+ * right after navigation settles, and that is well inside 200ms of mount.
+ *
+ * Dropping `width`/`height` from what animates does not touch the
+ * transform transition a drag or a resize still gets - only removes an
+ * animation nobody asked to see on a plain re-measurement.
+ */
+.react-grid-item.cssTransforms {
+  transition-property: transform;
+}

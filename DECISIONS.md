@@ -3236,3 +3236,141 @@ backed by `useState` (`setNode` on attach), so the effect's dependency is
 "the node changed," not "the component mounted." Re-measured after the
 fix: 896×626 and 416×626 respectively, and each `BarChart`'s own `<svg>`
 matched those numbers exactly.
+
+## 2026-09-13 Layout Task 2: how a keyboard arranges a workspace, and three bugs the seeded panel found
+
+**Context.** Task 1 drew the grid read-only. Task 2 owed the dependency
+back: dragging and resizing by pointer, `PATCH`ing only the panels whose
+geometry changed (`docs/specs/layout.md` section 6), and - the condition
+section 4 took the library on - every one of those reachable by keyboard
+too, with `make guard-a11y` passing on a workspace that actually has a
+panel in it (AC-L-103). That last clause had never been true: the browser
+gates have measured an empty workspace since the screen was built.
+
+**The data model: swap, not renumber.** `position` is a plain ascending
+integer, assigned densely when a panel is made. Reassigning it 0..n-1 on
+every drag would rewrite every panel between a moved one's old and new
+slot even when their own relative order never changed - exactly the
+"rewrites six rows to change one" section 6 warns against. Instead,
+`pages/workspace/model/arrangement.ts` derives the drop's reading order
+from `react-grid-layout`'s own final `x`/`y` and diffs it, panel by panel,
+against the positions already on screen - `positionChanges` - so a plain
+swap of two adjacent panels touches exactly those two, and a drag that
+ends back where it started touches none. A resize only ever reads the one
+resized item's own `w`/`h` (`sizeChange`) - never its siblings' - so it can
+never imply a position change by construction. `useArrangement` layers the
+result on the loaded panels as a local override keyed by id (the same
+split `PanelResult`'s own `current` makes for a saved edit) and fires the
+matching `patchPanel` calls; nothing is written while a drag is still in
+flight, since only `onDragStop`/`onResizeStop` are wired, never `onDrag`.
+
+**The keyboard shape.** `react-grid-layout`'s handles are mouse-first, so
+each panel's header (`PanelActions`) carries one more `IconButton`
+("在庫一覧をキーボードで並べ替え・サイズ変更", with a `Tooltip` spelling
+out the keys) that a person finds by tabbing to it, not by reading source.
+Arrow keys move the panel one step earlier or later in `position` order
+(`ArrowLeft`/`ArrowUp` toward the start, `ArrowRight`/`ArrowDown` toward
+the end - either pair, because the order is one-dimensional and a person
+reaching for either arrow should get the same result); holding `Shift`
+resizes instead, by one column or one row. This mirrors the pointer's own
+two gestures - drag moves, the handle at the corner resizes - through the
+same two keys standing in for both, rather than a second control or a
+dialog per panel. It reuses `moveChanges`/`resizeChange`, the identical
+pure functions the pointer half calls, so both halves `PATCH` exactly the
+same shape of change for the same intent. Tested by keyboard alone -
+`WorkspaceGrid.test.tsx`'s own test tabs to the button and drives it with
+`userEvent.keyboard`, no pointer event anywhere in it.
+
+**The harness change (Step 4), and why it had to be more than `screens.ts`.**
+`AddPanel` (`internal/usecase/workspaces.go`) refuses any operation
+`catalog.Find` does not expose, whether or not the panel is ever invoked -
+so a panel cannot be seeded at all while the guard's platform has no
+`ORCHESTRA_SERVICES` (`DECISIONS.md`, 2026-09-13, "the browser gates
+measure every screen again"). Faking one directly in the database was
+rejected: a panel over an operation outside the catalogue is not a state
+the product can ever actually reach, so a row like that would be evidence
+of nothing. Instead `harness/quality/browser/playwright.config.ts` now
+also runs the inventory dummy service, the same way `e2e/playwright.config.ts`
+already does, and names it in `ORCHESTRA_SERVICES` - the smallest catalogue
+that makes one genuine panel possible. `screens.ts` gained `createPanel`
+(mirroring `createWorkspace`'s own page-context `fetch`, for the same
+`SameSite=Lax` reason) and "a workspace" is now "a workspace with a panel
+in it," seeded with one real `ListInventoryItems` table panel. This still
+asserts nothing about that panel's own answer - the point is the controls
+around it (header, buttons, the resize handle, the keyboard control), not
+its data.
+
+**What the seeded panel found - three real bugs, none of them the
+stylesheet.** `react-grid-layout/css/styles.css`'s translucent red drag
+placeholder and grey `rgba(0,0,0,0.4)` resize-handle corner, inert since
+Task 1, are now live - checked by hand across several dozen `make
+guard-layout` runs in both colour schemes, and neither ever registered a
+boundary-contrast failure: the placeholder only exists in the DOM mid-drag
+(never present when the guard measures a settled screen), and the resize
+handle is a plain `<span>` with no ARIA role, so it never enters the
+guard's own "Control" list. Nothing to remediate there. What the seeding
+did surface:
+
+1. _A sideways scroll at 375px (AC-L-105), 100% reproducible in isolation._
+   `WorkspaceGrid` used `react-grid-layout`'s own `WidthProvider`, which
+   renders once at an unmeasured guess and corrects itself a tick later.
+   On the narrow breakpoint the guess measured wide enough that
+   `.react-grid-item`'s 200ms `width`/`height` transition
+   (`react-grid-layout/css/styles.css`) spent that whole window sliding a
+   too-wide panel down to the right size - long enough for `guard-layout`'s
+   overflow check, which runs once right after navigation settles, to
+   catch it every time. Confirmed with a throwaway debug spec (not
+   committed) that dumped `getComputedStyle` on the widest node: a
+   `.react-grid-item` styled `width: 295px` inline was computing to
+   `1180.94px`, matching `WidthProvider`'s pre-correction guess almost
+   exactly. `WidthProvider`'s own `measureBeforeMount` fixes this by never
+   rendering an unmeasured guess at all - but `happy-dom`
+   (`web/vite.config.ts`) has no layout engine to ever fire that
+   measurement, so every unit test using `WorkspaceGrid` hung forever with
+   it on (three of `WorkspacePage.test.tsx`'s four tests timed out
+   waiting for text that would have appeared instantly). Fixed instead by
+   measuring the container with `useElementSize` - the same hook
+   `PanelResult` already reads for `ResultChart` (AC-L-106) - and passing
+   `width` to a plain `GridLayout` directly, no `WidthProvider`. Its "not
+   measured yet" value is `0`, which can never overflow sideways and which
+   a test environment with no layout engine simply keeps forever, exactly
+   the fallback `PanelResult` already treats as "unmeasured" rather than
+   "empty." `workspaceGrid.css` also narrows `.react-grid-item`'s own
+   transition to `transform` only, so a corrective width/height change (a
+   breakpoint flip, not a drag) applies instantly rather than animating -
+   this alone cut the failure rate but did not eliminate it, which is why
+   it stayed alongside the `useElementSize` fix rather than instead of it.
+2. _`isDraggable={true}` ate every click on every panel button._
+   `react-grid-layout` makes an item's entire box a drag handle unless
+   told otherwise (`GridItem`'s own `cancel` prop defaults to only
+   `.react-resizable-handle`) - so the moment Task 2 turned dragging on,
+   `mousedown` on "編集", "更新", the new arrange control, "拡大表示," and
+   the table's own pagination all started a drag before their `click`
+   fired, and the drag swallowed it. Found by `make guard-browser`'s own
+   `e2e/browser/dashboard.spec.ts`: its edit journey clicked "編集" and
+   the button visibly went `:active` in the accessibility snapshot, but no
+   dialog ever appeared, reproducing on every run until fixed. Fixed with
+   `draggableCancel="button, a, input, select, textarea"` on `GridLayout` -
+   a panel is still dragged by its header or its blank card area, just not
+   by anything that is itself a control.
+3. _The first version of the keyboard control was a floating overlay,
+   drawn at each panel's own top-right corner - exactly where
+   `PanelCardShell`'s header buttons already sit._ The same
+   `dashboard.spec.ts` journey caught this first, before bug 2: Playwright
+   reported the overlay's own `<svg>` intercepting the pointer event meant
+   for "編集" underneath it. Moved into `PanelActions`' own header row
+   instead, beside refresh and edit, which is also more consistent with
+   AC-L-103's own framing - one control per panel, not a second layer over
+   it.
+
+**Consequence.** `AC-L-103` - "`guard-a11y` passes on a workspace that has
+panels in it" - is now evidence, not an assertion: `make guard-a11y` and
+`make guard-layout` both run against a workspace holding one real,
+invoked panel, in both colour schemes, and did so cleanly across several
+dozen runs once these three were fixed. The one genuinely pre-existing
+flake observed while chasing this - a _different_, unrelated screen
+occasionally failing a _different_ check under six parallel Playwright
+workers sharing one `maxOpenConns(1)` SQLite connection - reproduced on
+screens this task never touched and disappeared once stray Chromium
+processes left over from manual debugging were killed; it was not chased
+further, and is not new here.

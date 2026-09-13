@@ -5,23 +5,16 @@ _Keep three lists. Move items, do not duplicate them._
 ## In progress
 
 `docs/plans/layout.md` (FR-F-4, `docs/specs/layout.md`): a panel decides how
-wide and tall it is, and what order the panels come in. Tasks 0-1 are done -
-see "Done" below. Tasks 2-3 remain:
+wide and tall it is, and what order the panels come in. Tasks 0-2 are done -
+see "Done" below. Task 3 remains:
 
-- Task 2: `PanelCardShell.tsx`/`WorkspaceGrid.tsx` grow dragging and
-  resizing (pointer, through `react-grid-layout`'s own handles, now that
-  Task 1 turned them off) and a keyboard path to the same two operations
-  (`docs/specs/layout.md` section 4's own condition on taking the
-  dependency, AC-L-103) - both `PATCH`ing only the panels that moved,
-  through Task 0's contract. Also due: seed a panel into
-  `harness/quality/browser/screens.ts`'s "a workspace" entry (still empty
-  today, per `DECISIONS.md` 2026-09-13) so `make guard-a11y` actually
-  exercises drag/resize/keyboard controls rather than an empty grid -
-  argued in `DECISIONS.md`, committed with `ORCHESTRA_ALLOW_HARNESS_CHANGE=1`.
-- Task 3: `e2e/` coverage for the whole slice, plus confirming Task 2's
-  harness seed landed.
+- Task 3: `e2e/` coverage for the whole slice (create three panels, `PATCH`
+  sizes and positions, reload, confirm the geometry survived, including a
+  375px pass), plus confirming Task 2's harness seed (both browser gates
+  now measure a workspace with a panel in it, not an empty one) still
+  holds.
 
-`make check` (not `-k`) is fully green with Tasks 0-1 in place.
+`make check` (not `-k`) is fully green with Tasks 0-2 in place.
 
 ## Next
 
@@ -111,6 +104,26 @@ Everything remaining sits outside all four subprojects above:
   drew `<svg>`s at exactly those sizes - see `STATE.md` for the bug this
   caught (a plain `useRef` effect that ran before the measured element
   ever mounted) and the fix.
+
+- `docs/plans/layout.md` Task 2: dragging and resizing by pointer, on the
+  wide breakpoint, plus a keyboard path to both (AC-L-103) -
+  `pages/workspace/model/arrangement.ts`'s four pure functions
+  (`positionChanges`/`sizeChange` for the pointer half, `moveChanges`/
+  `resizeChange` for the keyboard one) `PATCH` only the panels whose
+  geometry actually changed, never a renumbering of the workspace (section
+  6). The keyboard control lives in every panel's own header
+  (`PanelActions.tsx`): arrow keys move, `Shift`+arrow resizes, tested by
+  keyboard alone. The harness change this owed:
+  `harness/quality/browser/playwright.config.ts` now runs the inventory
+  dummy service too, so `screens.ts`'s "a workspace" can seed one real
+  panel - `AddPanel` refuses any operation outside the catalogue, so there
+  was no way to seed one without a real service. That seeding found three
+  real bugs (a sideways-scroll flash from `react-grid-layout`'s own
+  `WidthProvider`, `isDraggable` eating every panel button's click, and an
+  overlay keyboard control sitting on top of the header it now lives in
+  instead) - all fixed, all argued in `DECISIONS.md`. The stylesheet's own
+  drag placeholder and resize handle, live for the first time, changed
+  nothing about `guard-layout`'s contrast checks in either colour scheme.
 
 - `docs/specs/dashboard.md` section 6a, P11-P13: a panel can be changed
   after it is made. `PATCH /api/workspaces/{id}/panels/{panelId}`

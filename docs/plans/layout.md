@@ -179,20 +179,20 @@ renumbering of the workspace (spec section 6): a request that rewrites six
 rows to change one can lose the other five. A drag that is still in flight
 writes nothing.
 
-- [ ] **Step 1** Write the test: a drag that ends `PATCH`es the panels that
+- [x] **Step 1** Write the test: a drag that ends `PATCH`es the panels that
       moved and no others; a resize `PATCH`es one panel; the arrangement
       survives a reload (AC-L-101, AC-L-102).
-- [ ] **Step 2** Implement the pointer half.
-- [ ] **Step 3** Implement the keyboard half, and test it by keyboard alone —
+- [x] **Step 2** Implement the pointer half.
+- [x] **Step 3** Implement the keyboard half, and test it by keyboard alone —
       no pointer events in that test at all.
-- [ ] **Step 4** `harness/quality/browser/screens.ts` measures an **empty**
+- [x] **Step 4** `harness/quality/browser/screens.ts` measures an **empty**
       workspace today, so neither browser gate has ever seen a panel. Seed
       one there so AC-L-103 is evidence rather than an assertion. It is a
       harness change: argue it in `DECISIONS.md` and commit with
       `ORCHESTRA_ALLOW_HARNESS_CHANGE=1`. Expect it to find things.
-- [ ] **Step 5** Web gates green, then `make build`, `make guard-browser`,
+- [x] **Step 5** Web gates green, then `make build`, `make guard-browser`,
       `make guard-a11y`, `make guard-layout`.
-- [ ] **Step 6** Commit: `feat(web): arrange a workspace by drag or by key`
+- [x] **Step 6** Commit: `feat(web): arrange a workspace by drag or by key`
 
 **Satisfies:** AC-L-101, AC-L-102, AC-L-103.
 

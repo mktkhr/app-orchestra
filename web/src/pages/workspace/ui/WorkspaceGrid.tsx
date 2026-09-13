@@ -1,19 +1,25 @@
 import useMediaQuery from "@mui/material/useMediaQuery";
-import GridLayout, { WidthProvider } from "react-grid-layout";
+import GridLayout from "react-grid-layout";
 import type { JSX } from "react";
 
 import type { WorkspacePanel } from "@/shared/api/client";
+import { useElementSize } from "@/shared/lib/useElementSize";
 
 import { buildPanelLayout } from "../model/buildPanelLayout";
+import { useArrangement } from "../model/useArrangement";
 import { PanelResult } from "./PanelResult";
 
 // `react-grid-layout` ships its own stylesheet - grid item positioning
 // (absolute placement, the transform each item is drawn at) has no other
-// source. It draws no colour of its own (no background, no border, no
-// text) - every one of those still comes from `PanelCardShell` and MUI's
-// theme, in both colour schemes, so `make guard-layout`'s contrast checks
-// have nothing new to see from this import.
+// source. It draws no colour of its own besides the drag placeholder and
+// the resize handle it paints once dragging and resizing are live (Task 2)
+// - both were checked by hand against `make guard-layout`'s contrast rules
+// in both colour schemes (see DECISIONS.md); everything else still comes
+// from `PanelCardShell` and MUI's theme. `workspaceGrid.css`, imported
+// right after, narrows one of its transitions - see that file's own
+// comment for why (DECISIONS.md).
 import "react-grid-layout/css/styles.css";
+import "./workspaceGrid.css";
 
 interface WorkspaceGridProps {
   readonly workspaceId: string;
@@ -40,7 +46,20 @@ const NARROW_COLUMNS = 1;
 const ROW_HEIGHT_PX = 360;
 const GRID_MARGIN: [number, number] = [16, 16];
 
-const AutoWidthGridLayout = WidthProvider(GridLayout);
+/**
+ * `react-grid-layout` makes an entire item's box a drag handle unless told
+ * otherwise (`GridItem`'s own `cancel` prop defaults to only
+ * `.react-resizable-handle`) - so once `isDraggable` went live in Task 2,
+ * every button inside a panel (refresh, edit, the keyboard arrange
+ * control, even "拡大表示" and the table's own pagination) started a drag
+ * on `mousedown` before its own `click` ever fired, and swallowed it: found
+ * by `make guard-browser`'s own `dashboard.spec.ts`, whose edit journey
+ * clicks "編集" and never saw the dialog open. This excludes every one of
+ * those controls from starting a drag - a panel is still dragged by its
+ * header or its blank card area, just not by anything that is itself a
+ * control.
+ */
+const DRAGGABLE_CANCEL = "button, a, input, select, textarea";
 
 /**
  * A workspace's panels, drawn in `react-grid-layout`'s grid
@@ -48,41 +67,78 @@ const AutoWidthGridLayout = WidthProvider(GridLayout);
  * where there is not, each panel spanning its own `width`/`height`, in
  * `position` order (`buildPanelLayout`).
  *
- * Read-only in this task (Task 1 of `docs/plans/layout.md`): `isDraggable`
- * and `isResizable` are both false, and every item in the computed layout
- * is `static` besides, so nothing here can be dragged or resized by a
- * pointer or a keyboard yet - and nothing is `PATCH`ed. That is Task 2,
- * which is also where the narrow breakpoint stops being merely
- * one-column-static-nothing-to-drag and starts being "dragging off"
- * (section 5) as its own decision.
+ * On the wide breakpoint a panel can be dragged and resized by pointer
+ * (`isDraggable`/`isResizable`), and every panel's header carries an
+ * arrange control (`PanelActions`) for the same two operations by
+ * keyboard - both go through `useArrangement`, which `PATCH`es only the
+ * panels whose geometry actually changed (`docs/specs/layout.md` section
+ * 6) and keeps the result on screen through a local override, immediately,
+ * without waiting on a reload.
  *
- * On the narrow breakpoint every panel spans the single column
- * (AC-L-105) - `buildPanelLayout` clamps every width down to `columns`,
- * so a `width: 12` panel becomes a full-width one instead of overflowing
- * sideways.
+ * On the narrow breakpoint every panel spans the single column (AC-L-105)
+ * and the grid is static - `docs/specs/layout.md` section 5: one column,
+ * one order, nothing to arrange, and no way to drag the page sideways by
+ * accident. `onMove`/`onResize` are left undefined there, which is what
+ * tells `PanelActions` to draw no arrange control at all.
+ *
+ * The container's width is measured with `useElementSize` (the same hook
+ * `PanelResult` reads for `ResultChart`, AC-L-106) rather than through
+ * `react-grid-layout`'s own `WidthProvider`. `WidthProvider` renders once
+ * at an unmeasured guess and corrects itself a tick later; Task 2 Step 4's
+ * seeded panel is what caught that guess landing wide enough, on the
+ * narrow breakpoint, to fail `guard-layout`'s sideways-scroll check
+ * (AC-L-105) for the whole `react-grid-item` stylesheet's 200ms width
+ * transition. `WidthProvider`'s own `measureBeforeMount` fixes the guess
+ * by not rendering until measured - but `happy-dom` (`web/vite.config.ts`)
+ * has no layout engine to ever fire that measurement, so it never renders
+ * in a unit test at all, and every test here would hang rather than see a
+ * panel. `useElementSize`'s own "not measured yet" value is `0`, the same
+ * fallback `PanelResult` already treats as "not measured yet" rather than
+ * "empty" - zero columns wide can never overflow sideways, so the guess
+ * this replaces is safe instead of merely fast, and a test where nothing
+ * is ever measured still renders every panel to look for.
  */
 export function WorkspaceGrid({ workspaceId, panels }: WorkspaceGridProps): JSX.Element {
   const wide = useMediaQuery(WIDE_QUERY);
   const columns = wide ? WIDE_COLUMNS : NARROW_COLUMNS;
-  const layout = buildPanelLayout(panels, columns);
-  const ordered = panels.toSorted((left, right) => left.position - right.position);
+  const [containerRef, containerSize] = useElementSize<HTMLDivElement>();
+  const {
+    panels: arranged,
+    onDragStop,
+    onResizeStop,
+    moveTo,
+    resizeBy,
+  } = useArrangement(workspaceId, panels);
+  const layout = buildPanelLayout(arranged, columns, wide);
+  const ordered = arranged.toSorted((left, right) => left.position - right.position);
 
   return (
-    <AutoWidthGridLayout
-      className="layout"
-      layout={layout}
-      cols={columns}
-      rowHeight={ROW_HEIGHT_PX}
-      margin={GRID_MARGIN}
-      compactType={null}
-      isDraggable={false}
-      isResizable={false}
-    >
-      {ordered.map((panel) => (
-        <div key={panel.id}>
-          <PanelResult workspaceId={workspaceId} panel={panel} />
-        </div>
-      ))}
-    </AutoWidthGridLayout>
+    <div ref={containerRef}>
+      <GridLayout
+        className="layout"
+        layout={layout}
+        cols={columns}
+        width={containerSize.width}
+        rowHeight={ROW_HEIGHT_PX}
+        margin={GRID_MARGIN}
+        compactType={null}
+        isDraggable={wide}
+        isResizable={wide}
+        draggableCancel={DRAGGABLE_CANCEL}
+        onDragStop={onDragStop}
+        onResizeStop={onResizeStop}
+      >
+        {ordered.map((panel) => (
+          <div key={panel.id}>
+            <PanelResult
+              workspaceId={workspaceId}
+              panel={panel}
+              onMove={wide ? moveTo : undefined}
+              onResize={wide ? resizeBy : undefined}
+            />
+          </div>
+        ))}
+      </GridLayout>
+    </div>
   );
 }

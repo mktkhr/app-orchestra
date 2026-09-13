@@ -11,12 +11,21 @@ import type { WorkspacePanel } from "@/shared/api/client";
  * "narrow" branch is needed.
  *
  * Pure and given a fixed `position` order, so the same panels always land
- * on the same layout - this task draws the grid, it does not let anyone
- * rearrange it (Task 2). Every item is `static`, which is `react-grid-layout`'s
- * own way of saying "not draggable, not resizable" for one item without a
- * second prop.
+ * on the same layout before anyone drags or resizes one.
+ *
+ * `interactive` (default `false`) sets the computed layout's own `static`
+ * flag to its opposite: the narrow breakpoint stays `static` -
+ * `react-grid-layout`'s own way of saying "not draggable, not resizable"
+ * for an item without a second prop - because `docs/specs/layout.md`
+ * section 5 gives it nothing to arrange (one column, one order), while the
+ * wide breakpoint is `static: false` so `WorkspaceGrid`'s drag, resize and
+ * keyboard handling (`docs/plans/layout.md` Task 2) can reach it.
  */
-export function buildPanelLayout(panels: readonly WorkspacePanel[], columns: number): Layout[] {
+export function buildPanelLayout(
+  panels: readonly WorkspacePanel[],
+  columns: number,
+  interactive = false,
+): Layout[] {
   const ordered = panels.toSorted((left, right) => left.position - right.position);
   const layout: Layout[] = [];
   let x = 0;
@@ -33,7 +42,7 @@ export function buildPanelLayout(panels: readonly WorkspacePanel[], columns: num
       rowHeight = 0;
     }
 
-    layout.push({ i: panel.id, x, y, w: width, h: height, static: true });
+    layout.push({ i: panel.id, x, y, w: width, h: height, static: !interactive });
     x += width;
     rowHeight = Math.max(rowHeight, height);
   }

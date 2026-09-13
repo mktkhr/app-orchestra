@@ -72,4 +72,12 @@ describe("buildPanelLayout", () => {
 
     expect(layout).toEqual([{ i: "default", x: 0, y: 0, w: 12, h: 1, static: true }]);
   });
+
+  it("is static by default, and not static when interactive (Task 2: drag and resize on the wide breakpoint)", () => {
+    const panels = [panel({ id: "solo" })];
+
+    expect(buildPanelLayout(panels, 12)[0]?.static).toBe(true);
+    expect(buildPanelLayout(panels, 12, false)[0]?.static).toBe(true);
+    expect(buildPanelLayout(panels, 12, true)[0]?.static).toBe(false);
+  });
 });

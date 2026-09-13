@@ -1,6 +1,6 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-13 (`docs/plans/layout.md` Task 1)_
+_Last updated: 2026-09-13 (`docs/plans/layout.md` Task 2)_
 
 ## Summary
 
@@ -1138,6 +1138,60 @@ result has loaded, so the ref the effect read was still `null` at the time
 it ran and the observer was never created. The fix was a callback ref
 backed by state (`setNode` on attach) so the effect's own dependency is
 "the node changed," not "the component mounted once."
+
+**`docs/plans/layout.md` Task 2 (arrange it, with a mouse or without one).**
+`WorkspaceGrid.tsx` turns `isDraggable`/`isResizable` on for the wide
+breakpoint (still `static`, both off, on the narrow one - AC-L-105 has
+nothing to arrange there). `pages/workspace/model/arrangement.ts` is the
+pure core, all four functions unit-tested directly: `positionChanges`
+derives every panel's `position` from `react-grid-layout`'s own final
+`x`/`y` and returns only the ones whose value actually differs from what
+is on screen (section 6 - no renumbering the workspace to move one);
+`sizeChange` reads one resized item's own `w`/`h`; `moveChanges`/
+`resizeChange` are the keyboard half's identical two operations, swapping
+`position` with a neighbour or nudging `width`/`height` by one. All four
+are used by both halves, so a drag-driven swap and a keyboard-driven one
+`PATCH` the same shape of change. `useArrangement.ts` layers the result on
+the loaded panels as a per-id local override (the same split
+`PanelResult`'s own `current` makes for a saved edit) and fires
+`patchPanel`; nothing is written for a drag still in flight, since only
+`onDragStop`/`onResizeStop` are wired.
+
+**The keyboard shape.** Every panel's header (`PanelActions.tsx`) carries
+one `IconButton` ("...をキーボードで並べ替え・サイズ変更", with a
+`Tooltip` naming the keys), reachable by tabbing to it: arrow keys move the
+panel one step earlier/later in `position` order, `Shift`+arrow resizes by
+one column or row. Tested by keyboard alone - `WorkspaceGrid.test.tsx`
+tabs to the button and drives it with `userEvent.keyboard`, no pointer
+event in that test at all (AC-L-103).
+
+**Two real bugs the harness change (Step 4) found, beyond the stylesheet
+(still clean in both colour schemes - see `DECISIONS.md`).**
+`WorkspaceGrid` no longer uses `react-grid-layout`'s own `WidthProvider`:
+its unmeasured first-render guess, animated into the real width over the
+stylesheet's own 200ms transition, was wide enough on the narrow
+breakpoint to fail `guard-layout`'s sideways-scroll check every time once a
+real panel existed to measure. Replaced with `useElementSize` (the same
+hook `PanelResult` already uses) feeding `width` straight to a plain
+`GridLayout`, plus `workspaceGrid.css` narrowing the item's own transition
+to `transform` only. Separately, `isDraggable` going live meant
+`mousedown` on any panel button (refresh, edit, arrange, pagination)
+started a drag before its `click` fired - found by `e2e/browser/dashboard.spec.ts`'s
+edit journey, whose "編集" click stopped opening the dialog. Fixed with
+`draggableCancel="button, a, input, select, textarea"`. Full account,
+including why `measureBeforeMount` was tried and reverted (it hangs every
+unit test in `happy-dom`, which never fires the measurement it waits for),
+in `DECISIONS.md`.
+
+**The harness change itself.** `harness/quality/browser/playwright.config.ts`
+now also runs the inventory dummy service and names it in
+`ORCHESTRA_SERVICES`, because `AddPanel` refuses any operation the
+catalogue does not expose - a panel cannot be seeded at all otherwise, and
+faking one directly in the database would be evidence of a state the
+product can never actually reach. `screens.ts`'s "a workspace" is now "a
+workspace with a panel in it," carrying one real `ListInventoryItems`
+table panel through `createPanel` (mirroring `createWorkspace`'s own
+page-context `fetch`).
 
 ## What does not exist yet
 
