@@ -196,6 +196,26 @@ func (w *Workspaces) AddPanel(
 		panel.Title = panel.OperationID
 	}
 
+	// A panel's Width/Height is a plain int, and 0 is not a width or
+	// height anything could mean on purpose - so a 0 arriving here,
+	// whether the caller said nothing at all (toDomainPanel's own zero
+	// value) or asked for 0 outright, is treated as "unset" and given the
+	// domain's own default (docs/specs/layout.md, section 3), the one
+	// place either default is decided. Anything else - 40, -1, or any
+	// value outside what the grid can draw - is clamped rather than
+	// rejected: a caller that is not this repository's own frontend will
+	// send one (docs/plans/layout.md, Task 0).
+	if panel.Width == 0 {
+		panel.Width = domain.DefaultPanelWidth
+	}
+
+	if panel.Height == 0 {
+		panel.Height = domain.DefaultPanelHeight
+	}
+
+	panel.Width = domain.ClampPanelWidth(panel.Width)
+	panel.Height = domain.ClampPanelHeight(panel.Height)
+
 	saved, err := w.store.AddPanel(ctx, workspaceID, &panel)
 	if err != nil {
 		return domain.Panel{}, fmt.Errorf("adding a panel to workspace %s: %w", workspaceID, err)
@@ -265,6 +285,21 @@ func (w *Workspaces) UpdatePanel(
 		}
 
 		patch.Title = &title
+	}
+
+	// Only a Width/Height the caller actually named is clamped - patch's
+	// own nil-means-unchanged already keeps an absent field off the SET
+	// list the store builds, so there is nothing here to default the way
+	// AddPanel does; clamping a value that was sent is the only job left
+	// (docs/plans/layout.md, Task 0).
+	if patch.Width != nil {
+		clamped := domain.ClampPanelWidth(*patch.Width)
+		patch.Width = &clamped
+	}
+
+	if patch.Height != nil {
+		clamped := domain.ClampPanelHeight(*patch.Height)
+		patch.Height = &clamped
 	}
 
 	updated, found, err := w.store.UpdatePanel(ctx, workspaceID, panelID, patch)

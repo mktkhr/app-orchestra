@@ -90,18 +90,18 @@ Clamping belongs in the usecase, not the browser: a `width` of 40 or 0 is
 not a thing the grid can draw, and a caller that is not this repository's own
 frontend will send one.
 
-- [ ] **Step 1** Add `width`/`height` to `Panel`, `CreatePanelRequest` and
+- [x] **Step 1** Add `width`/`height` to `Panel`, `CreatePanelRequest` and
       `UpdatePanelRequest`, and `position` to `UpdatePanelRequest`.
       `make api-lint`, `make generate`.
-- [ ] **Step 2** Write the store test: a panel with a size round-trips; one
+- [x] **Step 2** Write the store test: a panel with a size round-trips; one
       without reads back as the default; a database file written before
       these columns existed opens and its panels read back as the default.
       Run it, expect failure.
-- [ ] **Step 3** Implement, including the migration and the clamp. Decide
+- [x] **Step 3** Implement, including the migration and the clamp. Decide
       what the defaults are (the spec says full width, one row) and where
       they live — the domain, not three callers.
-- [ ] **Step 4** Go gates green.
-- [ ] **Step 5** Commit: `feat(platform): let a panel carry its own size`
+- [x] **Step 4** Go gates green.
+- [x] **Step 5** Commit: `feat(platform): let a panel carry its own size`
 
 **Satisfies:** AC-L-104 at the store level.
 

@@ -22,7 +22,7 @@ import (
 // is then exactly as safe as every "IF NOT EXISTS" statement in
 // schema.sql - it just checks first instead of saying so in the SQL.
 func ensurePanelsViewColumn(ctx context.Context, db *sql.DB) error {
-	has, err := panelsHasViewColumn(ctx, db)
+	has, err := panelsHasColumn(ctx, db, "view")
 	if err != nil {
 		return fmt.Errorf("checking panels.view: %w", err)
 	}
@@ -38,18 +38,45 @@ func ensurePanelsViewColumn(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// panelsHasViewColumn reports whether the panels table already has a
-// "view" column, read from SQLite's own pragma_table_info table-valued
-// function - the introspection this package's migration logic uses
-// instead of an "IF NOT EXISTS" clause the driver does not accept on
-// ALTER TABLE ADD COLUMN. Written the same "SELECT 1 ... Scan" shape as
-// AddPanel's own existence check, just against pragma_table_info instead
-// of a table this package owns.
-func panelsHasViewColumn(ctx context.Context, db *sql.DB) (bool, error) {
+// ensurePanelsSizeColumns adds panels.width and panels.height when either
+// is missing, the same way ensurePanelsViewColumn adds panels.view -
+// docs/plans/layout.md, Task 0. A panel written before this slice has
+// neither column, and must still open and read back with a nil width and
+// height (see loadPanels/scanPanel, which turn that NULL into
+// domain.DefaultPanelWidth/DefaultPanelHeight, AC-L-104) rather than
+// failing to open at all.
+func ensurePanelsSizeColumns(ctx context.Context, db *sql.DB) error {
+	for _, column := range []string{"width", "height"} {
+		has, err := panelsHasColumn(ctx, db, column)
+		if err != nil {
+			return fmt.Errorf("checking panels.%s: %w", column, err)
+		}
+
+		if has {
+			continue
+		}
+
+		if _, err := db.ExecContext(ctx, `ALTER TABLE panels ADD COLUMN `+column+` INTEGER`); err != nil {
+			return fmt.Errorf("adding panels.%s: %w", column, err)
+		}
+	}
+
+	return nil
+}
+
+// panelsHasColumn reports whether the panels table already has a column
+// named name, read from SQLite's own pragma_table_info table-valued
+// function - the introspection this package's migration logic uses instead
+// of an "IF NOT EXISTS" clause the driver does not accept on ALTER TABLE
+// ADD COLUMN. Written the same "SELECT 1 ... Scan" shape as AddPanel's own
+// existence check, just against pragma_table_info instead of a table this
+// package owns. Shared by ensurePanelsViewColumn and
+// ensurePanelsSizeColumns so the introspection query is written once.
+func panelsHasColumn(ctx context.Context, db *sql.DB, name string) (bool, error) {
 	var exists int
 
 	err := db.QueryRowContext(
-		ctx, `SELECT 1 FROM pragma_table_info('panels') WHERE name = 'view'`,
+		ctx, `SELECT 1 FROM pragma_table_info('panels') WHERE name = ?`, name,
 	).Scan(&exists)
 
 	switch {

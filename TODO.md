@@ -4,18 +4,17 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-Nothing right now. `docs/plans/dashboard.md` (see "Done" below) was the
-last plan in flight; `docs/plans/orchestration.md`,
-`docs/plans/workspaces.md`, `docs/plans/auth.md` and `docs/plans/context.md`
-were already closed. Every task in every plan under `docs/plans/` is done,
-every acceptance criterion in `docs/specs/*.md` section 8/9/10 has a test
-that runs in CI, and `make check` (not `-k`) is fully green.
+`docs/plans/layout.md` (FR-F-4, `docs/specs/layout.md`): a panel decides how
+wide and tall it is, and what order the panels come in. Task 0 is done - see
+"Done" below. Tasks 1-3 remain:
 
-What remains of `docs/requirements.md` FR-F is only its layout half -
-arranging panels: dragging, resizing, persisting a layout (FR-F-4),
-explicitly deferred by `docs/specs/dashboard.md` section 9. No plan exists
-for it yet; it would be a new `docs/plans/*.md`, not a reopening of
-`dashboard.md`.
+- Task 1: the workspace draws as a CSS grid (`WorkspacePage.tsx`), each
+  panel spanning its own width/height in position order.
+- Task 2: `PanelCardShell.tsx` grows the width/height/move controls that
+  make PATCH calls against Task 0's contract.
+- Task 3: `e2e/` coverage for the whole slice.
+
+`make check` (not `-k`) is fully green with Task 0 in place.
 
 ## Next
 
@@ -56,6 +55,34 @@ Everything remaining sits outside all four subprojects above:
    until somebody with standing to edit the harness does.
 
 ## Done
+
+- `docs/plans/layout.md` Task 0: a panel carries `width` (grid columns,
+  1-12) and `height` (grid rows), and `position` is now `PATCH`-writable.
+  Defaults (full width, one row) live once in `domain` (`DefaultPanelWidth`/
+  `DefaultPanelHeight`), read by both `sqlite.Store` (a `NULL` column - every
+  panel saved before this slice - reads back at the default, AC-L-104) and
+  `usecase.Workspaces.AddPanel` (a zero `Width`/`Height`, meaning "the
+  caller said nothing", gets the same default before it ever reaches the
+  store). Clamping (`domain.ClampPanelWidth`/`ClampPanelHeight`) runs in the
+  usecase, on both `AddPanel` and a `PATCH`-named `Width`/`Height`, never in
+  the browser: 40 clamps down to 12, 0 and -1 clamp up to 1 (height has no
+  upper bound - section 5). `position`, `width` and `height` are plain
+  `*int` fields on `PanelPatch` - absent means unchanged, the same as
+  `Title`/`Args`/`Component` - since an integer has no "explicitly clear it"
+  request distinct from "leave it alone" the way naming `view` `null` does;
+  `UpdatePanel`'s existing "only the named columns" `SET` builder already
+  keeps a position-only `PATCH` from touching any other panel (AC unnamed
+  in `docs/specs/layout.md` section 6, tested directly:
+  `TestStoreUpdatePanelPositionDoesNotRenumberOthers`). The migration
+  (`ensurePanelsSizeColumns`) extends `migrate.go`'s existing
+  `pragma_table_info` pattern for `panels.width`/`panels.height`, proven
+  against a database file with the schema exactly as it existed after
+  `view` but before this slice
+  (`TestNewOpensADatabaseFileWrittenBeforeSizeColumnsExisted` - the real
+  shape of `~/.local/state/app-orchestra/workspaces.db`). Frontend
+  fixtures across `web/src/features/**` and `web/src/pages/workspace/**`
+  gained `width`/`height` to satisfy the now-required wire fields; nothing
+  draws differently yet (Tasks 1-2).
 
 - `docs/specs/dashboard.md` section 6a, P11-P13: a panel can be changed
   after it is made. `PATCH /api/workspaces/{id}/panels/{panelId}`

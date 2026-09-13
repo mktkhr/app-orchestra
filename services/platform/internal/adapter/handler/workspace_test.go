@@ -452,6 +452,99 @@ func TestUpdatePanelPassesArgsAndComponentThrough(t *testing.T) {
 	assert.Equal(t, "chart", *fake.updatePanelIn.Component)
 }
 
+// TestUpdatePanelPassesWidthHeightAndPositionThrough proves
+// toDomainPanelPatch assigns Width, Height and Position straight off the
+// wire's own "was it sent" pointers - no third state to translate, unlike
+// View (docs/plans/layout.md, Task 0; see domain.PanelPatch's own doc
+// comment for why).
+func TestUpdatePanelPassesWidthHeightAndPositionThrough(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	width, height, position := 6, 3, 2
+
+	resp, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{
+		Id: "ws-1", PanelId: "pnl-1",
+		Body: &openapi.UpdatePanelRequest{Width: &width, Height: &height, Position: &position},
+	})
+
+	require.NoError(t, err)
+	require.IsType(t, openapi.UpdatePanel200JSONResponse{}, resp)
+	require.NotNil(t, fake.updatePanelIn.Width)
+	assert.Equal(t, 6, *fake.updatePanelIn.Width)
+	require.NotNil(t, fake.updatePanelIn.Height)
+	assert.Equal(t, 3, *fake.updatePanelIn.Height)
+	require.NotNil(t, fake.updatePanelIn.Position)
+	assert.Equal(t, 2, *fake.updatePanelIn.Position)
+}
+
+// TestUpdatePanelLeavesWidthHeightAndPositionNilWhenAbsent is the other
+// half: a body naming none of them reaches the usecase with all three nil,
+// so the store never touches those columns (AC-P-108).
+func TestUpdatePanelLeavesWidthHeightAndPositionNilWhenAbsent(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	title := "新しいタイトル"
+
+	_, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{
+		Id: "ws-1", PanelId: "pnl-1",
+		Body: &openapi.UpdatePanelRequest{Title: &title},
+	})
+
+	require.NoError(t, err)
+	assert.Nil(t, fake.updatePanelIn.Width)
+	assert.Nil(t, fake.updatePanelIn.Height)
+	assert.Nil(t, fake.updatePanelIn.Position)
+}
+
+// TestAddPanelPassesWidthAndHeightThrough proves toDomainPanel forwards an
+// explicit width and height into the domain.Panel usecase.Workspaces.AddPanel
+// receives.
+func TestAddPanelPassesWidthAndHeightThrough(t *testing.T) {
+	fake := &fakeWorkspaces{addPanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	width, height := 6, 2
+
+	_, err := h.AddPanel(t.Context(), openapi.AddPanelRequestObject{
+		Id: "ws-1",
+		Body: &openapi.CreatePanelRequest{
+			Service: "inventory", OperationId: "ListInventoryItems", Component: "table", Title: "検品保留の在庫",
+			Width: &width, Height: &height,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, fake.addPanelIn)
+	assert.Equal(t, 6, fake.addPanelIn.Width)
+	assert.Equal(t, 2, fake.addPanelIn.Height)
+}
+
+// TestAddPanelRendersWidthHeightAndPosition proves toAPIPanel puts a
+// panel's Width, Height and Position on the wire Panel it returns.
+func TestAddPanelRendersWidthHeightAndPosition(t *testing.T) {
+	fake := &fakeWorkspaces{addPanelResult: domain.Panel{
+		ID: "pnl-1", WorkspaceID: "ws-1", Service: "inventory", OperationID: "ListInventoryItems",
+		Component: "table", Title: "検品保留の在庫", Position: 1, Width: 6, Height: 3,
+	}}
+	h := handler.NewWorkspace(fake)
+
+	resp, err := h.AddPanel(t.Context(), openapi.AddPanelRequestObject{
+		Id: "ws-1",
+		Body: &openapi.CreatePanelRequest{
+			Service: "inventory", OperationId: "ListInventoryItems", Component: "table", Title: "検品保留の在庫",
+		},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.AddPanel201JSONResponse)
+	require.True(t, ok)
+	assert.Equal(t, 1, body.Position)
+	assert.Equal(t, 6, body.Width)
+	assert.Equal(t, 3, body.Height)
+}
+
 // TestUpdatePanelViewAbsentLeavesThePatchUntouched is half of the section
 // 6a wrinkle: a body that never names "view" at all must reach the usecase
 // with PanelPatch.View nil - "leave it alone", not "remove it".

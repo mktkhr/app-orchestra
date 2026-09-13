@@ -154,6 +154,8 @@ describe("AddPanelControl", () => {
       component: "chart",
       title: chartEntry.summary,
       position: 0,
+      width: 12,
+      height: 1,
       view: { chart: { category: "status", value: "count", kind: "bar" } },
     });
 
@@ -190,6 +192,8 @@ describe("AddPanelControl", () => {
       component: "table",
       title: tableEntry.summary,
       position: 0,
+      width: 12,
+      height: 1,
     });
 
     render(<AddPanelControl workspaceId="ws-1" onAdded={() => {}} />);

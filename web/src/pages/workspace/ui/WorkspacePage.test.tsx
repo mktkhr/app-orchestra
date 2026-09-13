@@ -34,6 +34,8 @@ describe("WorkspacePage", () => {
           component: "table",
           title: "検品保留の在庫",
           position: 0,
+          width: 12,
+          height: 1,
         },
       ],
     });
@@ -82,6 +84,8 @@ describe("WorkspacePage", () => {
           component: "table",
           title: "検品保留の在庫",
           position: 0,
+          width: 12,
+          height: 1,
         },
         {
           id: "pnl-bad",
@@ -92,6 +96,8 @@ describe("WorkspacePage", () => {
           component: "table",
           title: "壊れたパネル",
           position: 1,
+          width: 12,
+          height: 1,
         },
       ],
     });
@@ -135,6 +141,8 @@ describe("WorkspacePage", () => {
       component: "table",
       title: "在庫一覧",
       position: 0,
+      width: 12,
+      height: 1,
     });
     vi.mocked(postInvoke).mockResolvedValue({
       component: "table",

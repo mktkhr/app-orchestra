@@ -83,6 +83,8 @@ describe("AddPanelControl, an operation with an optional enum argument", () => {
       component: "table",
       title: listEntry.summary,
       position: 0,
+      width: 12,
+      height: 1,
     });
 
     render(<AddPanelControl workspaceId="ws-1" onAdded={() => {}} />);

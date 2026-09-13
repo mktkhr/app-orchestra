@@ -20,7 +20,7 @@ import (
 
 // panelColumns is the column list loadPanels and loadPanel both select, in
 // the order scanPanel expects them.
-const panelColumns = "id, workspace_id, service, operation_id, component, title, args, position, view"
+const panelColumns = "id, workspace_id, service, operation_id, component, title, args, position, width, height, view"
 
 // panelIDAndWorkspaceIDArgs is the two extra query arguments
 // UpdatePanel's own WHERE clause always adds, beyond one per SET fragment
@@ -80,6 +80,12 @@ func openDB(path string) (*sql.DB, error) {
 	}
 
 	if err := ensurePanelsViewColumn(context.Background(), db); err != nil {
+		_ = db.Close()
+
+		return nil, fmt.Errorf("migrating %s: %w", path, err)
+	}
+
+	if err := ensurePanelsSizeColumns(context.Background(), db); err != nil {
 		_ = db.Close()
 
 		return nil, fmt.Errorf("migrating %s: %w", path, err)
@@ -240,11 +246,25 @@ func (s *Store) AddPanel(ctx context.Context, workspaceID string, p *domain.Pane
 		return domain.Panel{}, fmt.Errorf("encoding panel view: %w", err)
 	}
 
+	width, height := p.Width, p.Height
+	if width == 0 {
+		width = domain.DefaultPanelWidth
+	}
+
+	if height == 0 {
+		height = domain.DefaultPanelHeight
+	}
+
+	widthValue := marshalPanelSize(p.Width)
+	heightValue := marshalPanelSize(p.Height)
+
 	if _, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO panels (id, workspace_id, service, operation_id, component, title, args, position, view)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, workspaceID, p.Service, p.OperationID, p.Component, p.Title, string(argsJSON), p.Position, viewValue,
+		`INSERT INTO panels (id, workspace_id, service, operation_id, component, title, args, position,
+		                     width, height, view)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, workspaceID, p.Service, p.OperationID, p.Component, p.Title, string(argsJSON), p.Position,
+		widthValue, heightValue, viewValue,
 	); err != nil {
 		return domain.Panel{}, fmt.Errorf("adding panel to workspace %s: %w", workspaceID, err)
 	}
@@ -258,8 +278,34 @@ func (s *Store) AddPanel(ctx context.Context, workspaceID string, p *domain.Pane
 		Title:       p.Title,
 		Args:        args,
 		Position:    p.Position,
+		Width:       width,
+		Height:      height,
 		View:        p.View,
 	}, nil
+}
+
+// marshalPanelSize encodes a panel's Width or Height into the nullable
+// column AddPanel writes: 0 - a width or height nothing could mean on
+// purpose - becomes SQL NULL rather than the literal 0, the same "not
+// really a value" translation marshalView gives a nil View. AddPanel
+// computes the value it reports the new panel as actually having
+// separately, from the same "0 means unset" rule, defaulting to
+// domain.DefaultPanelWidth/DefaultPanelHeight - what a subsequent read of
+// the same row will report too, through scanPanel's own NULL-means-default
+// handling (docs/plans/layout.md, Task 0, AC-L-104).
+//
+// Only AddPanel calls this: by the time a create request reaches here,
+// usecase.Workspaces.AddPanel has already turned an absent width/height
+// into this same default and clamped whatever the caller did send, so 0
+// only ever appears when a caller of this store bypasses that usecase
+// entirely - as this package's own tests do, on purpose, to prove
+// AC-L-104 at the store level.
+func marshalPanelSize(v int) sql.NullInt64 {
+	if v == 0 {
+		return sql.NullInt64{}
+	}
+
+	return sql.NullInt64{Int64: int64(v), Valid: true}
 }
 
 // viewJSON is the wire shape of domain.View, marshaled into the panels
@@ -406,6 +452,18 @@ func updatePanelSets(patch domain.PanelPatch) ([]panelSetClause, error) {
 		sets = append(sets, panelSetClause{"component = ?", *patch.Component})
 	}
 
+	if patch.Position != nil {
+		sets = append(sets, panelSetClause{"position = ?", *patch.Position})
+	}
+
+	if patch.Width != nil {
+		sets = append(sets, panelSetClause{"width = ?", *patch.Width})
+	}
+
+	if patch.Height != nil {
+		sets = append(sets, panelSetClause{"height = ?", *patch.Height})
+	}
+
 	if patch.View != nil {
 		viewValue, err := marshalView(*patch.View)
 		if err != nil {
@@ -484,14 +542,16 @@ type rowScanner interface {
 // order - decoding its args and (when the column is non-NULL) its view.
 func scanPanel(scanner rowScanner) (domain.Panel, error) {
 	var (
-		p          domain.Panel
-		argsJSON   string
-		viewColumn sql.NullString
+		p            domain.Panel
+		argsJSON     string
+		widthColumn  sql.NullInt64
+		heightColumn sql.NullInt64
+		viewColumn   sql.NullString
 	)
 
 	if err := scanner.Scan(
 		&p.ID, &p.WorkspaceID, &p.Service, &p.OperationID, &p.Component, &p.Title, &argsJSON, &p.Position,
-		&viewColumn,
+		&widthColumn, &heightColumn, &viewColumn,
 	); err != nil {
 		return domain.Panel{}, fmt.Errorf("scanning panel: %w", err)
 	}
@@ -502,6 +562,20 @@ func scanPanel(scanner rowScanner) (domain.Panel, error) {
 	}
 
 	p.Args = args
+
+	// A NULL width or height column - every panel saved before
+	// docs/plans/layout.md's Task 0 added them - reads back as the
+	// domain's own default rather than a zero value no grid could draw
+	// (AC-L-104).
+	p.Width = domain.DefaultPanelWidth
+	if widthColumn.Valid {
+		p.Width = int(widthColumn.Int64)
+	}
+
+	p.Height = domain.DefaultPanelHeight
+	if heightColumn.Valid {
+		p.Height = int(heightColumn.Int64)
+	}
 
 	// A NULL column - every panel saved before this slice, and every
 	// panel with nothing to say here - stays a nil View rather than

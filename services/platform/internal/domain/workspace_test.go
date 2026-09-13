@@ -47,3 +47,48 @@ func TestWorkspaceHoldsItsPanelsInOrder(t *testing.T) {
 	assert.Equal(t, map[string]any{"status": "quarantined"}, panel.Args)
 	assert.Equal(t, 0, panel.Position)
 }
+
+// TestClampPanelWidth pins docs/plans/layout.md Task 0's own examples: a
+// width the grid cannot draw is fixed, never rejected - 40 (too wide) comes
+// down to MaxPanelWidth, and 0 and -1 (not a width at all) come up to
+// MinPanelWidth. A width already in range passes through unchanged.
+func TestClampPanelWidth(t *testing.T) {
+	tests := map[string]struct {
+		width int
+		want  int
+	}{
+		"too wide (40) clamps down to the maximum": {width: 40, want: domain.MaxPanelWidth},
+		"zero clamps up to the minimum":            {width: 0, want: domain.MinPanelWidth},
+		"negative (-1) clamps up to the minimum":   {width: -1, want: domain.MinPanelWidth},
+		"in range passes through unchanged":        {width: 6, want: 6},
+		"exactly the minimum passes through":       {width: domain.MinPanelWidth, want: domain.MinPanelWidth},
+		"exactly the maximum passes through":       {width: domain.MaxPanelWidth, want: domain.MaxPanelWidth},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, domain.ClampPanelWidth(tt.width))
+		})
+	}
+}
+
+// TestClampPanelHeight is ClampPanelWidth's own case for height - the
+// difference being there is no upper bound (section 5: a row's own height
+// is not a resource the grid runs out of the way columns are).
+func TestClampPanelHeight(t *testing.T) {
+	tests := map[string]struct {
+		height int
+		want   int
+	}{
+		"zero clamps up to the minimum":          {height: 0, want: domain.MinPanelHeight},
+		"negative (-1) clamps up to the minimum": {height: -1, want: domain.MinPanelHeight},
+		"in range passes through unchanged":      {height: 5, want: 5},
+		"a very tall value is not clamped":       {height: 999, want: 999},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, domain.ClampPanelHeight(tt.height))
+		})
+	}
+}

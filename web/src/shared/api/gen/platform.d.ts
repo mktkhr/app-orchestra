@@ -454,7 +454,7 @@ export type components = {
             /** @description The workspace's name. */
             readonly name: string;
         };
-        /** @description A saved call: everything a plan result's source and component already carry, plus a title and a position (docs/specs/workspaces.md, section 3). No panel carries its answer - opening a workspace re-runs each panel's call through /api/invoke instead (W2). */
+        /** @description A saved call: everything a plan result's source and component already carry, plus a title, a position and a size (docs/specs/workspaces.md, section 3; docs/specs/layout.md, section 3). No panel carries its answer - opening a workspace re-runs each panel's call through /api/invoke instead (W2). */
         readonly Panel: {
             /** @description The panel's id, assigned by the platform. */
             readonly id: string;
@@ -471,8 +471,12 @@ export type components = {
             readonly component: components["schemas"]["Component"];
             /** @description The panel's title. A person can edit it; left blank when saved, it defaults to the operation id. */
             readonly title: string;
-            /** @description Where the panel sits among its workspace's others, ascending. Not editable in this slice (W5). */
+            /** @description Where the panel sits among its workspace's others, ascending. Editable via PATCH (docs/specs/layout.md, section 6); a request that sets one panel's position never renumbers the others. */
             readonly position: number;
+            /** @description The panel's span in grid columns, 1-12 (docs/specs/layout.md, section 3). Clamped to that range by the platform, never rejected. A panel saved before this field existed reads back as 12 - full width of the single column it was stacked in. */
+            readonly width: number;
+            /** @description The panel's span in grid rows (docs/specs/layout.md, section 3). Clamped to at least 1 by the platform, never rejected. A panel saved before this field existed reads back as 1. */
+            readonly height: number;
             readonly view?: components["schemas"]["View"];
         };
         /** @description A call to save as a new panel, appended after this workspace's others. */
@@ -488,6 +492,10 @@ export type components = {
             readonly component: components["schemas"]["Component"];
             /** @description The panel's title. Left blank, the panel is titled with its operation id instead of showing an empty card header. */
             readonly title: string;
+            /** @description The panel's span in grid columns, 1-12. Left out, the panel is full width; out of range, it is clamped (docs/specs/layout.md, section 3). */
+            readonly width?: number;
+            /** @description The panel's span in grid rows. Left out, the panel is one row tall; below 1, it is clamped up to 1. */
+            readonly height?: number;
             readonly view?: components["schemas"]["View"];
         };
         /** @description Fields to change on an existing panel (docs/specs/dashboard.md, P11, section 6a). Only the fields named here change - an absent field leaves that column alone (AC-P-108). `service` and `operationId` are deliberately not properties of this schema: a panel's operation is fixed once it is made (P13), and a request cannot even ask to change it. */
@@ -499,6 +507,12 @@ export type components = {
                 readonly [key: string]: unknown;
             };
             readonly component?: components["schemas"]["Component"];
+            /** @description The panel's new position. Only this panel's row changes - the platform never renumbers the others (docs/specs/layout.md, section 6). */
+            readonly position?: number;
+            /** @description The panel's new width in grid columns, 1-12; out of range, it is clamped rather than rejected. */
+            readonly width?: number;
+            /** @description The panel's new height in grid rows; below 1, it is clamped up to 1. */
+            readonly height?: number;
             /** @description The panel's new view. Naming it explicitly as `null` removes the view; leaving this property out of the request body leaves the existing view as it was - "absent" and "null" are different values here, not different ways of saying the same thing, since only one of them can mean "take the view away" (section 6a). */
             readonly view?: components["schemas"]["View"] | null;
         };

@@ -1044,6 +1044,47 @@ and gained its own `session_test.go` proving AC-A-101, AC-A-102 and
 AC-A-107 at the platform level - `e2e/` was deliberately left red, Task 6's
 job per the plan.
 
+**`docs/plans/layout.md` Task 0 (a panel has a size).** `domain.Panel`
+gains `Width`/`Height int`; `domain.PanelPatch` gains `Width`/`Height`/
+`Position *int`, plain "was this named" pointers like `Title`/`Args`/
+`Component` - no third state the way `View` needs one, since an integer has
+no "explicitly clear it" request distinct from "leave it alone"
+(`domain.PanelPatch`'s own doc comment; `DECISIONS.md`). The defaults - full
+width (`DefaultPanelWidth` = 12) and one row (`DefaultPanelHeight` = 1,
+`docs/specs/layout.md` section 3) - and the clamp bounds
+(`MinPanelWidth`/`MaxPanelWidth` = 1/12, `MinPanelHeight` = 1, no upper
+bound) live once as `domain` constants and `ClampPanelWidth`/
+`ClampPanelHeight` functions, so `sqlite.Store` (reading a `NULL` column)
+and `usecase.Workspaces.AddPanel`/`UpdatePanel` (deciding what a zero or
+out-of-range value means) all read the same numbers. `AddPanel` treats a
+zero `Width`/`Height` - what a caller that named neither leaves, and what
+nothing could mean on purpose anyway - as "unset", defaults it, then clamps
+unconditionally (a defaulted value is already in range; 40 clamps to 12, 0
+and -1 clamp to 1); `UpdatePanel` clamps only a `Width`/`Height` a `PATCH`
+actually named. `sqlite.Store.AddPanel` mirrors the same "0 means unset"
+convention when writing (`marshalPanelSize`, storing `NULL` rather than a
+literal 0) so a store-level test can prove AC-L-104 without going through
+the usecase; `UpdatePanel`'s existing "only the named columns" `SET`
+builder (`updatePanelSets`) already keeps a `position`-only `PATCH` from
+touching any other panel's row, proven directly
+(`TestStoreUpdatePanelPositionDoesNotRenumberOthers`, section 6). The
+migration (`migrate.go`'s `ensurePanelsSizeColumns`) extends the existing
+`pragma_table_info`-then-`ALTER TABLE` pattern (`ensurePanelsViewColumn`)
+for two more nullable columns, `schema.sql` unchanged - the same
+"never in `CREATE TABLE`, always through the migration function, even for a
+fresh file" precedent `view` already set. Proven against a database file
+built with the schema exactly as it existed after `view` but before this
+slice (`TestNewOpensADatabaseFileWrittenBeforeSizeColumnsExisted`) - the
+real shape of `~/.local/state/app-orchestra/workspaces.db` on this machine.
+The contract (`openapi.yaml`): `Panel` gains required `width`/`height`;
+`CreatePanelRequest` gains optional `width`/`height`; `UpdatePanelRequest`
+gains optional `position`/`width`/`height`, plain integers (no
+`x-go-type`/`nullable.Nullable` the way `view` needs). Frontend test
+fixtures across `web/src/features/**` and `web/src/pages/workspace/**`
+gained `width: 12, height: 1` to satisfy the now-required wire fields;
+nothing draws differently yet - `WorkspacePage.tsx`'s grid and
+`PanelCardShell.tsx`'s controls are Tasks 1-2.
+
 ## What does not exist yet
 
 Past `docs/plans/auth.md` Task 2: there is no `/api/users` yet (Task 3), no

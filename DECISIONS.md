@@ -3066,3 +3066,76 @@ sign-in during this work and passed on every run afterwards, including three
 consecutive full `make check` runs. Recorded as observed-flaky rather than
 explained: nothing here changed it, and a gate that fails once in a while
 is worth a look before it is trusted.
+
+## 2026-09-13 Layout Task 0: a panel's size and its clamp, position's plain patch
+
+**Context.** `docs/plans/layout.md` Task 0 gives a panel a `width` (grid
+columns) and `height` (grid rows), and makes `position` writable via
+`PATCH` - no drawing yet (Tasks 1-2). Three judgement calls the plan
+explicitly left open:
+
+**Where the defaults live.** `docs/specs/layout.md` section 3: a panel with
+no width or height at all reads back as full width (12 columns) and one row.
+Three places could decide "12" and "1" independently - `sqlite.Store`
+reading a `NULL` column, `usecase.Workspaces.AddPanel` building a new panel
+with neither field set - so `domain.DefaultPanelWidth`/`DefaultPanelHeight`
+are exported constants, read by both. `domain.Panel.Width`/`Height` are
+plain `int`, not `*int`: a caller that named neither leaves them at Go's
+own zero value, and there is no width or height a caller could mean by
+"zero" on purpose, so 0 is treated as "unset" wherever it is seen -
+`AddPanel` defaults it before clamping, and `sqlite.Store.AddPanel`
+(`marshalPanelSize`) stores `NULL` rather than a literal 0 for the same
+reason, so a store-level test can prove AC-L-104 (a panel created without a
+size reads back at the default) without going through the usecase at all.
+
+**What clamping does to 40, 0 and -1.** `domain.ClampPanelWidth`/
+`ClampPanelHeight` are pure functions, called from `usecase.Workspaces`
+(`AddPanel` unconditionally, after defaulting a zero; `UpdatePanel` only on
+a `Width`/`Height` a `PATCH` actually named) - never from the handler or
+the browser, since a caller that is not this repository's own frontend will
+send an out-of-range value and there is nothing gained by rejecting it
+instead of fixing it. Width is clamped to `[1, 12]`: 40 comes down to 12,
+0 and -1 come up to 1. Height is clamped to a floor of 1 only: 0 and -1
+come up to 1, but there is no ceiling, because section 5 draws a row's own
+height as something the grid multiplies, not a resource it runs out of the
+way columns (bounded by the 12-column grid) are.
+
+**Why `position`/`width`/`height` are plain pointers on `PanelPatch`, not a
+third state like `view`.** `docs/specs/dashboard.md` P11/section 6a gave
+`View` a pointer-to-pointer (`**View`) because naming it `null` has to mean
+something different from leaving it out - "remove the view" is a real,
+distinct request an integer field has no equivalent of. There is no null
+width to ask for: a `PATCH` either names a new `Width`/`Height`/`Position`
+(clamped, for the first two) or it doesn't, and "leave it alone" is the only
+meaning "didn't name it" could have. So all three are plain `*int` - the
+same nil-means-unchanged idiom `Title`/`Args`/`Component` already use - and
+carry no `x-go-type`/`nullable.Nullable` in the contract.
+
+**Position does not renumber.** `docs/specs/layout.md` section 6: a `PATCH`
+that moves one panel must not rewrite the others. This falls out of
+`sqlite.Store.UpdatePanel`'s existing `updatePanelSets` - it only appends a
+`SET position = ?` fragment when `PanelPatch.Position` is non-nil, and the
+query's `WHERE id = ? AND workspace_id = ?` already scopes to one row - so
+no new logic was needed, only a test proving it directly
+(`TestStoreUpdatePanelPositionDoesNotRenumberOthers`).
+
+**The migration.** `migrate.go` gained `ensurePanelsSizeColumns`, extending
+the `pragma_table_info`-then-`ALTER TABLE` shape `ensurePanelsViewColumn`
+already established (2026-09-12, above) for two more nullable columns.
+`schema.sql`'s `CREATE TABLE panels` was deliberately left unchanged, the
+same way it never gained a `view` column either: every column added after
+the table's own creation goes through the migration function alone, for
+every file - fresh or old - rather than being duplicated into the `CREATE
+TABLE` list too. Tested against a database built with the schema exactly as
+it existed after `view` but before this slice
+(`TestNewOpensADatabaseFileWrittenBeforeSizeColumnsExisted`,
+`preLayoutSchema`) - the actual shape of the real file this repository runs
+against at `~/.local/state/app-orchestra/workspaces.db` - rather than only
+the older pre-`view` shape `preDashboardSchema` already covers.
+
+**Consequences.** `Panel`'s `width`/`height` becoming required response
+fields broke every frontend test fixture typed as `WorkspacePanel`/`Panel`
+across `web/src/features/panels`, `web/src/features/workspaces` and
+`web/src/pages/workspace` - all gained `width: 12, height: 1` (or a shared
+`panel()` factory's defaults, in `PanelResult.test.tsx`). None of them
+exercise a grid or a control yet; that is Tasks 1-2.

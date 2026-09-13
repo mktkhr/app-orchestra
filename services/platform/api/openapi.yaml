@@ -914,9 +914,10 @@ components:
       type: object
       description: >
         A saved call: everything a plan result's source and component
-        already carry, plus a title and a position (docs/specs/workspaces.md,
-        section 3). No panel carries its answer - opening a workspace
-        re-runs each panel's call through /api/invoke instead (W2).
+        already carry, plus a title, a position and a size
+        (docs/specs/workspaces.md, section 3; docs/specs/layout.md, section
+        3). No panel carries its answer - opening a workspace re-runs each
+        panel's call through /api/invoke instead (W2).
       required:
         - id
         - workspaceId
@@ -926,6 +927,8 @@ components:
         - component
         - title
         - position
+        - width
+        - height
       properties:
         id:
           type: string
@@ -954,7 +957,21 @@ components:
           type: integer
           description: >
             Where the panel sits among its workspace's others, ascending.
-            Not editable in this slice (W5).
+            Editable via PATCH (docs/specs/layout.md, section 6); a request
+            that sets one panel's position never renumbers the others.
+        width:
+          type: integer
+          description: >
+            The panel's span in grid columns, 1-12 (docs/specs/layout.md,
+            section 3). Clamped to that range by the platform, never
+            rejected. A panel saved before this field existed reads back as
+            12 - full width of the single column it was stacked in.
+        height:
+          type: integer
+          description: >
+            The panel's span in grid rows (docs/specs/layout.md, section 3).
+            Clamped to at least 1 by the platform, never rejected. A panel
+            saved before this field existed reads back as 1.
         view:
           $ref: "#/components/schemas/View"
     CreatePanelRequest:
@@ -984,6 +1001,17 @@ components:
           description: >
             The panel's title. Left blank, the panel is titled with its
             operation id instead of showing an empty card header.
+        width:
+          type: integer
+          description: >
+            The panel's span in grid columns, 1-12. Left out, the panel is
+            full width; out of range, it is clamped (docs/specs/layout.md,
+            section 3).
+        height:
+          type: integer
+          description: >
+            The panel's span in grid rows. Left out, the panel is one row
+            tall; below 1, it is clamped up to 1.
         view:
           $ref: "#/components/schemas/View"
     UpdatePanelRequest:
@@ -1005,6 +1033,22 @@ components:
           additionalProperties: true
         component:
           $ref: "#/components/schemas/Component"
+        position:
+          type: integer
+          description: >
+            The panel's new position. Only this panel's row changes - the
+            platform never renumbers the others (docs/specs/layout.md,
+            section 6).
+        width:
+          type: integer
+          description: >
+            The panel's new width in grid columns, 1-12; out of range, it is
+            clamped rather than rejected.
+        height:
+          type: integer
+          description: >
+            The panel's new height in grid rows; below 1, it is clamped up
+            to 1.
         view:
           type: object
           allOf:

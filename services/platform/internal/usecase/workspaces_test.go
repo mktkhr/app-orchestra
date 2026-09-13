@@ -463,3 +463,108 @@ func TestWorkspacesDeletePanelIsANoOpForSomebodyElsesWorkspace(t *testing.T) {
 	require.NoError(t, w.DeletePanel(t.Context(), stranger(), "ws-1", "pnl-1"))
 	assert.Empty(t, store.deletePanelWSID, "the store must never be asked to delete a panel from a workspace the caller does not own")
 }
+
+// TestWorkspacesAddPanelDefaultsAnUnsetSizeToTheDomainDefault is
+// docs/plans/layout.md Task 0's own case: a panel built with no Width or
+// Height at all - the zero value a caller that said nothing about size
+// leaves - reaches the store already at domain.DefaultPanelWidth/
+// DefaultPanelHeight (docs/specs/layout.md, section 3), not zero.
+func TestWorkspacesAddPanelDefaultsAnUnsetSizeToTheDomainDefault(t *testing.T) {
+	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	_, err := w.AddPanel(t.Context(), owner(), "ws-1", &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
+
+	require.NoError(t, err)
+	require.NotNil(t, store.addPanelIn)
+	assert.Equal(t, domain.DefaultPanelWidth, store.addPanelIn.Width)
+	assert.Equal(t, domain.DefaultPanelHeight, store.addPanelIn.Height)
+}
+
+// TestWorkspacesAddPanelClampsAnOutOfRangeSize is the same case for a
+// caller that did send a width and height, but ones the grid cannot draw -
+// 40 columns, and 0 rows. Clamping happens here, in the usecase, never in
+// the browser (docs/plans/layout.md, Task 0).
+func TestWorkspacesAddPanelClampsAnOutOfRangeSize(t *testing.T) {
+	store := &fakeWorkspaceStore{getResult: domain.Workspace{ID: "ws-1", Owner: "owner-1"}, getFound: true}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	_, err := w.AddPanel(t.Context(), owner(), "ws-1", &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Width: 40, Height: 0,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, store.addPanelIn)
+	assert.Equal(t, domain.MaxPanelWidth, store.addPanelIn.Width, "a width of 40 must clamp down to the maximum")
+	assert.Equal(t, domain.MinPanelHeight, store.addPanelIn.Height, "a height of 0 must clamp up to the minimum")
+}
+
+// TestWorkspacesUpdatePanelClampsAWidthTheCallerNamed proves UpdatePanel
+// clamps a width or height a PATCH actually named, the same way AddPanel
+// clamps one supplied at create time - a caller that is not this
+// repository's own frontend can send -1 here just as easily.
+func TestWorkspacesUpdatePanelClampsAWidthTheCallerNamed(t *testing.T) {
+	store := &fakeWorkspaceStore{
+		getResult:        panelWorkspace(),
+		getFound:         true,
+		updatePanelFound: true,
+		updatePanelOut:   domain.Panel{ID: "pnl-1", Width: domain.MinPanelWidth},
+	}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	width := -1
+
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{Width: &width})
+
+	require.NoError(t, err)
+	require.NotNil(t, store.updatePanelIn)
+	require.NotNil(t, store.updatePanelIn.Width)
+	assert.Equal(t, domain.MinPanelWidth, *store.updatePanelIn.Width, "a width of -1 must clamp up to the minimum")
+}
+
+// TestWorkspacesUpdatePanelLeavesSizeUnnamedFieldsNil proves a PATCH that
+// never names Width, Height or Position reaches the store with all three
+// nil - absent-means-unchanged, the same as Args/Component/View
+// (docs/specs/dashboard.md, P11; AC-P-108) - so the store never overwrites
+// a column the caller said nothing about.
+func TestWorkspacesUpdatePanelLeavesSizeUnnamedFieldsNil(t *testing.T) {
+	store := &fakeWorkspaceStore{
+		getResult:        panelWorkspace(),
+		getFound:         true,
+		updatePanelFound: true,
+		updatePanelOut:   domain.Panel{ID: "pnl-1"},
+	}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	title := "新しいタイトル"
+
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{Title: &title})
+
+	require.NoError(t, err)
+	require.NotNil(t, store.updatePanelIn)
+	assert.Nil(t, store.updatePanelIn.Width)
+	assert.Nil(t, store.updatePanelIn.Height)
+	assert.Nil(t, store.updatePanelIn.Position)
+}
+
+// TestWorkspacesUpdatePanelPassesPositionThrough proves a PATCH naming a
+// new position reaches the store unchanged - reordering itself is not this
+// task's job, only accepting the field is (docs/plans/layout.md, Task 0).
+func TestWorkspacesUpdatePanelPassesPositionThrough(t *testing.T) {
+	store := &fakeWorkspaceStore{
+		getResult:        panelWorkspace(),
+		getFound:         true,
+		updatePanelFound: true,
+		updatePanelOut:   domain.Panel{ID: "pnl-1", Position: 3},
+	}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	position := 3
+
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{Position: &position})
+
+	require.NoError(t, err)
+	require.NotNil(t, store.updatePanelIn)
+	require.NotNil(t, store.updatePanelIn.Position)
+	assert.Equal(t, 3, *store.updatePanelIn.Position)
+}

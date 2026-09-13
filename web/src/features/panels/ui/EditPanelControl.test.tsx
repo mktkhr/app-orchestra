@@ -42,6 +42,8 @@ const chartPanel = {
   component: "chart" as const,
   title: "出勤の状況",
   position: 0,
+  width: 12,
+  height: 1,
   view: { chart: { category: "status", value: "count", kind: "bar" as const } },
 };
 

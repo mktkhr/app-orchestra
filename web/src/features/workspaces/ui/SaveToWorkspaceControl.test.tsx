@@ -35,6 +35,8 @@ describe("SaveToWorkspaceControl", () => {
       component: "table",
       title: "在庫の一覧を見せて",
       position: 0,
+      width: 12,
+      height: 1,
     });
 
     render(
@@ -76,6 +78,8 @@ describe("SaveToWorkspaceControl", () => {
       component: "table",
       title: "在庫の一覧を見せて",
       position: 0,
+      width: 12,
+      height: 1,
     });
 
     render(
@@ -143,6 +147,8 @@ describe("SaveToWorkspaceControl", () => {
       component: "chart",
       title: "ステータス別の件数",
       position: 0,
+      width: 12,
+      height: 1,
       view,
     });
 

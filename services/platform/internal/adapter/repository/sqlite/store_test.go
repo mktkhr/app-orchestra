@@ -456,6 +456,64 @@ func TestStoreAddPanelWithNoViewRoundTripsAsNil(t *testing.T) {
 	assert.Nil(t, got.Panels[0].View)
 }
 
+// TestStoreAddPanelRoundTripsSize is docs/plans/layout.md Task 0 Step 2's
+// first case: a panel saved with an explicit width and height reads back
+// with exactly those values, both from AddPanel's own return and from a
+// subsequent Get.
+func TestStoreAddPanelRoundTripsSize(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	saved, err := store.AddPanel(ctx, ws.ID, &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Component: "table",
+		Width: 6, Height: 3,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 6, saved.Width)
+	assert.Equal(t, 3, saved.Height)
+
+	got, ok, err := store.Get(ctx, ws.ID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, got.Panels, 1)
+	assert.Equal(t, 6, got.Panels[0].Width)
+	assert.Equal(t, 3, got.Panels[0].Height)
+}
+
+// TestStoreAddPanelWithNoSizeRoundTripsAsDefault is Task 0 Step 2's second
+// case: a panel saved with neither a width nor a height reads back as
+// domain's own default - full width, one row tall (docs/specs/layout.md,
+// section 3; AC-L-104) - both from AddPanel's own return and from Get.
+// usecase.Workspaces.AddPanel is what actually applies this default on the
+// real request path; calling the store directly with a zero Width/Height,
+// as here, is what proves the store's own half of that contract - turning
+// "unset" into NULL, and NULL back into the default on read - works on its
+// own.
+func TestStoreAddPanelWithNoSizeRoundTripsAsDefault(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	saved, err := store.AddPanel(ctx, ws.ID, &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Component: "table",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, domain.DefaultPanelWidth, saved.Width)
+	assert.Equal(t, domain.DefaultPanelHeight, saved.Height)
+
+	got, ok, err := store.Get(ctx, ws.ID)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, got.Panels, 1)
+	assert.Equal(t, domain.DefaultPanelWidth, got.Panels[0].Width)
+	assert.Equal(t, domain.DefaultPanelHeight, got.Panels[0].Height)
+}
+
 // newPanelForUpdateTest opens a fresh store, holding one workspace with one
 // panel, for TestStoreUpdatePanelChangesOnlyTheNamedColumn's own subtests -
 // each needs its own copy, since each changes a different column of it.
@@ -537,6 +595,97 @@ func TestStoreUpdatePanelChangesOnlyTheNamedColumn(t *testing.T) {
 		assert.Equal(t, panel.Args, updated.Args)
 		assert.Equal(t, panel.Component, updated.Component)
 	})
+
+	// width, height and position each change on their own the same way
+	// title/args/component/view already proved above - one table instead
+	// of three near-identical t.Run bodies (golangci-lint's dupl).
+	sizeCases := map[string]struct {
+		patch func() domain.PanelPatch
+		check func(t *testing.T, panel, updated domain.Panel)
+	}{
+		"width": {
+			patch: func() domain.PanelPatch { return domain.PanelPatch{Width: new(4)} },
+			check: func(t *testing.T, panel, updated domain.Panel) {
+				t.Helper()
+				assert.Equal(t, 4, updated.Width)
+				assert.Equal(t, panel.Height, updated.Height)
+				assert.Equal(t, panel.Position, updated.Position)
+			},
+		},
+		"height": {
+			patch: func() domain.PanelPatch { return domain.PanelPatch{Height: new(5)} },
+			check: func(t *testing.T, panel, updated domain.Panel) {
+				t.Helper()
+				assert.Equal(t, 5, updated.Height)
+				assert.Equal(t, panel.Width, updated.Width)
+				assert.Equal(t, panel.Position, updated.Position)
+			},
+		},
+		"position": {
+			patch: func() domain.PanelPatch { return domain.PanelPatch{Position: new(7)} },
+			check: func(t *testing.T, panel, updated domain.Panel) {
+				t.Helper()
+				assert.Equal(t, 7, updated.Position)
+				assert.Equal(t, panel.Width, updated.Width)
+				assert.Equal(t, panel.Height, updated.Height)
+			},
+		},
+	}
+
+	for name, tc := range sizeCases {
+		t.Run(name, func(t *testing.T) {
+			store, ctx, wsID, panel := newPanelForUpdateTest(t)
+
+			updated, found, err := store.UpdatePanel(ctx, wsID, panel.ID, tc.patch())
+			require.NoError(t, err)
+			require.True(t, found)
+
+			assert.Equal(t, panel.Title, updated.Title)
+			tc.check(t, panel, updated)
+		})
+	}
+}
+
+// TestStoreUpdatePanelPositionDoesNotRenumberOthers is
+// docs/specs/layout.md section 6's own requirement: a PATCH that moves one
+// panel changes only that panel's position column - the other panels in
+// the same workspace keep theirs, rather than the platform renumbering the
+// whole list to keep it dense (docs/plans/layout.md, Task 0).
+func TestStoreUpdatePanelPositionDoesNotRenumberOthers(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	first, err := store.AddPanel(ctx, ws.ID, &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Position: 0,
+	})
+	require.NoError(t, err)
+
+	second, err := store.AddPanel(ctx, ws.ID, &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Position: 1,
+	})
+	require.NoError(t, err)
+
+	third, err := store.AddPanel(ctx, ws.ID, &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Position: 2,
+	})
+	require.NoError(t, err)
+
+	_, found, err := store.UpdatePanel(ctx, ws.ID, third.ID, domain.PanelPatch{Position: new(0)})
+	require.NoError(t, err)
+	require.True(t, found)
+
+	unchangedFirst, found, err := store.UpdatePanel(ctx, ws.ID, first.ID, domain.PanelPatch{})
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, 0, unchangedFirst.Position, "moving the third panel must not touch the first")
+
+	unchangedSecond, found, err := store.UpdatePanel(ctx, ws.ID, second.ID, domain.PanelPatch{})
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, 1, unchangedSecond.Position, "moving the third panel must not touch the second")
 }
 
 // TestStoreUpdatePanelViewNullVsAbsent is the wrinkle section 6a names:
@@ -729,6 +878,10 @@ func TestNewOpensADatabaseFileWrittenBeforeViewExisted(t *testing.T) {
 	assert.Equal(t, "検品保留の在庫", got.Panels[0].Title)
 	assert.Equal(t, map[string]any{"status": "quarantined"}, got.Panels[0].Args)
 	assert.Nil(t, got.Panels[0].View, "a panel written before the view column existed must read back with a nil view")
+	assert.Equal(t, domain.DefaultPanelWidth, got.Panels[0].Width,
+		"a panel written before the width column existed must read back at the default width")
+	assert.Equal(t, domain.DefaultPanelHeight, got.Panels[0].Height,
+		"a panel written before the height column existed must read back at the default height")
 
 	// The migration must also leave the file writable by the current
 	// schema going forward: a new panel, saved with a view, still works
@@ -739,4 +892,88 @@ func TestNewOpensADatabaseFileWrittenBeforeViewExisted(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, saved.View)
 	assert.Equal(t, viewForRoundTrip(), saved.View)
+}
+
+// preLayoutSchema is the panels table as it existed after
+// docs/plans/dashboard.md's Task 2 (it has a view column) but before
+// docs/plans/layout.md's Task 0 (it has neither width nor height) - the
+// exact shape of the real database this repository ships against today
+// (docs/plans/layout.md, Task 0: "a panel in it has no width and no
+// height"), copied here rather than read from schema.sql for the same
+// reason preDashboardSchema is.
+const preLayoutSchema = `
+CREATE TABLE workspaces (
+	id    TEXT PRIMARY KEY,
+	name  TEXT NOT NULL,
+	owner TEXT NOT NULL
+);
+
+CREATE TABLE panels (
+	id           TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL,
+	service      TEXT NOT NULL,
+	operation_id TEXT NOT NULL,
+	component    TEXT NOT NULL,
+	title        TEXT NOT NULL,
+	args         TEXT NOT NULL,
+	position     INTEGER NOT NULL,
+	view         TEXT
+);
+`
+
+// TestNewOpensADatabaseFileWrittenBeforeSizeColumnsExisted is
+// docs/plans/layout.md Task 0 Step 2's third case, and the one that
+// matters most: a database file written before panels.width and
+// panels.height existed - exactly the shape of the real file this
+// repository runs against - still opens, and its panel reads back at the
+// domain's own default width and height rather than failing to open, or
+// reading back as a zero-sized panel nothing could draw (AC-L-104).
+func TestNewOpensADatabaseFileWrittenBeforeSizeColumnsExisted(t *testing.T) {
+	ctx := context.Background()
+	path := dbPath(t)
+
+	old, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+
+	_, err = old.ExecContext(ctx, preLayoutSchema)
+	require.NoError(t, err)
+
+	_, err = old.ExecContext(
+		ctx,
+		`INSERT INTO workspaces (id, name, owner) VALUES (?, ?, ?)`,
+		"ws-1", "在庫ダッシュボード", "stub-user",
+	)
+	require.NoError(t, err)
+
+	_, err = old.ExecContext(
+		ctx,
+		`INSERT INTO panels (id, workspace_id, service, operation_id, component, title, args, position, view)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"pnl-1", "ws-1", "inventory", "ListInventoryItems", "table", "検品保留の在庫", `{"status":"quarantined"}`, 0, nil,
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, old.Close())
+
+	store := openStore(t, path)
+
+	got, ok, err := store.Get(ctx, "ws-1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Len(t, got.Panels, 1)
+	assert.Equal(t, "pnl-1", got.Panels[0].ID)
+	assert.Equal(t, domain.DefaultPanelWidth, got.Panels[0].Width,
+		"a panel written before the width column existed must read back at the default width")
+	assert.Equal(t, domain.DefaultPanelHeight, got.Panels[0].Height,
+		"a panel written before the height column existed must read back at the default height")
+
+	// The migration must also leave the file writable going forward: a
+	// new panel, saved with an explicit size, still round-trips on the
+	// same migrated file.
+	saved, err := store.AddPanel(ctx, "ws-1", &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Component: "table", Width: 8, Height: 2,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 8, saved.Width)
+	assert.Equal(t, 2, saved.Height)
 }

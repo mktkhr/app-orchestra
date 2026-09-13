@@ -238,6 +238,8 @@ func toAPIPanel(p *domain.Panel) openapi.Panel {
 		Component:   openapi.Component(p.Component),
 		Title:       p.Title,
 		Position:    p.Position,
+		Width:       p.Width,
+		Height:      p.Height,
 		View:        toAPIView(p.View),
 	}
 }
@@ -246,7 +248,26 @@ func toAPIPanel(p *domain.Panel) openapi.Panel {
 // usecase.Workspaces.AddPanel takes. workspaceID is not part of the
 // request body - it comes from the path - so it is filled in here rather
 // than left for the usecase to thread through separately.
+//
+// An absent Width/Height crosses over as a plain 0 - domain.Panel's own
+// fields are plain ints, so this is the point a *int's "the caller said
+// nothing" collapses into the same zero value a genuinely-sent 0 would
+// have meant, and there is no width or height a caller could mean by
+// "zero" anyway. usecase.Workspaces.AddPanel and, beneath it,
+// sqlite.Store.AddPanel are what turn that 0 into
+// domain.DefaultPanelWidth/DefaultPanelHeight (docs/plans/layout.md, Task
+// 0) - not this handler, which stays a plain wire-to-domain translation.
 func toDomainPanel(workspaceID string, body *openapi.CreatePanelRequest) *domain.Panel {
+	var width, height int
+
+	if body.Width != nil {
+		width = *body.Width
+	}
+
+	if body.Height != nil {
+		height = *body.Height
+	}
+
 	return &domain.Panel{
 		WorkspaceID: workspaceID,
 		Service:     body.Service,
@@ -254,14 +275,19 @@ func toDomainPanel(workspaceID string, body *openapi.CreatePanelRequest) *domain
 		Component:   string(body.Component),
 		Title:       body.Title,
 		Args:        body.Args,
+		Width:       width,
+		Height:      height,
 		View:        toDomainView(body.View),
 	}
 }
 
 // toDomainPanelPatch converts an UpdatePanelRequest into the
-// domain.PanelPatch usecase.Workspaces.UpdatePanel takes. Title, Args and
-// Component are plain "was this field sent at all" pointers, straight off
-// the generated (already-optional) wire type. View is the one field with a
+// domain.PanelPatch usecase.Workspaces.UpdatePanel takes. Title, Args,
+// Component, Position, Width and Height are plain "was this field sent at
+// all" pointers, straight off the generated (already-optional) wire type -
+// Position, Width and Height need no third state the way View does (see
+// domain.PanelPatch's own doc comment), so body.Position/Width/Height are
+// assigned across unchanged. View is the one field with a
 // third state to translate: body.View is a
 // github.com/oapi-codegen/nullable.Nullable[openapi.View] (see
 // openapi.yaml's UpdatePanelRequest.view, `x-go-type`), and its
@@ -280,6 +306,10 @@ func toDomainPanelPatch(body *openapi.UpdatePanelRequest) domain.PanelPatch {
 		component := string(*body.Component)
 		patch.Component = &component
 	}
+
+	patch.Position = body.Position
+	patch.Width = body.Width
+	patch.Height = body.Height
 
 	if body.View.IsSpecified() {
 		var view *domain.View

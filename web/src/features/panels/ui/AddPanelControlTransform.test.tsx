@@ -110,6 +110,8 @@ describe("AddPanelControl, a chart built on top of a transform", () => {
       component: "chart",
       title: tableEntry.summary,
       position: 0,
+      width: 12,
+      height: 1,
       view: {
         transform: { groupBy: "status", aggregate: "count" },
         chart: { category: "status", value: "count", kind: "bar" },

@@ -12,7 +12,8 @@ import _ "embed"
 // A column added to a table this schema already created is a different
 // case "IF NOT EXISTS" cannot cover on its own - see openDB and
 // ensurePanelsViewColumn in migrate.go for panels.view, added by
-// docs/plans/dashboard.md's Task 2.
+// docs/plans/dashboard.md's Task 2, and ensurePanelsSizeColumns for
+// panels.width/panels.height, added by docs/plans/layout.md's Task 0.
 //
 //go:embed schema.sql
 var schemaSQL string
