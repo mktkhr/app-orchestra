@@ -3374,3 +3374,35 @@ workers sharing one `maxOpenConns(1)` SQLite connection - reproduced on
 screens this task never touched and disappeared once stray Chromium
 processes left over from manual debugging were killed; it was not chased
 further, and is not new here.
+
+## 2026-09-13 — the browser suite's flake is load, measured
+
+**Context.** `e2e/browser` failed twice during the layout work, each time a
+different spec and a different assertion: once the panel-editing journey at
+sign-in, once `chat.spec.ts` waiting for a table. `docs/plans/layout.md`
+Task 2's own report guessed at contention - one SQLite file, `maxOpenConns`
+of 1, six parallel Playwright workers - and a storage change or a worker cap
+was the obvious prescription.
+
+**Measured instead.** Eight consecutive runs of the suite at default
+parallelism on an otherwise quiet machine: 6 passed, eight times, no
+failures. Both observed failures happened while something else heavy was
+running - a full `make check` overlapping an agent's own, and stray Chromium
+processes left by manual debugging.
+
+**Decision.** Change nothing. `maxOpenConns = 1` stays for the reason its own
+comment gives, and the suite keeps its parallelism: a prescription for
+contention this repository created while measuring itself would be treating
+the measurement, not the product.
+
+What is worth knowing is the mechanism, so it is written down rather than
+rediscovered: every request resolves a session from the same SQLite file over
+one connection, and Playwright's `expect` timeout is five seconds. A loaded
+machine turns queueing into a failed assertion. If this recurs where nobody
+is overlapping jobs - in CI, say - raising that timeout is the honest first
+move, and it is cheaper and less invasive than either alternative above.
+
+**Consequences.** A `make check` that fails once on `acceptance-browser` and
+passes on a rerun is, on this evidence, load rather than a defect. That is a
+dangerous sentence to be able to say, so: it is licence to rerun and look at
+the machine, never licence to rerun until green and report green.
