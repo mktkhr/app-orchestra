@@ -3727,3 +3727,57 @@ does not scroll), while its `TableContainer` measured `scrollHeight: 334`
 against `clientHeight: 108` (`overflow: auto`, `tabIndex: 0` - it does,
 and is reachable by keyboard). The pagination control's bounding box sat
 entirely within the card's own, at every point during that scroll.
+
+## 2026-09-13 Routing Task 0: telling a screen's address from a missing file
+
+**Context.** `docs/specs/routing.md` R2/section 4: the platform must serve
+`index.html` for any request that is not `/api/...` and not a file it has,
+so a path like `/workspaces/abc` survives a reload once Task 1 puts routes
+in the URL instead of the hash. The trap the spec calls out by name: a
+browser asking for a build asset that no longer exists (a stale
+`/assets/index-abc123.js` from a page open across a deploy) must still get
+404, not `index.html` - handing it HTML produces a syntax error in a file
+the developer can see listed on disk, which is a bad hour to spend finding
+the actual cause.
+
+**Decision.** `internal/infra/httpserver/router.go` gained `spaHandler`,
+replacing the bare `http.FileServer(http.Dir(staticDir))`. The rule is the
+one every static host uses: a request path with a file extension
+(`path.Ext`) is a request for a file, and 404s when that file is not
+there; everything without an extension is an application address and gets
+`index.html`. Existence is checked with `http.Dir.Open` before deciding,
+so a real file - including one with an extension that does exist - is
+still handed to `http.FileServer` and served with its own content type;
+only the fallback path goes to `index.html`, via `http.ServeFile` naming
+that file directly rather than resolving it from the request path.
+`staticDir == ""` still registers no handler at all - unchanged, since
+several tests and every acceptance suite start a platform with no
+frontend.
+
+**What the heuristic does not cover.** An extensionless asset would be
+misread as an application route and get `index.html` instead of itself.
+`docs/specs/routing.md` section 4 already names this and says it does not
+apply here: this build's assets (`web/dist`, via Vite) are always named
+with an extension. Nothing in this task adds a guard for that, because
+nothing produces the case it would guard against; if a future build step
+ever emits an extensionless asset, it needs one then.
+
+**Traversal.** Two layers, both checked directly (`router_test.go`,
+`TestNewRouterTraversalDoesNotEscapeStaticDir`, plain and
+percent-encoded `../` forms): `net/http`'s `ServeMux` cleans `..` segments
+out of the request path before this handler ever runs, and
+`http.Dir.Open` - used both for the existence check and by
+`http.FileServer` itself - runs `path.Clean("/"+name)` before joining onto
+`staticDir`, so even an uncleaned path cannot climb above it. The
+`index.html` fallback adds no new surface: `http.ServeFile` is given a
+fixed path this function built (`filepath.Join(staticDir, "index.html")`),
+never one derived from the request.
+
+**Consequences.** `/api/...` is unaffected - it is registered on a
+different mux entry and never reaches `spaHandler`. The frontend is not
+touched by this task; `web/src/app/model/useHashRoute.ts` still reads
+`window.location.hash`, and the hash router keeps working exactly as
+before until `docs/plans/routing.md` Task 1 moves it to `react-router` and
+real paths. `docker logs llama-swap`'s `POST /v1/chat/completions` count
+was unchanged (79514) across a full `make check` run, per this
+subproject's own global constraint.

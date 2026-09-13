@@ -4,9 +4,11 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-Nothing. Two defects reported against the dashboard (a panel writing rows
-nobody asked for, two scrollbars around one table) are fixed this session -
-see "Done" below and `DECISIONS.md`, 2026-09-13.
+`docs/plans/routing.md` (`docs/specs/routing.md`): Task 0 is done - see
+"Done" below. Task 1 (`react-router` in the browser, `useHashRoute`
+deleted) and Task 2 (end to end, the browser gates moved off hash
+addresses) are not started; the hash router keeps working until Task 1
+lands.
 
 ## Next
 
@@ -60,6 +62,20 @@ see "Done" below and `DECISIONS.md`, 2026-09-13.
    that choice, not from a fresh survey of routing libraries.
 
 ## Done
+
+- **`docs/plans/routing.md` Task 0: the platform serves `index.html` for
+  any address it does not otherwise answer** (`docs/specs/routing.md`
+  section 4, AC-R-102/AC-R-103). `internal/infra/httpserver/router.go`'s
+  `spaHandler` replaces the bare `http.FileServer(http.Dir(staticDir))`:
+  a request that resolves to a real file under `staticDir` (including
+  `/` itself) is served as itself; a request whose path has no file
+  extension gets `index.html`, so a reload of a deep link like
+  `/workspaces/abc` will keep working once Task 1 puts it in the URL; a
+  request with an extension but no matching file still answers 404, not
+  HTML. `/api/...` is untouched, `staticDir` empty behaves exactly as
+  before, and traversal (plain and percent-encoded) cannot escape
+  `staticDir` - see `DECISIONS.md`, 2026-09-13. Frontend untouched; the
+  hash router still works.
 
 - **Defect fix: a panel over an unsafe operation no longer calls
   `/api/invoke` on its own** (`docs/specs/dashboard.md` P14, section 6b,

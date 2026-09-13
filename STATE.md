@@ -1,9 +1,23 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-13 (two dashboard defects fixed - see below and
-`DECISIONS.md`)_
+_Last updated: 2026-09-13 (routing plan Task 0 landed; two dashboard
+defects fixed - see below and `DECISIONS.md`)_
 
 ## Summary
+
+**The platform serves `index.html` for any address that is not `/api/...`
+and not a file it has** (`docs/plans/routing.md` Task 0,
+`docs/specs/routing.md` section 4, AC-R-102/AC-R-103; `DECISIONS.md`,
+2026-09-13). `internal/infra/httpserver/router.go`'s `spaHandler` replaces
+the bare `http.FileServer(http.Dir(staticDir))`: a real file under
+`staticDir` is served as itself; an extensionless path (an application
+address) gets `index.html`; a path with an extension but no matching file
+still 404s, so a missing build asset is never handed HTML to parse.
+`staticDir` empty is unchanged - no fallback is registered at all, as
+before. The frontend still reads its route from `window.location.hash`
+(`web/src/app/model/useHashRoute.ts`) - Tasks 1-2 of the same plan move it
+to `react-router` and paths; nothing about this task depends on that
+happening, and nothing breaks while it has not.
 
 **A panel over an unsafe operation never calls `/api/invoke` on its own,
 and a panel has exactly one scroller** (`docs/specs/dashboard.md` P14/P15,

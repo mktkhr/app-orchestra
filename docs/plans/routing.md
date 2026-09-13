@@ -56,15 +56,15 @@ it is missing; everything else is the application. Handing HTML to a
 browser that asked for a missing `.js` produces a syntax error in a file
 that appears to exist.
 
-- [ ] **Step 1** Write the tests first: `/workspaces/abc` returns the
+- [x] **Step 1** Write the tests first: `/workspaces/abc` returns the
       index; `/assets/missing-abc123.js` returns 404; an existing asset is
       still itself; `/api/nope` answers as the API (404 from the API, not
       the index); `/` is still the index. Run them, expect failure.
-- [ ] **Step 2** Implement. `staticDir` empty must behave exactly as it
+- [x] **Step 2** Implement. `staticDir` empty must behave exactly as it
       does now — the acceptance suites and several tests start a platform
       with no frontend at all.
-- [ ] **Step 3** Go gates green.
-- [ ] **Step 4** Commit: `feat(platform): serve the application at any address`
+- [x] **Step 3** Go gates green.
+- [x] **Step 4** Commit: `feat(platform): serve the application at any address`
 
 **Satisfies:** AC-R-102, AC-R-103.
 
