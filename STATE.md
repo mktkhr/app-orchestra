@@ -1,6 +1,6 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-13 (`docs/plans/layout.md` Task 2)_
+_Last updated: 2026-09-13 (`docs/plans/layout.md` Task 3 - subproject closed)_
 
 ## Summary
 
@@ -1192,6 +1192,58 @@ product can never actually reach. `screens.ts`'s "a workspace" is now "a
 workspace with a panel in it," carrying one real `ListInventoryItems`
 table panel through `createPanel` (mirroring `createWorkspace`'s own
 page-context `fetch`).
+
+**`docs/plans/layout.md` Task 3 (end to end) - the subproject closes.**
+`e2e/src/layout.test.ts`: three panels created over real HTTP against the
+built platform binary (no width/height/position named, so all three read
+back at Task 0's own defaults - full width, one row, `position: 0`), three
+`PATCH`es give two of them a later `position` and the third a wider,
+taller, first row, and a fresh `GET` on the same process proves the
+geometry landed exactly there - `second`'s own `PATCH` named only
+`position`, so its width/height read back as the untouched default
+(AC-L-104) rather than anything the test itself set. `e2e/browser/layout.spec.ts`
+drives the same thing through real pointer events in headless Chromium:
+sign in, add three panels (every builder-made panel starts full width, one
+row - the builder has no width/height field), narrow two of them by
+dragging their own resize handle, grow the third's height by the same
+handle, drag it to the front by its own header, reload, and read the
+result back both through the DOM (`.MuiCardHeader-title` order) and
+through `/api/workspaces/{id}` (via `page.request`, which shares the
+browser's own session cookie - no bare `fetch` from Node, and nothing runs
+inside the page itself) - then narrows the viewport to 375px and confirms
+the same order survives with no panel wider than the viewport (AC-L-105).
+Geometry helpers live in `e2e/browser/helpers/layout.ts` (kept out of the
+spec file for `max-lines`).
+
+**Two real things this drag exposed, neither a product bug.** First, a
+newly created panel is not just full-width by default - it is
+`position: 0` for every panel, the same zero value that predates this
+whole subproject (`docs/specs/workspaces.md` W5's own column, "added...and
+excluded the editing"): `AddPanel` never assigns a fresh, ascending
+position, so three panels made in a row all start at `position: 0` and
+draw in creation order only because `Array.prototype.toSorted` is stable.
+A workspace only looks arranged once a drag, a resize, or (in the e2e
+test) an explicit `PATCH` actually arranges it - exactly this plan's own
+closing line. Second, `.react-grid-item.cssTransforms`'s 200ms transition
+(`workspaceGrid.css`) means a resize that moves another panel leaves that
+panel's own screen position mid-slide for up to 200ms - a bounding box
+read immediately afterward (or a scroll triggered by a huge tall panel's
+own resize handle, since `boundingBox()` does not scroll and a `y` that
+lands off-screen cannot be clicked) reads a stale position. The spec
+settles 300ms after every drag/resize and sizes its own viewport tall
+enough that the whole arrangement never needs to scroll, rather than
+fight either one mid-gesture.
+
+**AC-L-103's own two claims, confirmed rather than re-tested.** "Moving a
+panel and resizing it are both operable without a pointer" is
+`web/src/pages/workspace/ui/WorkspaceGrid.test.tsx`'s own keyboard-only
+test (Task 2): focus is moved with `Tab`, every action after that is
+`userEvent.keyboard`, no pointer event in the test at all - re-read here
+rather than duplicated. "`make guard-a11y` passes on a workspace that has
+panels in it" was confirmed by running `make guard-a11y` (and
+`make guard-layout`) directly: `harness/quality/browser/screens.ts`'s "a
+workspace with a panel in it" screen (Task 2 Step 4) is in `SCREENS`, and
+both gates pass green against it.
 
 ## What does not exist yet
 

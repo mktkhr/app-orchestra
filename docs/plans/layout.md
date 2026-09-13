@@ -211,16 +211,16 @@ writes nothing.
 **Produces:** the journey — sign in, open a workspace with three panels,
 make one wide, move it first, reload, see it wide and first.
 
-- [ ] **Step 1** Write the process-level journey: create three panels, PATCH
+- [x] **Step 1** Write the process-level journey: create three panels, PATCH
       sizes and positions, read the workspace back, confirm the geometry
       survived.
-- [ ] **Step 2** Write the browser journey, including a 375px pass
+- [x] **Step 2** Write the browser journey, including a 375px pass
       (AC-L-105).
-- [ ] **Step 3** Confirm Task 2 Step 4 actually landed: both browser gates
+- [x] **Step 3** Confirm Task 2 Step 4 actually landed: both browser gates
       measure a workspace with a panel in it, not an empty one.
-- [ ] **Step 4** `make check` in full — every gate green, and no request
+- [x] **Step 4** `make check` in full — every gate green, and no request
       added to the model's log.
-- [ ] **Step 5** Commit: `test(e2e): arrange a workspace and reload it`
+- [x] **Step 5** Commit: `test(e2e): arrange a workspace and reload it`
 
 **Satisfies:** the whole of `docs/specs/layout.md` section 8 end to end.
 

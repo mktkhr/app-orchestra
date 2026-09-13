@@ -4,30 +4,23 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-`docs/plans/layout.md` (FR-F-4, `docs/specs/layout.md`): a panel decides how
-wide and tall it is, and what order the panels come in. Tasks 0-2 are done -
-see "Done" below. Task 3 remains:
-
-- Task 3: `e2e/` coverage for the whole slice (create three panels, `PATCH`
-  sizes and positions, reload, confirm the geometry survived, including a
-  375px pass), plus confirming Task 2's harness seed (both browser gates
-  now measure a workspace with a panel in it, not an empty one) still
-  holds.
-
-`make check` (not `-k`) is fully green with Tasks 0-2 in place.
+Nothing. `docs/plans/layout.md` closed (Task 3, this session) - see "Done"
+below.
 
 ## Next
 
-Everything remaining sits outside all four subprojects above:
-
-1. A genre/domain layer above individual services - grouping services by
+1. **FR-F-5: asking the chat to add a panel.** `docs/plans/layout.md`
+   closed FR-F-4 (a panel decides its own size and order); FR-F-5, adding a
+   panel by asking rather than through the builder, is not started -
+   nothing in `docs/plans/` or `docs/specs/` targets it yet.
+2. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat.
-2. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-3. **Open defect: a question whose filter word matches no enum value gets
+4. **Open defect: a question whose filter word matches no enum value gets
    every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
    在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
    variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
@@ -42,7 +35,7 @@ Everything remaining sits outside all four subprojects above:
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
-4. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+5. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -53,6 +46,17 @@ Everything remaining sits outside all four subprojects above:
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
+6. **Real paths instead of the hash route - its own subproject, not a
+   layout follow-up.** `web/src/app/model/useHashRoute.ts` picked hash
+   routing over real paths for a reason its own comment never actually
+   argues (`docs/specs/layout.md` section 4, found while writing that
+   section): the real reason is that `internal/infra/httpserver/router.go`
+   serves `http.FileServer` at `"/"` with no fallback, so a real path 404s
+   on reload. Moving to real paths needs that fallback added first. **The
+   user has already chosen `react-router` for this** - recorded here so it
+   is not re-litigated the way the drag-library decision in
+   `docs/specs/layout.md` section 4 was; whoever picks this up starts from
+   that choice, not from a fresh survey of routing libraries.
 
 ## Done
 
@@ -124,6 +128,29 @@ Everything remaining sits outside all four subprojects above:
   instead) - all fixed, all argued in `DECISIONS.md`. The stylesheet's own
   drag placeholder and resize handle, live for the first time, changed
   nothing about `guard-layout`'s contrast checks in either colour scheme.
+
+- `docs/plans/layout.md` Task 3: end to end - the subproject closes.
+  `e2e/src/layout.test.ts` (process-level: three panels, three `PATCH`es
+  give one of them a wider, taller, first row and the other two a later
+  `position`, a fresh `GET` on the same process proves it, AC-L-101/102)
+  and `e2e/browser/layout.spec.ts` (real pointer drags in headless
+  Chromium: resize two panels narrower by their own handle, resize and
+  drag a third to the front, reload, then narrow to 375px and confirm the
+  order survives with no panel wider than the viewport, AC-L-105) - the
+  latter's geometry helpers live in `e2e/browser/helpers/layout.ts` for
+  `max-lines`. AC-L-103's own two claims were confirmed rather than
+  retested: the keyboard-only test already in
+  `WorkspaceGrid.test.tsx` (Task 2) covers the first, and running
+  `make guard-a11y`/`make guard-layout` directly against
+  `screens.ts`'s "a workspace with a panel in it" screen (also Task 2)
+  covers the second. Found two things along the way, neither a product
+  bug: `AddPanel` never assigns a fresh panel an ascending `position` (it
+  is always the domain's zero value, matching `docs/specs/workspaces.md`
+  W5's original column - a workspace looks arranged only once something
+  actually arranges it), and `.react-grid-item.cssTransforms`'s 200ms
+  transition means a bounding box read immediately after a resize that
+  moved another panel can read a mid-slide position - both argued in
+  `DECISIONS.md`.
 
 - `docs/specs/dashboard.md` section 6a, P11-P13: a panel can be changed
   after it is made. `PATCH /api/workspaces/{id}/panels/{panelId}`

@@ -3406,3 +3406,88 @@ move, and it is cheaper and less invasive than either alternative above.
 passes on a rerun is, on this evidence, load rather than a defect. That is a
 dangerous sentence to be able to say, so: it is licence to rerun and look at
 the machine, never licence to rerun until green and report green.
+
+## 2026-09-13 — layout, end to end: two gaps a real drag found
+
+**Context.** `docs/plans/layout.md` Task 3 - the process-level and
+browser-driven journeys that close the subproject. Both were written
+straightforwardly from the plan; two things surfaced while making the
+browser one pass with real pointer events, neither a defect in the product
+the way Task 2's three were.
+
+**1. A freshly created panel's `position` is always the domain's zero
+value - `AddPanel` never assigns one.** Three panels created one after
+another over `POST /api/workspaces/{id}/panels`, none of them naming
+`position`, all read back with `position: 0`. This was assumed, while
+writing the process-level test, to be sequential (0, 1, 2) the way a
+person watching the workspace fill up would expect. It is not, and always
+has not been: `position` is `docs/specs/workspaces.md` W5's own column,
+added there and explicitly excluded from editing until this subproject;
+nothing before `docs/plans/layout.md` ever had a reason to assign it
+anything but the zero value every integer column gets unless named. A
+workspace still draws in creation order regardless, only because
+`Array.prototype.toSorted` is stable and `buildPanelLayout` sorts by
+`position` before packing - three equal keys preserve whatever order the
+platform returned them in. This is exactly this plan's own closing
+line - "a workspace looks the way somebody arranged it rather than the
+order they happened to build it in" - read the other way round: before
+anything arranges it, position carries no information at all, and the
+apparent order is an accident of stability, not a guarantee. Both new
+tests were written around this rather than against it: the process-level
+one assigns three distinct positions itself before asserting anything
+about them; the browser one narrates its own arrangement (which panel
+ends up first) rather than assuming one existed already.
+
+**2. `.react-grid-item.cssTransforms`'s own 200ms transition (`workspaceGrid.css`,
+`docs/plans/layout.md` Task 2) means a panel's screen position can lag its
+true, computed one by up to 200ms after a sibling's resize moves it.** The
+browser journey's first attempts read a panel's header position (to decide
+where to click next) immediately after resizing a different panel, and
+intermittently landed the next drag on that panel's own table content
+instead of its header - `elementFromPoint` at the computed coordinates
+showed a `<td>`, not the header, because the panel was still sliding into
+its post-resize position when the coordinates were read. `dragResizeHandle`/
+`dragPanelAbove` (`e2e/browser/helpers/layout.ts`) now wait 300ms - longer
+than the transition itself - after every pointer gesture before the next
+one reads anything. A related, second-order issue compounded this while
+debugging it: `Locator.boundingBox()` does not scroll an element into
+view, and a resize handle dragged toward the bottom of a panel several
+rows tall can leave the page scrolled far enough that the same panel's own
+header sits above the viewport at a negative `y` a mouse cannot click;
+`requireBoundingBox` now calls `scrollIntoViewIfNeeded()` first, and the
+spec's own viewport (1280×3200) is sized tall enough that the arrangement
+it builds never needs to scroll at all, sidestepping the interaction
+between the two.
+
+**Consequence.** Both are working notes for whoever next automates a drag
+against this grid, not follow-up work: the tests that found them already
+work around them, and `make check` is green with both in place. Neither
+changes anything about what a person using the product experiences -
+`useArrangement`'s own `PATCH`es always name an explicit `position` once a
+drag or a keypress actually arranges something, which is the only path
+that mattered before this session.
+
+## 2026-09-13 — `docs/plans/layout.md` closes; real routing is next, and `react-router` is chosen
+
+**Context.** Task 3 (`e2e/` coverage for the whole slice) is the last task
+in `docs/plans/layout.md`; `make check` is green, and every criterion in
+`docs/specs/layout.md` section 8 has a test that runs in it. `TODO.md`'s
+"In progress" line for this subproject is now empty.
+
+**What is not in scope, recorded so it is not re-litigated.**
+`docs/specs/layout.md` section 4, written for this subproject, re-read
+`web/src/app/model/useHashRoute.ts`'s own reasoning while arguing why
+`react-grid-layout` was taken over a hand-built control, and found it
+argues the wrong question: it argues whether to take a router library
+(no), not why hash routing rather than real paths - a decision it never
+actually defends. The real reason a real path is not used today is
+`internal/infra/httpserver/router.go`, which serves `http.FileServer` at
+`"/"` with no fallback, so a real path 404s on a reload; nobody has argued
+that server should stay that way, only that thirty lines solved routing
+without a library, which is a different claim. Moving to real paths is
+therefore its own subproject - a SPA fallback in the router first, then
+the frontend's own routing - not a follow-up to this one.
+
+**Decision.** The user has already chosen `react-router` for that future
+subproject. Recorded here, in `TODO.md`'s "Next" list, and nowhere a
+future session would need to re-survey routing libraries to find it.
