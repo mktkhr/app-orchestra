@@ -75,8 +75,8 @@ test("building a panel over a list operation, with a group-by and a bar chart, a
 
   // Reload - a fresh process reading the panel back from the platform,
   // not anything still held in the page's own memory - and see it draw
-  // again from the saved view (AC-P-104, AC-P-106). The hash route
-  // (`app/model/useHashRoute.ts`) already names this workspace, so a bare
+  // again from the saved view (AC-P-104, AC-P-106). `/workspaces/{id}`
+  // already names this workspace (docs/plans/routing.md), so a bare
   // reload lands back on it without following the link again.
   await page.reload();
   await page.waitForLoadState("networkidle");

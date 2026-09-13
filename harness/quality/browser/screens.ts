@@ -155,7 +155,7 @@ export const SCREENS: readonly Screen[] = [
     name: "the admin's users screen",
     visit: async (page) => {
       await signInAsAdmin(page);
-      await goto(page, "/#users");
+      await goto(page, "/users");
     },
   },
   {
@@ -165,7 +165,7 @@ export const SCREENS: readonly Screen[] = [
       await goto(page, "/");
       const workspaceId = await createWorkspace(page);
       await createPanel(page, workspaceId);
-      await goto(page, `/#workspace-${workspaceId}`);
+      await goto(page, `/workspaces/${workspaceId}`);
     },
   },
   {
@@ -177,7 +177,7 @@ export const SCREENS: readonly Screen[] = [
     visit: async (page) => {
       await signInAsAdmin(page);
       await goto(page, "/");
-      await goto(page, `/#workspace-${await createWorkspace(page)}`);
+      await goto(page, `/workspaces/${await createWorkspace(page)}`);
       await page.getByRole("button", { name: "パネルを追加" }).click();
       await page.waitForLoadState("networkidle");
     },

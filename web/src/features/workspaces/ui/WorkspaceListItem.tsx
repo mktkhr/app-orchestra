@@ -6,6 +6,7 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import type { JSX } from "react";
+import { Link } from "react-router";
 
 import type { WorkspaceSummary } from "@/shared/api/client";
 
@@ -38,7 +39,7 @@ export function WorkspaceListItem({
         </IconButton>
       }
     >
-      <ListItemButton component="a" href={`#workspace-${workspace.id}`} onClick={onNavigate}>
+      <ListItemButton component={Link} to={`/workspaces/${workspace.id}`} onClick={onNavigate}>
         <ListItemIcon>
           <FolderIcon />
         </ListItemIcon>

@@ -3781,3 +3781,38 @@ before until `docs/plans/routing.md` Task 1 moves it to `react-router` and
 real paths. `docker logs llama-swap`'s `POST /v1/chat/completions` count
 was unchanged (79514) across a full `make check` run, per this
 subproject's own global constraint.
+
+## 2026-09-13 — the routing shim that was not shipped
+
+**Context.** `docs/plans/routing.md` Task 1 put the screen in the address.
+The browser gates (`harness/quality/browser/screens.ts`) still navigated to
+`/#users` and `/#workspace-{id}`, and `BrowserRouter` reads the pathname and
+ignores the hash - so those gates would have silently measured the chat
+screen instead of the one they meant. The plan gave Task 2 the job of moving
+them.
+
+Task 1's implementation bridged the gap with `useLegacyHashRedirect`, a hook
+that sent the old hashes to their paths, documented as temporary and marked
+for deletion in Task 2.
+
+**Decision.** It was deleted rather than committed, and the navigation moved
+in Task 1 instead.
+
+Two reasons. `docs/specs/routing.md` section 3 says in as many words that the
+old addresses are **not** kept working and nothing redirects them - shipping
+a redirect, even briefly, contradicts the spec that was written one commit
+earlier, and the redirect was removed from that spec because it was a
+decision nobody asked for. And a temporary redirect is a permanent one with
+a comment on it: the thing that was supposed to remove it is a later task,
+and later tasks are where intentions go.
+
+The move turned out to be three lines in one file. `e2e/browser/*.spec.ts`
+navigate by clicking rather than by address, so there was nothing to move
+there - except one assertion that read the workspace id back out of
+`page.url()` by splitting on `"workspace-"`, which a search for the hash
+addresses did not find and `make check` did, deterministically, three runs
+out of three.
+
+**Consequences.** `docs/plans/routing.md` Task 2 loses its first two steps
+and keeps the journey. Nothing in the product redirects a hash: an old link
+lands on the chat, which is what an unrecognised address has always done.

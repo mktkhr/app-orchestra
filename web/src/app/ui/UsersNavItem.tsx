@@ -15,7 +15,5 @@ interface UsersNavItemProps {
  * control is not a check).
  */
 export function UsersNavItem({ onClick }: UsersNavItemProps): JSX.Element {
-  return (
-    <DrawerNavItem href="#users" icon={<PeopleIcon />} label="ユーザー管理" onClick={onClick} />
-  );
+  return <DrawerNavItem to="/users" icon={<PeopleIcon />} label="ユーザー管理" onClick={onClick} />;
 }

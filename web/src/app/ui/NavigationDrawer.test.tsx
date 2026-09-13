@@ -1,6 +1,7 @@
 import { render, screen, waitFor, type RenderResult } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { SessionProvider } from "@/features/session";
@@ -15,6 +16,7 @@ import {
   type SessionUser,
 } from "@/shared/api/client";
 
+import { MainContent } from "./MainContent";
 import { NavigationDrawer } from "./NavigationDrawer";
 
 vi.mock("@/shared/api/client", () => ({
@@ -27,6 +29,19 @@ vi.mock("@/shared/api/client", () => ({
   onUnauthorized: vi.fn<typeof onUnauthorized>(() => () => {}),
 }));
 
+// MainContent's own screens, stood up here only so a click on a drawer link
+// can be watched changing what "the screen" means - not to re-test their
+// content, which MainContent.test.tsx already does.
+vi.mock("@/pages/chat", () => ({
+  ChatPage: () => <p>chat screen</p>,
+}));
+
+vi.mock("@/pages/workspace", () => ({
+  WorkspacePage: ({ workspaceId }: { workspaceId: string }) => (
+    <p>workspace screen: {workspaceId}</p>
+  ),
+}));
+
 const noop = (): void => {
   // Drawer's onClose, unused by these assertions.
 };
@@ -34,14 +49,23 @@ const noop = (): void => {
 const adminUser: SessionUser = { id: "usr-admin", name: "admin", role: "admin" };
 const plainUser: SessionUser = { id: "usr-1", name: "someone", role: "user" };
 
-/** Renders NavigationDrawer under the SessionProvider it now needs to know the signed-in person's role (docs/plans/auth.md Task 5). */
+/**
+ * Renders NavigationDrawer under the SessionProvider it now needs to know
+ * the signed-in person's role (docs/plans/auth.md Task 5), and a
+ * MemoryRouter: its rows are `react-router` `Link`s (docs/plans/routing.md
+ * Task 1), which throw outside a router's context.
+ */
 function renderDrawer(
   user: SessionUser,
   element: ReactElement = <NavigationDrawer open beside onClose={noop} />,
 ): RenderResult {
   vi.mocked(getSession).mockResolvedValue(user);
 
-  return render(<SessionProvider>{element}</SessionProvider>);
+  return render(
+    <MemoryRouter>
+      <SessionProvider>{element}</SessionProvider>
+    </MemoryRouter>,
+  );
 }
 
 describe("NavigationDrawer", () => {
@@ -143,5 +167,49 @@ describe("NavigationDrawer", () => {
 
     await screen.findByRole("link", { name: "チャット" });
     expect(screen.queryByRole("link", { name: "ユーザー管理" })).toBeNull();
+  });
+
+  it("renders チャット and a workspace as paths, not the old #hash addresses (docs/specs/routing.md section 3)", async () => {
+    vi.mocked(listWorkspaces).mockResolvedValue([
+      { id: "ws-1", name: "在庫ボード", panelCount: 1 },
+    ]);
+
+    renderDrawer(adminUser);
+
+    expect(screen.getByRole("link", { name: "チャット" }).getAttribute("href")).toBe("/");
+    expect((await screen.findByRole("link", { name: "在庫ボード" })).getAttribute("href")).toBe(
+      "/workspaces/ws-1",
+    );
+    expect(screen.getByRole("link", { name: "ユーザー管理" }).getAttribute("href")).toBe("/users");
+  });
+
+  it("follows a workspace link to that workspace's screen, without a page load", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(listWorkspaces).mockResolvedValue([
+      { id: "ws-1", name: "在庫ボード", panelCount: 1 },
+    ]);
+    vi.mocked(getSession).mockResolvedValue(plainUser);
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <SessionProvider>
+          <NavigationDrawer open beside onClose={noop} />
+          <MainContent />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("chat screen")).toBeTruthy();
+
+    await user.click(await screen.findByRole("link", { name: "在庫ボード" }));
+
+    // A page load would tear down this render (and every mock in it) and
+    // start the application over from `main.tsx`; finding the new screen
+    // in the same render, with the drawer still mounted beside it, is what
+    // a client-side navigation looks like and a page load does not.
+    expect(await screen.findByText("workspace screen: ws-1")).toBeTruthy();
+    expect(screen.queryByText("chat screen")).toBeNull();
+    expect(screen.getByRole("link", { name: "チャット" })).toBeTruthy();
   });
 });

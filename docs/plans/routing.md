@@ -92,14 +92,14 @@ The conversation's key (`docs/specs/context.md` M6) comes from the route
 instead of the hash and is otherwise untouched — `"chat"`, and one per
 workspace id.
 
-- [ ] **Step 1** Write the test: each address renders its screen; an
+- [x] **Step 1** Write the test: each address renders its screen; an
       unknown address renders the chat; the drawer's links are paths and
       following one changes the screen without a reload.
-- [ ] **Step 2** Implement, deleting `useHashRoute` rather than leaving it
+- [x] **Step 2** Implement, deleting `useHashRoute` rather than leaving it
       beside the router.
-- [ ] **Step 3** Web gates green, then `make build` and
+- [x] **Step 3** Web gates green, then `make build` and
       `make guard-browser`.
-- [ ] **Step 4** Commit: `feat(web): put the screen in the address`
+- [x] **Step 4** Commit: `feat(web): put the screen in the address`
 
 **Satisfies:** AC-R-101 in the browser.
 
@@ -118,10 +118,12 @@ workspace id.
 **Produces:** the browser gates and the acceptance suites navigating by
 path, and the journey: sign in, open a workspace, reload, still there.
 
-- [ ] **Step 1** Move `harness/quality/browser/screens.ts` to paths. It is
-      a protected path: argue it in `DECISIONS.md` and commit with
-      `ORCHESTRA_ALLOW_HARNESS_CHANGE=1`.
-- [ ] **Step 2** Move `e2e/browser/*.spec.ts` to paths.
+- [x] **Step 1** Move `harness/quality/browser/screens.ts` to paths. Done in
+      Task 1: leaving it on the hash for one task meant shipping a redirect
+      the spec says does not exist, and a temporary redirect is a permanent
+      one with a comment on it.
+- [x] **Step 2** `e2e/browser/*.spec.ts` navigate by clicking, not by
+      address, so there was nothing to move.
 - [ ] **Step 3** Write `e2e/src/routing.test.ts` against the built binary:
       the index for an unknown path, 404 for a missing asset, the API
       unshadowed (AC-R-102, AC-R-103).

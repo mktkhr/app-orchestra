@@ -72,8 +72,8 @@ async function createWorkspaceWithThreePanels(
   await addPanel(page, "パネルC");
 
   const workspaceId = requireDefined(
-    page.url().split("workspace-")[1],
-    "expected the hash route to name the workspace's id",
+    page.url().split("/workspaces/")[1],
+    "expected the address to name the workspace's id",
   );
 
   return { workspaceId, workspaceName };

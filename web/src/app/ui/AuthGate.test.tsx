@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -31,11 +32,13 @@ describe("AuthGate", () => {
     vi.mocked(getSession).mockResolvedValue(null);
 
     render(
-      <SessionProvider>
-        <ConversationProvider>
-          <AuthGate />
-        </ConversationProvider>
-      </SessionProvider>,
+      <MemoryRouter>
+        <SessionProvider>
+          <ConversationProvider>
+            <AuthGate />
+          </ConversationProvider>
+        </SessionProvider>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByRole("heading", { name: "サインイン" })).toBeTruthy();
@@ -51,11 +54,13 @@ describe("AuthGate", () => {
     vi.mocked(listWorkspaces).mockResolvedValue([]);
 
     render(
-      <SessionProvider>
-        <ConversationProvider>
-          <AuthGate />
-        </ConversationProvider>
-      </SessionProvider>,
+      <MemoryRouter>
+        <SessionProvider>
+          <ConversationProvider>
+            <AuthGate />
+          </ConversationProvider>
+        </SessionProvider>
+      </MemoryRouter>,
     );
 
     await screen.findByRole("heading", { name: "サインイン" });
@@ -72,11 +77,13 @@ describe("AuthGate", () => {
     vi.mocked(listWorkspaces).mockResolvedValue([]);
 
     render(
-      <SessionProvider>
-        <ConversationProvider>
-          <AuthGate />
-        </ConversationProvider>
-      </SessionProvider>,
+      <MemoryRouter>
+        <SessionProvider>
+          <ConversationProvider>
+            <AuthGate />
+          </ConversationProvider>
+        </SessionProvider>
+      </MemoryRouter>,
     );
 
     expect(await screen.findByText("admin")).toBeTruthy();
@@ -91,11 +98,13 @@ describe("AuthGate", () => {
     vi.mocked(listWorkspaces).mockResolvedValue([]);
 
     render(
-      <SessionProvider>
-        <ConversationProvider>
-          <AuthGate />
-        </ConversationProvider>
-      </SessionProvider>,
+      <MemoryRouter>
+        <SessionProvider>
+          <ConversationProvider>
+            <AuthGate />
+          </ConversationProvider>
+        </SessionProvider>
+      </MemoryRouter>,
     );
 
     await screen.findByRole("heading", { name: "チャット" });

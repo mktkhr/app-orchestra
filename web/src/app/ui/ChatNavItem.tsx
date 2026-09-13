@@ -9,5 +9,5 @@ interface ChatNavItemProps {
 
 /** The drawer's link back to the chat. */
 export function ChatNavItem({ onClick }: ChatNavItemProps): JSX.Element {
-  return <DrawerNavItem href="#chat" icon={<ChatIcon />} label="チャット" onClick={onClick} />;
+  return <DrawerNavItem to="/" icon={<ChatIcon />} label="チャット" onClick={onClick} />;
 }
