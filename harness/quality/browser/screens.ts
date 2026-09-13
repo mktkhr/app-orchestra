@@ -17,13 +17,19 @@ import type { Page } from "@playwright/test";
  * still needs a gate, add it back there deliberately, named for what it
  * is." This is that list.
  *
- * What these gates measure is the screen, not what is on it: the platform
- * `playwright.config.ts` starts has no ORCHESTRA_SERVICES, so its catalogue
- * is empty and no screen here shows a real operation's data. Contrast,
- * target size, visible boundaries and sideways scroll are properties of the
- * controls, and the controls are all here. A screen whose layout only
- * breaks once real rows arrive is not covered by this, and would want a
- * gate of its own that seeded a service.
+ * What these gates measure is the screen, not what is on it. `playwright.config.ts`
+ * now runs the inventory dummy service alongside the platform (`docs/plans/layout.md`
+ * Task 2 Step 4) and names it in `ORCHESTRA_SERVICES` - the smallest catalogue
+ * that lets "a workspace" below save one real panel, since `AddPanel` refuses
+ * any operation the catalogue does not expose (`internal/usecase/workspaces.go`),
+ * whether or not that panel is ever invoked. This still asserts nothing about
+ * that panel's own answer: contrast, target size, visible boundaries and
+ * sideways scroll are properties of the controls around it - the header, its
+ * buttons, the drag and resize affordances - and those are what a panel
+ * finally puts in front of `guard-a11y` and `guard-layout` (AC-L-103). A
+ * screen whose layout only breaks once real *rows* arrive is still not
+ * covered by this, and would want a gate of its own that seeded more than
+ * one operation.
  */
 export interface Screen {
   /** How the failure reads: "a workspace has no accessibility violations". */
@@ -93,6 +99,38 @@ async function createWorkspace(page: Page): Promise<string> {
   return id;
 }
 
+/**
+ * Saves one panel, over inventory's `ListInventoryItems` - the one
+ * operation `ORCHESTRA_SERVICES` names for this config - onto workspaceId,
+ * through the loaded application's own `fetch`, for the same reason
+ * `createWorkspace` does: this module's job is to put a screen in front of
+ * the gate, not to drive the interface to get there.
+ *
+ * The caller has to have loaded the application and created workspaceId
+ * first.
+ */
+async function createPanel(page: Page, workspaceId: string): Promise<void> {
+  const ok = await page.evaluate(async (id: string): Promise<boolean> => {
+    const response = await fetch(`/api/workspaces/${id}/panels`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        service: "inventory",
+        operationId: "ListInventoryItems",
+        args: {},
+        component: "table",
+        title: "在庫一覧",
+      }),
+    });
+
+    return response.ok;
+  }, workspaceId);
+
+  if (!ok) {
+    throw new Error("browser guard: saving a panel failed");
+  }
+}
+
 /** Navigates to path and waits for the screen to stop moving. */
 async function goto(page: Page, path: string): Promise<void> {
   await page.goto(path);
@@ -121,11 +159,13 @@ export const SCREENS: readonly Screen[] = [
     },
   },
   {
-    name: "a workspace",
+    name: "a workspace with a panel in it",
     visit: async (page) => {
       await signInAsAdmin(page);
       await goto(page, "/");
-      await goto(page, `/#workspace-${await createWorkspace(page)}`);
+      const workspaceId = await createWorkspace(page);
+      await createPanel(page, workspaceId);
+      await goto(page, `/#workspace-${workspaceId}`);
     },
   },
   {
