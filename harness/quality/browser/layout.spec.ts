@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { SCREENS } from "./screens";
+
 /**
  * Layout gate.
  *
@@ -129,8 +131,9 @@ function measure(page: Page): Promise<Control[]> {
       const behind: string[] = [];
       let node: Element | null = element;
 
-      // The visible edge may be drawn by the control or by a wrapper a level or
-      // two up, which is how every component library renders an outlined field.
+      // The visible edge may be drawn by the control or by a wrapper a level
+      // or two up, which is how every component library renders an outlined
+      // field.
       for (let depth = 0; node !== null; depth += 1) {
         const style = getComputedStyle(node);
 
@@ -141,12 +144,42 @@ function measure(page: Page): Promise<Control[]> {
         node = node.parentElement;
       }
 
+      // What a finger hits, not what the tag measures. A design system
+      // frames a field with a wrapper and gives the inner <input> whatever
+      // padding is left: MUI's Autocomplete leaves its input 38px inside a
+      // 56px MuiInputBase-root, so measuring the input reports a target too
+      // small to hit while the target a person actually presses is fine.
+      //
+      // The wrapper is named rather than guessed at. A ratio or a
+      // same-width test either lets a genuinely tiny control hide inside a
+      // big container or misses this case, because an Autocomplete's root
+      // is wider than its input by the popup icon. These three are the
+      // things that are the hit area in a library this repository already
+      // requires everything to come from (harness/quality/ui-primitives.txt):
+      // a label wraps a checkbox or a radio, an input base frames a text
+      // field, a button base frames a button's own content.
+      const box = element.getBoundingClientRect();
+      const target = element.closest("label, .MuiInputBase-root, .MuiButtonBase-root");
+      const height = Math.max(
+        box.height,
+        target === null ? 0 : target.getBoundingClientRect().height,
+      );
+
       const text = (element.textContent ?? "").trim().slice(0, 24);
+      const what = [
+        element.tagName.toLowerCase(),
+        element.getAttribute("type") ?? "",
+        [...element.classList].find((name) => name.startsWith("Mui")) ?? "",
+        element.getAttribute("aria-label") ?? "",
+        element.getAttribute("name") ?? "",
+      ]
+        .filter((part) => part !== "")
+        .join(" ");
       const named = element.id === "" ? text : `#${element.id}`;
 
       return {
-        label: named === "" ? element.tagName.toLowerCase() : named,
-        height: Math.round(element.getBoundingClientRect().height),
+        label: named === "" ? what : `${what} (${named})`,
+        height: Math.round(height),
         edges,
         behind,
       };
@@ -201,45 +234,43 @@ for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme} scheme`, () => {
     test.use({ colorScheme: scheme });
 
-    test("the application declares its own background", async ({ page }) => {
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+    for (const screen of SCREENS) {
+      test(`${screen.name} declares its own background`, async ({ page }) => {
+        await screen.visit(page);
 
-      const declared = firstOpaque(await pageBackgrounds(page));
+        const declared = firstOpaque(await pageBackgrounds(page));
 
-      expect(
-        declared,
-        "nothing in the document declares a background, so the page renders on whatever " +
-          "canvas the browser happens to paint and its colours are decided by the user agent",
-      ).not.toBeNull();
-    });
+        expect(
+          declared,
+          "nothing in the document declares a background, so the page renders on whatever " +
+            "canvas the browser happens to paint and its colours are decided by the user agent",
+        ).not.toBeNull();
+      });
 
-    test("every control is big enough to hit", async ({ page }) => {
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+      test(`every control on ${screen.name} is big enough to hit`, async ({ page }) => {
+        await screen.visit(page);
 
-      const report = tooSmall(await measure(page));
+        const report = tooSmall(await measure(page));
 
-      expect(report, report.join("\n  ")).toEqual([]);
-    });
+        expect(report, report.join("\n  ")).toEqual([]);
+      });
 
-    test("every control has a visible boundary", async ({ page }) => {
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+      test(`every control on ${screen.name} has a visible boundary`, async ({ page }) => {
+        await screen.visit(page);
 
-      const report = invisible(await measure(page));
+        const report = invisible(await measure(page));
 
-      expect(report, report.join("\n  ")).toEqual([]);
-    });
+        expect(report, report.join("\n  ")).toEqual([]);
+      });
 
-    test("the page does not scroll sideways on a narrow screen", async ({ page }) => {
-      await page.setViewportSize(NARROW_VIEWPORT);
-      await page.goto("/");
-      await page.waitForLoadState("networkidle");
+      test(`${screen.name} does not scroll sideways on a narrow screen`, async ({ page }) => {
+        await page.setViewportSize(NARROW_VIEWPORT);
+        await screen.visit(page);
 
-      const excess = await overflow(page);
+        const excess = await overflow(page);
 
-      expect(excess, `the page is ${excess}px wider than the viewport`).toBeLessThanOrEqual(0);
-    });
+        expect(excess, `the page is ${excess}px wider than the viewport`).toBeLessThanOrEqual(0);
+      });
+    }
   });
 }

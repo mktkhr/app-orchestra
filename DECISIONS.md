@@ -2998,3 +2998,71 @@ into a chart, see it draw immediately, reload, see it draw as edited);
 process-level test, split into its own file (not a `describe` added to
 `dashboard-permissions.test.ts`) since that file was already at its
 `max-lines` budget.
+
+## 2026-09-13 — the browser gates measure every screen again
+
+**Context.** `ae4ba97` ("feat(web): sign in before anything else") deleted
+`harness/quality/browser/session.ts` and removed the `signInAsAdmin(page)`
+call from `a11y.spec.ts` and `layout.spec.ts`, leaving both gates measuring
+the sign-in screen alone. Its commit message reads as an addition - "the
+harness's browser gates measure the sign-in screen now" - and it was a
+replacement: every screen behind sign-in fell out of coverage, and every
+screen built afterwards (the users screen, a workspace, the panel builder, a
+chart) was never seen by either gate. They stayed green the whole time,
+which is what made it invisible. A guard reports what it failed and never
+what it skipped - the same shape as the stale `schema.d.ts` exclude earlier
+the same day.
+
+The deleted helper said in its own doc comment what should have happened:
+"if a screen only a signed-in person reaches still needs a gate, add it back
+there deliberately, named for what it is." The first half of that
+instruction was followed and the second half was not.
+
+**Decision.** `harness/quality/browser/screens.ts` names the screens both
+gates measure: the sign-in screen, the chat, the admin's users screen, a
+workspace, and the panel builder. Each knows how to reach itself, including
+signing in and creating a workspace to be on.
+
+Two things had to be measured rather than reasoned about to make that work:
+
+- The session cookie is `SameSite=Lax` (`docs/specs/auth.md`, A2), and Lax
+  withholds a cookie from an unsafe method with no site context of its own.
+  `page.request.post("/api/workspaces")` answers 401 with a perfectly valid
+  session in the jar, while the same call from inside the page succeeds. The
+  helper creates its workspace through the loaded application's own `fetch`,
+  which is also the path a person's click takes.
+- `layout.spec.ts` measured the wrong box. Its floor is about what a finger
+  hits, and MUI's `Autocomplete` leaves its `<input>` 38px inside a 56px
+  `MuiInputBase-root`, so the gate reported a target too small while the
+  target a person presses was fine. It now takes the taller of the element
+  and its nearest `label` / `.MuiInputBase-root` / `.MuiButtonBase-root` -
+  named, not guessed at by a width or ratio test, which either misses this
+  case or lets a genuinely small control hide inside a wide container. This
+  is not the gate being relaxed to pass: padding an inner input to 44px
+  would change nothing a person can touch.
+
+`layout.spec.ts`'s report also names what an element is, not only its
+generated id: "#_r_h_ is 38px tall" cannot be acted on, and a gate whose
+report cannot be acted on is one people learn to route around.
+
+**Consequences.** Pointing the gates at the screens found two real defects
+that had been in `main` since the screens were built:
+
+- `AccountList.tsx` put `ListItemButton`s directly inside a `List`, so the
+  users screen rendered a `<ul>` whose children were not `<li>` - a serious
+  axe violation (WCAG "list"). Its two siblings, `DrawerNavItem` and
+  `WorkspaceListItem`, already wrapped theirs in `ListItem disablePadding`;
+  it now does too.
+- The 38px hit target above, which was a measurement fault rather than a
+  product one, and is recorded here so nobody pads an input to satisfy it.
+
+The gates measure a screen, not what is on it: the platform
+`playwright.config.ts` starts has no `ORCHESTRA_SERVICES`, so no screen here
+shows a real operation's data. A layout that only breaks once real rows
+arrive is still uncovered, and would want a gate that seeded a service.
+
+`e2e/browser/dashboard.spec.ts`'s panel-editing journey failed once at
+sign-in during this work and passed on every run afterwards, including three
+consecutive full `make check` runs. Recorded as observed-flaky rather than
+explained: nothing here changed it, and a gate that fails once in a while
+is worth a look before it is trusted.

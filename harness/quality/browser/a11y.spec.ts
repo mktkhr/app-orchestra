@@ -2,6 +2,8 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import type { Result } from "axe-core";
 
+import { SCREENS } from "./screens";
+
 /**
  * Accessibility gate.
  *
@@ -16,9 +18,6 @@ import type { Result } from "axe-core";
  */
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
-/** The screens a visitor reaches without an account. */
-const PUBLIC_PAGES = [{ name: "sign in", path: "/" }];
-
 /** One readable line per violation, with the elements it points at. */
 function describe(violation: Result): string {
   const where = violation.nodes.map((node) => `      ${node.target.join(" ")}`).join("\n");
@@ -30,10 +29,9 @@ for (const scheme of ["light", "dark"] as const) {
   test.describe(`${scheme} scheme`, () => {
     test.use({ colorScheme: scheme });
 
-    for (const target of PUBLIC_PAGES) {
-      test(`${target.name} has no accessibility violations`, async ({ page }) => {
-        await page.goto(target.path);
-        await page.waitForLoadState("networkidle");
+    for (const screen of SCREENS) {
+      test(`${screen.name} has no accessibility violations`, async ({ page }) => {
+        await screen.visit(page);
 
         const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
         const found = results.violations.map(describe);

@@ -1,6 +1,7 @@
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import List from "@mui/material/List";
+import ListItem from "@mui/material/ListItem";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
@@ -41,15 +42,23 @@ export function AccountList({ selectedId, onSelect }: AccountListProps): JSX.Ele
   return (
     <List aria-label="アカウント一覧">
       {accounts.map((account) => (
-        <ListItemButton
-          key={account.id}
-          selected={account.id === selectedId}
-          onClick={() => {
-            onSelect(account.id);
-          }}
-        >
-          <ListItemText primary={account.name} secondary={ROLE_LABEL[account.role]} />
-        </ListItemButton>
+        // ListItem, not a bare ListItemButton: List renders a <ul> and
+        // ListItemButton renders a <div role="button">, so a <ul> holding
+        // them directly is a list whose children are not list items - a
+        // serious axe violation (WCAG "list"), and the reason
+        // harness/quality/browser only started catching it once its gates
+        // were pointed at this screen. DrawerNavItem and WorkspaceListItem
+        // already wrap theirs the same way.
+        <ListItem key={account.id} disablePadding>
+          <ListItemButton
+            selected={account.id === selectedId}
+            onClick={() => {
+              onSelect(account.id);
+            }}
+          >
+            <ListItemText primary={account.name} secondary={ROLE_LABEL[account.role]} />
+          </ListItemButton>
+        </ListItem>
       ))}
     </List>
   );
