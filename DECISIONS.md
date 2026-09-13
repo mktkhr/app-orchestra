@@ -4380,3 +4380,27 @@ adding a new panel from scratch, not editing one already on the workspace.
 `AddPanelForm` gained a `saveLabel` override for exactly this one caller,
 rather than a third `operationLocked`-like flag, since the label is the
 only thing that differs.
+
+## 2026-09-14 — the suppression guard now sees coverage directives
+
+**Context.** `docs/plans/dashboard.md` Task 0 landed a pure function with a
+branch its author had reasoned was unreachable, silenced with
+`/* istanbul ignore next */`. It reached `main`. `make guard-suppressions`
+was green the whole time: its pattern listed `//nolint`, `@ts-ignore`,
+`eslint-disable` and their relatives, and nothing about coverage.
+
+`AGENTS.md` rule 2 says "`//nolint`, `oxlint-disable`, `@ts-ignore` and
+friends are not fixes". A directive that excuses a line from the coverage
+floor is the same act as one that excuses it from the linter: the check
+still runs, and this one file quietly stops being measured by it.
+
+**Decision.** `istanbul ignore`, `c8 ignore` and `v8 ignore` join the
+pattern. Like every other directive, one can still exist - registered in
+`harness/quality/suppressions.allow`, with a reason, as a reviewed change.
+
+**Consequences.** Proven rather than assumed: with
+`/* istanbul ignore next */` temporarily added to a source file the guard
+reports it by name and fails; with it removed the guard passes. The
+registry is empty of coverage directives today, because the one that
+prompted this was fixed by deleting the branch instead - which is what rule
+2 asks for, and what an unreachable branch deserves.

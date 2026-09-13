@@ -10,6 +10,15 @@
 #   Go          //nolint (any form)
 #   TypeScript  @ts-ignore, @ts-nocheck, @ts-expect-error,
 #               eslint-disable*, oxlint-disable*, biome-ignore, prettier-ignore, oxfmt-ignore
+#   Coverage    istanbul ignore, c8 ignore, v8 ignore
+#
+# Coverage directives are here because AGENTS.md rule 2 names "//nolint,
+# oxlint-disable, @ts-ignore and friends", and a line that excuses itself
+# from the coverage floor is the same act as a line that excuses itself
+# from the linter: the check still runs, and this one file stops being
+# measured by it. One reached main before this was noticed, on a branch
+# the author had decided was unreachable - and an unreachable branch is one
+# to delete, not to exempt.
 #
 # Registry line format (one per line, '#' starts a comment). The source line is
 # part of the key so that unrelated edits shifting line numbers do not matter,
@@ -20,7 +29,7 @@ set -eu
 cd "$(dirname "$0")/../.."
 
 registry="harness/quality/suppressions.allow"
-pattern='//nolint|@ts-ignore|@ts-nocheck|@ts-expect-error|eslint-disable|oxlint-disable|biome-ignore|prettier-ignore|oxfmt-ignore'
+pattern='//nolint|@ts-ignore|@ts-nocheck|@ts-expect-error|eslint-disable|oxlint-disable|biome-ignore|prettier-ignore|oxfmt-ignore|istanbul ignore|c8 ignore|v8 ignore'
 
 # Paths that are product or tooling source. node_modules and build output are never scanned.
 scan_paths="services web/src web/vite.config.ts e2e harness vite.config.ts"
