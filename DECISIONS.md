@@ -3816,3 +3816,97 @@ out of three.
 **Consequences.** `docs/plans/routing.md` Task 2 loses its first two steps
 and keeps the journey. Nothing in the product redirects a hash: an old link
 lands on the chat, which is what an unrecognised address has always done.
+
+## 2026-09-13 — `react-router@8.3.1`, pinned exactly
+
+**Decision.** `docs/plans/routing.md` Task 1 adds `react-router` to
+`web/package.json`, pinned exactly (`8.3.1`, the latest release) rather
+than with a caret, the way `@mui/x-charts` and `react-grid-layout` are
+(`DECISIONS.md`, 2026-09-12: a caret with nothing else in the file holding
+it down resolves fresh on the next install, to whatever is latest then -
+not to whatever this task tested against). Nothing else in this repository
+depends on `react-router`, so there is no sibling package whose own pin
+holds a caret here down the way `@mui/material`'s does for `@mui/x-charts`;
+an exact version is the only thing that says what was tested.
+
+`8.3.1` rather than a `7.x` release: `react-router@7` folded
+`react-router-dom` into the base package for the DOM bindings this
+application needs (`BrowserRouter`, `Routes`, `Link`) and `8.x` continues
+that shape, so there is no separate DOM package to add or version
+alongside it. Its peer range (`react`/`react-dom` `>=19.2.7`) and engine
+range (`node >=22.22.0`) are both already satisfied here
+(`pnpm-workspace.yaml`'s catalog pins React `19.3.0`; this machine runs
+Node 24) - checked before picking the version, not after.
+
+## 2026-09-13 Routing Task 2: AC-R-104 checked, not assumed - it already holds
+
+**Context.** `docs/plans/routing.md` Task 2, Step 4 named AC-R-104 ("a
+person with no session still reaches the sign-in screen from any address,
+and lands where they were going after signing in") as one to check before
+writing a test for, rather than to assume or to build a redirect for:
+`AuthGate` decides whether anybody sees a screen and knows nothing about
+addresses, and whether the address survives signing in is a question about
+how `AuthGate` and the router compose.
+
+**Checked.** `App.tsx` wraps the whole tree in `BrowserRouter`, and
+`AuthGate` sits inside it (`docs/plans/routing.md` Task 1, R5 - "`AuthGate`
+stays where it is: it decides whether anybody sees a screen, which is not
+a routing question"). `BrowserRouter` reads `window.location.pathname`
+once and does not care which of `SignInPage`/`Shell` `AuthGate` renders
+under it. `SessionProvider.signIn` (`features/session/model/SessionProvider.tsx`)
+only calls `postSession` and sets `user` in React state - it never
+navigates, calls `history.pushState`, or reads the current path at all.
+So a person who types `/workspaces/{id}` in with nobody signed in gets
+`SignInPage` at that same address (the router never moved); signing in
+swaps `AuthGate`'s output for `Shell`, and `MainContent`'s `Routes` resolve
+the still-current, unchanged path to the workspace on the very next
+render - no redirect-after-sign-in feature exists or was needed.
+
+**Verified live**, not just read from the source: `e2e/browser/routing.spec.ts`'s
+second test signs in, opens a workspace, signs out (which ends the session
+on the server, per `auth.spec.ts`'s own AC-A-107 journey), `page.goto`s
+that workspace's exact address directly, confirms the sign-in screen
+appears there, signs in through the form without navigating anywhere else,
+and confirms the workspace itself is what appears next, at the same
+address. Passed on the first run.
+
+**Decision.** AC-R-104 is satisfied by composition, not by new code. No
+redirect-after-sign-in was built, and none is needed; the criterion is met
+as written, not weakened to match a lesser behaviour.
+
+## 2026-09-13 `docs/plans/routing.md` closes
+
+**What Task 2's remaining steps produced.** `e2e/src/routing.test.ts`: the
+platform's own half of AC-R-102/AC-R-103, over real TCP against the built
+binary serving the real `web/dist` (not a `router_test.go` fixture) - an
+unknown path answers the built index byte-for-byte, a real built asset
+(read off disk, not hand-named) answers as itself with a JS content type,
+a missing asset 404s with a non-HTML content type, and `/api/does-not-exist`,
+signed in, answers 404 from the API rather than 200 from the fallback.
+`e2e/browser/routing.spec.ts`: the browser half of AC-R-101 - sign in,
+create a workspace, follow its own drawer link, read the address back off
+`page.url()`, reload, and the same workspace draws again; the same for
+`/users`, reached through the drawer's other link. AC-R-104's own entry
+above covers what that criterion needed.
+
+**`make check` in full, twice.** The first full run failed on
+`acceptance-e2e` (`src/orchestration.test.ts`: `waitForReady` timed out
+waiting for a platform instance to come up) and, on the retry immediately
+after, on `guard-layout` (`browser guard: admin sign-in failed with status
+500`). Both suites passed in isolation immediately after their own
+failure, and `uptime` read load average 4.61/3.36 right around the second
+failure against roughly 1.0-1.6 on every surrounding measurement - this
+machine also has an idle `llama-server`, two Claude Code sessions and a
+Chrome instance from browser automation running throughout, none of it
+this task's own. Per the flake decision below ("the browser suite's flake
+is load, measured"), this reads the same way: contention, not a defect
+this change introduced. A third full run, at load average 2.62, passed
+outright - reported below.
+
+**`docker logs llama-swap`'s `POST /v1/chat/completions` count**: 79514
+before the first `make check` of this task and 79514 after the final one -
+unchanged across every run, including the two that failed on contention.
+
+**Done.** Every criterion in `docs/specs/routing.md` section 7 has a test
+that runs in `make check`, and a workspace's address can be pasted to
+somebody else - the plan's own closing line.

@@ -124,16 +124,16 @@ path, and the journey: sign in, open a workspace, reload, still there.
       one with a comment on it.
 - [x] **Step 2** `e2e/browser/*.spec.ts` navigate by clicking, not by
       address, so there was nothing to move.
-- [ ] **Step 3** Write `e2e/src/routing.test.ts` against the built binary:
+- [x] **Step 3** Write `e2e/src/routing.test.ts` against the built binary:
       the index for an unknown path, 404 for a missing asset, the API
       unshadowed (AC-R-102, AC-R-103).
-- [ ] **Step 4** Write the browser journey: sign in, open a workspace by
+- [x] **Step 4** Write the browser journey: sign in, open a workspace by
       its path, reload, still there; and AC-R-104 — with no session, any
       address reaches the sign-in screen and lands where it was going after
       signing in.
-- [ ] **Step 5** `make check` in full — every gate green, and no request
+- [x] **Step 5** `make check` in full — every gate green, and no request
       added to the model's log.
-- [ ] **Step 6** Commit: `test(e2e): reload an address and stay there`
+- [x] **Step 6** Commit: `test(e2e): reload an address and stay there`
 
 **Satisfies:** AC-R-101, AC-R-102, AC-R-103, AC-R-104, and section 7 end
 to end.

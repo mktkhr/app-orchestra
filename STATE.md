@@ -1,9 +1,36 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-13 (routing plan Task 0 landed; two dashboard
-defects fixed - see below and `DECISIONS.md`)_
+_Last updated: 2026-09-13 (`docs/plans/routing.md` closed - Task 2's own
+steps 3-5, see below and `DECISIONS.md`)_
 
 ## Summary
+
+**A screen's address is a path, read by `react-router`** (`docs/plans/routing.md`
+Task 1, `docs/specs/routing.md` section 3, AC-R-101 in the browser;
+`DECISIONS.md`, 2026-09-13, two entries). `web/src/app/App.tsx` wraps the
+whole tree in `BrowserRouter`; `MainContent.tsx` (`app/ui`) reads the path
+with `Routes`/`Route` instead of `useHashRoute` (deleted, along with its
+test): `/` is the chat, `/workspaces/:workspaceId` a workspace (keyed by
+that id in `ConversationProvider`, unchanged otherwise -
+`docs/specs/context.md` M6), `/users` the admin's screen, and anything else
+the chat, same as the hash router before it. `AuthGate` did not move (R4).
+The drawer's rows (`DrawerNavItem`, `WorkspaceListItem`) render `react-router`'s
+`Link` in place of a plain `href="#..."` anchor, so following one changes
+the screen without a page load. `react-router` is pinned exactly (`8.3.1`),
+the way `@mui/x-charts` and `react-grid-layout` are, for the same reason.
+
+`harness/quality/browser/screens.ts` navigated to `/#users` and
+`/#workspace-{id}`; moving it to `/users` and `/workspaces/{id}` was Task
+2's Step 1, done here instead of behind a temporary hash-redirect shim that
+was built, found to need a `hashchange` listener to work at all (a
+`page.goto` differing only by fragment is a same-document navigation, not a
+reload, so a mount-only effect never sees it), and then dropped rather than
+finished - `docs/specs/routing.md` section 3 already says nothing redirects
+the old addresses. `e2e/browser/*.spec.ts` navigate by clicking rather than
+by address, so Task 2's Step 2 needed only one fix: `layout.spec.ts` read a
+workspace id back out of `page.url()` by splitting on `"workspace-"`.
+`docs/plans/routing.md` Task 2 keeps only the end-to-end journey (Steps
+3-6).
 
 **The platform serves `index.html` for any address that is not `/api/...`
 and not a file it has** (`docs/plans/routing.md` Task 0,
@@ -14,10 +41,41 @@ the bare `http.FileServer(http.Dir(staticDir))`: a real file under
 address) gets `index.html`; a path with an extension but no matching file
 still 404s, so a missing build asset is never handed HTML to parse.
 `staticDir` empty is unchanged - no fallback is registered at all, as
-before. The frontend still reads its route from `window.location.hash`
-(`web/src/app/model/useHashRoute.ts`) - Tasks 1-2 of the same plan move it
-to `react-router` and paths; nothing about this task depends on that
-happening, and nothing breaks while it has not.
+before.
+
+**`docs/plans/routing.md` is closed** (`docs/specs/routing.md` section 7,
+all four criteria; `DECISIONS.md`, 2026-09-13). Task 2's remaining steps:
+
+- `e2e/src/routing.test.ts` proves AC-R-102/AC-R-103 the way a unit test
+  cannot - over real TCP, against the built platform binary serving the
+  real `web/dist` (not a `t.TempDir()` fixture): an unknown path answers
+  the built index, a real built asset is itself, a missing asset 404s and
+  is not HTML, and `/api/does-not-exist` answers as the API (404, signed
+  in) rather than as the application.
+- `e2e/browser/routing.spec.ts` proves AC-R-101 end to end: sign in, open
+  a workspace by clicking its row, note the address, reload, and the same
+  workspace draws again (not the chat `useHashRoute` would have fallen
+  back to) - and the same for `/users`.
+- AC-R-104 was checked, not assumed, before writing its test
+  (`DECISIONS.md`, 2026-09-13): it already holds, for free, from how
+  `App.tsx` is built. `BrowserRouter` sits above `AuthGate`
+  (`docs/plans/routing.md` Task 1, R5) and reads `window.location.pathname`
+  once, independent of which of `SignInPage`/`Shell` `AuthGate` renders
+  under it; `SessionProvider.signIn` only sets `user` in React state and
+  never navigates. So a person who types `/workspaces/{id}` in with no
+  session sees the sign-in screen at that same address, and signing in
+  swaps `AuthGate`'s output without the router ever having moved off it -
+  `MainContent` resolves the still-current path to the workspace on the
+  next render. `e2e/browser/routing.spec.ts`'s own second test drives this
+  exact journey (sign in, open a workspace, sign out, `page.goto` its
+  address directly, sign in again from the form, land on it) rather than
+  arguing it from the source alone.
+
+**A screen's address can be pasted to somebody else and survives a
+reload** - the subproject's own "Done" line (`docs/plans/routing.md`).
+Every criterion in `docs/specs/routing.md` section 7 has a test that runs
+in `make check`; nothing calls a real LLM to do it
+(`docker logs llama-swap`'s count is unchanged across the run).
 
 **A panel over an unsafe operation never calls `/api/invoke` on its own,
 and a panel has exactly one scroller** (`docs/specs/dashboard.md` P14/P15,

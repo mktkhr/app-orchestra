@@ -4,11 +4,8 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-`docs/plans/routing.md` (`docs/specs/routing.md`): Task 0 is done - see
-"Done" below. Task 1 (`react-router` in the browser, `useHashRoute`
-deleted) and Task 2 (end to end, the browser gates moved off hash
-addresses) are not started; the hash router keeps working until Task 1
-lands.
+Nothing right now - `docs/plans/routing.md` closed (see "Done" below); pick
+the next item off "Next".
 
 ## Next
 
@@ -49,17 +46,27 @@ lands.
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-6. **Real paths instead of the hash route - its own subproject, not a
-   layout follow-up.** `web/src/app/model/useHashRoute.ts` picked hash
-   routing over real paths for a reason its own comment never actually
-   argues (`docs/specs/layout.md` section 4, found while writing that
-   section): the real reason is that `internal/infra/httpserver/router.go`
-   serves `http.FileServer` at `"/"` with no fallback, so a real path 404s
-   on reload. Moving to real paths needs that fallback added first. **The
-   user has already chosen `react-router` for this** - recorded here so it
-   is not re-litigated the way the drag-library decision in
-   `docs/specs/layout.md` section 4 was; whoever picks this up starts from
-   that choice, not from a fresh survey of routing libraries.
+6. **`harness/guard/suppressions.sh` does not scan for `istanbul ignore`
+   at all** - its `pattern` covers `//nolint`, the `@ts-*` family,
+   `eslint-disable`/`oxlint-disable`, `biome-ignore`, `prettier-ignore` and
+   `oxfmt-ignore`, but not `istanbul ignore`, even though `AGENTS.md` rule
+   2 names it in the same breath as `//nolint` and `@ts-ignore`. An
+   `istanbul ignore` comment anywhere in `services`, `web/src`, `e2e` or
+   `harness` today would pass `make check` unregistered and unnoticed.
+   Found while closing `docs/plans/routing.md` (no such comment was added
+   there, or found already present - this is a gap in the guard itself,
+   not a live violation). Left unfixed here per `AGENTS.md` rule 2
+   (`harness/guard` is not this agent's to reconfigure); whoever has
+   standing to edit it should add the directive to `suppressions.sh`'s own
+   `pattern`.
+7. **`docs/specs/layout.md` section 5 ("one column, one order") only
+   argues arrangement, not height, for the narrow breakpoint.** Its case
+   for a single column at 375px is that a phone's width cannot hold a
+   second one; a panel's _height_ is exactly as arrangeable there (nothing
+   about a narrow viewport stops a panel from being made taller or
+   shorter) and the spec says nothing about it either way. Recorded here,
+   found while closing the routing subproject, so it is not lost before
+   somebody next touches layout on a phone.
 
 ## Done
 
@@ -76,6 +83,34 @@ lands.
   before, and traversal (plain and percent-encoded) cannot escape
   `staticDir` - see `DECISIONS.md`, 2026-09-13. Frontend untouched; the
   hash router still works.
+
+- **`docs/plans/routing.md` Task 1: the browser reads the path**
+  (`docs/specs/routing.md` section 3, AC-R-101 in the browser).
+  `react-router` (`8.3.1`, pinned exactly - `DECISIONS.md`, 2026-09-12 and
+  2026-09-13) replaces `useHashRoute` (deleted, with its test):
+  `BrowserRouter` in `App.tsx`, `Routes`/`Route` in `MainContent.tsx` for
+  `/`, `/workspaces/:workspaceId` and `/users`, anything else the chat. The
+  drawer's rows are `react-router` `Link`s now, not anchors with
+  `href="#..."`, so following one changes the screen without a page load.
+  Task 2's first two steps (moving `harness/quality/browser/screens.ts` and
+  fixing the one `e2e/browser` assertion that read a hash) landed here
+  instead of behind a temporary redirect - see `DECISIONS.md`, 2026-09-13,
+  "the routing shim that was not shipped".
+
+- **`docs/plans/routing.md` Task 2, and the subproject closes**
+  (`docs/specs/routing.md` section 7, all four criteria). `e2e/src/routing.test.ts`
+  proves AC-R-102/AC-R-103 over real TCP against the built platform binary
+  serving real `web/dist`: an unknown path answers the built index, a real
+  asset is itself, a missing asset 404s and is not HTML, and
+  `/api/does-not-exist` still answers as the API. `e2e/browser/routing.spec.ts`
+  proves AC-R-101 end to end - open a workspace by clicking, reload, still
+  there, same for `/users`. AC-R-104 was checked before a test was written
+  for it rather than assumed (`DECISIONS.md`, 2026-09-13): it already held,
+  for free, because `BrowserRouter` sits above `AuthGate` and
+  `SessionProvider.signIn` never navigates, so the address a person typed
+  in survives the sign-in screen being swapped for the shell underneath
+  it - `routing.spec.ts`'s second test drives that exact journey. Full
+  `make check` green, `docker logs llama-swap` unchanged across it.
 
 - **Defect fix: a panel over an unsafe operation no longer calls
   `/api/invoke` on its own** (`docs/specs/dashboard.md` P14, section 6b,
