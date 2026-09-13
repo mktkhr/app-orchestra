@@ -1,16 +1,29 @@
 import Stack from "@mui/material/Stack";
 import type { JSX } from "react";
 
-import { operationKey, type PanelBuilder } from "../model/usePanelBuilder";
+import { operationKey, type PanelFormState } from "../model/usePanelBuilder";
 import { ChartFields } from "./ChartFields";
 import { ComponentPicker } from "./ComponentPicker";
+import { OperationLabel } from "./OperationLabel";
 import { OperationPicker } from "./OperationPicker";
 import { PanelArguments } from "./PanelArguments";
 import { PanelSaveFields } from "./PanelSaveFields";
 import { TransformFields } from "./TransformFields";
 
 interface AddPanelFormProps {
-  readonly builder: PanelBuilder;
+  readonly builder: PanelFormState;
+  /**
+   * True over an existing panel's edit form: the operation is fixed there
+   * (P13), so this draws its name as plain text instead of
+   * `OperationPicker`'s `Autocomplete` - stated, not offered, and not
+   * merely disabled. A disabled `Autocomplete` still renders an `input`
+   * `make guard-layout` measures for size and edge contrast the same as an
+   * enabled one, and a disabled MUI input's lighter border is exactly the
+   * kind of low-contrast edge that guard exists to catch; stating the name
+   * as `Typography` instead removes the control from that selector
+   * altogether rather than betting it clears the threshold.
+   */
+  readonly operationLocked?: boolean;
 }
 
 /**
@@ -19,16 +32,25 @@ interface AddPanelFormProps {
  * once, and a control that does not apply is absent rather than shown
  * disabled - a person who picked `table` sees no chart axes at all, and the
  * transform's own fields exist only once its switch is on.
+ *
+ * Reused for editing a panel (P12, section 6a), over the same `builder`
+ * shape a create and an edit both produce (`PanelFormState`) - a second
+ * form would be a second place for the chart's axes and the transform's
+ * fields to get out of step with the first.
  */
-export function AddPanelForm({ builder }: AddPanelFormProps): JSX.Element {
+export function AddPanelForm({ builder, operationLocked = false }: AddPanelFormProps): JSX.Element {
   return (
     <Stack spacing={2} sx={{ mt: 1 }}>
-      <OperationPicker
-        entries={builder.catalog.entries}
-        value={builder.entry}
-        onChange={builder.selectEntry}
-        loadError={builder.catalog.loadError}
-      />
+      {operationLocked && builder.entry !== null ? (
+        <OperationLabel entry={builder.entry} />
+      ) : (
+        <OperationPicker
+          entries={builder.catalog.entries}
+          value={builder.entry}
+          onChange={builder.selectEntry}
+          loadError={builder.catalog.loadError}
+        />
+      )}
 
       {builder.entry === null ? null : (
         <>
@@ -36,6 +58,7 @@ export function AddPanelForm({ builder }: AddPanelFormProps): JSX.Element {
             key={operationKey(builder.entry)}
             schema={builder.entry.schema}
             onChange={builder.setArgsValues}
+            initialValues={builder.argsValues}
           />
 
           <ComponentPicker
@@ -76,6 +99,7 @@ export function AddPanelForm({ builder }: AddPanelFormProps): JSX.Element {
             error={builder.error}
             submitting={builder.submitting}
             onSave={builder.handleSave}
+            saveLabel={operationLocked ? "保存" : "追加"}
           />
         </>
       )}

@@ -11,11 +11,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 )
+
+// panelColumns is the column list loadPanels and loadPanel both select, in
+// the order scanPanel expects them.
+const panelColumns = "id, workspace_id, service, operation_id, component, title, args, position, view"
+
+// panelIDAndWorkspaceIDArgs is the two extra query arguments
+// UpdatePanel's own WHERE clause always adds, beyond one per SET fragment
+// (`id = ?` and `workspace_id = ?`) - named so the slice it sizes does not
+// carry an unexplained "+2" (golangci-lint's mnd).
+const panelIDAndWorkspaceIDArgs = 2
 
 // maxOpenConns keeps every query on one connection. modernc.org/sqlite
 // serialises writes at the file level regardless, and one connection
@@ -363,13 +374,154 @@ func (s *Store) DeletePanel(ctx context.Context, workspaceID, panelID string) er
 	return nil
 }
 
+// panelSetClause names the SET fragment and its argument for the one column
+// patch names, or ("", nil) when patch does not name it - updatePanelSets
+// only appends a fragment onto the query when the second return is true, so
+// UpdatePanel writes exactly the columns the caller named (AC-P-108) and
+// nothing else.
+type panelSetClause struct {
+	fragment string
+	value    any
+}
+
+// updatePanelSets builds the SET fragments and their arguments, in order,
+// for the columns patch names - never for one it does not (P11).
+func updatePanelSets(patch domain.PanelPatch) ([]panelSetClause, error) {
+	var sets []panelSetClause
+
+	if patch.Title != nil {
+		sets = append(sets, panelSetClause{"title = ?", *patch.Title})
+	}
+
+	if patch.Args != nil {
+		argsJSON, err := json.Marshal(patch.Args)
+		if err != nil {
+			return nil, fmt.Errorf("encoding panel args: %w", err)
+		}
+
+		sets = append(sets, panelSetClause{"args = ?", string(argsJSON)})
+	}
+
+	if patch.Component != nil {
+		sets = append(sets, panelSetClause{"component = ?", *patch.Component})
+	}
+
+	if patch.View != nil {
+		viewValue, err := marshalView(*patch.View)
+		if err != nil {
+			return nil, fmt.Errorf("encoding panel view: %w", err)
+		}
+
+		sets = append(sets, panelSetClause{"view = ?", viewValue})
+	}
+
+	return sets, nil
+}
+
+// UpdatePanel changes only the columns patch names on one panel
+// (AC-P-108) and returns it as it reads afterward, and whether a panel with
+// this id existed on this workspace at all - false either when panelID
+// names no panel, or when it names one on a different workspace, the same
+// answer either way for the reason usecase.Workspaces.UpdatePanel's own
+// doc comment gives.
+//
+// An empty patch - a PATCH naming nothing - still checks the panel exists
+// rather than issuing a no-op UPDATE that could never report "not found".
+func (s *Store) UpdatePanel(
+	ctx context.Context,
+	workspaceID, panelID string,
+	patch domain.PanelPatch,
+) (domain.Panel, bool, error) {
+	sets, err := updatePanelSets(patch)
+	if err != nil {
+		return domain.Panel{}, false, err
+	}
+
+	if len(sets) == 0 {
+		return s.loadPanel(ctx, workspaceID, panelID)
+	}
+
+	fragments := make([]string, len(sets))
+	args := make([]any, 0, len(sets)+panelIDAndWorkspaceIDArgs)
+
+	for i, set := range sets {
+		fragments[i] = set.fragment
+		args = append(args, set.value)
+	}
+
+	args = append(args, panelID, workspaceID)
+
+	result, err := s.db.ExecContext(
+		ctx,
+		fmt.Sprintf(`UPDATE panels SET %s WHERE id = ? AND workspace_id = ?`, strings.Join(fragments, ", ")),
+		args...,
+	)
+	if err != nil {
+		return domain.Panel{}, false, fmt.Errorf("updating panel %s: %w", panelID, err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return domain.Panel{}, false, fmt.Errorf("updating panel %s: %w", panelID, err)
+	}
+
+	if affected == 0 {
+		return domain.Panel{}, false, nil
+	}
+
+	return s.loadPanel(ctx, workspaceID, panelID)
+}
+
+// rowScanner is the part of *sql.Row and *sql.Rows scanPanel needs - one
+// method, so it can read a panel's columns from either a single-row or a
+// multi-row query without loadPanel and loadPanels each scanning by hand
+// (golangci-lint's dupl, harness/quality/go/golangci.yml).
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanPanel reads one panel row - the columns panelColumns names, in that
+// order - decoding its args and (when the column is non-NULL) its view.
+func scanPanel(scanner rowScanner) (domain.Panel, error) {
+	var (
+		p          domain.Panel
+		argsJSON   string
+		viewColumn sql.NullString
+	)
+
+	if err := scanner.Scan(
+		&p.ID, &p.WorkspaceID, &p.Service, &p.OperationID, &p.Component, &p.Title, &argsJSON, &p.Position,
+		&viewColumn,
+	); err != nil {
+		return domain.Panel{}, fmt.Errorf("scanning panel: %w", err)
+	}
+
+	var args map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return domain.Panel{}, fmt.Errorf("decoding panel args: %w", err)
+	}
+
+	p.Args = args
+
+	// A NULL column - every panel saved before this slice, and every
+	// panel with nothing to say here - stays a nil View rather than
+	// being decoded at all (AC-P-106).
+	if viewColumn.Valid {
+		view, err := unmarshalView(viewColumn.String)
+		if err != nil {
+			return domain.Panel{}, fmt.Errorf("decoding panel view: %w", err)
+		}
+
+		p.View = view
+	}
+
+	return p, nil
+}
+
 // loadPanels returns workspaceID's panels in position order.
 func (s *Store) loadPanels(ctx context.Context, workspaceID string) ([]domain.Panel, error) {
 	rows, err := s.db.QueryContext(
-		ctx,
-		`SELECT id, workspace_id, service, operation_id, component, title, args, position, view
-		 FROM panels WHERE workspace_id = ? ORDER BY position`,
-		workspaceID,
+		ctx, `SELECT `+panelColumns+` FROM panels WHERE workspace_id = ? ORDER BY position`, workspaceID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("loading panels of workspace %s: %w", workspaceID, err)
@@ -379,36 +531,9 @@ func (s *Store) loadPanels(ctx context.Context, workspaceID string) ([]domain.Pa
 	var panels []domain.Panel
 
 	for rows.Next() {
-		var (
-			p          domain.Panel
-			argsJSON   string
-			viewColumn sql.NullString
-		)
-
-		if err := rows.Scan(
-			&p.ID, &p.WorkspaceID, &p.Service, &p.OperationID, &p.Component, &p.Title, &argsJSON, &p.Position,
-			&viewColumn,
-		); err != nil {
-			return nil, fmt.Errorf("scanning panel: %w", err)
-		}
-
-		var args map[string]any
-		if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-			return nil, fmt.Errorf("decoding panel args: %w", err)
-		}
-
-		p.Args = args
-
-		// A NULL column - every panel saved before this slice, and every
-		// panel with nothing to say here - stays a nil View rather than
-		// being decoded at all (AC-P-106).
-		if viewColumn.Valid {
-			view, err := unmarshalView(viewColumn.String)
-			if err != nil {
-				return nil, fmt.Errorf("decoding panel view: %w", err)
-			}
-
-			p.View = view
+		p, err := scanPanel(rows)
+		if err != nil {
+			return nil, err
 		}
 
 		panels = append(panels, p)
@@ -419,4 +544,24 @@ func (s *Store) loadPanels(ctx context.Context, workspaceID string) ([]domain.Pa
 	}
 
 	return panels, nil
+}
+
+// loadPanel returns one panel by id, scoped to workspaceID, and whether it
+// was found - false rather than an error when it was not, the same
+// not-found-is-a-value rule Store.Get follows.
+func (s *Store) loadPanel(ctx context.Context, workspaceID, panelID string) (domain.Panel, bool, error) {
+	row := s.db.QueryRowContext(
+		ctx, `SELECT `+panelColumns+` FROM panels WHERE id = ? AND workspace_id = ?`, panelID, workspaceID,
+	)
+
+	p, err := scanPanel(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Panel{}, false, nil
+	}
+
+	if err != nil {
+		return domain.Panel{}, false, fmt.Errorf("loading panel %s: %w", panelID, err)
+	}
+
+	return p, true, nil
 }

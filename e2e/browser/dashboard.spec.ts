@@ -85,3 +85,69 @@ test("building a panel over a list operation, with a group-by and a bar chart, a
   await expect(page.locator(".MuiBarChart-root")).toBeVisible();
   await expect(page.locator(".MuiBarChart-element")).toHaveCount(4);
 });
+
+/**
+ * Browser-driven edit journey (`docs/specs/dashboard.md` section 6a, P11,
+ * P12; AC-P-110): build a plain table panel, open the builder's own form
+ * over it, rename it and turn it into a bar chart, save through `PATCH`,
+ * see the change draw immediately, reload, and see it draw as edited - not
+ * as it was before.
+ */
+test("editing a panel's title and turning it into a chart draws the change immediately and after a reload (AC-P-108, AC-P-110)", async ({
+  page,
+}) => {
+  const workspaceName = `編集ダッシュボード-${Date.now()}`;
+
+  await signInAsAdmin(page);
+
+  await page.getByLabel("新しいワークスペース名").fill(workspaceName);
+  await page.getByRole("button", { name: "ワークスペースを作成" }).click();
+
+  await page.getByRole("link", { name: workspaceName }).click();
+  await page.waitForLoadState("networkidle");
+
+  // Build a plain table panel first - nothing here is what this test is
+  // about, only a panel worth editing.
+  await page.getByRole("button", { name: "パネルを追加" }).click();
+  await page.getByRole("combobox", { name: "操作" }).click();
+  await page.getByText("在庫一覧").click();
+  await page.getByRole("button", { name: "追加" }).click();
+
+  await expect(page.getByText("在庫一覧", { exact: true })).toBeVisible();
+
+  // Open the edit form over the saved panel - the same builder, over that
+  // panel (P12) - and confirm its operation is stated, not offered (P13).
+  await page.getByRole("button", { name: "編集" }).click();
+
+  await expect(page.getByText(/在庫一覧/u).last()).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "操作" })).toHaveCount(0);
+
+  const titleField = page.getByRole("textbox", { name: "パネル名" });
+
+  await titleField.fill("在庫のステータス別件数");
+
+  await page.getByRole("combobox", { name: "表示方法" }).click();
+  await page.getByRole("option", { name: "グラフ" }).click();
+
+  await page.getByRole("combobox", { name: "分類の軸" }).click();
+  await page.getByRole("option", { name: "ステータス", exact: true }).click();
+  await page.getByRole("combobox", { name: "値の軸" }).click();
+  await page.getByRole("option", { name: "数量", exact: true }).click();
+
+  await page.getByRole("button", { name: "保存" }).click();
+
+  // Draws as edited immediately - the same tab, no reload yet (AC-P-108).
+  // A panel's own title is a card header, not a heading - only the
+  // workspace name above it is one - so this reads it back by text.
+  await expect(page.getByText("在庫のステータス別件数").first()).toBeVisible();
+  await expect(page.locator(".MuiBarChart-root")).toBeVisible();
+
+  // Reload: a fresh read of the workspace from the platform draws the
+  // edited panel, not the one it replaced (AC-P-110).
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByRole("heading", { name: workspaceName })).toBeVisible();
+  await expect(page.getByText("在庫のステータス別件数").first()).toBeVisible();
+  await expect(page.locator(".MuiBarChart-root")).toBeVisible();
+});

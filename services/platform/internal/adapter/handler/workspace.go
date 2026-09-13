@@ -20,6 +20,9 @@ type workspaces interface {
 	Create(ctx context.Context, user *domain.User, name string) (domain.Workspace, error)
 	Delete(ctx context.Context, user *domain.User, id string) error
 	AddPanel(ctx context.Context, user *domain.User, workspaceID string, p *domain.Panel) (domain.Panel, error)
+	UpdatePanel(
+		ctx context.Context, user *domain.User, workspaceID, panelID string, patch domain.PanelPatch,
+	) (domain.Panel, error)
 	DeletePanel(ctx context.Context, user *domain.User, workspaceID, panelID string) error
 }
 
@@ -147,6 +150,46 @@ func addPanelErrorResponse(err error) (openapi.AddPanelResponseObject, bool) {
 	return nil, false
 }
 
+// UpdatePanel implements PATCH /api/workspaces/{id}/panels/{panelId}: only
+// the fields the body names change (docs/specs/dashboard.md, P11,
+// AC-P-108). Naming an operation the panel's owner may no longer call is a
+// 400, and a panel that does not exist, or belongs to somebody else, is a
+// 404 - both refused exactly the way addPanelErrorResponse refuses AddPanel
+// (AC-P-109).
+func (h *Workspace) UpdatePanel(
+	ctx context.Context,
+	request openapi.UpdatePanelRequestObject,
+) (openapi.UpdatePanelResponseObject, error) {
+	panel, err := h.workspaces.UpdatePanel(
+		ctx, currentUser(ctx), request.Id, request.PanelId, toDomainPanelPatch(request.Body),
+	)
+	if err != nil {
+		if resp, ok := updatePanelErrorResponse(err); ok {
+			return resp, nil
+		}
+
+		return nil, fmt.Errorf("updating a panel: %w", err)
+	}
+
+	return openapi.UpdatePanel200JSONResponse(toAPIPanel(&panel)), nil
+}
+
+// updatePanelErrorResponse maps usecase.Workspaces.UpdatePanel's two
+// caller-at-fault errors onto their HTTP status, the same way
+// addPanelErrorResponse does for AddPanel - see that function's own doc
+// comment for why each sentinel means what it does.
+func updatePanelErrorResponse(err error) (openapi.UpdatePanelResponseObject, bool) {
+	if errors.Is(err, usecase.ErrEndpointNotFound) {
+		return openapi.UpdatePanel400JSONResponse{Message: err.Error()}, true
+	}
+
+	if errors.Is(err, usecase.ErrWorkspaceNotFound) || errors.Is(err, sqlitestore.ErrWorkspaceNotFound) {
+		return openapi.UpdatePanel404JSONResponse{Message: err.Error()}, true
+	}
+
+	return nil, false
+}
+
 // DeletePanel implements DELETE /api/workspaces/{id}/panels/{panelId}.
 // Deleting a panel that does not exist is not an error, for the same
 // reason DeleteWorkspace's is not.
@@ -213,6 +256,42 @@ func toDomainPanel(workspaceID string, body *openapi.CreatePanelRequest) *domain
 		Args:        body.Args,
 		View:        toDomainView(body.View),
 	}
+}
+
+// toDomainPanelPatch converts an UpdatePanelRequest into the
+// domain.PanelPatch usecase.Workspaces.UpdatePanel takes. Title, Args and
+// Component are plain "was this field sent at all" pointers, straight off
+// the generated (already-optional) wire type. View is the one field with a
+// third state to translate: body.View is a
+// github.com/oapi-codegen/nullable.Nullable[openapi.View] (see
+// openapi.yaml's UpdatePanelRequest.view, `x-go-type`), and its
+// IsSpecified()/IsNull() answer exactly the two questions domain.PanelPatch's
+// **domain.View needs - "was it in the body at all" and, if so, "was it
+// null" - so this is the one place that nullable.Nullable type has to be
+// understood at all; everything downstream sees only **domain.View.
+func toDomainPanelPatch(body *openapi.UpdatePanelRequest) domain.PanelPatch {
+	patch := domain.PanelPatch{Title: body.Title}
+
+	if body.Args != nil {
+		patch.Args = *body.Args
+	}
+
+	if body.Component != nil {
+		component := string(*body.Component)
+		patch.Component = &component
+	}
+
+	if body.View.IsSpecified() {
+		var view *domain.View
+		if !body.View.IsNull() {
+			wire := body.View.MustGet()
+			view = toDomainView(&wire)
+		}
+
+		patch.View = &view
+	}
+
+	return patch
 }
 
 // toAPIView converts a domain.View into the wire View, and nil into nil -

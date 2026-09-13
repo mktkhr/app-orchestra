@@ -1,10 +1,8 @@
-import RefreshIcon from "@mui/icons-material/Refresh";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
-import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 
 import {
   applyTransform,
@@ -16,7 +14,10 @@ import {
 import { PanelCardShell, usePanelInvoke } from "@/entities/workspace";
 import type { WorkspacePanel } from "@/shared/api/client";
 
+import { PanelActions } from "./PanelActions";
+
 interface PanelResultProps {
+  readonly workspaceId: string;
   readonly panel: WorkspacePanel;
 }
 
@@ -59,12 +60,20 @@ const WIDE_CHART_SIZE = { width: 560, height: 320 } as const;
  * label from "更新" to "更新中", and double-clicks are absorbed by
  * `usePanelInvoke`'s own in-flight guard rather than by disabling the
  * button.
+ *
+ * `panel` is copied into local state (`current`) rather than read straight
+ * off the prop: `EditPanelControl` (P12) returns the panel as it reads
+ * after a save, and this card draws that answer immediately - AC-P-110's
+ * "edited then reloaded draws as edited" holds for the reload half because
+ * the platform itself now has the change; this state is what makes it
+ * true without one first, for the tab already open.
  */
-export function PanelResult({ panel }: PanelResultProps): JSX.Element {
-  const { loading, refreshing, error, result, refresh } = usePanelInvoke(panel);
+export function PanelResult({ workspaceId, panel }: PanelResultProps): JSX.Element {
+  const [current, setCurrent] = useState(panel);
+  const { loading, refreshing, error, result, refresh } = usePanelInvoke(current);
   const chartSize = useMediaQuery(WIDE_BREAKPOINT_QUERY) ? WIDE_CHART_SIZE : NARROW_CHART_SIZE;
 
-  const view = panel.view;
+  const view = current.view;
   const chart = view?.chart;
   const transform = view?.transform;
 
@@ -79,16 +88,20 @@ export function PanelResult({ panel }: PanelResultProps): JSX.Element {
 
   return (
     <PanelCardShell
-      title={panel.title}
+      title={current.title}
       action={
-        <IconButton onClick={refresh} aria-label={refreshing ? "更新中" : "更新"}>
-          {refreshing ? <CircularProgress size={20} /> : <RefreshIcon />}
-        </IconButton>
+        <PanelActions
+          workspaceId={workspaceId}
+          panel={current}
+          refreshing={refreshing}
+          onRefresh={refresh}
+          onSaved={setCurrent}
+        />
       }
     >
       <Provenance
         source={{
-          service: panel.service,
+          service: current.service,
           // A saved Panel stores only the identifier (W2,
           // docs/specs/workspaces.md) - it never re-fetches the catalogue
           // just to find the service's display name (P9,
@@ -96,9 +109,9 @@ export function PanelResult({ panel }: PanelResultProps): JSX.Element {
           // has here: the identifier, unlike the chat/plan provenance
           // above it, which does carry the contract's own name
           // (DECISIONS.md, 2026-09-13).
-          serviceDisplayName: panel.service,
-          operationId: panel.operationId,
-          args: panel.args,
+          serviceDisplayName: current.service,
+          operationId: current.operationId,
+          args: current.args,
         }}
       />
       {loading ? (
@@ -119,7 +132,7 @@ export function PanelResult({ panel }: PanelResultProps): JSX.Element {
           category={chart.category}
           value={chart.value}
           kind={chart.kind}
-          title={panel.title}
+          title={current.title}
           width={chartSize.width}
           height={chartSize.height}
         />

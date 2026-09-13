@@ -456,6 +456,212 @@ func TestStoreAddPanelWithNoViewRoundTripsAsNil(t *testing.T) {
 	assert.Nil(t, got.Panels[0].View)
 }
 
+// newPanelForUpdateTest opens a fresh store, holding one workspace with one
+// panel, for TestStoreUpdatePanelChangesOnlyTheNamedColumn's own subtests -
+// each needs its own copy, since each changes a different column of it.
+func newPanelForUpdateTest(t *testing.T) (*sqlite.Store, context.Context, string, domain.Panel) {
+	t.Helper()
+
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	panel, err := store.AddPanel(ctx, ws.ID, &domain.Panel{
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Component:   "table",
+		Title:       "元のタイトル",
+		Args:        map[string]any{"status": "quarantined"},
+	})
+	require.NoError(t, err)
+
+	return store, ctx, ws.ID, panel
+}
+
+// TestStoreUpdatePanelChangesOnlyTheNamedColumn is AC-P-108's own case,
+// against the real database: title, args, component and view each change
+// on their own, and nothing else on the panel moves when only one of them
+// is named.
+func TestStoreUpdatePanelChangesOnlyTheNamedColumn(t *testing.T) {
+	newView := &domain.View{Chart: &domain.Chart{Category: "status", Value: "count", Kind: domain.ChartKindBar}}
+
+	t.Run("title", func(t *testing.T) {
+		store, ctx, wsID, panel := newPanelForUpdateTest(t)
+
+		updated, found, err := store.UpdatePanel(ctx, wsID, panel.ID, domain.PanelPatch{Title: new("新しいタイトル")})
+		require.NoError(t, err)
+		require.True(t, found)
+
+		assert.Equal(t, "新しいタイトル", updated.Title)
+		assert.Equal(t, panel.Args, updated.Args)
+		assert.Equal(t, panel.Component, updated.Component)
+		assert.Nil(t, updated.View)
+	})
+
+	t.Run("args", func(t *testing.T) {
+		store, ctx, wsID, panel := newPanelForUpdateTest(t)
+
+		newArgs := map[string]any{"status": "staged"}
+		updated, found, err := store.UpdatePanel(ctx, wsID, panel.ID, domain.PanelPatch{Args: newArgs})
+		require.NoError(t, err)
+		require.True(t, found)
+
+		assert.Equal(t, newArgs, updated.Args)
+		assert.Equal(t, panel.Title, updated.Title)
+		assert.Equal(t, panel.Component, updated.Component)
+	})
+
+	t.Run("component", func(t *testing.T) {
+		store, ctx, wsID, panel := newPanelForUpdateTest(t)
+
+		updated, found, err := store.UpdatePanel(ctx, wsID, panel.ID, domain.PanelPatch{Component: new("chart")})
+		require.NoError(t, err)
+		require.True(t, found)
+
+		assert.Equal(t, "chart", updated.Component)
+		assert.Equal(t, panel.Title, updated.Title)
+		assert.Equal(t, panel.Args, updated.Args)
+	})
+
+	t.Run("view", func(t *testing.T) {
+		store, ctx, wsID, panel := newPanelForUpdateTest(t)
+
+		updated, found, err := store.UpdatePanel(ctx, wsID, panel.ID, domain.PanelPatch{View: &newView})
+		require.NoError(t, err)
+		require.True(t, found)
+
+		assert.Equal(t, newView, updated.View)
+		assert.Equal(t, panel.Title, updated.Title)
+		assert.Equal(t, panel.Args, updated.Args)
+		assert.Equal(t, panel.Component, updated.Component)
+	})
+}
+
+// TestStoreUpdatePanelViewNullVsAbsent is the wrinkle section 6a names:
+// naming the view null removes it, and not naming it at all leaves it as it
+// was - two different domain.PanelPatch values (a non-nil pointer to a nil
+// *View, versus a nil pointer), and two different outcomes.
+func TestStoreUpdatePanelViewNullVsAbsent(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	panel, err := store.AddPanel(ctx, ws.ID, &domain.Panel{
+		Service: "inventory", OperationID: "ListInventoryItems", Component: "chart", View: viewForRoundTrip(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, panel.View)
+
+	// Absent: PanelPatch.View itself is nil - the view must survive.
+	afterAbsent, found, err := store.UpdatePanel(ctx, ws.ID, panel.ID, domain.PanelPatch{Title: new("そのまま")})
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, viewForRoundTrip(), afterAbsent.View, "an absent view in the patch must leave the existing one alone")
+
+	// Null: PanelPatch.View points at a nil *View - the view must be removed.
+	var cleared *domain.View
+
+	afterNull, found, err := store.UpdatePanel(ctx, ws.ID, panel.ID, domain.PanelPatch{View: &cleared})
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Nil(t, afterNull.View, "a patch naming the view null must remove it")
+}
+
+// TestStoreUpdatePanelUnknownPanelIsNotFound proves UpdatePanel reports
+// "not found" - not an error - for a panel id that does not exist on the
+// named workspace, and for one that exists on a different one.
+func TestStoreUpdatePanelUnknownPanelIsNotFound(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	_, found, err := store.UpdatePanel(ctx, ws.ID, "does-not-exist", domain.PanelPatch{Title: new("x")})
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	other, err := store.Create(ctx, "stub-user", "別のワークスペース")
+	require.NoError(t, err)
+
+	panel, err := store.AddPanel(ctx, other.ID, &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
+	require.NoError(t, err)
+
+	_, found, err = store.UpdatePanel(ctx, ws.ID, panel.ID, domain.PanelPatch{Title: new("x")})
+	require.NoError(t, err)
+	assert.False(t, found, "a panel on a different workspace must not be found either")
+}
+
+// TestStoreUpdatePanelEmptyPatchStillChecksExistence proves an empty patch
+// - a PATCH naming nothing - is not a silent no-op success over a panel
+// that was never there.
+func TestStoreUpdatePanelEmptyPatchStillChecksExistence(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	_, found, err := store.UpdatePanel(ctx, ws.ID, "does-not-exist", domain.PanelPatch{})
+	require.NoError(t, err)
+	assert.False(t, found)
+
+	panel, err := store.AddPanel(ctx, ws.ID, &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
+	require.NoError(t, err)
+
+	updated, found, err := store.UpdatePanel(ctx, ws.ID, panel.ID, domain.PanelPatch{})
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, panel, updated)
+}
+
+// TestStoreUpdatePanelFailsToEncodeUnsupportedArgs mirrors
+// TestStoreAddPanelFailsToEncodeUnsupportedArgs for UpdatePanel's own args
+// encoding path.
+func TestStoreUpdatePanelFailsToEncodeUnsupportedArgs(t *testing.T) {
+	ctx := context.Background()
+	store := openStore(t, dbPath(t))
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	panel, err := store.AddPanel(ctx, ws.ID, &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
+	require.NoError(t, err)
+
+	_, _, err = store.UpdatePanel(
+		ctx, ws.ID, panel.ID, domain.PanelPatch{Args: map[string]any{"callback": func() {}}},
+	)
+	require.Error(t, err)
+}
+
+// TestStoreUpdatePanelFailsWhenPanelsTableIsGone exercises UpdatePanel's
+// database error path, both for a patch that runs an UPDATE and for an
+// empty one that only checks existence.
+func TestStoreUpdatePanelFailsWhenPanelsTableIsGone(t *testing.T) {
+	ctx := context.Background()
+	path := dbPath(t)
+	store := openStore(t, path)
+
+	ws, err := store.Create(ctx, "stub-user", "ワークスペース")
+	require.NoError(t, err)
+
+	panel, err := store.AddPanel(ctx, ws.ID, &domain.Panel{Service: "inventory", OperationID: "ListInventoryItems"})
+	require.NoError(t, err)
+
+	_, err = rawConn(t, path).ExecContext(ctx, `DROP TABLE panels`)
+	require.NoError(t, err)
+
+	_, _, err = store.UpdatePanel(ctx, ws.ID, panel.ID, domain.PanelPatch{Title: new("x")})
+	require.Error(t, err)
+
+	_, _, err = store.UpdatePanel(ctx, ws.ID, panel.ID, domain.PanelPatch{})
+	require.Error(t, err)
+}
+
 // preDashboardSchema is the panels table exactly as it existed before
 // docs/plans/dashboard.md's Task 2 added a view column - copied here
 // rather than read from schema.sql, which now describes the current

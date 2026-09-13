@@ -36,6 +36,13 @@ type WorkspaceStore interface {
 	// receiver are pointers where the plan or a naive reading would show a
 	// value.
 	AddPanel(ctx context.Context, workspaceID string, p *domain.Panel) (domain.Panel, error)
+	// UpdatePanel changes only the columns patch names on one panel
+	// (docs/specs/dashboard.md, P11, AC-P-108) and returns it as it reads
+	// afterward, and whether a panel with this id existed on this
+	// workspace at all.
+	UpdatePanel(
+		ctx context.Context, workspaceID, panelID string, patch domain.PanelPatch,
+	) (domain.Panel, bool, error)
 	// DeletePanel removes one panel from a workspace.
 	DeletePanel(ctx context.Context, workspaceID, panelID string) error
 }
@@ -195,6 +202,81 @@ func (w *Workspaces) AddPanel(
 	}
 
 	return saved, nil
+}
+
+// UpdatePanel changes patch's named fields on panelID, on workspaceID, and
+// returns the panel as it reads afterward (docs/specs/dashboard.md, P11,
+// AC-P-108). It is refused - the same two sentinels AddPanel refuses with,
+// for the same reasons - exactly the way adding one is (AC-P-109):
+// ErrWorkspaceNotFound when workspaceID does not exist, belongs to
+// somebody other than user, or names no panel with this id on it (one
+// answer for all three, so a 404 never tells a caller which is true); and
+// ErrEndpointNotFound when the panel's own (fixed, P13) operation is no
+// longer one catalogFor(ctx, user) exposes - re-checked here, not just at
+// AddPanel's own save time, since a person's permissions can change after a
+// panel is made.
+//
+// patch.Title's empty-string fallback to the panel's own OperationID
+// mirrors AddPanel's: a request that clears the title is asking for the
+// same "operation id instead of a blank header" default a panel gets when
+// it is first saved with none, not for a card with no title at all.
+func (w *Workspaces) UpdatePanel(
+	ctx context.Context,
+	user *domain.User,
+	workspaceID, panelID string,
+	patch domain.PanelPatch,
+) (domain.Panel, error) {
+	workspace, found, err := w.store.Get(ctx, workspaceID)
+	if err != nil {
+		return domain.Panel{}, fmt.Errorf("reading workspace %s: %w", workspaceID, err)
+	}
+
+	if !found || workspace.Owner != user.ID {
+		return domain.Panel{}, fmt.Errorf("%w: %s", ErrWorkspaceNotFound, workspaceID)
+	}
+
+	var current *domain.Panel
+
+	for i := range workspace.Panels {
+		if workspace.Panels[i].ID == panelID {
+			current = &workspace.Panels[i]
+
+			break
+		}
+	}
+
+	if current == nil {
+		return domain.Panel{}, fmt.Errorf("%w: %s", ErrWorkspaceNotFound, panelID)
+	}
+
+	catalog, err := w.catalogFor(ctx, user)
+	if err != nil {
+		return domain.Panel{}, err
+	}
+
+	if _, ok := catalog.Find(current.Service, current.OperationID); !ok {
+		return domain.Panel{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, current.Service, current.OperationID)
+	}
+
+	if patch.Title != nil {
+		title := *patch.Title
+		if title == "" {
+			title = current.OperationID
+		}
+
+		patch.Title = &title
+	}
+
+	updated, found, err := w.store.UpdatePanel(ctx, workspaceID, panelID, patch)
+	if err != nil {
+		return domain.Panel{}, fmt.Errorf("updating panel %s on workspace %s: %w", panelID, workspaceID, err)
+	}
+
+	if !found {
+		return domain.Panel{}, fmt.Errorf("%w: %s", ErrWorkspaceNotFound, panelID)
+	}
+
+	return updated, nil
 }
 
 // DeletePanel removes one panel from a workspace. Deleting from a

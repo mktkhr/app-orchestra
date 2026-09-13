@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/getkin/kin-openapi v0.142.0
 	github.com/oapi-codegen/nethttp-middleware v1.2.0
+	github.com/oapi-codegen/nullable v1.1.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/crypto v0.46.0

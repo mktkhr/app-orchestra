@@ -4,6 +4,60 @@ _Last updated: 2026-09-13_
 
 ## Summary
 
+**A panel can be changed after it is made** (`docs/specs/dashboard.md`
+section 6a, P11-P13; see `DECISIONS.md`, 2026-09-13). Three pieces:
+
+1. `PATCH /api/workspaces/{id}/panels/{panelId}` (`UpdatePanelRequest`):
+   `title`/`args`/`component`/`view` are all optional and only the ones
+   named change; `service`/`operationId` are not properties of this schema
+   at all (P13). `view` is the one field with a third state - absent
+   leaves it alone, `null` removes it - carried on the wire as
+   `nullable.Nullable[View]` (per-property `x-go-type`/
+   `x-go-type-skip-optional-pointer`, not the harness-owned
+   `oapi-codegen.yaml`'s own `nullable-type` option) and, below the
+   handler, as `domain.PanelPatch.View`, a `**View` (domain may not import
+   the adapter's own nullable type).
+2. `usecase.Workspaces.UpdatePanel` narrows through the same `catalogFor`
+   `AddPanel` already uses, re-checked against the panel's own (fixed)
+   operation rather than trusted from save time - permissions can change
+   after a panel is made. Refused exactly the way `AddPanel` is (AC-P-109):
+   `ErrEndpointNotFound` for an operation no longer callable,
+   `ErrWorkspaceNotFound` for a workspace or panel id that does not exist
+   or belongs to somebody else - one sentinel for all three, so a 404 never
+   says which is true. `sqlite.Store.UpdatePanel` writes only the named
+   columns.
+3. The edit form is the builder's own (P12): `usePanelFields` gained a
+   `seed` parameter rather than a second hook (its pure rules split into
+   `panelFieldRules.ts`/`panelFieldValues.ts` to stay under
+   `max-lines`/`max-lines-per-function` once seeding was added);
+   `AddPanelForm` gained `operationLocked`, which states the fixed
+   operation as plain text (`OperationLabel.tsx`) rather than a disabled
+   `Autocomplete` - `make guard-layout`'s selector matches a disabled
+   input exactly as an enabled one, and a disabled MUI input's own lighter
+   border is the low-contrast edge that guard exists to catch, so the
+   control is removed from that selector entirely instead of betting it
+   clears the threshold; `usePanelEditor`/`EditPanelControl` (with
+   `EditPanelDialogContent`, split out to stay under
+   `import/max-dependencies`) sit beside `PanelResult`'s refresh control in
+   a new `PanelActions.tsx`. The edit form always restates every field it
+   shows (title/args/component/view) rather than omitting untouched ones -
+   it is the whole panel's own state once open, so there is no "leave
+   alone" case for a control already on screen; `view` is sent explicit
+   `null` whenever no chart/transform applies.
+
+Found and fixed a real gap along the way: `PanelArguments.tsx` never
+accepted seeded values - its `useFormValues(schema)` call always reset to
+each field's own empty default, so an edited panel's arguments would have
+silently come back blank. Fixed by threading an `initialValues` prop
+through to `useFormValues`'s existing `initial` parameter (already used by
+`ResultForm`). Only the browser journey caught this - a good argument for
+`e2e/browser/dashboard.spec.ts`'s new edit test, not just the unit-level
+ones. `e2e/src/dashboard-update-permissions.test.ts` is AC-P-109's own
+process-level test, its own file (not a `describe` added to
+`dashboard-permissions.test.ts`, already at its `max-lines` budget).
+`make check` is fully green; `docker logs llama-swap`'s request count did
+not move (the planner is never involved here).
+
 **Follow-up fix, one level up: a service has no Japanese name either, and
 that is closed too** (see `DECISIONS.md`, 2026-09-13). Same shape as the
 entry below, one level up: `inventory`/`attendance` showed raw wherever a
@@ -860,8 +914,9 @@ slice.** `services/platform/internal/domain/workspace.go` (`Workspace`,
 `internal/adapter/repository/sqlite` (the store, embedded schema, IDs via
 `crypto/rand.Text()`) from Task 0; `POST /api/workspaces`,
 `GET /api/workspaces`, `GET`/`DELETE /api/workspaces/{id}`,
-`POST /api/workspaces/{id}/panels`, `DELETE
-/api/workspaces/{id}/panels/{panelId}` from Task 1, rejecting an operation
+`POST /api/workspaces/{id}/panels`, `PATCH`/`DELETE
+/api/workspaces/{id}/panels/{panelId}` from Task 1 (`PATCH` added this task,
+`docs/specs/dashboard.md` section 6a - see the Summary above), rejecting an operation
 the catalogue does not expose with the same 400 `/api/invoke` gives, and an
 unknown workspace with 404. `web/src/features/workspaces` (list, create,
 delete, save-a-result), `web/src/entities/workspace` (the panel card shell,

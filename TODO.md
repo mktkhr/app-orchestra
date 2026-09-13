@@ -57,6 +57,26 @@ Everything remaining sits outside all four subprojects above:
 
 ## Done
 
+- `docs/specs/dashboard.md` section 6a, P11-P13: a panel can be changed
+  after it is made. `PATCH /api/workspaces/{id}/panels/{panelId}`
+  (`UpdatePanelRequest` - `title`/`args`/`component`/`view` all optional,
+  `service`/`operationId` not properties at all), `usecase.Workspaces.UpdatePanel`
+  (narrows through the same `catalogFor` `AddPanel` uses, re-checked against
+  the panel's own fixed operation rather than trusted from save time),
+  `sqlite.Store.UpdatePanel` (writes only the named columns), and the
+  builder's own form reused for editing (`usePanelFields` gained a `seed`
+  parameter; `usePanelEditor`/`EditPanelControl`, beside the refresh control
+  in a new `PanelActions.tsx`). "Remove the view" vs "leave it alone" is
+  `nullable.Nullable[View]` on the wire, `**domain.View` (pointer-to-pointer)
+  in `domain.PanelPatch` - domain may not depend on the adapter's own
+  nullable type. Found and fixed a real gap along the way:
+  `PanelArguments.tsx` never accepted seeded values at all, so an edited
+  panel's own arguments would have come back empty - only the browser
+  journey caught it. See `DECISIONS.md`, 2026-09-13 ("A panel can be
+  changed after it is made"). `e2e/browser/dashboard.spec.ts` gained the
+  edit journey; `e2e/src/dashboard-update-permissions.test.ts` is AC-P-109's
+  own process-level test. `make check` is fully green;
+  `docker logs llama-swap`'s request count did not move.
 - Follow-up fix, one level up: a service (`inventory`/`attendance`) had no
   Japanese name either, shown raw in `OperationPicker`'s group headers,
   `list_capabilities`' サービス column, a result's provenance

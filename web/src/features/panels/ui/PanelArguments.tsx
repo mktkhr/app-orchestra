@@ -5,6 +5,13 @@ import { ResultFormFields, useFormValues } from "@/entities/rendering";
 interface PanelArgumentsProps {
   readonly schema: Record<string, unknown>;
   readonly onChange: Dispatch<SetStateAction<Record<string, unknown>>>;
+  /**
+   * Seeds every control from an existing panel's own arguments, instead of
+   * each field's type-appropriate empty default - the edit form opened
+   * over a panel (P12, section 6a). Absent for the create form, which has
+   * no answer yet to seed from.
+   */
+  readonly initialValues?: Record<string, unknown>;
 }
 
 /**
@@ -20,8 +27,12 @@ interface PanelArgumentsProps {
  * unwrapped, so this effect's dependency stays referentially stable and
  * fires only when `values` itself changes.
  */
-export function PanelArguments({ schema, onChange }: PanelArgumentsProps): JSX.Element {
-  const { properties, required, entries, values, setValue } = useFormValues(schema);
+export function PanelArguments({
+  schema,
+  onChange,
+  initialValues,
+}: PanelArgumentsProps): JSX.Element {
+  const { properties, required, entries, values, setValue } = useFormValues(schema, initialValues);
 
   useEffect(() => {
     onChange(values);

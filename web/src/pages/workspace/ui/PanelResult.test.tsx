@@ -30,7 +30,7 @@ describe("PanelResult", () => {
       data: { items: [{ id: "itm-001", name: "品目1" }] },
     });
 
-    render(<PanelResult panel={panel()} />);
+    render(<PanelResult workspaceId="ws-1" panel={panel()} />);
 
     expect(screen.getByText("検品保留の在庫")).toBeTruthy();
     expect(await screen.findByText("itm-001")).toBeTruthy();
@@ -45,7 +45,12 @@ describe("PanelResult", () => {
   it("shows the failure inside its own card, without throwing", async () => {
     vi.mocked(postInvoke).mockRejectedValue(new Error("boom"));
 
-    render(<PanelResult panel={panel({ id: "pnl-2", title: "接続できないパネル" })} />);
+    render(
+      <PanelResult
+        workspaceId="ws-1"
+        panel={panel({ id: "pnl-2", title: "接続できないパネル" })}
+      />,
+    );
 
     expect(await screen.findByText(/取得に失敗しました/u)).toBeTruthy();
     expect(screen.getByText("接続できないパネル")).toBeTruthy();
@@ -65,8 +70,14 @@ describe("PanelResult", () => {
 
     render(
       <>
-        <PanelResult panel={panel({ id: "pnl-slow", operationId: "Slow", title: "遅いパネル" })} />
-        <PanelResult panel={panel({ id: "pnl-fast", operationId: "Fast", title: "速いパネル" })} />
+        <PanelResult
+          workspaceId="ws-1"
+          panel={panel({ id: "pnl-slow", operationId: "Slow", title: "遅いパネル" })}
+        />
+        <PanelResult
+          workspaceId="ws-1"
+          panel={panel({ id: "pnl-fast", operationId: "Fast", title: "速いパネル" })}
+        />
       </>,
     );
 
@@ -82,7 +93,7 @@ describe("PanelResult", () => {
         data: { items: [{ id: "itm-001" }, { id: "itm-new" }] },
       });
 
-    render(<PanelResult panel={panel()} />);
+    render(<PanelResult workspaceId="ws-1" panel={panel()} />);
     expect(await screen.findByText("itm-001")).toBeTruthy();
     expect(screen.queryByText("itm-new")).toBeFalsy();
     vi.mocked(postInvoke).mockClear();
@@ -105,7 +116,7 @@ describe("PanelResult", () => {
           }),
       );
 
-    render(<PanelResult panel={panel()} />);
+    render(<PanelResult workspaceId="ws-1" panel={panel()} />);
     expect(await screen.findByText("itm-001")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "更新" }));
@@ -124,7 +135,7 @@ describe("PanelResult", () => {
       .mockResolvedValueOnce({ component: "table", data: { items: [{ id: "itm-001" }] } })
       .mockRejectedValueOnce(new Error("boom"));
 
-    render(<PanelResult panel={panel()} />);
+    render(<PanelResult workspaceId="ws-1" panel={panel()} />);
     expect(await screen.findByText("itm-001")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "更新" }));
@@ -141,6 +152,7 @@ describe("PanelResult", () => {
 
     const { container } = render(
       <PanelResult
+        workspaceId="ws-1"
         panel={panel({
           view: { chart: { category: "status", value: "count", kind: "bar" } },
         })}
@@ -167,6 +179,7 @@ describe("PanelResult", () => {
 
     render(
       <PanelResult
+        workspaceId="ws-1"
         panel={panel({
           view: { transform: { groupBy: "status", aggregate: "count" } },
         })}
@@ -193,6 +206,7 @@ describe("PanelResult", () => {
 
     const { container } = render(
       <PanelResult
+        workspaceId="ws-1"
         panel={panel({
           view: {
             transform: { groupBy: "status", aggregate: "count" },
@@ -213,7 +227,7 @@ describe("PanelResult", () => {
       data: { items: [{ id: "itm-001", name: "品目1" }] },
     });
 
-    const { container } = render(<PanelResult panel={panel()} />);
+    const { container } = render(<PanelResult workspaceId="ws-1" panel={panel()} />);
 
     expect(await screen.findByText("itm-001")).toBeTruthy();
     expect(container.querySelectorAll(".MuiBarChart-element")).toHaveLength(0);
@@ -227,6 +241,7 @@ describe("PanelResult", () => {
 
     render(
       <PanelResult
+        workspaceId="ws-1"
         panel={panel({
           view: { chart: { category: "status", value: "count", kind: "bar" } },
         })}
@@ -248,7 +263,7 @@ describe("PanelResult", () => {
           }),
       );
 
-    render(<PanelResult panel={panel()} />);
+    render(<PanelResult workspaceId="ws-1" panel={panel()} />);
     expect(await screen.findByText("itm-001")).toBeTruthy();
     vi.mocked(postInvoke).mockClear();
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -37,6 +38,12 @@ type fakeWorkspaces struct {
 	addPanelErr    error
 	addPanelIn     *domain.Panel
 	addPanelWSID   string
+
+	updatePanelResult domain.Panel
+	updatePanelErr    error
+	updatePanelIn     *domain.PanelPatch
+	updatePanelWSID   string
+	updatePanelPnlID  string
 
 	deletePanelErr   error
 	deletePanelWSID  string
@@ -73,6 +80,19 @@ func (f *fakeWorkspaces) AddPanel(
 	f.addPanelIn = p
 
 	return f.addPanelResult, f.addPanelErr
+}
+
+func (f *fakeWorkspaces) UpdatePanel(
+	_ context.Context,
+	_ *domain.User,
+	workspaceID, panelID string,
+	patch domain.PanelPatch,
+) (domain.Panel, error) {
+	f.updatePanelWSID = workspaceID
+	f.updatePanelPnlID = panelID
+	f.updatePanelIn = &patch
+
+	return f.updatePanelResult, f.updatePanelErr
 }
 
 func (f *fakeWorkspaces) DeletePanel(_ context.Context, _ *domain.User, workspaceID, panelID string) error {
@@ -383,6 +403,160 @@ func TestAddPanelReturns500ForAnUnexpectedStoreError(t *testing.T) {
 			Service: "inventory", OperationId: "ListInventoryItems",
 			Args: map[string]any{}, Component: "table", Title: "検品保留の在庫",
 		},
+	})
+
+	require.Error(t, err)
+}
+
+func TestUpdatePanelRendersTheUpdatedPanel(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelResult: domain.Panel{ID: "pnl-1", Title: "新しいタイトル"}}
+	h := handler.NewWorkspace(fake)
+
+	title := "新しいタイトル"
+
+	resp, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{
+		Id: "ws-1", PanelId: "pnl-1",
+		Body: &openapi.UpdatePanelRequest{Title: &title},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.UpdatePanel200JSONResponse)
+	require.True(t, ok)
+	assert.Equal(t, "新しいタイトル", body.Title)
+	assert.Equal(t, "ws-1", fake.updatePanelWSID)
+	assert.Equal(t, "pnl-1", fake.updatePanelPnlID)
+	require.NotNil(t, fake.updatePanelIn.Title)
+	assert.Equal(t, "新しいタイトル", *fake.updatePanelIn.Title)
+	assert.Nil(t, fake.updatePanelIn.Args)
+	assert.Nil(t, fake.updatePanelIn.Component)
+	assert.Nil(t, fake.updatePanelIn.View, "a body that never named a field must reach the usecase with that field nil")
+}
+
+func TestUpdatePanelPassesArgsAndComponentThrough(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	args := map[string]any{"status": "staged"}
+	component := openapi.Component("chart")
+
+	resp, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{
+		Id: "ws-1", PanelId: "pnl-1",
+		Body: &openapi.UpdatePanelRequest{Args: &args, Component: &component},
+	})
+
+	require.NoError(t, err)
+	require.IsType(t, openapi.UpdatePanel200JSONResponse{}, resp)
+	assert.Nil(t, fake.updatePanelIn.Title)
+	assert.Equal(t, args, fake.updatePanelIn.Args)
+	require.NotNil(t, fake.updatePanelIn.Component)
+	assert.Equal(t, "chart", *fake.updatePanelIn.Component)
+}
+
+// TestUpdatePanelViewAbsentLeavesThePatchUntouched is half of the section
+// 6a wrinkle: a body that never names "view" at all must reach the usecase
+// with PanelPatch.View nil - "leave it alone", not "remove it".
+func TestUpdatePanelViewAbsentLeavesThePatchUntouched(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	title := "タイトルだけ"
+
+	_, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{
+		Id: "ws-1", PanelId: "pnl-1",
+		Body: &openapi.UpdatePanelRequest{Title: &title},
+	})
+
+	require.NoError(t, err)
+	assert.Nil(t, fake.updatePanelIn.View, "an absent view must reach the usecase as nil, not as a pointer to nil")
+}
+
+// TestUpdatePanelViewNullRemovesIt is the other half: a body naming "view"
+// explicitly as null must reach the usecase as a non-nil pointer to a nil
+// *domain.View - "remove it", distinguishable from "leave it alone".
+func TestUpdatePanelViewNullRemovesIt(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	body := &openapi.UpdatePanelRequest{}
+	body.View = nullable.NewNullNullable[openapi.View]()
+
+	_, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{Id: "ws-1", PanelId: "pnl-1", Body: body})
+
+	require.NoError(t, err)
+	require.NotNil(t, fake.updatePanelIn.View, "a null view must reach the usecase as a non-nil pointer")
+	assert.Nil(t, *fake.updatePanelIn.View, "a null view's pointed-to value must be nil - that is what removes it")
+}
+
+// TestUpdatePanelViewValueReplacesIt proves the third state: a body naming
+// an actual view converts into a non-nil pointer to a non-nil *domain.View.
+func TestUpdatePanelViewValueReplacesIt(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelResult: domain.Panel{ID: "pnl-1"}}
+	h := handler.NewWorkspace(fake)
+
+	body := &openapi.UpdatePanelRequest{}
+	body.View = nullable.NewNullableWithValue(openapi.View{
+		Chart: &struct {
+			Category string                `json:"category"`
+			Kind     openapi.ViewChartKind `json:"kind"`
+			Value    string                `json:"value"`
+		}{Category: "status", Value: "count", Kind: "bar"},
+	})
+
+	_, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{Id: "ws-1", PanelId: "pnl-1", Body: body})
+
+	require.NoError(t, err)
+	require.NotNil(t, fake.updatePanelIn.View)
+	require.NotNil(t, *fake.updatePanelIn.View)
+	require.NotNil(t, (*fake.updatePanelIn.View).Chart)
+	assert.Equal(t, "status", (*fake.updatePanelIn.View).Chart.Category)
+	assert.Equal(t, domain.ChartKindBar, (*fake.updatePanelIn.View).Chart.Kind)
+}
+
+func TestUpdatePanelReturns400ForAnUnexposedOperation(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelErr: usecase.ErrEndpointNotFound}
+	h := handler.NewWorkspace(fake)
+
+	title := "だめなやつ"
+
+	resp, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{
+		Id: "ws-1", PanelId: "pnl-1", Body: &openapi.UpdatePanelRequest{Title: &title},
+	})
+
+	require.NoError(t, err)
+	_, ok := resp.(openapi.UpdatePanel400JSONResponse)
+	assert.True(t, ok)
+}
+
+func TestUpdatePanelReturns404ForAnUnknownWorkspaceOrPanel(t *testing.T) {
+	for name, sentinel := range map[string]error{
+		"usecase sentinel": usecase.ErrWorkspaceNotFound,
+		"store sentinel":   sqlitestore.ErrWorkspaceNotFound,
+	} {
+		t.Run(name, func(t *testing.T) {
+			fake := &fakeWorkspaces{updatePanelErr: sentinel}
+			h := handler.NewWorkspace(fake)
+
+			title := "x"
+
+			resp, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{
+				Id: "does-not-exist", PanelId: "pnl-1", Body: &openapi.UpdatePanelRequest{Title: &title},
+			})
+
+			require.NoError(t, err)
+			_, ok := resp.(openapi.UpdatePanel404JSONResponse)
+			assert.True(t, ok)
+		})
+	}
+}
+
+func TestUpdatePanelReturns500ForAnUnexpectedStoreError(t *testing.T) {
+	fake := &fakeWorkspaces{updatePanelErr: errors.New("disk on fire")}
+	h := handler.NewWorkspace(fake)
+
+	title := "x"
+
+	_, err := h.UpdatePanel(t.Context(), openapi.UpdatePanelRequestObject{
+		Id: "ws-1", PanelId: "pnl-1", Body: &openapi.UpdatePanelRequest{Title: &title},
 	})
 
 	require.Error(t, err)

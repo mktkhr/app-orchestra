@@ -2879,3 +2879,122 @@ pinned assertion moved from `screen.getByText("inventory")` to
 `serviceDisplayName: "在庫管理"`/`"勤怠管理"`. Verified `make eval` was not run;
 verified no operation's `summary` changed; verified `docker logs llama-swap`'s
 `POST /v1/chat/completions` count is unchanged across a full `make check` run.
+
+## 2026-09-13 A panel can be changed after it is made: PATCH, and the view's third state
+
+`docs/specs/dashboard.md` section 6a, P11-P13: `PATCH /api/workspaces/{id}/panels/{panelId}`,
+the usecase and sqlite layers underneath it, and the builder's own form
+reused for editing (P12).
+
+**"Remove the view" vs "leave it alone" - null and absent, and how that
+survives the generated Go types.** `UpdatePanelRequest.view` is declared
+`allOf: [$ref: View]` plus `nullable: true` (redocly's `nullable-type-sibling`
+rule wants an explicit `type: object` alongside `nullable`, so that is
+there too) and `x-go-type: nullable.Nullable[View]` with
+`x-go-type-skip-optional-pointer: true`. `oapi-codegen` has a built-in
+`nullable-type` output option that does the same thing automatically for
+every `nullable: true` property, but that option lives in
+`harness/gen/oapi-codegen.yaml`, and that file is part of the Repository
+Harness (`harness/quality/protected-paths.txt` lists the whole of `harness/`)
+
+- not this task's to change, and the note at the bottom of that list is
+  explicit that a service's own generator behaviour belongs beside its own
+  contract. `x-go-type`/`x-go-type-skip-optional-pointer` are per-property
+  extensions read straight out of `services/platform/api/openapi.yaml`, so
+  the same three-state field is had without touching the harness at all.
+  One trap along the way: setting `x-go-type-import` as well produced a
+  duplicate `import "github.com/oapi-codegen/nullable"` - the generator's
+  own template already imports that package unconditionally once any
+  `nullable.Nullable[...]` type string appears anywhere in a spec, so
+  `x-go-type-import` is not needed (and must not be given) alongside it.
+  `go.mod`'s `require` for `github.com/oapi-codegen/nullable` moved from
+  indirect to direct (`go get` + `go mod tidy`) since generated code now
+  imports it directly.
+
+Downstream, `domain.PanelPatch.View` is a `**View` (pointer to pointer),
+not the `nullable.Nullable[View]` type itself - `domain` may depend on
+nothing but the standard library (depguard), so it cannot reach for an
+adapter's own type. `nil` means untouched, a non-nil pointer to a nil
+`*View` means "remove", a non-nil pointer to a non-nil `*View` means
+"replace". `internal/adapter/handler.toDomainPanelPatch` is the one place
+that reads `IsSpecified()`/`IsNull()`/`MustGet()` off the wire type and
+turns it into one of those three domain-level shapes; everything below it
+
+- usecase, sqlite - only ever sees `**View`. `sqlite.Store.UpdatePanel`
+  builds its `SET` clause from exactly the `domain.PanelPatch` fields that
+  are non-nil (a small `updatePanelSets` helper, tested against a real
+  database for each of title/args/component/view in isolation, plus the
+  null-vs-absent-view case directly) - an empty patch still checks the panel
+  exists rather than a silent no-op `UPDATE`.
+
+**Permissions are re-checked, not trusted from `addPanel`'s own save-time
+check.** `usecase.Workspaces.UpdatePanel` reads the panel's own (fixed,
+P13) `Service`/`OperationID` off the workspace it already loaded and runs
+them through the same `catalogFor` `AddPanel` uses, so an operation
+revoked after the panel was made is refused here too - the same
+`ErrEndpointNotFound` sentinel, so a 400 never says which is true
+(AC-P-109). A panel naming no id on the (owned) workspace's own panels
+reuses `ErrWorkspaceNotFound` rather than a new sentinel - the same
+not-found-not-forbidden answer `Get`/`Delete` already give for a workspace
+owned by somebody else, for the same reason: a caller should not be able
+to tell "no such panel" apart from "not your workspace" apart from "no
+such workspace" from the status code alone.
+
+**The fixed operation reads as stated text, not a disabled control.**
+`AddPanelForm`'s new `operationLocked` prop swaps `OperationPicker`'s
+`Autocomplete` for a `Typography` (`OperationLabel.tsx`) naming the
+service and operation. Checked, not assumed: `harness/quality/browser/layout.spec.ts`'s
+selector (`button, a[href], input, select, textarea`) matches a disabled
+`Autocomplete`'s `<input>` exactly as it matches an enabled one, and a
+disabled MUI input's own lighter border is precisely the kind of
+low-contrast edge that guard exists to catch - stating the operation as
+plain text removes it from that selector altogether instead of betting a
+disabled control clears the threshold. `guard-layout`/`guard-a11y` do not
+currently exercise the workspace screen at all (both specs' own page list
+is the sign-in screen only, unchanged by every earlier dashboard task
+too), so this was verified by reasoning about the selector and by the
+`EditPanelControl.test.tsx`/browser-journey tests below, not by a gate
+that would have caught a regression here.
+
+**`usePanelFields` gained a `seed` parameter rather than a second hook** -
+the task's own instruction. Its pure rules (what a fresh operation resets
+to, what a chart's axes may name, what is still missing) moved to
+`panelFieldRules.ts`/`panelFieldValues.ts` so the hook itself, and the file
+as a whole, stayed under `max-lines-per-function`/`max-lines` once seeding
+was added - no behaviour change, a mechanical split. `AddPanelForm`
+(`PanelFormState`, in `panelFormState.ts`) is shared by `usePanelBuilder`
+(create) and the new `usePanelEditor` (edit): the edit form always states
+every field it shows - title, args, component, view - rather than omitting
+ones the person did not touch, since the form is the whole panel's own
+state once it is open (there is no "leave alone" case for a control
+already on screen); `view` is sent explicitly `null` whenever no chart or
+transform is configured, and the value otherwise - the one place this
+task's three-state field actually gets exercised end to end.
+`PanelArguments` (unchanged since Task 6) turned out not to accept seeded
+values at all - its `useFormValues(schema)` call always reset to each
+field's type-appropriate empty default before this, silently discarding
+whatever `usePanelFields(seed)` had just set. Fixed by threading an
+`initialValues` prop through to `useFormValues`'s existing (already used
+by `ResultForm`) `initial` parameter - a real gap the edit journey would
+have failed on invisibly (an edited panel's arguments always coming back
+empty) had the browser test not caught it.
+
+**Where the edit control lives.** `PanelCardShell` still only carries
+`action` (refresh); nothing named "delete" existed to build beside before
+this task despite the task description mentioning one - `docs/specs/dashboard.md`
+section 9 (position/layout) is the only place a panel's own deletion was
+ever discussed, and no delete button or `deletePanel` client call exists
+in `web/src` as of this task. `EditPanelControl` sits in the same `action`
+slot `PanelResult.tsx` already builds, next to refresh - both moved into a
+new `PanelActions.tsx` to keep `PanelResult.tsx` under `import/max-dependencies`
+once a fourth composed piece (the edit control) joined it.
+
+**Verified:** `docker logs llama-swap`'s `POST /v1/chat/completions` count
+is unchanged across a full `make check` run (the planner is never involved
+here, same as every other dashboard task); `e2e/browser/dashboard.spec.ts`
+gained a second journey (build a table panel, edit its title and turn it
+into a chart, see it draw immediately, reload, see it draw as edited);
+`e2e/src/dashboard-update-permissions.test.ts` is AC-P-109's own
+process-level test, split into its own file (not a `describe` added to
+`dashboard-permissions.test.ts`) since that file was already at its
+`max-lines` budget.

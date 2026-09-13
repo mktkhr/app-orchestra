@@ -10,6 +10,8 @@ interface PanelSaveFieldsProps {
   readonly error: string | null;
   readonly submitting: boolean;
   readonly onSave: () => void;
+  /** The save button's own label - "追加" for the create form, "保存" for the edit form opened over an existing panel (P12). */
+  readonly saveLabel?: string;
 }
 
 /**
@@ -28,6 +30,7 @@ export function PanelSaveFields({
   error,
   submitting,
   onSave,
+  saveLabel = "追加",
 }: PanelSaveFieldsProps): JSX.Element {
   return (
     <>
@@ -42,7 +45,7 @@ export function PanelSaveFields({
       {error === null ? null : <Alert severity="error">{error}</Alert>}
       <Box>
         <Button variant="contained" disabled={submitting} onClick={onSave}>
-          追加
+          {saveLabel}
         </Button>
       </Box>
     </>

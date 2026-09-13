@@ -174,7 +174,11 @@ export type paths = {
         readonly delete: operations["deletePanel"];
         readonly options?: never;
         readonly head?: never;
-        readonly patch?: never;
+        /**
+         * Change one or more fields of an existing panel.
+         * @description Only the fields the body names change (docs/specs/dashboard.md, P11, AC-P-108) - `PATCH`, not `PUT`, because a body that must carry every field to change one is assembled from a stale read, and the field it silently reverts is the one somebody else just set. `service` and `operationId` are not accepted at all: a panel's operation is fixed once it is made (P13), and a different operation is a different panel. Naming an operation the panel's owner may no longer call is refused exactly the way adding one is (400, the same `ErrEndpointNotFound` sentinel `addPanel` uses) - AC-P-109 - and a panel that does not exist, or belongs to somebody else, is not found rather than forbidden (404, docs/specs/auth.md section 7).
+         */
+        readonly patch: operations["updatePanel"];
         readonly trace?: never;
     };
     readonly "/api/users": {
@@ -485,6 +489,18 @@ export type components = {
             /** @description The panel's title. Left blank, the panel is titled with its operation id instead of showing an empty card header. */
             readonly title: string;
             readonly view?: components["schemas"]["View"];
+        };
+        /** @description Fields to change on an existing panel (docs/specs/dashboard.md, P11, section 6a). Only the fields named here change - an absent field leaves that column alone (AC-P-108). `service` and `operationId` are deliberately not properties of this schema: a panel's operation is fixed once it is made (P13), and a request cannot even ask to change it. */
+        readonly UpdatePanelRequest: {
+            /** @description The panel's new title. */
+            readonly title?: string;
+            /** @description The call's new arguments, replacing the old ones wholesale. */
+            readonly args?: {
+                readonly [key: string]: unknown;
+            };
+            readonly component?: components["schemas"]["Component"];
+            /** @description The panel's new view. Naming it explicitly as `null` removes the view; leaving this property out of the request body leaves the existing view as it was - "absent" and "null" are different values here, not different ways of saying the same thing, since only one of them can mean "take the view away" (section 6a). */
+            readonly view?: components["schemas"]["View"] | null;
         };
         /** @description One workspace and its panels, in position order. */
         readonly Workspace: {
@@ -890,6 +906,51 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly updatePanel: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly id: string;
+                readonly panelId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["UpdatePanelRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description The panel, as it reads after the change. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Panel"];
+                };
+            };
+            /** @description The panel's own operation is no longer one its owner may call - the same rule addPanel applies at save time, re-checked here since permissions can change after a panel is made. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No workspace or panel has these ids, or the workspace belongs to somebody else. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };

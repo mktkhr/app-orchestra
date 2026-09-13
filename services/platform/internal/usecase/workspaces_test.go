@@ -25,6 +25,12 @@ type fakeWorkspaceStore struct {
 	createErr        error
 	addPanelErr      error
 	addPanelIn       *domain.Panel
+	updatePanelIn    *domain.PanelPatch
+	updatePanelWSID  string
+	updatePanelPnlID string
+	updatePanelFound bool
+	updatePanelOut   domain.Panel
+	updatePanelErr   error
 	deletedID        string
 	deletePanelWSID  string
 	deletePanelPnlID string
@@ -67,6 +73,24 @@ func (f *fakeWorkspaceStore) AddPanel(_ context.Context, _ string, p *domain.Pan
 	stored.ID = "pnl-1"
 
 	return stored, nil
+}
+
+func (f *fakeWorkspaceStore) UpdatePanel(
+	_ context.Context, workspaceID, panelID string, patch domain.PanelPatch,
+) (domain.Panel, bool, error) {
+	f.updatePanelWSID = workspaceID
+	f.updatePanelPnlID = panelID
+	f.updatePanelIn = &patch
+
+	if f.updatePanelErr != nil {
+		return domain.Panel{}, false, f.updatePanelErr
+	}
+
+	if !f.updatePanelFound {
+		return domain.Panel{}, false, nil
+	}
+
+	return f.updatePanelOut, true, nil
 }
 
 func (f *fakeWorkspaceStore) DeletePanel(_ context.Context, workspaceID, panelID string) error {
@@ -282,6 +306,145 @@ func TestWorkspacesAddPanelRejectsAnUnknownWorkspace(t *testing.T) {
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrWorkspaceNotFound)
+}
+
+// panelWorkspace builds a workspace owned by "owner-1" holding one panel,
+// "pnl-1", calling inventory/ListInventoryItems - the fixed operation
+// UpdatePanel's tests check against exposedCatalog()/grantedPermissions().
+func panelWorkspace() domain.Workspace {
+	return domain.Workspace{
+		ID:    "ws-1",
+		Owner: "owner-1",
+		Panels: []domain.Panel{
+			{ID: "pnl-1", WorkspaceID: "ws-1", Service: "inventory", OperationID: "ListInventoryItems", Title: "元のタイトル"},
+		},
+	}
+}
+
+func TestWorkspacesUpdatePanelDelegatesThePatchToTheStore(t *testing.T) {
+	store := &fakeWorkspaceStore{
+		getResult:        panelWorkspace(),
+		getFound:         true,
+		updatePanelFound: true,
+		updatePanelOut:   domain.Panel{ID: "pnl-1", Title: "新しいタイトル"},
+	}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	title := "新しいタイトル"
+	panel, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{Title: &title})
+
+	require.NoError(t, err)
+	assert.Equal(t, "新しいタイトル", panel.Title)
+	require.NotNil(t, store.updatePanelIn)
+	assert.Equal(t, "新しいタイトル", *store.updatePanelIn.Title)
+	assert.Nil(t, store.updatePanelIn.Args, "a patch that never named args must reach the store with Args nil")
+	assert.Nil(t, store.updatePanelIn.Component, "a patch that never named component must reach the store with Component nil")
+	assert.Nil(t, store.updatePanelIn.View, "a patch that never named the view must reach the store with View nil")
+	assert.Equal(t, "ws-1", store.updatePanelWSID)
+	assert.Equal(t, "pnl-1", store.updatePanelPnlID)
+}
+
+func TestWorkspacesUpdatePanelDefaultsAnEmptyTitleToTheOperationID(t *testing.T) {
+	store := &fakeWorkspaceStore{
+		getResult:        panelWorkspace(),
+		getFound:         true,
+		updatePanelFound: true,
+	}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	empty := ""
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{Title: &empty})
+
+	require.NoError(t, err)
+	require.NotNil(t, store.updatePanelIn.Title)
+	assert.Equal(t, "ListInventoryItems", *store.updatePanelIn.Title)
+}
+
+// TestWorkspacesUpdatePanelRejectsAnOperationTheUserMayNotCall is
+// AC-P-109's own case for the panel's own (fixed) operation, re-checked
+// against the caller's current permissions rather than only at AddPanel's
+// own save time.
+func TestWorkspacesUpdatePanelRejectsAnOperationTheUserMayNotCall(t *testing.T) {
+	store := &fakeWorkspaceStore{getResult: panelWorkspace(), getFound: true}
+	permissions := &fakePermissionStore{} // grants nothing
+	w := usecase.NewWorkspaces(store, exposedCatalog(), permissions)
+
+	title := "新しいタイトル"
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{Title: &title})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
+	assert.Nil(t, store.updatePanelIn, "the store must never be reached for an operation the user may not call")
+}
+
+func TestWorkspacesUpdatePanelRejectsSomebodyElsesWorkspace(t *testing.T) {
+	store := &fakeWorkspaceStore{getResult: panelWorkspace(), getFound: true}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	title := "新しいタイトル"
+	_, err := w.UpdatePanel(t.Context(), stranger(), "ws-1", "pnl-1", domain.PanelPatch{Title: &title})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, usecase.ErrWorkspaceNotFound)
+	assert.Nil(t, store.updatePanelIn, "the store must never be reached for a workspace the caller does not own")
+}
+
+func TestWorkspacesUpdatePanelRejectsAnUnknownWorkspace(t *testing.T) {
+	store := &fakeWorkspaceStore{getFound: false}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	title := "新しいタイトル"
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-missing", "pnl-1", domain.PanelPatch{Title: &title})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, usecase.ErrWorkspaceNotFound)
+}
+
+// TestWorkspacesUpdatePanelRejectsAnUnknownPanel proves a panel id absent
+// from the (owned) workspace's own panels is refused the same way - the
+// same sentinel, so a 404 never tells a caller whether the workspace or the
+// panel is the part that does not exist (AC-P-109).
+func TestWorkspacesUpdatePanelRejectsAnUnknownPanel(t *testing.T) {
+	store := &fakeWorkspaceStore{getResult: panelWorkspace(), getFound: true}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	title := "新しいタイトル"
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-missing", domain.PanelPatch{Title: &title})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, usecase.ErrWorkspaceNotFound)
+	assert.Nil(t, store.updatePanelIn, "the store must never be reached for an unknown panel id")
+}
+
+func TestWorkspacesUpdatePanelReportsStoreNotFound(t *testing.T) {
+	store := &fakeWorkspaceStore{
+		getResult:        panelWorkspace(),
+		getFound:         true,
+		updatePanelFound: false,
+	}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	title := "新しいタイトル"
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{Title: &title})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, usecase.ErrWorkspaceNotFound)
+}
+
+func TestWorkspacesUpdatePanelPropagatesAStoreError(t *testing.T) {
+	sentinel := errors.New("boom")
+	store := &fakeWorkspaceStore{
+		getResult:      panelWorkspace(),
+		getFound:       true,
+		updatePanelErr: sentinel,
+	}
+	w := usecase.NewWorkspaces(store, exposedCatalog(), grantedPermissions())
+
+	title := "新しいタイトル"
+	_, err := w.UpdatePanel(t.Context(), owner(), "ws-1", "pnl-1", domain.PanelPatch{Title: &title})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sentinel)
 }
 
 func TestWorkspacesDeletePanelDelegatesToTheStoreForTheOwner(t *testing.T) {

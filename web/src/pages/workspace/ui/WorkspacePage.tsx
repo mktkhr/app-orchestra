@@ -52,7 +52,7 @@ export function WorkspacePage({ workspaceId }: WorkspacePageProps): JSX.Element 
       </Typography>
       <Stack spacing={2}>
         {[...workspace.panels, ...addedPanels.panels].map((panel) => (
-          <PanelResult key={panel.id} panel={panel} />
+          <PanelResult key={panel.id} workspaceId={workspaceId} panel={panel} />
         ))}
       </Stack>
       <AddPanelControl workspaceId={workspaceId} onAdded={addedPanels.add} />
