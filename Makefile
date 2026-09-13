@@ -44,7 +44,7 @@ GENERATED := $(addsuffix /internal/adapter/openapi/openapi.gen.go,$(SERVICE_DIRS
 .PHONY: help setup tools hooks clean services \
         generate generate-services generate-web api-lint guard-generated guard-generated-ops guard-operation-ids guard-exposed-ops \
         fmt fmt-check lint test build check acceptance guard \
-        services-fmt services-fmt-check services-lint services-test services-build service-run dev-platform \
+        services-fmt services-fmt-check services-lint services-test services-build service-run dev-platform dev-services \
         web-fmt web-fmt-check web-lint web-typecheck web-test web-build web-dev \
         guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication guard-coverage guard-browser guard-a11y guard-layout guard-protected guard-test \
         acceptance-services acceptance-web acceptance-e2e acceptance-browser browsers \
@@ -168,6 +168,30 @@ service-run: services-build ## Run one service locally: make service-run SERVICE
 
 dev-platform: $(AIR) ## Run the platform under air, rebuilding on change (ORCHESTRA_PORT, default 8080; not quiet: it is a server)
 	cd services/platform && $(AIR) -c .air.toml
+
+# Which port each dummy service listens on while somebody is working.
+# services/platform/.air.toml carries the same topology in its own
+# ORCHESTRA_SERVICES, because air reads a literal string and cannot read a
+# Make variable; the two have to agree, and this comment is where you find
+# the other one.
+DEV_SERVICE_PORTS = inventory=8081 attendance=8082
+
+dev-services: services-build ## (Re)start every dummy service on its dev port, detached, so a contract change takes effect (not quiet: they are servers)
+	for sp in $(DEV_SERVICE_PORTS); do \
+	  name=$${sp%%=*}; port=$${sp##*=}; \
+	  pid=$$(ss -lptn "sport = :$$port" -H 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1); \
+	  if [ -n "$$pid" ]; then echo "dev-services: stopping :$$port (pid $$pid)"; kill "$$pid" || true; sleep 1; fi; \
+	  setsid env ORCHESTRA_PORT=$$port ./services/$$name/bin/api </dev/null >/tmp/orchestra-$$name.log 2>&1 & \
+	  echo "dev-services: $$name on :$$port, log /tmp/orchestra-$$name.log"; \
+	done
+	sleep 2
+	for sp in $(DEV_SERVICE_PORTS); do \
+	  port=$${sp##*=}; \
+	  code=$$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$$port/openapi.yaml" || true); \
+	  [ "$$code" = "200" ] || { echo "dev-services: :$$port answered $$code, not 200 — see its log"; exit 1; }; \
+	done
+	touch services/platform/cmd/api/main.go
+	echo "dev-services: a service's contract lives in its binary and the platform reads it once, at startup — the touch above makes air restart it; with no air running, restart the platform yourself"
 
 ## ---------------------------------------------------------------- web
 web-fmt: ## oxfmt in place (all workspace packages)
