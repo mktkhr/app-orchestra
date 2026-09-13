@@ -1,11 +1,68 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-13 (`docs/specs/picking.md` implemented - the
-operation picker searches more than its own label and shows an option's
-summary, and the transform stays collapsed behind its switch; see below and
-`DECISIONS.md`)_
+_Last updated: 2026-09-14 (`docs/plans/proposing.md` closed - the workspace
+chat can be asked for a panel and the model answers with one, filled in;
+see below and `DECISIONS.md`)_
 
 ## Summary
+
+**`docs/plans/proposing.md` is closed - FR-F-5, asking the chat to add a
+panel** (`docs/specs/proposing.md` section 7, AC-N-101 through AC-N-106).
+Three tasks:
+
+- **Task 0** (`a349fb3`) gave the model a fifth built-in tool,
+  `propose_panel(service, operationId, args, component?, chart?,
+transform?, title?)`, alongside `ask_user` and `list_capabilities`
+  (`usecase.ToolsFor`), and `/api/plan` a fifth result `kind`,
+  `"proposal"` (`usecase.ResultKindProposal`), beside `result`/`form`/
+  `ask`/`none`. `Orchestrator.propose` never calls the invoker (N1): it
+  resolves a `DecisionProposal` into a proposed panel, filling in from the
+  catalogue whatever the model left unset - the component from
+  `domain.Render`, the view from the operation's own `x-ui-hint.chart`,
+  the title from the operation's display name - the model's own values
+  winning where given. An operation outside the caller's catalogue cannot
+  be proposed at all (AC-N-105), the same refusal every other decision
+  kind already gets. Both the tool-calling and jsonmode planners map onto
+  the same `Decision` shape; the stub planner answers a `propose_panel`
+  fixture the same table-lookup way as every other `DecisionKind`
+  (AC-N-106).
+- **Task 1** (`64a2e83`) drew a proposal as `features/panels`' own
+  `AddPanelForm`, opened over the proposal instead of over nothing
+  (`ProposalControl`, `usePanelProposal`) - one control, labelled "配置"
+  (not "追加"/"保存"), places it via the unchanged `POST
+/api/workspaces/{id}/panels`; editing a field before pressing it places
+  the edit (AC-N-103). Only `widgets/conversation/ui/ConversationPanel`
+  on the workspace screen ever draws one - the chat screen's own
+  conversation draws no proposal turn at all even when handed one
+  (AC-N-104, N4).
+- **Task 2** (`0d96ce9`) is the end-to-end journey and the measurement.
+  `e2e/src/proposing.test.ts` drives the built platform binary over real
+  TCP: ask, get back `kind: "proposal"` with the panel the question
+  described, confirm the workspace holds no panel until one is explicitly
+  posted (AC-N-101, AC-N-102). `e2e/browser/proposing.spec.ts` drives the
+  same journey through Chromium: ask the workspace's chat for a chart,
+  press "配置", reload, see the panel drawn. Driving either through the
+  _built binary_ needed a gap closed first: `ORCHESTRA_PLAN_FIXTURES`'s
+  pipeline (`internal/infra/config.PlanFixture` → `cmd/api.
+toAppPlanFixtures` → `pkg/app.PlanFixture` → `pkg/app.toDecision`) had
+  no way to produce a `DecisionProposal` - only `ask`/`call` - so it
+  gained `Propose`/`Component`/`Chart`/`Title` fields, mirrored across all
+  three types, the same way `Ask` already does.
+
+  **The measurement (section 9).** `propose_panel` rides in every
+  request's tool list, on every question, whether or not a workspace is
+  open - `make eval`'s corpus is what says whether that changed anything
+  about a question with nothing to do with panels. Run before this
+  subproject's commits (worktree at `0d2a5bf`) and after (`0d96ce9`, plus
+  a full `make check`): `no-enum-value` (judged on `reject` at n=30, band
+  15-22 over nine samples, `docs/specs/eval.md` section 4a) read
+  **17/30 reject before, 13/30 after - outside the band**. See
+  `DECISIONS.md`, 2026-09-14, for the reading: every other case held
+  (`accept`/`reject` unchanged), so this is not noise across the whole
+  corpus, but `no-enum-value` was already the corpus's least stable case
+  before this subproject touched anything, and one before/after pair is
+  one sample, not three. Recorded, not corrected: `e2e/eval/baseline.json`
+  is untouched (`make eval-accept` was not run - that is a human's act).
 
 **A screen's address is a path, read by `react-router`** (`docs/plans/routing.md`
 Task 1, `docs/specs/routing.md` section 3, AC-R-101 in the browser;

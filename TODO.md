@@ -4,14 +4,7 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-**FR-F-5: asking the chat to add a panel** (`docs/plans/proposing.md`,
-`docs/specs/proposing.md`). Task 0 (the model can answer with a panel) and
-Task 1 (the browser draws the proposal as the builder's own form, filled
-in, and places it) are done - see `STATE.md` and `DECISIONS.md`,
-2026-09-13. Task 2 (the end-to-end journey through `e2e/`, and measuring
-what offering `propose_panel` in every request costs every other question -
-`docs/specs/proposing.md` section 9) is next; it needs both, and nothing
-else runs in parallel with it.
+Nothing - see "Next" for what is queued.
 
 ## Next
 
@@ -54,19 +47,11 @@ else runs in parallel with it.
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-5. **`harness/guard/suppressions.sh` does not scan for `istanbul ignore`
-   at all** - its `pattern` covers `//nolint`, the `@ts-*` family,
-   `eslint-disable`/`oxlint-disable`, `biome-ignore`, `prettier-ignore` and
-   `oxfmt-ignore`, but not `istanbul ignore`, even though `AGENTS.md` rule
-   2 names it in the same breath as `//nolint` and `@ts-ignore`. An
-   `istanbul ignore` comment anywhere in `services`, `web/src`, `e2e` or
-   `harness` today would pass `make check` unregistered and unnoticed.
-   Found while closing `docs/plans/routing.md` (no such comment was added
-   there, or found already present - this is a gap in the guard itself,
-   not a live violation). Left unfixed here per `AGENTS.md` rule 2
-   (`harness/guard` is not this agent's to reconfigure); whoever has
-   standing to edit it should add the directive to `suppressions.sh`'s own
-   `pattern`.
+5. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+   local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
+   in this repository or its harness names it any more (`grep -r ollama`
+   across the tree turns up nothing but this line). Housekeeping on the
+   development machine, not a code change.
 
 6. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
@@ -90,6 +75,16 @@ else runs in parallel with it.
 
 ## Done
 
+- **`docs/plans/proposing.md` closes: FR-F-5, asking the chat to add a
+  panel** (`docs/specs/proposing.md` section 7, AC-N-101 through AC-N-106
+  all covered end to end). Task 2's journeys (`e2e/src/proposing.test.ts`,
+  `e2e/browser/proposing.spec.ts`) and its measurement of what
+  `propose_panel` in every request's tool list costs every other question
+  (section 9) are in - see `STATE.md` and `DECISIONS.md`, 2026-09-14.
+- **`harness/guard/suppressions.sh` now scans for `istanbul ignore`,
+  `c8 ignore` and `v8 ignore`**, alongside the directives it already
+  caught - closes the gap this list used to record. See `DECISIONS.md`,
+  2026-09-14, "the suppression guard now sees coverage directives".
 - **`docs/specs/picking.md`: the panel picker searches more than its own
   label, an option states its summary, and the transform stays a switch
   alone until it is on** (AC-K-101 through AC-K-104). `OperationPicker.tsx`

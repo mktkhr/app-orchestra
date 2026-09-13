@@ -157,17 +157,19 @@ question, whether or not a workspace is open. The corpus is the only thing
 that says whether that changed how the model answers questions with nothing
 to do with panels.
 
-- [ ] **Step 1** Write the process-level journey with the stub planner.
-- [ ] **Step 2** Write the browser journey.
-- [ ] **Step 3** **Measure.** Run `make eval` before this subproject's
+- [x] **Step 1** Write the process-level journey with the stub planner.
+- [x] **Step 2** Write the browser journey.
+- [x] **Step 3** **Measure.** Run `make eval` before this subproject's
       commits and after — `git stash` or a worktree, whichever is honest —
       and report both. `no-enum-value` is judged on `reject` at n=30 and its
       band is 15-22 (`docs/specs/eval.md` section 4a), so a move inside that
       says nothing and a move outside it says something. If it moved, say so
       plainly and do not adjust the corpus to make it look flat.
-- [ ] **Step 4** `make check` in full — every gate green, and no request
+      Measured: 17/30 reject before (`0d2a5bf`), 13/30 after (`0d96ce9`) —
+      outside the band. See `DECISIONS.md`, 2026-09-14.
+- [x] **Step 4** `make check` in full — every gate green, and no request
       added to the model's log by `make check` itself.
-- [ ] **Step 5** Commit: `test(e2e): ask for a panel and accept it`
+- [x] **Step 5** Commit: `test(e2e): ask for a panel and accept it`
 
 **Satisfies:** AC-N-101 end to end, and section 9's own question.
 
