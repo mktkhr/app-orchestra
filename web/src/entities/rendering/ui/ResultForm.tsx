@@ -53,7 +53,10 @@ interface ResultFormProps {
  * check (WCAG 1.4.11) at rest.
  */
 export function ResultForm({ schema, initial, target, onSubmitted }: ResultFormProps): JSX.Element {
-  const { properties, required, entries, values, setValue } = useFormValues(schema, initial);
+  const { properties, required, entries, values, setValue, clearValue } = useFormValues(
+    schema,
+    initial,
+  );
   const { submitting, error, run } = useSubmission();
 
   const submit = (): Promise<void> =>
@@ -100,6 +103,7 @@ export function ResultForm({ schema, initial, target, onSubmitted }: ResultFormP
           required={required}
           values={values}
           onChange={setValue}
+          onClear={clearValue}
         />
         {error === null ? null : <Alert severity="error">{error}</Alert>}
         <Box>

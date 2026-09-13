@@ -29,7 +29,12 @@ function seedValue(fieldType: string | undefined, initialValue: unknown): unknow
   }
 
   if (fieldType === "integer" || fieldType === "number") {
-    return 0;
+    // Not 0. A number field with nothing typed in it is empty, and zero is
+    // a number somebody meant - a quantity of none is a different claim
+    // from a quantity nobody has given yet. Seeding 0 also made the field
+    // impossible to clear: `Number("")` is 0, so deleting the last digit
+    // wrote 0 straight back (see ResultFormField).
+    return undefined;
   }
 
   return "";
@@ -45,6 +50,8 @@ export interface FormValuesState {
   /** The form's current values, one per `entries` key, seeded from `initial` (or a type-appropriate default). */
   readonly values: FormValues;
   readonly setValue: (key: string, value: unknown) => void;
+  /** Removes a key entirely - what an emptied field means (see the implementation). */
+  readonly clearValue: (key: string) => void;
 }
 
 /**
@@ -84,5 +91,20 @@ export function useFormValues(
     setValues((current) => ({ ...current, [key]: value }));
   };
 
-  return { properties, required, entries, values, setValue };
+  // Emptying a field removes the key rather than setting it to undefined
+  // or null: `values` is posted whole as a call's arguments
+  // (`ResultForm`), and a key that is absent is the one shape that says
+  // "nobody gave this". A null would be a value the service has to have an
+  // opinion about, and an undefined would survive as a key with nothing in
+  // it right up to JSON.stringify, which drops it - silently agreeing with
+  // this, one layer later and by accident.
+  const clearValue = (key: string): void => {
+    setValues((current) => {
+      const { [key]: _removed, ...rest } = current;
+
+      return rest;
+    });
+  };
+
+  return { properties, required, entries, values, setValue, clearValue };
 }

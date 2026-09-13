@@ -32,7 +32,10 @@ export function PanelArguments({
   onChange,
   initialValues,
 }: PanelArgumentsProps): JSX.Element {
-  const { properties, required, entries, values, setValue } = useFormValues(schema, initialValues);
+  const { properties, required, entries, values, setValue, clearValue } = useFormValues(
+    schema,
+    initialValues,
+  );
 
   useEffect(() => {
     onChange(values);
@@ -45,6 +48,7 @@ export function PanelArguments({
       required={required}
       values={values}
       onChange={setValue}
+      onClear={clearValue}
     />
   );
 }

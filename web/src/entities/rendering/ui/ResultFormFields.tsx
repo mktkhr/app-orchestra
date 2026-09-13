@@ -11,6 +11,7 @@ interface ResultFormFieldsProps {
   readonly required: readonly string[];
   readonly values: Record<string, unknown>;
   readonly onChange: (key: string, value: unknown) => void;
+  readonly onClear: (key: string) => void;
 }
 
 /**
@@ -27,6 +28,7 @@ export function ResultFormFields({
   required,
   values,
   onChange,
+  onClear,
 }: ResultFormFieldsProps): JSX.Element {
   return (
     <Stack spacing={2}>
@@ -39,6 +41,7 @@ export function ResultFormFields({
           required={required.includes(key)}
           value={values[key]}
           onChange={onChange}
+          onClear={onClear}
         />
       ))}
     </Stack>

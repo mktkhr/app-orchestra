@@ -13,6 +13,7 @@ interface ResultFormFieldProps {
   readonly required: boolean;
   readonly value: unknown;
   readonly onChange: (key: string, value: unknown) => void;
+  readonly onClear: (key: string) => void;
 }
 
 /**
@@ -30,6 +31,7 @@ export function ResultFormField({
   required,
   value,
   onChange,
+  onClear,
 }: ResultFormFieldProps): JSX.Element {
   const type = fieldSchema(fields, fieldKey)?.["type"];
   const options = enumOptions(fields, fieldKey);
@@ -78,9 +80,19 @@ export function ResultFormField({
         required={required}
         value={typeof value === "number" ? value : ""}
         onChange={(event: ChangeEvent<HTMLInputElement>) => {
-          const parsed = Number(event.target.value);
+          const typed = event.target.value;
 
-          onChange(fieldKey, Number.isNaN(parsed) ? 0 : parsed);
+          // An empty box is an empty value, not zero. `Number("")` is 0,
+          // not NaN, so the obvious guard never fired and clearing the
+          // field wrote 0 back on the same keystroke. A field a person
+          // cannot empty is a field that lies about what they told it.
+          if (typed === "" || Number.isNaN(Number(typed))) {
+            onClear(fieldKey);
+
+            return;
+          }
+
+          onChange(fieldKey, Number(typed));
         }}
       />
     );
