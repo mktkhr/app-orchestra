@@ -25,6 +25,8 @@ needs somewhere to record the answer.
 | **L3** | `position` is the order. `docs/specs/workspaces.md` W5 added the column and excluded the editing; this is where the editing lands, and no new column is needed for it.                                                                                                                                    |
 | **L4** | Twelve columns where there is room for them, one where there is not. A panel's span is clamped to what fits, so a wide panel on a phone is a full-width panel rather than a sideways scroll `make guard-layout` would fail over.                                                                          |
 | **L5** | Size and order are saved through the `PATCH` that already exists (`docs/specs/dashboard.md` P11). A panel's geometry is a field of the panel, not a separate document about where panels go.                                                                                                              |
+| **L6** | A panel is as tall as it says on a wide screen, and as tall as it separately says on a narrow one. Two numbers, not one: the narrow breakpoint is where height is the _only_ thing left to arrange, and a person who makes a panel taller on their phone has not asked for their desktop to change.       |
+| **L7** | Width and order stay single numbers, shared across both breakpoints. On the narrow one they have no meaning to override - one column, one order - so a second copy of each would be a number nobody could ever set and everybody would have to keep in sync.                                              |
 
 ## 3. What a panel carries now
 
@@ -97,12 +99,40 @@ reads its own size from the card it is in (`docs/plans/dashboard.md` Task 5
 made `ResultChart` take one), so a panel made wider draws a wider chart
 rather than the same chart in a wider box.
 
+### 5a. Height on a phone
+
+Section 5 gave the narrow breakpoint one column and one order, and called
+that "nothing to arrange". That is true of width and of order and was never
+argued about **height**, which is just as meaningful on a phone: a table
+worth six rows of screen is worth six rows of screen in either hand.
+
+So height is editable there - and it is a second number, not the same one.
+Measured first, because the shape of the problem decides the fix: a shared
+height does **not** break the wide layout. A panel set to three rows draws
+1112px at both widths, with no overlap and no sideways scroll. What it does
+is change the desktop from the phone, silently, which is a surprise rather
+than a breakage and is still not what anybody asked for.
+
+```
+Panel
+  height         3     rows, on the wide breakpoint
+  narrowHeight   1     rows, on the narrow one
+```
+
+`narrowHeight` is absent on every panel saved before this, and a panel
+without one is as tall as `height` says - which is exactly how it drew
+before, so nothing moves until somebody sets it.
+
+Width and order are not treated this way (L7). On one column there is no
+width to override and no order that differs, so a second copy of each would
+be a field nobody could set to anything meaningful.
+
 ## 6. Contract
 
 ```
-PATCH /api/workspaces/{id}/panels/{panelId}   + position, width, height
-GET   /api/workspaces/{id}                    panels carry width, height
-POST  /api/workspaces/{id}/panels             + width, height (optional)
+PATCH /api/workspaces/{id}/panels/{panelId}   + position, width, height, narrowHeight
+GET   /api/workspaces/{id}                    panels carry width, height, narrowHeight
+POST  /api/workspaces/{id}/panels             + width, height, narrowHeight (optional)
 ```
 
 Nothing else changes. Reordering is `position` on the panels that moved -
@@ -116,7 +146,9 @@ other five.
   the grid (L1): the engine snaps, and a panel is always a whole number of
   columns and rows. A layout nobody can describe in the contract is a layout
   the platform cannot store.
-- **A layout per screen size.** Section 5 argues it.
+- **A layout per screen size.** Section 5 argues it, and section 5a is the
+  one exception it makes and why - height alone, because it is the only one
+  of the three that means something on one column.
 - **Overlapping panels.** A grid that allows two panels in one cell needs a
   collision rule, and a collision rule is the grid engine section 4 defers.
 - **A panel taller than the rows it is given.** A panel whose content
@@ -138,6 +170,12 @@ other five.
   does not scroll sideways.
 - **AC-L-106** A wide panel draws a wider chart, not the same chart in a
   wider box.
+
+- **AC-L-107** A panel's height on the narrow breakpoint can be changed, and
+  changing it leaves the wide breakpoint's height exactly as it was.
+- **AC-L-108** A panel with no narrow height of its own is as tall as its
+  wide height says, on both breakpoints - which is how every panel saved
+  before this drew.
 
 ## 9. Harness work this implies
 
