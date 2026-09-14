@@ -1,10 +1,39 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-14 (`docs/plans/narrowing.md` Task 4 done - the
-corpus, the measurement and the recall@K numbers; the subproject closes -
-see below)_
+_Last updated: 2026-09-14 (`docs/plans/retrieving.md` closes - six
+embedding configurations and the retrieve-then-rerank stage measured beside
+the lexical floor, and the alternation cost llama-swap's default mode
+imposes; see below)_
 
 ## Summary
+
+**`docs/plans/retrieving.md` closes - `make narrowing` now reports the
+lexical floor, six embedding configurations, and the retrieve-then-rerank
+configuration in one table, plus the alternation cost printed once.**
+Tasks 1-3 (already committed) added `e2e/narrowing/embedding/` (client,
+disk cache, contract check, vector narrower) and `e2e/narrowing/rerank/`
+(client, the two-stage narrower that retrieves 50 with `e5-large-q8` and
+reranks to K with `bge-reranker-v2-m3-q8`); this task, Task 4, adds
+`e2e/narrowing/loading.ts` - `measureAlternation`, which times five calls
+against llama-swap's default one-model-resident mode (embedding resident,
+chat unloading the embedder, chat resident, embedding unloading the chat
+model, embedding resident again) with `max_tokens: 1` and the response
+content never read, because only the wall-clock is being measured. `main`
+in `measure.ts` calls it once, inside the same entry-point guard that
+already keeps `measure.test.ts` from reaching llama-swap, and `report.ts`
+prints it once, after every configuration's block, rather than folding it
+into any per-row average (spec section 5-6). Every number - recall per
+axis per configuration at 1000 operations, the contract-check table, the
+two model-card contradictions (`ruri-v3-310m` pooling, `qwen3-embedding`'s
+query prefix), the retrieval-width and residual-gap hand measurements, and
+the alternation cost - is recorded in `DECISIONS.md`, 2026-09-14 ("docs/
+plans/retrieving.md closes: six embedding configurations, the rerank
+stage, and what keeping a model loaded costs"). No pre-existing
+`make narrowing` row moved (recall percentages, contract-check rates, and
+excluded-question counts are unchanged from before this task; only
+`ms/query`, which varies run to run, differs). `docker logs llama-swap`'s
+`POST /v1/` count is unchanged across `make check` - `make check` still
+calls no model of any kind.
 
 **`docs/plans/narrowing.md` Task 4 is done - the corpus, the measurement,
 and the numbers. The subproject closes.** `e2e/narrowing/corpus/` (100

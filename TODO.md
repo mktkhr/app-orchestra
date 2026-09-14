@@ -8,16 +8,22 @@ _Nothing in progress._
 
 ## Next
 
-1. **Choose the narrowing mechanism** - `docs/plans/narrowing.md`'s own
-   closing note names this as the next subproject, and its input is exactly
-   what Task 4 measured (`DECISIONS.md`, 2026-09-14, "the lexical baseline's
-   recall@K, per axis"): the lexical baseline is at 100% on axis A, 0% on
-   axis D (a vocabulary gap it cannot close by construction), and on axes
-   B/C/E recall climbs toward 100% only by K=50 at the full 1000-operation
-   catalogue, with a wide worst/best gap driven by ties at low K. A vector
-   store (or another mechanism) has this table to beat, per axis, not a
-   single number - and axis D is the one figure a purely lexical improvement
-   cannot move at all.
+1. **Choose what the product uses, and wire it into `services/platform`.**
+   `docs/plans/retrieving.md`'s own closing note names this as what comes
+   after and is deliberately not in that subproject - a hybrid of lexical
+   and vector scoring is named as the obvious next mechanism, excluded
+   because it moves two numbers at once and neither pure mechanism had been
+   measured yet. It now has: the lexical baseline at 47%/76% overall at
+   K=10 (100% on axis A, 0% on axis D by construction, wide worst/best gaps
+   on B/C/E driven by ties); six embedding configurations clustering at
+   72-82% overall where their contract check passes, and dropping to 42-59%
+   where it does not; and the retrieve-then-rerank configuration
+   (`e5-large-q8` + `bge-reranker-v2-m3-q8`) at 86% overall, including 47%
+   on axis D against the baseline's 0% - see `DECISIONS.md`, 2026-09-14
+   ("docs/plans/retrieving.md closes: six embedding configurations, the
+   rerank stage, and what keeping a model loaded costs") for the full
+   table, the contract-check cross-check, and the alternation cost a
+   deployment running narrowing and answering on the same GPU would pay.
 2. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
@@ -85,6 +91,22 @@ _Nothing in progress._
 
 ## Done
 
+- **`docs/plans/retrieving.md` closes: six embedding configurations, the
+  retrieve-then-rerank stage, and the alternation cost, all measured
+  beside the lexical floor** (AC-V-101 through AC-V-107). Tasks 1-3
+  (already committed) built `e2e/narrowing/embedding/` and
+  `e2e/narrowing/rerank/`; this task adds `e2e/narrowing/loading.ts`
+  (`measureAlternation`, the one place in the subproject that calls a chat
+  model, `max_tokens: 1`, its content never read) and prints the result
+  once in `report.ts` rather than per row. `make narrowing` now reports
+  lexical (47%/76% overall at K=10), six embedding configurations
+  (72-82% where the contract check passes, 42-59% where it fails), and
+  `e5-large-q8+reranker` (86% overall, 47% on axis D against lexical's 0%)
+  in one table; no pre-existing row moved except `ms/query`. See
+  `STATE.md` and `DECISIONS.md`, 2026-09-14 ("docs/plans/retrieving.md
+  closes: six embedding configurations, the rerank stage, and what keeping
+  a model loaded costs"). Next: choosing what the product uses and wiring
+  it into `services/platform` (see "Next" above).
 - **`docs/plans/narrowing.md` closes: the corpus, the measurement, and the
   lexical baseline's recall@K, per axis** (AC-T-105 through AC-T-107).
   `e2e/narrowing/measure.ts`/`report.ts`, `make narrowing`. Axis D reads 0%

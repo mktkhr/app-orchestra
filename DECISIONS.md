@@ -4943,3 +4943,120 @@ subproject (choosing a narrowing mechanism) needs.
 **How to repeat it.** `make narrowing` (`cd e2e && node
 narrowing/measure.ts`), from a checkout with no build step needed - the
 fixture and corpus are read directly, nothing is compiled or served.
+
+## 2026-09-14 `docs/plans/retrieving.md` closes: six embedding configurations, the rerank stage, and what keeping a model loaded costs
+
+**Context.** `docs/plans/retrieving.md` Task 4 is the last task of the
+subproject: measure the alternation cost llama-swap's default one-
+model-resident mode imposes (`e2e/narrowing/loading.ts`, new), print it once
+in `make narrowing`'s report rather than per row (`report.ts`), and record
+every number spec section 8 (AC-V-107) asks for - recall per axis per
+configuration, the contract check, the rerank cost, and the alternation
+cost - in one place. Tasks 1-3 (embedding client and cache, the vector
+narrower and its report rows, the retrieve-then-rerank configuration) were
+already committed; this task adds nothing to what is measured except the
+alternation, and records the rest for the first time.
+
+**a. Recall per axis per configuration, at 1000 operations, K=10 (`make
+narrowing`, this run).** lexical (worst%/best%): A 100%, B 32%/96%, C
+36%/72%, D 0%, E 50%/90%, overall 47%/76%. `bge-m3-q8`: A 100%, B 88%, C 84%, D 27%, E
+100%, overall 82%. `e5-large-q8`: A 100%, B 100%, C 72%, D 20%, E 100%,
+overall 81%. `ruri-v3-310m-q8-mean`: A 100%, B 88%, C 68%, D 27%, E 100%,
+overall 78%. `ruri-v3-310m-q8`: A 72%, B 24%, C 44%, D 13%, E 50%, overall
+42%. `qwen3-embedding-0.6b-q8`: A 88%, B 68%, C 60%, D 13%, E 30%, overall
+59%. `qwen3-embedding-0.6b-q8-plain`: A 100%, B 76%, C 72%, D 20%, E 70%,
+overall 72%. `e5-large-q8+reranker`: A 100%, B 100%, C 80%, D 47%, E 90%,
+overall 86%. The headline comparison the probe predicted holds: lexical 47%
+overall at K=10, `e5-large-q8+reranker` 86%.
+
+**b. The contract check predicts recall, and it earned its place as a cheap
+screen.** Measured by hand at 1000 operations, K=10, and cross-checked
+against this run's own contract-check lines and overall recall (both match
+exactly):
+
+| configuration                   | contract fails | overall@10 |
+| ------------------------------- | -------------- | ---------- |
+| `bge-m3-q8`                     | 0/20           | 82%        |
+| `e5-large-q8`                   | 0/20           | 81%        |
+| `ruri-v3-310m-q8-mean`          | 0/20           | 78%        |
+| `qwen3-embedding-0.6b-q8-plain` | 0/20           | 72%        |
+| `qwen3-embedding-0.6b-q8`       | 11/20          | 59%        |
+| `ruri-v3-310m-q8`               | 3/20           | 42%        |
+
+Every configuration that passes the check clusters at 72-82%; both that
+fail sit below it. The check runs before any ranking is measured at all
+(`checkContract`, `e2e/narrowing/embedding/contract.ts`) - a configuration
+that cannot retrieve an operation by its own text is not going to retrieve
+it by a question about it either, and this table is the evidence that the
+cheap check catches that before the expensive one has to.
+
+**c. Two configuration findings that contradict the model cards, both
+already known and confirmed again by this run.** `ruri-v3-310m` on the same
+corpus: CLS pooling (`ruri-v3-310m-q8`) 42% overall at K=10, mean pooling
+(`ruri-v3-310m-q8-mean`) 78% - the model card's pooling choice measured
+worse than the alternative. `qwen3-embedding-0.6b-q8` with the documented
+instruction prefix on the query side: 59% overall; the same model with no
+prefix at all (`qwen3-embedding-0.6b-q8-plain`): 72%. In both cases,
+following the convention was worse than measuring.
+
+**d. Embeddings do not tie - `docs/specs/narrowing.md` section 10's open
+question is closed for these mechanisms.** Every embedding-based
+configuration in this run's output - `bge-m3-q8` through
+`e5-large-q8+reranker`, all six embedding configurations and the two-stage
+one, at every catalogue size and every K - reports worst% equal to best%,
+checked by scanning the whole report for any `X%/Y%` pair with X != Y
+outside the lexical block: none exists. "186 operations sharing a score"
+(spec section 6, the lexical baseline's example) was an artefact of bigram
+counts being coarse enough to produce exact ties, not of the underlying
+questions being ambiguous - a float-valued cosine similarity essentially
+never repeats exactly, so a meaning-based mechanism simply does not have
+this problem.
+
+**e. Retrieval width and the vocabulary gap - hand-measured with
+`e5-large-q8` at 1000 operations, not reproducible by `make narrowing`
+(which only ever retrieves 50 for the two-stage configuration).** How many
+of axis D's 15 answers are inside a retrieval of width W: W=50 -> 11,
+W=100 -> 11, W=200 -> 12, W=300 -> 13, W=500 -> 15. Every other axis is
+complete by W=200. Widening the shortlist buys one question at W=100->200
+and costs the reranker proportionally (it reranks the whole shortlist) - it
+is not the answer to axis D's gap.
+
+**f. What the residual gap actually is - the four axis-D questions
+`e5-large-q8` cannot reach inside 50, with rank (hand-measured, not
+reproducible by `make narrowing`).**
+
+- 「立て替えた分を出したい」 -> 経費申請の作成 - rank 385
+- 「お金を返してもらいたい」 -> 精算の作成 - rank 367
+- 「商品が届いたので受け取り処理をしたい」 -> 検収の作成 - rank 257
+- 「値段を安くしてほしいと頼みたい」 -> 値引の作成 - rank 111
+
+All four are the same shape: an everyday description of an action, against
+an API named with a single business noun. Closing this needs the company's
+vocabulary, not general semantic similarity - it is in what the catalogue
+says about itself, rather than in how it is searched (spec section 9).
+What to do about that is a future decision, not this entry's.
+
+**g. The alternation cost, and the per-question costs (this run).**
+Measured with `e2e/narrowing/loading.ts`'s `measureAlternation` (`e5-large-
+q8` for embeddings, `qwen3.5-9b-q8` for chat, `max_tokens: 1`, response
+content never read): embedding call with the embedder already resident,
+0.009s; chat call that first unloads the embedder, 6.605s; chat call with
+the chat model now resident, 0.063s; embedding call that first unloads the
+chat model, 2.637s; embedding call with the embedder resident again,
+0.009s. The shape matches spec section 5's own table (resident near zero,
+an unload orders of magnitude larger, unloading the chat model costs less
+than unloading the embedder) even though the absolute seconds are smaller
+here - a warmer page cache for the model weights on this run, not a
+different mechanism. Per-question costs from this run's ms/query columns:
+lexical 0.246ms, `e5-large-q8` 6.441ms, `e5-large-q8+reranker` 78.953ms -
+all within the ranges the probe predicted (under 0.3ms, 5-7ms, about
+80ms). The loading cost stays five orders of magnitude above the per-
+question cost either way; it does not vary with K or catalogue size, which
+is why it is printed once in the report rather than folded into any
+per-row average.
+
+**Verification.** `docker logs llama-swap`'s `POST /v1/` count was
+unchanged across `make check` (27632 before, 27632 after) - `make check`
+calls no model of any kind. `make narrowing`'s lexical and embedding-
+configuration rows are byte-identical before and after this task's changes
+except `ms/query`, which naturally varies run to run.

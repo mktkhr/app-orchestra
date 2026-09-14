@@ -27,6 +27,7 @@ import {
   type EmbeddingConfig,
 } from "./embedding/index.ts";
 import { embedMany, type EmbeddingVector, type FetchLike } from "./embedding/client.ts";
+import { measureAlternation } from "./loading.ts";
 import { twoStageNarrowerOf } from "./rerank/index.ts";
 import { catalogOf, type FixtureOperation } from "./fixture/index.ts";
 import {
@@ -267,8 +268,9 @@ export async function gatherReport(
 
 async function main(): Promise<void> {
   const { configurations, skipped } = await gatherReport(questions(), K_VALUES);
+  const alternation = await measureAlternation();
 
-  printReport(configurations, skipped, K_VALUES);
+  printReport(configurations, skipped, K_VALUES, alternation);
 }
 
 // Runs only when this file is the process's entry point (`node

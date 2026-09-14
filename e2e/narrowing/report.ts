@@ -21,6 +21,7 @@ import type {
   SizeResult,
   SkippedConfiguration,
 } from "./measure.ts";
+import type { AlternationResult } from "./loading.ts";
 
 const AXIS_COLUMNS: readonly ("A" | "B" | "C" | "D" | "E" | "overall")[] = [
   "A",
@@ -142,6 +143,42 @@ function printSkipped(skipped: readonly SkippedConfiguration[]): void {
   for (const entry of skipped) console.log(`  ${entry.configId}: ${entry.reason}`);
 }
 
+/** `seconds`, to three decimal places - matching `ms/query`'s own precision. */
+function secondsCell(seconds: number): string {
+  return `${seconds.toFixed(3)}s`;
+}
+
+/**
+ * The alternation cost (docs/specs/retrieving.md section 5, AC-V-105),
+ * printed once - it does not vary with K or with the catalogue's size, so
+ * it does not belong inside any configuration's block (docs/plans/
+ * retrieving.md Task 4 Step 2).
+ */
+function printAlternation(alternation: AlternationResult): void {
+  console.log("");
+  console.log(
+    "loading cost (docs/specs/retrieving.md section 5) - llama-swap holds one " +
+      "model resident at a time; this is the cost of switching between the " +
+      "embedder and the chat model, measured once. It does not vary with K " +
+      "or with the catalogue's size.",
+  );
+  console.log(
+    `  embedding call, model already resident:           ${secondsCell(alternation.embeddingResident)}`,
+  );
+  console.log(
+    `  chat call that first unloads the embedder:        ${secondsCell(alternation.chatUnloadingEmbedder)}`,
+  );
+  console.log(
+    `  chat call, model already resident:                ${secondsCell(alternation.chatResident)}`,
+  );
+  console.log(
+    `  embedding call that first unloads the chat model: ${secondsCell(alternation.embeddingUnloadingChat)}`,
+  );
+  console.log(
+    `  embedding call, model resident again:             ${secondsCell(alternation.embeddingResidentAgain)}`,
+  );
+}
+
 /**
  * Prints the full report: a header stating what each number means and which
  * direction is better (docs/specs/narrowing.md section 6; the model
@@ -155,6 +192,7 @@ export function printReport(
   configurations: readonly ConfigurationResult[],
   skipped: readonly SkippedConfiguration[],
   kValues: readonly K[],
+  alternation: AlternationResult,
 ): void {
   console.log(
     "recall@K over the fixture catalogue (docs/specs/narrowing.md section 6, " +
@@ -178,4 +216,5 @@ export function printReport(
 
   for (const configuration of configurations) printConfiguration(configuration, kValues);
   if (skipped.length > 0) printSkipped(skipped);
+  printAlternation(alternation);
 }
