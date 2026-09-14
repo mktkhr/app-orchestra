@@ -5413,3 +5413,189 @@ cheapest change in the whole subproject and is not yet wired into anything -
 `make narrowing` measures recall, not the pick. Wiring the pick into the
 measurement is now worth doing, since the headline the product cares about
 is "right operation chosen, or asked back", not recall@K.
+
+## 2026-09-15 The catalogue says it: the written layer closes axis D, the generated layer is a negative result
+
+**Context.** `docs/plans/describing.md` Task 5, the record. Tasks 1-4
+(`de4dc96`, `28fb615`, `1b77389`, `4978652`, `e7a71d3`) built the two
+utterance layers, the vendor field, and the report rows. This entry is the
+one `make narrowing` run (1000 operations, K=10/20/50, all four catalogue
+sizes) that closes the subproject, per `docs/specs/describing.md` AC-G-107.
+
+**The table, K=10, 1000 operations.**
+
+| configuration                  | A   | B   | C   | D   | E   | overall |
+| ------------------------------ | --- | --- | --- | --- | --- | ------- |
+| `e5-large-q8`                  | 100 | 100 | 72  | 33  | 100 | 83      |
+| `e5-large-q8+generated`        | 80  | 64  | 80  | 33  | 80  | 69      |
+| `e5-large-q8+written`          | 92  | 96  | 68  | 80  | 80  | 84      |
+| `e5-large-q8+both`             | 88  | 92  | 76  | 67  | 90  | 83      |
+| `e5-large-q8+reranker`         | 100 | 100 | 80  | 60  | 90  | 88      |
+| `e5-large-q8+reranker+written` | 96  | 96  | 80  | 73  | 100 | 89      |
+| `e5-large-q8+reranker+both`    | 96  | 100 | 96  | 67  | 100 | 93      |
+
+**The same table, K=50, 1000 operations.**
+
+| configuration                  | A   | B   | C   | D   | E   | overall |
+| ------------------------------ | --- | --- | --- | --- | --- | ------- |
+| `e5-large-q8`                  | 100 | 100 | 84  | 80  | 100 | 93      |
+| `e5-large-q8+generated`        | 100 | 96  | 96  | 73  | 90  | 93      |
+| `e5-large-q8+written`          | 96  | 96  | 88  | 93  | 100 | 94      |
+| `e5-large-q8+both`             | 96  | 100 | 100 | 87  | 100 | 97      |
+| `e5-large-q8+reranker`         | 100 | 100 | 84  | 80  | 100 | 93      |
+| `e5-large-q8+reranker+written` | 96  | 96  | 88  | 93  | 100 | 94      |
+| `e5-large-q8+reranker+both`    | 96  | 100 | 100 | 87  | 100 | 97      |
+
+**The two headline rows across all four catalogue sizes, K=10** (`worst%/best%` collapse to one figure for every embedding-only cell here; ties only appear where B is `n/a` at size 1, which excludes every axis-B question - no operation pair from the collision set survives at 200 ops):
+
+| row                 | size (ops) | A   | B   | C   | D   | E   | overall |
+| ------------------- | ---------- | --- | --- | --- | --- | --- | ------- |
+| `+reranker+written` | 1 (200)    | 100 | n/a | 100 | 100 | 100 | 100     |
+|                     | 2 (400)    | 100 | 93  | 80  | 100 | 100 | 94      |
+|                     | 3 (600)    | 94  | 95  | 73  | 88  | 100 | 89      |
+|                     | 5 (1000)   | 96  | 96  | 80  | 73  | 100 | 89      |
+| `+reranker+both`    | 1 (200)    | 100 | n/a | 100 | 100 | 100 | 100     |
+|                     | 2 (400)    | 100 | 100 | 100 | 100 | 100 | 100     |
+|                     | 3 (600)    | 100 | 100 | 93  | 100 | 100 | 98      |
+|                     | 5 (1000)   | 96  | 100 | 96  | 67  | 100 | 93      |
+
+**a. The written layer closes most of the vocabulary gap.** Axis D moves
+33% → 80% at K=10 and 80% → 93% at K=50 from two blind examples per
+operation (`e5-large-q8+written` against `e5-large-q8` alone). This is the
+result the subproject exists for: the four questions in
+`docs/specs/describing.md` section 1 (立て替えた分を出したい → 経費申請の
+作成; お金を返してもらいたい → 精算の作成; 商品が届いたので受け取り処理を
+したい → 検収の作成; 値段を安くしてほしいと頼みたい → 値引の作成) were
+unreachable inside 50 candidates by every retriever measured, and
+unanswered by every model, local or frontier, from a shortlist
+(`DECISIONS.md`, 2026-09-14 and 2026-09-15). They are reachable once the
+catalogue carries the words - `createExpenseReimbursement`'s own written
+examples are 「立て替えた分を精算してほしい」/「自腹で払った分の精算お願い」,
+and `createPurchasingGoodsReceipt`'s are 「荷物届いたから検収登録したい」/
+「検収の記録つけたい」.
+
+**b. The generated layer is a negative result.** Axis D does not move
+(33% either way against the bare retriever), and axis B falls 100% → 64%:
+発注 and 受注 both paraphrase toward 「注文」, the side effect
+`docs/specs/describing.md` G7 named. `+both` is worse than `+written` on D
+at every K measured (67 vs 80 at K=10, 87 vs 93 at K=50) because the
+generated utterances' noise drags the union down - adding a layer that does
+not move D on its own does not help D when unioned with one that does.
+
+Two prompts were tried, same conclusion. The first (2026-09-15, `de4dc96`'s
+predecessor) asked for "short ways of saying this operation" and produced
+conjugated repeats of the noun - `createExpenseReimbursement` →
+「経費申請作って」「経費申請作成」「経費申請作りたい」 - the noun with verb
+endings, which the retriever already reads, and which bridges nothing:
+across 4,960 utterances, 届いた/受け取/安く appeared zero times. The rewrite
+(`de4dc96`) added two few-shot examples from outside the fixture and an
+explicit ban on the operation's own words; the same model then wrote
+「仕入れの荷物が届いたから確認したい」 for `createPurchasingGoodsReceipt` and
+「この商品だけ安くしたいんだけど」 for `createSalesDiscount` - the target
+register, novelty 49.6% over the regenerated 4,991 utterances (2,475/4,991,
+recorded at generation time) - and axis D still did not move. Getting the
+register right and bridging the vocabulary gap are different problems; this
+layer solved the first and not the second.
+
+Three same-operation comparisons, generated vs. written, read from the
+cache directly (no model call - both layers are already on disk):
+
+| operation                                   | written                                                   | generated                                                                                                                                                                                    |
+| ------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createExpenseReimbursement` (精算の作成)   | 立て替えた分を精算してほしい / 自腹で払った分の精算お願い | 領収書入力の時間ある？ / 経費の精算書作りたい / 今月の請求書いつ出せる？ / 領収書忘れたけどどうする？ / 経費申請のフォーム開ける？                                                           |
+| `createPurchasingGoodsReceipt` (検収の作成) | 荷物届いたから検収登録したい / 検収の記録つけたい         | 仕入れの荷物が届いたから確認したい / 納品書と品物が合っているか見てほしい / 受け取った商品に傷がないかチェックしたい / 請求書と実物が一致するよう確認したい / 入庫前の最終確認をお願いします |
+| `createSalesDiscount` (値引の作成)          | 特別に値引き設定したい / 新しい割引登録して               | 値引き率をどう設定すればいいの / この商品だけ安くしたいんだけど / 特別価格の申請書作って / 割引条件を間違えてない？ / 値引き承認の画面どこ？                                                 |
+
+The generated layer's phrasing is fluent and sometimes on-topic (検収's
+generated utterances are arguably better prose than the written ones), but
+it drifts - 今月の請求書いつ出せる？ and 領収書忘れたけどどうする？ are not
+requests to create a 精算 at all, and 割引条件を間違えてない？/値引き承認の
+画面どこ？ are questions about a discount, not requests to make one. The
+written layer stays anchored to the operation the whole time.
+
+**c. The novelty metric points the wrong way.** Contract rates, sampled
+every 50th operation (20 operations): generated - retrieval 6%, novelty
+43%, over 100 utterances; written - retrieval 25%, novelty 15%, over 40
+utterances; both - retrieval 11%, novelty 35%, over 140 utterances. The
+layer that works has the _lower_ novelty. The written layer's 30 failing
+triples (of 40 sampled, `/tmp/claude-1000/-home-takahiro-ghq-github-com-mktkhr-app-orchestra/24470cde-9051-443e-b7b6-397284bcb3c1/scratchpad/written-contract-failing-triples.json`)
+show why: the ones that fail are the ones that dropped the anchor noun
+entirely -
+
+- 「適用中のものを一覧で見たい」(`listSalesDiscounts`) is won by
+  `listInventoryExpiryDates` - the utterance kept no word 値引 or 割引 at
+  all, so it retrieves as a generic "things currently in effect" query.
+- 「条件絞って探したい」(`searchSalesOrders`) is won by
+  `searchAttendanceQualifications` - 条件 alone, with no 受注/注文, reads as
+  a search over any kind of condition, and 資格 (qualification) is exactly
+  that.
+- 「今日の受注どれくらいある?」(`listSalesOrders`) is won by `getSalesOrder`
+  - the noun survived, the verb did not: 「どれくらいある」reads closer to a
+    single record's quantity than to a list.
+
+A useful utterance keeps the operation's noun as an anchor and adds the
+everyday situation around it; pure novelty is drift, not signal.
+
+`generated-contract-non-novel.json` (same directory) has a different shape
+
+- not failing retrieval triples but the 57 (of 100 sampled) generated
+  utterances that share a bigram with their own operation's text despite the
+  rewritten prompt's ban, e.g. 「品番と名前が知りたい」and 「品目リストはどこに
+  ある？」for `listInventoryItems`, 「今月の経費全部見たい」for
+  `listExpenseClaims`. It shows the ban suppresses the worst failure mode
+  (pure noun-plus-conjugation) but does not stop the model drifting back
+  toward the summary's own words on roughly half its output even under the
+  corrected prompt.
+
+**d. The reranker cannot see the utterances, and it shows.** `+written`
+alone reads axis D 80 at K=10; `+reranker+written` reads 73. The
+cross-encoder rescores on `combinedTextOf` only (`docs/specs/describing.md`
+section 4) - an operation retrieved into the fifty by its written example
+is pushed back down by a reranker that never read the example that put it
+there. The reranker still pays for itself on the other axes: A 92→96, E
+80→100, overall 84→89. Whether to let the reranker read the written
+examples is the obvious next experiment and is **not** done here (see
+"what this does not settle" below).
+
+**e. The trade the two headline rows make.** `+reranker+both` reads 93
+overall with D 67 at K=10; `+reranker+written` reads 89 overall with D 73.
+Under the reranker the generated layer's noise is filtered enough that its
+coverage helps axis C (80 → 96 against `+reranker` alone), while without
+the reranker (`+both` vs `+written`, no reranker) the same generated layer
+is purely harmful on D (67 vs 80). This entry does not pick a winner
+between the two headline rows; `docs/specs/describing.md` section 7 is
+corrected to say so explicitly.
+
+**f. Costs.** Per-question wall-clock at 1000 operations (`ms/query`,
+narrowing call only, no LLM): `e5-large-q8` alone 6.418ms;
+`+generated` 14.696ms (2.3x, +8.3ms); `+written` 9.941ms (1.5x, +3.5ms);
+`+both` 17.897ms (2.8x, +11.5ms) - the utterance rows are slower in
+proportion to how many extra vectors they score against, generated (~5 per
+operation) costing more than written (~2 per operation). With the
+reranker: `e5-large-q8+reranker` alone 81.208ms; `+reranker+written`
+86.850ms (+5.6ms, 1.07x); `+reranker+both` 88.844ms (+7.6ms, 1.09x) - the
+two-stage cost dwarfs the utterance-scoring cost once a reranker is in the
+loop. The one-time generation cost was 625.8s for the full 1000-operation
+catalogue (`de4dc96`), never paid again unless an operation's text or the
+prompt changes (AC-G-101). Utterance vector counts: 4,991 generated (five
+requested per operation, a few operations returned fewer), 2,000 written
+(exactly two per operation, by construction). `make check` still calls no
+model: `docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read 61261
+before this record's `make check` run and is confirmed unchanged below.
+
+**g. How the written layer was produced (AC-G-105).** Five Sonnet
+subagents, one service each (`1b77389`), each allowed to read only its own
+service's definition table, the fixture types, and the generator; each
+forbidden the corpus, the generated utterances, the specs, and the decision
+record (`docs/specs/describing.md` G6). None reported reading outside that
+scope; two looked at unrelated test files for the import convention. 2,000
+examples, two per operation, none missing. The written layer's numbers
+above are therefore a measurement of a blind stand-in for a service
+owner's ear - five agents given a table of operation ids and summaries -
+not of a service owner who actually knows how their users talk. That
+distinction is `docs/specs/describing.md` section 10's own caveat, restated
+here because every number in (a)-(e) rests on it.
+
+**Verification.** `docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read
+61261 before `make check` and 61261 after - `make check` still calls no
+model. `make fmt && make check` green.

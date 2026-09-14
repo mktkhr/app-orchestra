@@ -8,39 +8,41 @@ _Nothing in progress._
 
 ## Next
 
-1. **The catalogue's own vocabulary - the residual gap.** Four axis-D
-   questions (「立て替えた分を出したい」→ 経費申請, 「お金を返してもらいたい」
-   → 精算, 「商品が届いたので受け取り処理をしたい」→ 検収, 「値段を安くして
-   ほしいと頼みたい」→ 値引) are not reached by any retriever inside 50
-   candidates and not answered by any model - local or frontier, with or
-   without thinking - from a shortlist (`DECISIONS.md`, 2026-09-14 residual
-   gap; 2026-09-15). Widening retrieval to 500 finds them and stops being
-   narrowing. The mapping needs the company's words in the catalogue:
-   what an operation's description and `x-ui-hint` should carry, and how
-   the corpus measures it, is the next spec.
-2. **Measure the pick, not only the recall.** `make narrowing` reports
+1. **Measure the pick, not only the recall.** `make narrowing` reports
    recall@K; the product's number is "right operation chosen, or asked
    back". The local picker on a reranker-ordered shortlist of 20 scores 83
    (`DECISIONS.md`, 2026-09-15, "reads the shortlist in reranker order"),
    measured by hand in a session scratchpad. It should be a row in the
    report, with the picker's `ambiguous` flag scored against axis B.
+2. **Let the reranker read the written examples.** The cross-encoder
+   rescores on `combinedTextOf` alone (`docs/specs/describing.md` section 4) and never sees an utterance. Measured, this costs the written
+   layer's own axis D seven points at K=10 once the two-stage
+   configuration runs (80% to 73%, `DECISIONS.md`, 2026-09-15, "The
+   catalogue says it"): the layer that closes the vocabulary gap is
+   partially undone by the stage that runs after it. `docs/specs/describing.md`
+   section 10 names this as open and not measured here.
 3. **Choose what the product uses, and wire it into `services/platform`.**
-   The pick reads the reranker's order and about 20 candidates; see above.
+   The pick reads the reranker's order and about 20 candidates; see item 1.
    `docs/plans/retrieving.md`'s own closing note names this as what comes
-   after and is deliberately not in that subproject - a hybrid of lexical
+   after and is deliberately not in that subproject: a hybrid of lexical
    and vector scoring is named as the obvious next mechanism, excluded
    because it moves two numbers at once and neither pure mechanism had been
    measured yet. It now has: the lexical baseline at 48%/76% overall at
    K=10 (100% on axis A, 0% on axis D by construction, wide worst/best gaps
    on B/C/E driven by ties); six embedding configurations clustering at
    80-89% overall where their contract check passes, and dropping to 44-59%
-   where it does not; and the retrieve-then-rerank configuration
-   (`e5-large-q8` + `bge-reranker-v2-m3-q8`) at 88% overall, including 60%
-   on axis D against the baseline's 0% - see `DECISIONS.md`, 2026-09-15
-   ("the corpus answer key is fixed, and every recall figure moves") for the
-   full table (superseding 2026-09-14's), the contract-check cross-check,
-   and the alternation cost a deployment running narrowing and answering on
-   the same GPU would pay.
+   where it does not; the retrieve-then-rerank configuration
+   `e5-large-q8+reranker` at 88% overall, including 60% on axis D against
+   the baseline's 0%; and now the mechanism that actually closes the
+   vocabulary gap: `docs/specs/describing.md`'s written-utterance layer,
+   `x-orchestra-examples` on a contract operation, blind per AC-G-105,
+   which moves axis D to 80%/93% (K=10/K=50) alone and reaches 89% overall,
+   73% axis D at K=10 in the headline two-stage row
+   `e5-large-q8+reranker+written`. See `DECISIONS.md`, 2026-09-15 ("the
+   corpus answer key is fixed, and every recall figure moves" for the base
+   table, "The catalogue says it" for the utterance layers) for the
+   contract-check cross-check and the alternation cost; item 2 above is
+   this mechanism's own open caveat.
 4. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
@@ -108,6 +110,33 @@ _Nothing in progress._
 
 ## Done
 
+- **The catalogue's own vocabulary - the residual gap - is closed by a
+  written examples layer, measured against a generated one that is a
+  negative result.** `docs/plans/describing.md` (five tasks): an operation
+  gains two optional layers of utterance beside its own text - generated
+  (one cached `qwen3.5-9b-q8` call per operation, deterministic,
+  `e2e/narrowing/utterances/`) and written (`x-orchestra-examples` on a
+  contract operation, threaded through `services/platform` and the
+  fixture). Each utterance is its own embedded vector; an operation's score
+  is the max over its own vector and its utterances' (spec G3). Measured
+  at K=10, 1000 operations: `e5-large-q8+written` moves axis D from 33% to
+  80% - the four questions in `docs/specs/describing.md` section 1
+  (立て替えた分を出したい→経費申請, お金を返してもらいたい→精算, 商品が届
+  いたので受け取り処理をしたい→検収, 値段を安くしてほしいと頼みたい→値引)
+  are the ones this closes; `e5-large-q8+generated` does not move axis D
+  (33%) and lowers axis B (100% → 64%), a negative result confirmed under
+  two separate prompts. The headline row is `e5-large-q8+reranker+written`
+  (89% overall, axis D 73%); `+reranker+both` is reported beside it as a
+  trade (93% overall, axis D 67%), not a replacement. The fixture's 2,000
+  written examples were produced blind by five parallel subagents, one
+  service each, forbidden the corpus and the decision record (AC-G-105).
+  See `STATE.md` and `DECISIONS.md`, 2026-09-15 ("The catalogue says it:
+  the written layer closes axis D, the generated layer is a negative
+  result") for the full per-axis tables at every K and catalogue size, the
+  contract-check rates, the prompt history, and the costs. `docs/specs/
+describing.md` sections 6, 7 and 10 are corrected to match. Next: item 1
+  above (measure the pick) and item 3 (choose what the product uses, now
+  with this mechanism and its numbers).
 - **The corpus answer key is fixed, and every recall figure re-recorded.**
   Axes A, D and E named `list*` and rejected `search*`/`summarize*`/
   `aggregate*` over the same object and `create`/`submit` verb variants the

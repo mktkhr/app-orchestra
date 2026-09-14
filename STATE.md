@@ -1,9 +1,47 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-15 (the corpus answer key is fixed; every recall
-figure re-recorded)_
+_Last updated: 2026-09-15 (`docs/plans/describing.md` closes: two utterance
+layers, measured)_
 
 ## Summary
+
+**2026-09-15 - `docs/plans/describing.md` closes: the catalogue gains
+utterances, and the written layer is what closes the vocabulary gap.** An
+operation now carries two optional layers of utterance beside its own
+text - generated, one cached local-model call per operation
+(`e2e/narrowing/utterances/`), and written, `x-orchestra-examples` on a
+contract operation, threaded through `services/platform`'s spec source,
+catalogue usecase and `CatalogEntry`, and through the fixture's
+`FixtureOperation.examples`. Each utterance is embedded as its own document
+vector; an operation's score against a question is the max over its own
+vector and every utterance's (spec G3). Measured over the full 1000-op
+fixture, K=10: axis D moves from 33% (`e5-large-q8` alone) to 80% under
+`+written`, closing the four vocabulary-gap questions `docs/specs/
+describing.md` section 1 names; the generated layer does not move axis D
+(33%) and lowers axis B (100% → 64%) - a negative result under two prompts,
+not one. The headline row is `e5-large-q8+reranker+written` (89% overall, D
+73%), not `+reranker+both` (93% overall, D 67%) - the union's overall gain
+comes from the generated layer's coverage on axis C once the reranker
+filters its noise, at axis D's expense; the record states the trade rather
+than picking a winner. The reranker rescores on `combinedTextOf` only and
+never reads an utterance, costing the written layer's own axis D seven
+points once two-staged (80% → 73%) - named as the open question, not fixed
+here. The fixture's 2,000 written examples were produced blind by five
+Sonnet subagents, one service each, forbidden the corpus, the generated
+utterances, the specs and the decision record (AC-G-105) - their numbers
+measure a blind stand-in for a service owner, not a service owner. Full
+per-axis tables at every K and catalogue size, the utterance contract-check
+rates, the two prompts' history, and the cost figures (625.8s one-time
+generation for 1000 operations; utterance rows 1.1x-2.8x slower per query
+than the bare retriever) are in `DECISIONS.md`, 2026-09-15 ("The catalogue
+says it: the written layer closes axis D, the generated layer is a
+negative result"). `docs/specs/describing.md` sections 6, 7 and 10 are
+corrected to match what was measured (novelty anti-correlates with
+usefulness here; the headline row is `+reranker+written`; the
+reranker-blind-to-utterances finding and the generated layer's two-prompt
+failure are recorded as open). `make check` still calls no model. Next:
+`TODO.md` item 2 (measure the pick) and item 3 (choose what the product
+uses, now with the written layer as the mechanism).
 
 **2026-09-15 - the corpus answer key is fixed (TODO.md item 2).** Axes A, D
 and E named `list*` and rejected `search*`/`summarize*`/`aggregate*` over
