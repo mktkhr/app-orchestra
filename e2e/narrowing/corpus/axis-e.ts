@@ -26,8 +26,11 @@ export const AXIS_E: readonly Question[] = [
   {
     id: "e01",
     axis: "E",
+    // The model's answer (2026-09-14 DECISIONS.md): 残業を集計する is at
+    // least as good as the plain list — checked, it still scores well below
+    // the decoy.
     text: "先月の残業時間",
-    answers: ["listAttendanceRecords", "listAttendanceOvertimes"],
+    answers: ["listAttendanceRecords", "listAttendanceOvertimes", "summarizeAttendanceOvertimes"],
     decoy: "getAttendanceOvertimeThreshold",
   },
   {
@@ -40,22 +43,29 @@ export const AXIS_E: readonly Question[] = [
   {
     id: "e03",
     axis: "E",
+    // "支給された分" asks for a computed total as much as for the raw
+    // records; the aggregate over the same object still scores below the
+    // decoy.
     text: "日当単価をもとに支給された分を確認したい",
-    answers: ["listExpensePerDiems"],
+    answers: ["listExpensePerDiems", "aggregateExpensePerDiems"],
     decoy: "getExpensePerDiemRateSetting",
   },
   {
     id: "e04",
     axis: "E",
+    // Same reasoning as e03: "計算された分" admits the aggregate over the
+    // same object, still below the decoy.
     text: "販売手数料率で計算された分を確認したい",
-    answers: ["listSalesCommissions"],
+    answers: ["listSalesCommissions", "aggregateSalesCommissions"],
     decoy: "getSalesCommissionRateSetting",
   },
   {
     id: "e05",
     axis: "E",
+    // "いっぱいな倉庫" names a filter condition; search reads it as well as
+    // list, and still scores below the decoy.
     text: "倉庫容量がいっぱいな倉庫を知りたい",
-    answers: ["listInventoryWarehouses"],
+    answers: ["listInventoryWarehouses", "searchInventoryWarehouses"],
     decoy: "getInventoryWarehouseCapacitySetting",
   },
   {
@@ -82,8 +92,11 @@ export const AXIS_E: readonly Question[] = [
   {
     id: "e09",
     axis: "E",
+    // aggregateInventorySafetyStockGap is the only operation that expresses
+    // distance from the safety level (task instructions, corpus defect
+    // list) — still below the decoy.
     text: "安全在庫の下限を下回りそうな品目を確認したい",
-    answers: ["listInventorySafetyStocks"],
+    answers: ["listInventorySafetyStocks", "aggregateInventorySafetyStockGap"],
     decoy: "getInventorySafetyStockThreshold",
   },
   {

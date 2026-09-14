@@ -23,8 +23,10 @@ export const AXIS_A: readonly Question[] = [
   {
     id: "a03",
     axis: "A",
+    // "知りたい" does not say "all of them" — a filtered search reads it as
+    // easily as a plain list.
     text: "ピッキングリストが知りたい",
-    answers: ["listInventoryPickLists"],
+    answers: ["listInventoryPickLists", "searchInventoryPickLists"],
   },
   {
     id: "a04",
@@ -42,8 +44,10 @@ export const AXIS_A: readonly Question[] = [
   {
     id: "a07",
     axis: "A",
+    // Enumerating "who is there" is what a filtered search of the same
+    // resource also answers.
     text: "営業担当者って誰がいる？",
-    answers: ["listSalesReps"],
+    answers: ["listSalesReps", "searchSalesReps"],
   },
   { id: "a08", axis: "A", text: "営業エリアってどこがある？", answers: ["listSalesTerritories"] },
   {
@@ -59,18 +63,29 @@ export const AXIS_A: readonly Question[] = [
     text: "サンプル依頼って今どうなってる？",
     answers: ["listSalesSampleRequests"],
   },
-  { id: "a12", axis: "A", text: "セット商品を出したい", answers: ["listSalesBundles"] },
+  {
+    id: "a12",
+    axis: "A",
+    // "出す" is ordinary Japanese for releasing a new bundle product
+    // (create), not only for bringing up the existing list.
+    text: "セット商品を出したい",
+    answers: ["listSalesBundles", "createSalesBundle"],
+  },
   {
     id: "a13",
     axis: "A",
+    // "状況を確認したい" does not distinguish "all of them" from "the
+    // matching ones" — search answers it as well as list.
     text: "入札の状況を確認したい",
-    answers: ["listPurchasingBids"],
+    answers: ["listPurchasingBids", "searchPurchasingBids"],
   },
   {
     id: "a14",
     axis: "A",
+    // "今どうなってる" is a status question; a summary over blanket
+    // contracts answers it as well as the raw list.
     text: "単価契約って今どうなってる？",
-    answers: ["listPurchasingBlankets"],
+    answers: ["listPurchasingBlankets", "summarizePurchasingBlankets"],
   },
   {
     id: "a15",
@@ -81,8 +96,10 @@ export const AXIS_A: readonly Question[] = [
   {
     id: "a16",
     axis: "A",
+    // "どれくらい" asks for a figure, which the aggregate over the same
+    // object answers directly.
     text: "関税ってどれくらいかかってる？",
-    answers: ["listPurchasingCustomsDuties"],
+    answers: ["listPurchasingCustomsDuties", "aggregatePurchasingCustomsDuties"],
   },
   {
     id: "a17",
@@ -93,39 +110,62 @@ export const AXIS_A: readonly Question[] = [
   {
     id: "a18",
     axis: "A",
+    // "受けた人いる？" asks whether records matching a condition exist — a
+    // search reads that as naturally as a plain list.
     text: "健康診断って受けた人いる？",
-    answers: ["listAttendanceHealthCheckups"],
+    answers: ["listAttendanceHealthCheckups", "searchAttendanceHealthCheckups"],
   },
-  { id: "a19", axis: "A", text: "研修受講の状況が知りたい", answers: ["listAttendanceTrainings"] },
+  {
+    id: "a19",
+    axis: "A",
+    // "状況" is a status question; the summary answers it as well as the
+    // raw list.
+    text: "研修受講の状況が知りたい",
+    answers: ["listAttendanceTrainings", "summarizeAttendanceTrainings"],
+  },
   {
     id: "a20",
     axis: "A",
+    // "資格を持ってる人" names a filter condition outright, which is what a
+    // search operation is for.
     text: "資格を持ってる人を出したい",
-    answers: ["listAttendanceQualifications"],
+    answers: ["listAttendanceQualifications", "searchAttendanceQualifications"],
   },
   {
     id: "a21",
     axis: "A",
+    // "今どうなってる" is a status question; search answers it as well as list.
     text: "苦情申立って今どうなってる？",
-    answers: ["listAttendanceGrievances"],
+    answers: ["listAttendanceGrievances", "searchAttendanceGrievances"],
   },
   {
     id: "a22",
     axis: "A",
+    // A count is unaffected by whether the operation is called "list" or
+    // "search" with no filter.
     text: "法人カードって何枚ある？",
-    answers: ["listExpenseCorporateCards"],
+    answers: ["listExpenseCorporateCards", "searchExpenseCorporateCards"],
   },
   {
     id: "a23",
     axis: "A",
+    // "どれくらい" asks for a figure, which the summary over the same
+    // object answers directly.
     text: "接待交際費ってどれくらい使ってる？",
-    answers: ["listExpenseEntertainments"],
+    answers: ["listExpenseEntertainments", "summarizeExpenseEntertainments"],
   },
   {
     id: "a24",
     axis: "A",
+    // "支給状況" asks how much has been paid out, which the aggregate over
+    // the same object answers directly.
     text: "手当の支給状況が知りたい",
-    answers: ["listExpenseAllowances"],
+    answers: ["listExpenseAllowances", "aggregateExpenseAllowances"],
   },
-  { id: "a25", axis: "A", text: "日当の支給状況を確認したい", answers: ["listExpensePerDiems"] },
+  {
+    id: "a25",
+    axis: "A",
+    text: "日当の支給状況を確認したい",
+    answers: ["listExpensePerDiems", "aggregateExpensePerDiems"],
+  },
 ];
