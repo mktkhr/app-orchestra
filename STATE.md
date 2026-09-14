@@ -1,9 +1,36 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-15 (`docs/plans/describing.md` closes: two utterance
-layers, measured)_
+_Last updated: 2026-09-15 (pick-rate measurement wired into `make narrowing`,
+beside recall@K)_
 
 ## Summary
+
+**2026-09-15 - `make narrowing` measures the pick, not only the recall
+(TODO.md item 1).** Three new rows - `pick:e5-large-q8+reranker`,
+`pick:e5-large-q8+reranker+written` and `pick:e5-large-q8+reranker+both` -
+feed the local `qwen3.5-9b-q8` (thinking off, temperature 0) the top 20
+candidates of each row's own already-reranked shortlist and score two
+things per axis and overall, at every catalogue size: **correct** (the
+picked operationId is among the question's answers) and **flagged** (the
+picker returned `ambiguous`), printed separately, never combined. New
+modules under `e2e/narrowing/pick/` (the picker's own injectable-transport
+client, the system prompt copied verbatim from the hand-run script that
+first measured this) and `e2e/narrowing/gather-pick*.ts` (every shortlist
+for all three variants gathered first, the picker run over the whole set
+in one pass second, so a run still alternates between the reranker and the
+chat model exactly once). Measured at 1000 operations: the plain row
+reproduces the hand measurement almost exactly (83% correct, 51% flagged,
+against the hand run's 83/50) - but the written and "both" layers, despite
+holding or raising recall@20, _lower_ the picker's own correct rate (83% →
+78% → 77%): more retrieval signal in the top twenty does not mean a better
+pick, only a better-populated shortlist. Full per-axis tables, the
+flagged-rate read against axis B (desired) and axis A (false alarm), and
+the thinking-budget guard's verification are in `DECISIONS.md`, 2026-09-15
+("Measuring the pick: three report rows, and whether the written layer's
+recall gain survives to the pick"). No pre-existing `make narrowing` row
+changed; `make check` still calls no model. Next: `TODO.md` item 1 (let
+the reranker read the written examples) and item 2 (choose what the
+product uses, now with the pick measured as well as the recall).
 
 **2026-09-15 - `docs/plans/describing.md` closes: the catalogue gains
 utterances, and the written layer is what closes the vocabulary gap.** An

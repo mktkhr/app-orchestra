@@ -5599,3 +5599,132 @@ here because every number in (a)-(e) rests on it.
 **Verification.** `docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read
 61261 before `make check` and 61261 after - `make check` still calls no
 model. `make fmt && make check` green.
+
+## 2026-09-15 Measuring the pick: three report rows, and whether the written layer's recall gain survives to the pick
+
+**Context.** TODO.md item 1 ("Measure the pick, not only the recall"):
+`make narrowing` reports recall@K, but the product's own number is "right
+operation chosen, or asked back". The hand measurement above ("The local
+picker reads the shortlist in reranker order: 78 → 83, for nothing") found
+K=20 best and was run once, by hand, in a session scratchpad, on the plain
+`e5-large-q8+reranker` shortlist only. This entry turns that into three
+report rows - `pick:e5-large-q8+reranker`, `pick:e5-large-q8+reranker+written`
+and `pick:e5-large-q8+reranker+both` - each feeding `qwen3.5-9b-q8`
+(thinking off, temperature 0) the top `PICK_SHORTLIST_K` (20,
+`e2e/narrowing/gather-pick-shortlists.ts`) candidates of the same reranked
+shortlist the corresponding recall row already produces, scored on two
+axes: **correct** (the picked operationId is among the question's answers)
+and **flagged** (the picker returned `ambiguous`) - both printed, never
+combined into one score. New modules: `e2e/narrowing/pick/client.ts` (the
+picker's own transport, injectable exactly like `embedding/client.ts`),
+`gather-pick-shortlists.ts` (every shortlist for every variant, gathered
+first), `gather-pick-scoring.ts` (the picker run over the whole collected
+set in one pass) and `gather-pick.ts` (orchestration) - two passes,
+deliberately, so a run alternates between the reranker and the chat model
+exactly once, not once per question, matching the discipline the retrieval
+and reranking stages already follow.
+
+**The numbers, 1000 operations (K=20 candidates shown to the picker), correct%/flagged%:**
+
+| row                                  | A      | B      | C     | D     | E     | overall |
+| ------------------------------------ | ------ | ------ | ----- | ----- | ----- | ------- |
+| hand measurement (2026-09-15, above) | 100/—  | 100/—  | 72/—  | 53/—  | 70/—  | 83/50   |
+| `pick:e5-large-q8+reranker`          | 100/56 | 100/52 | 72/52 | 53/27 | 70/70 | 83/51   |
+| `pick:e5-large-q8+reranker+written`  | 84/48  | 96/36  | 68/64 | 60/20 | 70/70 | 78/47   |
+| `pick:e5-large-q8+reranker+both`     | 84/52  | 96/20  | 72/72 | 47/13 | 70/60 | 77/44   |
+
+**a. The plain row reproduces the hand measurement almost exactly.**
+`pick:e5-large-q8+reranker` reads 83% correct overall against the hand
+run's 83 (identical, not just close) and 51% flagged against the hand
+run's 50% - the one-point difference is consistent with a single question
+flipping and is well inside what one run at n=100 can be expected to move
+by chance. Every per-axis correct figure matches the hand table exactly
+(A 100, B 100, C 72, D 53, E 70). This is the confirmation the report row
+is doing what the hand script did: same shortlist, same K, same prompt,
+same parsing rule, and the same result.
+
+**b. The written and "both" shortlists do not carry the recall gain to
+the pick - they cost it.** Recall@20 at 1000 operations barely moves
+between the three retrieval variants (`e5-large-q8+reranker` 92% overall,
+`+written` 92%, `+both` 96% - see the table above this entry's own recall
+block). The pick tells a different story: overall correct falls from 83%
+(plain) to 78% (`+written`) to 77% (`+both`) - the utterance layers that
+help or hold recall make the picker's raw choice _worse_, not better,
+despite the right answer being inside the same top-20 window at least as
+often. The most likely mechanism: the utterance layers change which
+twenty candidates the picker sees and in what order (an operation can now
+be retrieved by an utterance vector rather than its own text), and a
+9B model with 200 output tokens is more easily distracted by additional
+plausible-looking candidates than a bigger shortlist alone would predict
+from recall - recall asks only "is the answer somewhere in twenty", the
+pick asks the harder question this subproject exists to measure.
+
+Axis D is the one place the direction matches what recall predicts:
+`+written` raises pick-D from 53% (plain) to 60%, in the same direction as
+its recall gain (D closes the vocabulary gap in retrieval, per
+`docs/specs/describing.md`, and some of that reaches the pick too) - but
+`+both` _drops_ pick-D to 47%, below the plain row, even though `+both`'s
+own recall-D (80%) sits between plain (73%) and written (87%). The
+generated layer's noise that already costs `+both` on recall-D costs it
+again, harder, on pick-D: the axis this subproject was built to close is
+the one axis where mixing in the generated layer actively hurts the
+picker beyond what it costs the retriever.
+
+**c. Flagged rates, read against axis B and axis A.** Axis B (the
+genuinely ambiguous questions, where a high flagged% is desired behaviour)
+flags at 52% (plain), 36% (`+written`) and 20% (`+both`) - falling as more
+retrieval signal is added, the opposite of what would be wanted if the
+goal were "flag more of the genuinely ambiguous ones": a shortlist that
+retrieves more confidently apparently reads as less ambiguous to the
+picker even when the underlying question still has several defensible
+answers. Axis A (unambiguous questions, where a high flagged% is a false
+alarm) flags at 56%, 48% and 52% - a false-alarm rate higher than axis B's
+own true-positive-shaped rate in two of three rows. Axis E (lexical
+decoys, not scored here as either "desired" or "false alarm" - the report
+prints the number and leaves the read to whoever asks) flags at 70%, 70%
+and 60% - the highest flag rate of any axis in every row, which reads as
+the picker noticing something is off about a decoy-heavy shortlist without
+being told which axis it is looking at. None of this is a clean signal
+that `ambiguous` tracks axis B specifically; it moves in the same
+direction across every axis about as often as not.
+
+**d. Wall-clock.** All three rows land at 302-303ms/question at 1000
+operations (`pick:e5-large-q8+reranker` 302.224, `+written` 303.112,
+`+both` 302.690) - indistinguishable from each other (the picker call
+dominates; the shortlist itself is a few hundred microseconds of local
+scoring plus one reranker call already measured elsewhere) and consistent
+with the hand run's 0.31s/question at K=20.
+
+**Sequencing verified.** `gather-pick.ts` runs after every recall row and
+reuses the same cached `e5-large-q8` catalogue vectors and utterance
+vectors those rows already embedded (a disk read, not a new embedding
+call) - the reranker call itself is not cached anywhere in this codebase
+and does run again per (variant, size, question) to build the picker's
+shortlist, the same cost every existing reranked row already pays once for
+its own recall figures. The picker itself runs in one pass, after every
+shortlist for all three variants was gathered, so the whole run alternates
+between the reranker and `qwen3.5-9b-q8` exactly once - confirmed by the
+loading-cost block printing once, unchanged in shape, at the end of the
+report.
+
+**The thinking-budget guard.** `chat_template_kwargs.enable_thinking: false`
+is set on every request; `pick/client.ts`'s `assertNoThinkingLeak` is the
+extra safety net, checked once on the first real response of a run
+(`finish_reason === "stop"` and no non-empty `reasoning_content`).
+Verified twice against the real transport: flipping `enable_thinking` to
+`true` in a throwaway, uncommitted edit produced `finish_reason: "length"`
+and non-empty `reasoning_content` on the very first call, and the guard
+threw immediately with a message naming both fields before the edit was
+reverted; a second real call with `enable_thinking: false` restored picked
+correctly and did not throw. The flip was never committed.
+
+**Verification.** No pre-existing row's output changed: `make narrowing`
+before and after this change, diffed with every `ms/query`-style number
+stripped, is byte-identical. `make fmt && make check` green, zero
+suppressions. `docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read
+61261 at the start of this session; `make check` itself made no live call
+(the count was unchanged immediately before and after it ran); the full
+count after every manual `make narrowing` run and the two thinking-guard
+verification calls in this entry is 73541 - the difference is real model
+traffic from `make narrowing` runs and the two throwaway verification
+calls, never from `make check`.

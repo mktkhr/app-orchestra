@@ -8,22 +8,18 @@ _Nothing in progress._
 
 ## Next
 
-1. **Measure the pick, not only the recall.** `make narrowing` reports
-   recall@K; the product's number is "right operation chosen, or asked
-   back". The local picker on a reranker-ordered shortlist of 20 scores 83
-   (`DECISIONS.md`, 2026-09-15, "reads the shortlist in reranker order"),
-   measured by hand in a session scratchpad. It should be a row in the
-   report, with the picker's `ambiguous` flag scored against axis B.
-2. **Let the reranker read the written examples.** The cross-encoder
+1. **Let the reranker read the written examples.** The cross-encoder
    rescores on `combinedTextOf` alone (`docs/specs/describing.md` section 4) and never sees an utterance. Measured, this costs the written
    layer's own axis D seven points at K=10 once the two-stage
    configuration runs (80% to 73%, `DECISIONS.md`, 2026-09-15, "The
    catalogue says it"): the layer that closes the vocabulary gap is
    partially undone by the stage that runs after it. `docs/specs/describing.md`
    section 10 names this as open and not measured here.
-3. **Choose what the product uses, and wire it into `services/platform`.**
-   The pick reads the reranker's order and about 20 candidates; see item 1.
-   `docs/plans/retrieving.md`'s own closing note names this as what comes
+2. **Choose what the product uses, and wire it into `services/platform`.**
+   The pick reads the reranker's order and the top 20 candidates, now
+   measured as a report row rather than by hand - see `DECISIONS.md`,
+   2026-09-15 ("Measuring the pick: three report rows, and whether the
+   written layer's recall gain survives to the pick"). `docs/plans/retrieving.md`'s own closing note names this as what comes
    after and is deliberately not in that subproject: a hybrid of lexical
    and vector scoring is named as the obvious next mechanism, excluded
    because it moves two numbers at once and neither pure mechanism had been
@@ -41,9 +37,9 @@ _Nothing in progress._
    `e5-large-q8+reranker+written`. See `DECISIONS.md`, 2026-09-15 ("the
    corpus answer key is fixed, and every recall figure moves" for the base
    table, "The catalogue says it" for the utterance layers) for the
-   contract-check cross-check and the alternation cost; item 2 above is
+   contract-check cross-check and the alternation cost; item 1 above is
    this mechanism's own open caveat.
-4. A genre/domain layer above individual services - grouping services by
+3. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
    exposed operation in `services/inventory` carries the single tag `items`
@@ -51,12 +47,12 @@ _Nothing in progress._
    group nothing beyond what `OperationPicker`'s own `groupBy` (off
    `serviceDisplayName`) already does. Worth building once a service
    carries more than one tag over its own exposed operations.
-5. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+4. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-6. **Open defect: a question whose filter word matches no enum value gets
+5. **Open defect: a question whose filter word matches no enum value gets
    every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
    在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
    variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
@@ -71,7 +67,7 @@ _Nothing in progress._
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
-7. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+6. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -82,13 +78,13 @@ _Nothing in progress._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-8. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+7. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
 
-9. **`<Typography color="text.secondary">` is a silent no-op almost
+8. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
@@ -110,6 +106,32 @@ _Nothing in progress._
 
 ## Done
 
+- **Measure the pick, not only the recall.** `make narrowing` gained three
+  rows - `pick:e5-large-q8+reranker`, `pick:e5-large-q8+reranker+written`
+  and `pick:e5-large-q8+reranker+both` - each feeding the local
+  `qwen3.5-9b-q8` (thinking off) the top 20 candidates of that row's own
+  reranked shortlist and scoring correct% and flagged% separately, per
+  axis and overall, at every catalogue size. `e2e/narrowing/pick/` (the
+  picker's own injectable-transport client) and
+  `e2e/narrowing/gather-pick*.ts` (shortlists gathered for all three
+  variants first, the picker run over the whole set second, one chat-model
+  load per run). Measured at 1000 operations: the plain row reproduces the
+  hand measurement from `DECISIONS.md`, 2026-09-15 ("The local picker
+  reads the shortlist in reranker order") almost exactly - 83% correct,
+  51% flagged, against the hand run's 83/50 - but the written and "both"
+  utterance layers _lower_ the picker's own correct rate (83% → 78% → 77%)
+  even though they hold or raise recall@20, and `+both`'s pick-D (47%)
+  falls below the plain row's (53%) despite `+both`'s recall-D sitting
+  above it. No pre-existing row changed; `make check` still calls no model
+  (`docker logs llama-swap`'s `POST /v1/` count: 61261 before this task,
+  73541 after every manual `make narrowing` run and the thinking-guard
+  verification calls, unchanged immediately before/after `make check`
+  itself). See `STATE.md` and `DECISIONS.md`, 2026-09-15 ("Measuring the
+  pick: three report rows, and whether the written layer's recall gain
+  survives to the pick") for the full per-axis tables, the flagged-rate
+  read against axis B/axis A, and the thinking-budget guard's real-transport
+  verification. Next: item 1 above (let the reranker read the written
+  examples) and item 2 (choose what the product uses).
 - **The catalogue's own vocabulary - the residual gap - is closed by a
   written examples layer, measured against a generated one that is a
   negative result.** `docs/plans/describing.md` (five tasks): an operation
@@ -134,9 +156,11 @@ _Nothing in progress._
   the written layer closes axis D, the generated layer is a negative
   result") for the full per-axis tables at every K and catalogue size, the
   contract-check rates, the prompt history, and the costs. `docs/specs/
-describing.md` sections 6, 7 and 10 are corrected to match. Next: item 1
-  above (measure the pick) and item 3 (choose what the product uses, now
-  with this mechanism and its numbers).
+describing.md` sections 6, 7 and 10 are corrected to match. Next: measure
+  the pick, not only the recall (done - see `DECISIONS.md`, 2026-09-15,
+  "Measuring the pick: three report rows, and whether the written layer's
+  recall gain survives to the pick") and item 2 above (choose what the
+  product uses, now with this mechanism and its numbers).
 - **The corpus answer key is fixed, and every recall figure re-recorded.**
   Axes A, D and E named `list*` and rejected `search*`/`summarize*`/
   `aggregate*` over the same object and `create`/`submit` verb variants the
@@ -148,8 +172,9 @@ llama-swap`'s `POST /v1/` count: 30879 before and after). See `STATE.md`
   and `DECISIONS.md`, 2026-09-15 ("the corpus answer key is fixed, and every
   recall figure moves") for the per-axis count, the candidates left out and
   why, and the full recall@K table for all eight configurations at 1000
-  operations, replacing 2026-09-14's table. Next: item 1 above (the
-  catalogue's own vocabulary) and item 2 (choosing what the product uses).
+  operations, replacing 2026-09-14's table. Next: the catalogue's own
+  vocabulary (done - `docs/plans/describing.md`) and item 2 above
+  (choosing what the product uses).
 - **`docs/plans/retrieving.md` closes: six embedding configurations, the
   retrieve-then-rerank stage, and the alternation cost, all measured
   beside the lexical floor** (AC-V-101 through AC-V-107). Tasks 1-3
