@@ -80,8 +80,10 @@ test("no service's operations carry any examples yet", () => {
 });
 
 // AC-G-104: FixtureOperation.examples round-trips a definition table
-// entry's examples field, and is an empty array (not undefined) when the
-// entry declares none.
+// entry's per-verb/per-action examples, and is an empty array (not
+// undefined) for an operation whose own verb/action carries none - a
+// resource's "list" examples must not leak onto its "get" operation (G7:
+// the verb is what separates candidates on axes B, C and E).
 const EXAMPLES_FIXTURE: ServiceFixture = {
   name: "example",
   displayName: "サンプル",
@@ -91,7 +93,7 @@ const EXAMPLES_FIXTURE: ServiceFixture = {
       plural: "Things",
       noun: "モノ",
       verbs: ["list", "get"],
-      examples: ["モノを見せて"],
+      examples: { list: ["モノを見せて"] },
     },
   ],
   aggregates: [{ id: "Overview", kind: "summarize", noun: "概要" }],
@@ -99,10 +101,16 @@ const EXAMPLES_FIXTURE: ServiceFixture = {
   workflows: [],
 };
 
-test("FixtureOperation.examples carries the definition table's examples", () => {
+test("FixtureOperation.examples carries the definition table's examples for that verb", () => {
   const list = operationsOf(EXAMPLES_FIXTURE).find((op) => op.operationId === "listExampleThings");
 
   expect(list?.examples).toEqual(["モノを見せて"]);
+});
+
+test("FixtureOperation.examples is empty on a verb the definition table gave no examples", () => {
+  const get = operationsOf(EXAMPLES_FIXTURE).find((op) => op.operationId === "getExampleThing");
+
+  expect(get?.examples).toEqual([]);
 });
 
 test("FixtureOperation.examples is empty, not undefined, when the entry declares none", () => {

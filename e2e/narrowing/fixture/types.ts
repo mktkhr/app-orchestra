@@ -7,6 +7,8 @@
 
 export type Verb = "list" | "get" | "create" | "update" | "delete";
 
+export type WorkflowAction = "submit" | "approve" | "reject" | "withdraw";
+
 /** One resource a service owns: five operations at most, one noun. */
 export interface Resource {
   /** Singular, PascalCase, unique inside a service: "SalesOrder". */
@@ -30,11 +32,15 @@ export interface Resource {
   /** Extra vocabulary the description carries, for realism. */
   readonly also?: readonly string[];
   /**
-   * `x-orchestra-examples` for every operation this resource generates:
-   * things a person might type when they want it (docs/specs/describing.md,
-   * section 3). Optional; written blind, by Task 4, never here (G6).
+   * `x-orchestra-examples`, per verb: things a person might type when they
+   * want the operation that verb generates (docs/specs/describing.md,
+   * section 3). Keyed by verb, not shared across them - "在庫を見せて" is an
+   * utterance for `list`, not for `delete` or `update`, and attaching it to
+   * every verb would manufacture exactly the false match spec G7 warns
+   * about on axes B, C and E, where the verb is what separates candidates.
+   * Optional; written blind, by Task 4, never here (G6).
    */
-  readonly examples?: readonly string[];
+  readonly examples?: Partial<Readonly<Record<Verb, readonly string[]>>>;
 }
 
 /** Axis E lives here: settings named after the transactions they configure. */
@@ -59,12 +65,13 @@ export interface Aggregate {
 export interface Workflow {
   readonly id: string;
   readonly noun: string;
-  readonly actions: readonly ("submit" | "approve" | "reject" | "withdraw")[];
+  readonly actions: readonly WorkflowAction[];
   /**
-   * `x-orchestra-examples` for every operation this workflow generates -
-   * one per action, all sharing this list, exactly as Resource's does.
+   * `x-orchestra-examples`, per action: the same per-operation rule as
+   * `Resource.examples` above, keyed by the action that generates each
+   * operation rather than shared across all of them.
    */
-  readonly examples?: readonly string[];
+  readonly examples?: Partial<Readonly<Record<WorkflowAction, readonly string[]>>>;
 }
 
 export interface ServiceFixture {

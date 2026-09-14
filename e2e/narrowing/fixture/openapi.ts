@@ -17,7 +17,15 @@ import type {
   RequestBody,
   Response,
 } from "./openapi-document.ts";
-import type { Aggregate, Resource, ServiceFixture, Setting, Verb, Workflow } from "./types.ts";
+import type {
+  Aggregate,
+  Resource,
+  ServiceFixture,
+  Setting,
+  Verb,
+  Workflow,
+  WorkflowAction,
+} from "./types.ts";
 
 export type {
   OpenAPIDocument,
@@ -118,6 +126,7 @@ const CRUD_RESPONSES: Readonly<Record<Verb, Readonly<Record<string, Response>>>>
 
 function crudOperation(service: string, resource: Resource, verb: Verb): Operation {
   const idPart = verb === "list" ? resource.plural : resource.id;
+  const examples = resource.examples?.[verb];
 
   return {
     operationId: `${verb}${qualify(service, idPart)}`,
@@ -130,7 +139,7 @@ function crudOperation(service: string, resource: Resource, verb: Verb): Operati
       ? { requestBody: requestBodyOf("NewFixtureRecord") }
       : {}),
     responses: CRUD_RESPONSES[verb],
-    ...(resource.examples === undefined ? {} : { "x-orchestra-examples": resource.examples }),
+    ...(examples === undefined ? {} : { "x-orchestra-examples": examples }),
   };
 }
 
@@ -198,7 +207,7 @@ function settingPath(service: string, setting: Setting): Readonly<Record<string,
   return { [path]: { [setting.verb === "update" ? "put" : "get"]: operation } };
 }
 
-const ACTION_LABEL: Readonly<Record<Workflow["actions"][number], string>> = {
+const ACTION_LABEL: Readonly<Record<WorkflowAction, string>> = {
   submit: "申請",
   approve: "承認",
   reject: "却下",
@@ -211,6 +220,7 @@ function workflowPaths(service: string, workflow: Workflow): Readonly<Record<str
   for (const action of workflow.actions) {
     const label = ACTION_LABEL[action];
     const path = `/api/${service}/${kebabOf(workflow.id)}/{id}/${action}`;
+    const examples = workflow.examples?.[action];
     const operation: Operation = {
       operationId: `${action}${qualify(service, workflow.id)}`,
       summary: `${workflow.noun}を${label}する`,
@@ -219,7 +229,7 @@ function workflowPaths(service: string, workflow: Workflow): Readonly<Record<str
       "x-orchestra-expose": true,
       "x-ui-hint": { displayName: `${workflow.noun}${label}` },
       responses: { "200": response(`${label}後の状態。`, "FixtureRecord") },
-      ...(workflow.examples === undefined ? {} : { "x-orchestra-examples": workflow.examples }),
+      ...(examples === undefined ? {} : { "x-orchestra-examples": examples }),
     };
 
     paths[path] = { post: operation };

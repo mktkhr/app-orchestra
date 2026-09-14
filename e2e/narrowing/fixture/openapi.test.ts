@@ -77,6 +77,12 @@ test("every exposed operation has a response schema or a request body", () => {
 // definition table's entry declares it, and is absent (not an empty
 // array) when it does not - neither the fixture nor any real service
 // writes examples in this task (G6), so this is a synthetic fixture.
+//
+// examples is keyed per verb/action, not shared across a resource's or a
+// workflow's whole set of operations: "list" carries examples here, "get"
+// and the other three CRUD verbs on the same resource do not, and a
+// generator whose examples cross verbs would manufacture exactly the false
+// match spec G7 warns about on axes B, C and E.
 const EXAMPLE_FIXTURE: ServiceFixture = {
   name: "example",
   displayName: "サンプル",
@@ -86,12 +92,19 @@ const EXAMPLE_FIXTURE: ServiceFixture = {
       plural: "Things",
       noun: "モノ",
       verbs: ["list", "get"],
-      examples: ["モノを見せて", "モノの一覧"],
+      examples: { list: ["モノを見せて", "モノの一覧"] },
     },
   ],
   aggregates: [{ id: "Overview", kind: "summarize", noun: "概要" }],
   settings: [{ id: "Rule", verb: "get", summary: "ルール取得", displayName: "ルール" }],
-  workflows: [],
+  workflows: [
+    {
+      id: "Ticket",
+      noun: "チケット",
+      actions: ["submit", "approve"],
+      examples: { submit: ["チケットを申請して"] },
+    },
+  ],
 };
 
 function findOperation(doc: OpenAPIDocument, operationId: string): Operation {
@@ -102,11 +115,32 @@ function findOperation(doc: OpenAPIDocument, operationId: string): Operation {
   return op;
 }
 
-test("toOpenAPI emits x-orchestra-examples when the definition table declares it", () => {
+test("toOpenAPI emits x-orchestra-examples on the verb the definition table keys them by", () => {
   const doc = toOpenAPI(EXAMPLE_FIXTURE);
   const list = findOperation(doc, "listExampleThings");
 
   expect(list["x-orchestra-examples"]).toEqual(["モノを見せて", "モノの一覧"]);
+});
+
+test("toOpenAPI omits x-orchestra-examples on a resource's other verbs", () => {
+  const doc = toOpenAPI(EXAMPLE_FIXTURE);
+  const get = findOperation(doc, "getExampleThing");
+
+  expect(get["x-orchestra-examples"]).toBeUndefined();
+});
+
+test("toOpenAPI emits x-orchestra-examples on the action a workflow's examples key by", () => {
+  const doc = toOpenAPI(EXAMPLE_FIXTURE);
+  const submit = findOperation(doc, "submitExampleTicket");
+
+  expect(submit["x-orchestra-examples"]).toEqual(["チケットを申請して"]);
+});
+
+test("toOpenAPI omits x-orchestra-examples on a workflow's other actions", () => {
+  const doc = toOpenAPI(EXAMPLE_FIXTURE);
+  const approve = findOperation(doc, "approveExampleTicket");
+
+  expect(approve["x-orchestra-examples"]).toBeUndefined();
 });
 
 test("toOpenAPI omits x-orchestra-examples when the definition table declares none", () => {
