@@ -48,7 +48,7 @@ GENERATED := $(addsuffix /internal/adapter/openapi/openapi.gen.go,$(SERVICE_DIRS
         web-fmt web-fmt-check web-lint web-typecheck web-test web-build web-dev \
         guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication guard-coverage guard-browser guard-a11y guard-layout guard-protected guard-test \
         acceptance-services acceptance-web acceptance-e2e acceptance-browser browsers \
-        eval eval-accept
+        eval eval-accept narrowing
 
 ## ---------------------------------------------------------------- overview
 help: ## Show this help
@@ -321,6 +321,10 @@ eval: build ## Run the eval suite against the real planner and compare to the re
 
 eval-accept: build ## Run the eval suite and rewrite eval/baseline.json from it (AC-E-204: the only target that does)
 	cd e2e && node eval/run.ts --accept
+
+## ---------------------------------------------------------------- narrowing (docs/specs/narrowing.md; never part of make check)
+narrowing: ## Measure the lexical baseline's recall@K over the narrowing fixture (not quiet: it prints its own report; no LLM, no build)
+	cd e2e && node narrowing/measure.ts
 
 ## ---------------------------------------------------------------- misc
 clean: ## Remove build output
