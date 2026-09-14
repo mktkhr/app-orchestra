@@ -183,7 +183,7 @@ Thirty resources, twenty aggregates, twenty settings and ten workflow actions
 per service — 200 exactly. Authoring rules, which are the measurement:
 
 - **Axis A comes free**: every `list` summarises as `<noun>の一覧`, so 一覧
-  matches 150 operations per service. Do not vary the verb wording.
+  matches 180 of the thousand. Do not vary the verb wording.
 - **Axis B**: five shared keys — `order` (受注 / 発注), `line` (受注明細 /
   発注明細 / 経費明細), `approval` (経費承認 / 発注承認 / 勤怠承認),
   `employee` (社員), `partner` (取引先). A shared resource's noun differs but

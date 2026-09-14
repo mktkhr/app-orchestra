@@ -8,7 +8,7 @@
  * `services/*\/api/openapi.yaml` — this fixture is not one of those services
  * (spec T4), so the tests in `openapi.test.ts` assert the same rules by hand.
  */
-import { capitalize, kebabOf } from "./naming.ts";
+import { kebabOf, qualify } from "./naming.ts";
 import { SCHEMAS } from "./openapi-document.ts";
 import type {
   OpenAPIDocument,
@@ -120,7 +120,7 @@ function crudOperation(service: string, resource: Resource, verb: Verb): Operati
   const idPart = verb === "list" ? resource.plural : resource.id;
 
   return {
-    operationId: `${verb}${capitalize(service)}${idPart}`,
+    operationId: `${verb}${qualify(service, idPart)}`,
     summary: crudSummary(verb, resource.noun),
     description: descriptionOf(resource, verb),
     tags: [service],
@@ -162,7 +162,7 @@ function aggregatePath(service: string, aggregate: Aggregate): Readonly<Record<s
   const label = AGGREGATE_LABEL[aggregate.kind];
   const path = `/api/${service}/${kebabOf(aggregate.id)}/${aggregate.kind}`;
   const operation: Operation = {
-    operationId: `${aggregate.kind}${capitalize(service)}${aggregate.id}`,
+    operationId: `${aggregate.kind}${qualify(service, aggregate.id)}`,
     summary: `${aggregate.noun}を${label}する`,
     description: `${aggregate.noun}に対する${label}を行い、結果をまとめて返す。`,
     tags: [service],
@@ -177,7 +177,7 @@ function aggregatePath(service: string, aggregate: Aggregate): Readonly<Record<s
 function settingPath(service: string, setting: Setting): Readonly<Record<string, PathItem>> {
   const path = `/api/${service}/settings/${kebabOf(setting.id)}`;
   const operation: Operation = {
-    operationId: `${setting.verb}${capitalize(service)}${setting.id}`,
+    operationId: `${setting.verb}${qualify(service, setting.id)}`,
     summary: setting.summary,
     description: `${setting.summary}。設定・マスタ系のAPIで、対象の取引そのものは扱わない。`,
     tags: [service, "settings"],
@@ -209,7 +209,7 @@ function workflowPaths(service: string, workflow: Workflow): Readonly<Record<str
     const label = ACTION_LABEL[action];
     const path = `/api/${service}/${kebabOf(workflow.id)}/{id}/${action}`;
     const operation: Operation = {
-      operationId: `${action}${capitalize(service)}${workflow.id}`,
+      operationId: `${action}${qualify(service, workflow.id)}`,
       summary: `${workflow.noun}を${label}する`,
       description: `${workflow.noun}のワークフローで${label}操作を行う。`,
       tags: [service, "workflow"],

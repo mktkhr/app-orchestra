@@ -21,3 +21,20 @@ export function kebabOf(id: string): string {
 export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/**
+ * Joins a service name and a resource id into the `<Service><Resource>` half
+ * of an operationId, without repeating a service name the resource already
+ * carries: the attendance service's `AttendanceRecord` becomes
+ * `AttendanceRecords`, not `AttendanceAttendanceRecords`.
+ *
+ * A real system names `listAttendanceRecords`, which is also the id
+ * docs/specs/narrowing.md section 4 uses in its worked example. The stutter
+ * was cosmetic for the platform but not for the fixture: an id that repeats
+ * the service name is not what the thing being imitated looks like.
+ */
+export function qualify(service: string, idPart: string): string {
+  const prefix = capitalize(service);
+
+  return idPart.startsWith(prefix) ? idPart : `${prefix}${idPart}`;
+}

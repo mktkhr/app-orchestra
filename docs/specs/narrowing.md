@@ -85,10 +85,10 @@ better here than it deserves to.
 Each axis is a category in the corpus and a column in the report.
 
 **A - the verb carries no selectivity.**
-一覧 matches two hundred operations out of a thousand. Every service lists
-things. Choosing by verb narrows a catalogue by a fifth and no further; all
-of the selectivity is in the noun. The fixture guarantees this rather than
-letting it emerge.
+一覧 matches 180 operations out of a thousand (measured, 2026-09-14). Every
+service lists things. Choosing by verb narrows a catalogue by a fifth and no
+further; all of the selectivity is in the noun. The fixture guarantees this
+rather than letting it emerge.
 
 **B - the same resource name in more than one service.**
 「注文を一覧」 has a defensible answer in 販売 and another in 購買, and the
@@ -117,9 +117,12 @@ built in at a fixed proportion rather than left to chance.
 **E - a decoy that is lexically closer than the answer.**
 
 > Question: 先月の残業時間
-> Answer: `listAttendanceRecords` - summary 勤怠記録の一覧, which does not
-> contain the word 残業
-> Decoy: `getOvertimeThreshold` - summary **残業時間**の上限設定を取得
+> Answers: `listAttendanceRecords` (勤怠記録の一覧, which does not contain the
+> word 残業 at all) and `listAttendanceOvertimes` (残業の一覧, which contains
+> 残業 but not 時間)
+> Decoy: `getAttendanceOvertimeThreshold` - summary **残業時間**の上限設定を
+> 取得, which carries every character bigram of 残業時間 and answers none of
+> them
 
 Settings and master-data APIs are named after the transactions they
 configure, so a real catalogue is full of these. A lexical mechanism ranks
