@@ -8,7 +8,23 @@ _Nothing in progress._
 
 ## Next
 
-1. **Choose what the product uses, and wire it into `services/platform`.**
+1. **The catalogue's own vocabulary - the residual gap.** Four axis-D
+   questions (「立て替えた分を出したい」→ 経費申請, 「お金を返してもらいたい」
+   → 精算, 「商品が届いたので受け取り処理をしたい」→ 検収, 「値段を安くして
+   ほしいと頼みたい」→ 値引) are not reached by any retriever inside 50
+   candidates and not answered by any model - local or frontier, with or
+   without thinking - from a shortlist (`DECISIONS.md`, 2026-09-14 residual
+   gap; 2026-09-15). Widening retrieval to 500 finds them and stops being
+   narrowing. The mapping needs the company's words in the catalogue:
+   what an operation's description and `x-ui-hint` should carry, and how
+   the corpus measures it, is the next spec.
+2. **Fix the corpus answer key.** It names `list*` and rejects `search*`,
+   `summarize*` and `aggregate*` over the same object, which are often the
+   better answer (`DECISIONS.md`, 2026-09-14, "a defect in the corpus it
+   exposed"). Axes B and C already list every defensible answer; A, D and E
+   do not. Every recorded recall figure moves when this is fixed, so it is
+   done deliberately and re-recorded, not patched.
+3. **Choose what the product uses, and wire it into `services/platform`.**
    `docs/plans/retrieving.md`'s own closing note names this as what comes
    after and is deliberately not in that subproject - a hybrid of lexical
    and vector scoring is named as the obvious next mechanism, excluded
@@ -24,7 +40,7 @@ _Nothing in progress._
    rerank stage, and what keeping a model loaded costs") for the full
    table, the contract-check cross-check, and the alternation cost a
    deployment running narrowing and answering on the same GPU would pay.
-2. A genre/domain layer above individual services - grouping services by
+4. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
    exposed operation in `services/inventory` carries the single tag `items`
@@ -32,12 +48,12 @@ _Nothing in progress._
    group nothing beyond what `OperationPicker`'s own `groupBy` (off
    `serviceDisplayName`) already does. Worth building once a service
    carries more than one tag over its own exposed operations.
-3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+5. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-4. **Open defect: a question whose filter word matches no enum value gets
+6. **Open defect: a question whose filter word matches no enum value gets
    every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
    在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
    variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
@@ -52,7 +68,7 @@ _Nothing in progress._
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
-5. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+7. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -63,13 +79,13 @@ _Nothing in progress._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-6. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+8. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
 
-7. **`<Typography color="text.secondary">` is a silent no-op almost
+9. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the

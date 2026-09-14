@@ -21,16 +21,26 @@ without visiting any of them.
 
 ## 2. What has been decided
 
-|        | Decision                                                                                                                                                                                                                                                        |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **D1** | The system decomposes into seven subprojects. The first vertical slice is: dummy services, service catalogue, LLM orchestration, dynamic UI, chat screen. Authentication and workspaces come after it.                                                          |
-| **D2** | The service catalogue is sent whole on every request and kept warm in the prompt cache. Staged narrowing (service, then genre, then API) is not adopted for cost reasons: at the expected scale it is several times more expensive and three times the latency. |
-| **D3** | Component selection is deterministic, derived from the OpenAPI response schema plus `x-ui-hint`. No LLM call participates in rendering.                                                                                                                         |
-| **D4** | The frontend is a Vite + React Router SPA built on Material UI. Orchestration lives in the Go backend, not in a Node BFF. Toolpad Core was adopted and then dropped - see `DECISIONS.md`, 2026-09-11.                                                           |
+|         | Decision                                                                                                                                                                                                                                                                                                                                        |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **D1**  | The system decomposes into seven subprojects. The first vertical slice is: dummy services, service catalogue, LLM orchestration, dynamic UI, chat screen. Authentication and workspaces come after it.                                                                                                                                          |
+| **D2**  | The service catalogue is sent whole on every request and kept warm in the prompt cache. Staged narrowing (service, then genre, then API) is not adopted for cost reasons: at the expected scale it is several times more expensive and three times the latency.                                                                                 |
+| **D3**  | Component selection is deterministic, derived from the OpenAPI response schema plus `x-ui-hint`. No LLM call participates in rendering.                                                                                                                                                                                                         |
+| **D4**  | The frontend is a Vite + React Router SPA built on Material UI. Orchestration lives in the Go backend, not in a Node BFF. Toolpad Core was adopted and then dropped - see `DECISIONS.md`, 2026-09-11.                                                                                                                                           |
+| **D17** | The model that chooses an operation from a shortlist is local. A frontier model is not adopted: on the same 100 questions and the same 50 candidates, a local 9B model scores 69 and Opus 5 scores 73 - four points for two to six times the latency and a per-call cost. Thinking adds nothing on either. Measured 2026-09-15, `DECISIONS.md`. |
 
 The consequence of D2 and D3 together is that the LLM has exactly one job:
 choose the API and fill its parameters. Everything downstream of that is
 ordinary code.
+
+D2's two grounds have since been measured against a thousand-operation
+catalogue (`DECISIONS.md`, 2026-09-14 and 2026-09-15). The cost ground holds
+where a prompt cache is available: a question against the whole catalogue
+costs about what a question against fifty candidates costs. The precision
+ground does not: given all thousand, a frontier model scores 64 where the
+same model given fifty scores 73, and its misses keep the verb, lose the
+noun, and take the first service in the list. Revising D2 is a product
+decision still to be taken; the evidence for it is recorded there.
 
 ## 3. Scope of the first vertical slice
 

@@ -1,11 +1,20 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-14 (`docs/plans/retrieving.md` closes - six
-embedding configurations and the retrieve-then-rerank stage measured beside
-the lexical floor, and the alternation cost llama-swap's default mode
-imposes; see below)_
+_Last updated: 2026-09-15 (frontier models measured on the same shortlist as
+the local model; D17 recorded; the subproject returns to local models)_
 
 ## Summary
+
+**2026-09-15 - frontier measured, not adopted (D17).** With an API key and a
+$20 limit, the same 100 questions and the same 50 `e5-large-q8` candidates
+were put to Claude Haiku 4.5, Sonnet 5 and Opus 5, one call each, thinking
+off: 67 / 73 / 73 against the local `qwen3.5-9b-q8`'s 69, at 0.79-2.30 s a
+question against 0.4 s. Thinking changes nothing (Sonnet 5: 73 either way;
+the local model: 6/15 on axis D either way). The whole catalogue behind a
+one-hour cache costs what a shortlist costs and scores 64. Nothing in
+`services/` or `e2e/narrowing/` changed; the run lives in `DECISIONS.md`
+(2026-09-15) and the session scratchpad. Spend: $3.80 of $20, $1.37 of it a
+wasted run recorded as such. Work continues on local models.
 
 **`docs/plans/retrieving.md` closes - `make narrowing` now reports the
 lexical floor, six embedding configurations, and the retrieve-then-rerank
