@@ -4,11 +4,11 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. `docs/plans/narrowing.md` Task 3 - the lexical baseline
-   (`e2e/narrowing/lexical.ts`): a character-bigram index over the catalogue,
-   built once, no tokeniser/model/network. Tasks 1 and 2 (the fixture and
-   the server that proved the platform builds a 1000-operation catalogue
-   from it) are done; see `STATE.md`.
+1. `docs/plans/narrowing.md` Task 4 - the corpus, the measurement, and the
+   numbers. Tasks 1-3 (the fixture, the server, and the lexical baseline
+   `e2e/narrowing/lexical.ts`) are done; see `STATE.md`. Task 4 writes the
+   100-question corpus, `measure.ts`/`report.ts`, the `make narrowing`
+   target and the recall@K numbers in `DECISIONS.md`.
 
 ## Next
 

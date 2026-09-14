@@ -1,10 +1,37 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-14 (`docs/plans/narrowing.md` Task 2 done - the
-fixture is served over HTTP and the platform confirmed to build a
-1000-operation catalogue from it; see below)_
+_Last updated: 2026-09-14 (`docs/plans/narrowing.md` Task 3 done - the
+lexical baseline over the fixture catalogue; see below)_
 
 ## Summary
+
+**`docs/plans/narrowing.md` Task 3 is done - the lexical baseline.**
+`e2e/narrowing/lexical.ts`: `bigramsOf(text)` returns the deduplicated set of
+a string's character bigrams; `combinedTextOf(operation)` joins an
+operation's summary, description, display name and service display name;
+`scoreOperation(operation, question)` scores one operation against a
+question directly from those two (no index needed - this and `bigramsOf` are
+what Task 4 asserts the axis-D/axis-E properties with); `buildIndex(catalog)`
+precomputes every operation's bigram set once into a `Map<operationId, ...>`
+(the spec's "index... is a map", section 7); `narrow(index, question, k)`
+scores every entry in the index against the question's bigrams (overlap
+count divided by the question's own bigram count) and returns the top `k`
+`{operationId, score}` pairs. `narrow` reads only `index` and its arguments,
+allocates a fresh result array per call, and never mutates the index -
+asserted in `lexical.test.ts` by snapshotting each operation's bigram-set
+size before and after a run of queries. Scoring the full 1000-operation
+catalogue measured at ~0.4ms, comfortably under the 5ms the test requires.
+Worked examples against the real fixture: 「在庫ロットを見せて」 top-scores
+`getInventoryLot`/`searchInventoryLots` (0.625) ahead of `listInventoryLots`
+(0.5); 「注文を一覧」 ties `listSalesOrders` and `listPurchasingOrders` at
+0.5, the axis-B collision the spec predicts; 「先月の残業時間」 scores the
+axis-E decoy `getAttendanceOvertimeThreshold` at 0.5, ahead of both
+`listAttendanceOvertimes` (0.167) and `listAttendanceRecords` (not in the
+top 5) - the baseline fails exactly the way section 4 says a lexical
+mechanism should. No stop-word list, synonym table, per-field boost or IDF
+weighting was added; the only departure from raw bigram-multiset overlap is
+deduplicating a text's bigrams before counting; the commit message says why
+that is structural rather than tuning. Tasks 1 and 2 below are unchanged.
 
 **`docs/plans/narrowing.md` Task 2 is done - the fixture is served, and the
 platform agrees with it.** `e2e/narrowing/serve.ts`: one `node:http` server,
