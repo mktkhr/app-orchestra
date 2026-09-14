@@ -17,6 +17,7 @@ export {
 } from "./cache.ts";
 export {
   checkUtteranceContract,
+  type NonNovelUtterance,
   type UtteranceContractFailure,
   type UtteranceContractResult,
 } from "./contract.ts";

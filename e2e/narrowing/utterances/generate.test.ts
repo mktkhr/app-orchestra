@@ -122,10 +122,10 @@ function firstMessageContent(call: RecordedCall | undefined): unknown {
   return isRecord(first) ? first["content"] : undefined;
 }
 
-test("the prompt and the operation's text both reach the request", async () => {
+test("the prompt and the operation's text both reach the request, under a 操作: label", async () => {
   const { fetchImpl, calls } = fakeTransport("一つ目");
 
   await generateUtterancesFor("在庫ロットの一覧", "テストプロンプト", fetchImpl, "http://fake");
 
-  expect(firstMessageContent(calls[0])).toBe("テストプロンプト\n\n在庫ロットの一覧");
+  expect(firstMessageContent(calls[0])).toBe("テストプロンプト\n\n操作:\n在庫ロットの一覧");
 });

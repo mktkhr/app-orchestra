@@ -18,7 +18,23 @@
  * nothing else. A question's vector is never cached (spec V4); neither is
  * an utterance's, here - this module measures what Task 2's narrower will
  * do, it does not build the cache Task 2 uses.
+ *
+ * **Novelty.** The retrieval rate alone rewards the exact failure this
+ * layer exists to avoid: the first generation prompt scored a *perfect*
+ * retrieval rate by conjugating each operation's own noun ("検収作成して",
+ * "検収作って", ...), which shares almost every bigram with the operation's
+ * own text and so trivially retrieves it - and shares no vocabulary at all
+ * with the axis-D questions it was meant to bridge (`generate.ts`'s header
+ * has the numbers). An utterance is only worth having if it says something
+ * `combinedTextOf` does not, so novelty checks the one thing the retrieval
+ * rate cannot: whether an utterance shares even one character bigram
+ * (`bigramsOf`, `../lexical.ts` - the same definition the corpus's axis D
+ * is measured with) with its own operation's text. Zero shared bigrams is
+ * novel; any overlap at all is not. Reported beside the retrieval rate, per
+ * configuration, with the non-novel utterances returned the same way
+ * `failures` reports a retrieval miss.
  */
+import { bigramsOf, combinedTextOf } from "../lexical.ts";
 import { embedCatalogue, type CacheOptions, type CatalogueVectors } from "../embedding/cache.ts";
 import { embedMany } from "../embedding/client.ts";
 import type { EmbeddingConfig } from "../embedding/configs.ts";
@@ -33,6 +49,12 @@ export interface UtteranceContractFailure {
   readonly wonBy: string;
 }
 
+/** One utterance that shares at least one character bigram with its own operation's text - not novel. */
+export interface NonNovelUtterance {
+  readonly utterance: string;
+  readonly operationId: string;
+}
+
 /** The outcome of AC-G-103 for one configuration's generated utterances. */
 export interface UtteranceContractResult {
   readonly configId: string;
@@ -41,6 +63,9 @@ export interface UtteranceContractResult {
   /** The share of sampled utterances that retrieved their own operation first. `0` when there were none to check. */
   readonly rate: number;
   readonly failures: readonly UtteranceContractFailure[];
+  /** The share of sampled utterances sharing no character bigram with their own operation's text. `0` when there were none to check. */
+  readonly noveltyRate: number;
+  readonly nonNovel: readonly NonNovelUtterance[];
 }
 
 interface FlatUtterance {
@@ -72,6 +97,20 @@ function dot(a: readonly number[], b: readonly number[]): number {
   }
 
   return sum;
+}
+
+/** Whether `a` and `b` share at least one member. */
+function shareAny(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  for (const member of a) {
+    if (b.has(member)) return true;
+  }
+
+  return false;
+}
+
+/** Whether `utterance` shares no character bigram with `operationText` - `combinedTextOf` its operation. */
+function isNovel(utterance: string, operationText: string): boolean {
+  return !shareAny(bigramsOf(utterance), bigramsOf(operationText));
 }
 
 /** The operation id whose catalogue vector best matches `queryVector`. */
@@ -114,8 +153,24 @@ export async function checkUtteranceContract(
   const flat = flatten(sample, utterances);
 
   if (flat.length === 0) {
-    return { configId: config.id, sampledOperationIds, totalUtterances: 0, rate: 0, failures: [] };
+    return {
+      configId: config.id,
+      sampledOperationIds,
+      totalUtterances: 0,
+      rate: 0,
+      failures: [],
+      noveltyRate: 0,
+      nonNovel: [],
+    };
   }
+
+  const operationTextById = new Map(
+    sample.map((operation) => [operation.operationId, combinedTextOf(operation)]),
+  );
+
+  const nonNovel = flat
+    .filter((item) => !isNovel(item.utterance, operationTextById.get(item.operationId) ?? ""))
+    .map((item) => ({ utterance: item.utterance, operationId: item.operationId }));
 
   const catalogueVectors = await embedCatalogue(config, catalog, options);
   const queryVectors = await embedMany(
@@ -144,5 +199,7 @@ export async function checkUtteranceContract(
     totalUtterances: flat.length,
     rate: (flat.length - failures.length) / flat.length,
     failures,
+    noveltyRate: (flat.length - nonNovel.length) / flat.length,
+    nonNovel,
   };
 }

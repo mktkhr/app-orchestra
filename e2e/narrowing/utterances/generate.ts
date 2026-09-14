@@ -3,7 +3,7 @@
  * llama-swap chat call per operation, asking the local model for five short
  * everyday Japanese phrasings of the operation's own text.
  *
- * The prompt is data, not code - it is part of the cache key (`cache.ts`),
+ * The prompt is data, not code - it is part of the cache key (`cache.ts`) -
  * and it exists to close the four gaps that motivated this subproject
  * (spec section 1, DECISIONS.md 2026-09-14/2026-09-15): none of these four
  * questions share vocabulary with the operation they answer, so no amount
@@ -12,24 +12,39 @@
  *   - 「お金を返してもらいたい」 -> 精算の作成, 367th
  *   - 「商品が届いたので受け取り処理をしたい」 -> 検収の作成, 257th
  *   - 「値段を安くしてほしいと頼みたい」 -> 値引の作成, 111th
- * A generator that only rephrases the operation's own words would not close
- * this kind of gap; the prompt asks for everyday language on purpose, and
- * gives the model nothing the retriever does not also see (G3, G4).
  *
- * Thinking eats `max_tokens` and has already burned two runs (local,
- * 2026-09-14; API, 2026-09-15) - `chat_template_kwargs.enable_thinking` is
- * set to `false` and `temperature` to `0` explicitly on every request,
- * never left to the model's default. Transport is injectable exactly as
- * `embedding/client.ts` does it, so `make check` calls no model of any kind.
+ * The first version of this prompt ("この操作を...短い言い方を五つ") did not
+ * close that gap - it widened it into the cache. Read back after generating
+ * all 1000: createExpenseClaim -> 「経費申請作って / 経費申請作成 /
+ * 経費申請作りたい / 経費申請作ります / 経費申請作れ」,
+ * createPurchasingGoodsReceipt -> 「検収作成して / 検収作って / 検収作れ /
+ * 検収作成 / 検収作」. Across all 4,960 utterances that run produced, none of
+ * 立て替え, 受け取, 安く, 届いた or 休みたい appeared even once: the model had
+ * conjugated each operation's own noun rather than describing the situation
+ * that leads to it - a paraphrase of the summary in the summary's own
+ * words, exactly what the retriever already reads, so it could not bridge
+ * anything (the trap `contract.ts`'s novelty check now catches).
+ *
+ * This prompt instead few-shots the model with two examples from domains
+ * outside the fixture (meeting-room booking, badge reissue) and asks for
+ * the words of the person's own trouble, not the operation's. The two
+ * example domains are deliberately foreign to the five fixture services -
+ * fixture-domain examples would just teach the model to paraphrase harder
+ * within the same vocabulary it already has.
  */
 import { DEFAULT_BASE_URL, type FetchLike } from "../embedding/client.ts";
 
 /** The picker's model (docs/plans/describing.md Task 1 Step 3), thinking off. */
 export const UTTERANCE_MODEL = "qwen3.5-9b-q8";
 
-/** One Japanese constant: the operation's own text is appended after it. */
-export const UTTERANCE_PROMPT =
-  "この操作を、社内の人が日常語で頼むとしたら、どう言うか。短い言い方を五つ、一行に一つずつ、他には何も書かずに挙げてください。";
+/** One Japanese constant: `操作:` and the operation's own text follow it, on their own lines. */
+export const UTTERANCE_PROMPT = `社内システムの操作ごとに、その操作を必要とする人が最初に言いそうな一言を集めています。システムの用語ではなく、その人の困りごとの言葉で。
+
+例:
+操作「会議室予約の作成」→「打ち合わせの部屋を押さえたい」「来週の会議どこでやろう」「10人入る部屋空いてる？」
+操作「社員証の再発行」→「カードなくした」「入館証が読まなくなった」「ゲート通れない」
+
+次の操作について、同じように五つ、一行に一つずつ、操作名の言葉を使わずに書いてください。他には何も書かない。`;
 
 /** Enough for five short lines, not enough to hide a thinking block inside. */
 export const UTTERANCE_MAX_TOKENS = 300;
@@ -101,7 +116,7 @@ export async function generateUtterancesFor(
       temperature: 0,
       max_tokens: UTTERANCE_MAX_TOKENS,
       chat_template_kwargs: { enable_thinking: false },
-      messages: [{ role: "user", content: `${prompt}\n\n${text}` }],
+      messages: [{ role: "user", content: `${prompt}\n\n操作:\n${text}` }],
     }),
   });
   const body: unknown = await response.json();

@@ -165,3 +165,54 @@ test("an operation with no utterances contributes nothing to the sample total", 
 
   expect(result.totalUtterances).toBe(0);
 });
+
+test("an utterance sharing no bigram with its operation's text counts toward novelty", async () => {
+  // op0's combinedTextOf carries only "summary op0", "a description", "op0" and "Service" -
+  // this utterance shares no two-character substring with any of them.
+  const utterances: OperationUtterances = new Map([["op0", ["美味しいご飯を食べたい"]]]);
+
+  const result = await checkUtteranceContract(CONFIG, CATALOG, utterances, {
+    dir,
+    fetchImpl: faithfulTransport(),
+    baseUrl: "http://fake",
+  });
+
+  expect(result.noveltyRate).toBe(1);
+});
+
+test("a novel utterance is not reported as non-novel", async () => {
+  const utterances: OperationUtterances = new Map([["op0", ["美味しいご飯を食べたい"]]]);
+
+  const result = await checkUtteranceContract(CONFIG, CATALOG, utterances, {
+    dir,
+    fetchImpl: faithfulTransport(),
+    baseUrl: "http://fake",
+  });
+
+  expect(result.nonNovel).toEqual([]);
+});
+
+test("an utterance repeating its own operation's words is reported as non-novel", async () => {
+  // "op0を見たい" shares the "op" and "p0" bigrams with op0's own summary "summary op0".
+  const utterances: OperationUtterances = new Map([["op0", ["op0を見たい"]]]);
+
+  const result = await checkUtteranceContract(CONFIG, CATALOG, utterances, {
+    dir,
+    fetchImpl: faithfulTransport(),
+    baseUrl: "http://fake",
+  });
+
+  expect(result.nonNovel).toEqual([{ utterance: "op0を見たい", operationId: "op0" }]);
+});
+
+test("a non-novel utterance lowers the novelty rate", async () => {
+  const utterances: OperationUtterances = new Map([["op0", ["op0を見たい"]]]);
+
+  const result = await checkUtteranceContract(CONFIG, CATALOG, utterances, {
+    dir,
+    fetchImpl: faithfulTransport(),
+    baseUrl: "http://fake",
+  });
+
+  expect(result.noveltyRate).toBe(0);
+});
