@@ -1,9 +1,46 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-14 (`docs/plans/narrowing.md` Task 3 done - the
-lexical baseline over the fixture catalogue; see below)_
+_Last updated: 2026-09-14 (`docs/plans/narrowing.md` Task 4 done - the
+corpus, the measurement and the recall@K numbers; the subproject closes -
+see below)_
 
 ## Summary
+
+**`docs/plans/narrowing.md` Task 4 is done - the corpus, the measurement,
+and the numbers. The subproject closes.** `e2e/narrowing/corpus/` (100
+`Question`s, 25/25/25/15/10 across axes A-E, its own checks in
+`corpus.test.ts`) was already committed going into this task;
+`e2e/narrowing/measure.ts` and `report.ts` are new. `measure(catalog,
+questions, kValues)` builds one `LexicalIndex` (Task 3), then for each
+question reads `rankRangeOf` for every answer and keeps the closest
+(`best`/`worst`) - a question is recalled if _any_ of its answers is (spec
+section 6) - while separately timing one `narrow` call per question for the
+wall-clock column. A question is `excluded` rather than scored zero when
+none of its answers are operations the catalogue being measured actually
+serves - the corpus was written against the full five-service fixture, so
+at sizes 1-3 some questions cannot be asked of a smaller one at all.
+`report.ts`'s `printReport` prints `worst%/best%` per axis and overall, for
+K = 10/20/50 at all four sizes, states "higher is better" in its own header,
+and flags a cell `*` when the two figures differ by 15 points or more - the
+tie-driven coin-toss gap spec section 6 calls out. `make narrowing` (`cd
+e2e && node narrowing/measure.ts`) runs it; it needed
+`ORCHESTRA_ALLOW_HARNESS_CHANGE=1` since the `Makefile` is protected, and is
+deliberately not part of `check`/`test`/`acceptance`/`lint` - see
+`DECISIONS.md`, 2026-09-14, "the lexical baseline's recall@K, per axis" for
+the numbers themselves, the direction (higher is better), and what they
+mean: axis D is 0% at every size and K (the baseline cannot bridge a
+vocabulary gap by construction, spec section 7 - not a bug), axis A is
+100% everywhere (its nouns are exact matches even though its verb carries
+no selectivity), axis B and E carry the widest worst/best gaps and widen as
+the catalogue grows (more operations sharing the same collided vocabulary),
+axis C tops out at 68%/80% even at K=50, and overall reads 47%/76% at the
+full 1000-operation catalogue at K=10. Per-query wall-clock stays under
+0.25ms even at 1000 operations, so cost is not the baseline's limit -
+recall is, which is the argument the next subproject (choosing a narrowing
+mechanism) needs as its input. `measure.test.ts` checks the recall rules
+themselves (a tie is not a hit, several answers means recalled if any one
+is found, an answer outside the catalogue is excluded not zeroed) against a
+handful of hand-built operations and questions, not the real fixture.
 
 **`docs/plans/narrowing.md` Task 3 is done - the lexical baseline.**
 `e2e/narrowing/lexical.ts`: `bigramsOf(text)` returns the deduplicated set of

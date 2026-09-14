@@ -4,15 +4,21 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. `docs/plans/narrowing.md` Task 4 - the corpus, the measurement, and the
-   numbers. Tasks 1-3 (the fixture, the server, and the lexical baseline
-   `e2e/narrowing/lexical.ts`) are done; see `STATE.md`. Task 4 writes the
-   100-question corpus, `measure.ts`/`report.ts`, the `make narrowing`
-   target and the recall@K numbers in `DECISIONS.md`.
+_Nothing in progress._
 
 ## Next
 
-1. A genre/domain layer above individual services - grouping services by
+1. **Choose the narrowing mechanism** - `docs/plans/narrowing.md`'s own
+   closing note names this as the next subproject, and its input is exactly
+   what Task 4 measured (`DECISIONS.md`, 2026-09-14, "the lexical baseline's
+   recall@K, per axis"): the lexical baseline is at 100% on axis A, 0% on
+   axis D (a vocabulary gap it cannot close by construction), and on axes
+   B/C/E recall climbs toward 100% only by K=50 at the full 1000-operation
+   catalogue, with a wide worst/best gap driven by ties at low K. A vector
+   store (or another mechanism) has this table to beat, per axis, not a
+   single number - and axis D is the one figure a purely lexical improvement
+   cannot move at all.
+2. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
    exposed operation in `services/inventory` carries the single tag `items`
@@ -20,12 +26,12 @@ _Keep three lists. Move items, do not duplicate them._
    group nothing beyond what `OperationPicker`'s own `groupBy` (off
    `serviceDisplayName`) already does. Worth building once a service
    carries more than one tag over its own exposed operations.
-2. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-3. **Open defect: a question whose filter word matches no enum value gets
+4. **Open defect: a question whose filter word matches no enum value gets
    every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
    在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
    variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
@@ -40,7 +46,7 @@ _Keep three lists. Move items, do not duplicate them._
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
-4. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+5. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -51,13 +57,13 @@ _Keep three lists. Move items, do not duplicate them._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-5. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+6. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
 
-6. **`<Typography color="text.secondary">` is a silent no-op almost
+7. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
@@ -79,6 +85,17 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## Done
 
+- **`docs/plans/narrowing.md` closes: the corpus, the measurement, and the
+  lexical baseline's recall@K, per axis** (AC-T-105 through AC-T-107).
+  `e2e/narrowing/measure.ts`/`report.ts`, `make narrowing`. Axis D reads 0%
+  at every catalogue size and K, by construction (spec section 7 - the
+  baseline cannot bridge a vocabulary gap, not a defect); axis A is 100%
+  everywhere; axis B and E carry the widest worst/best gap (ties widening as
+  the catalogue grows); axis C tops out at 68%/80% even at K=50; overall is
+  47%/76% at the full 1000-operation catalogue at K=10. See `STATE.md` and
+  `DECISIONS.md`, 2026-09-14 ("the lexical baseline's recall@K, per axis").
+  Next subproject's input: choosing a narrowing mechanism against this
+  table.
 - **`docs/specs/offering.md` closes: a built-in tool declares its own
   condition, and `propose_panel` applies only when the question was asked
   from a workspace** (AC-O-101 through AC-O-105).

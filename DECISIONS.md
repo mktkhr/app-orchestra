@@ -4824,3 +4824,122 @@ save-control and proposal-form wiring already switched on
 same value to reach `postPlan`'s own request body. `pages/chat` and
 `pages/workspace` themselves are unchanged: they already called
 `ConversationPanel` with no id and always an id, respectively.
+
+## 2026-09-14 `docs/specs/narrowing.md` Task 4: the lexical baseline's recall@K, per axis - higher is better
+
+**Context.** `docs/plans/narrowing.md` Task 4 is the whole point of the
+subproject: measure the lexical baseline (`e2e/narrowing/lexical.ts`, Task 3) against the 100-question corpus (`e2e/narrowing/corpus/`, Tasks 1-3) at
+every catalogue size the fixture supports, and record the numbers rather
+than a claim about them. `e2e/narrowing/measure.ts` and `report.ts` do the
+measuring; `make narrowing` runs it. No LLM is called -
+`docker logs llama-swap`'s `POST /v1/chat/completions` count did not move
+across this work (414 before, 414 after) - and `make narrowing` is not part
+of `make check`, `test`, `acceptance` or `lint`, exactly as the plan says: a
+measurement that has to pass is not a measurement.
+
+**Read the table as recall@K, higher is better.** Every cell is
+`worst%/best%` out of the questions eligible at that catalogue size (spec
+section 6): `worst` counts an answer recalled only if it is still inside K
+even when every operation tied with it outranks it - a tie is not a hit -
+and `best` counts it if the most favourable tie order would put it inside
+K. A cell marked `*` differs by 15 points or more between the two, which is
+the report saying that much of the number is a coin toss rather than a
+property of the mechanism.
+
+```
+size  ops    K    A         B         C         D         E         overall   ms/query
+  size 1 (200 ops): 82 of 100 questions excluded — by axis: A 19, B 25, C 20, D 11, E 7
+1     200    10   100%/100% n/a/n/a   60%/80%*  0%/0%     67%/100%* 61%/72%   0.080
+1     200    20   100%/100% n/a/n/a   60%/80%*  0%/0%     100%/100% 67%/72%   0.080
+1     200    50   100%/100% n/a/n/a   60%/80%*  0%/0%     100%/100% 67%/72%   0.080
+  size 2 (400 ops): 53 of 100 questions excluded — by axis: A 13, B 10, C 15, D 10, E 5
+2     400    10   100%/100% 60%/93%*  40%/60%*  0%/0%     80%/100%* 62%/79%*  0.092
+2     400    20   100%/100% 87%/93%   50%/60%   0%/0%     100%/100% 74%/79%   0.092
+2     400    50   100%/100% 100%/100% 60%/70%   0%/0%     100%/100% 81%/83%   0.092
+  size 3 (600 ops): 34 of 100 questions excluded — by axis: A 8, B 5, C 10, D 7, E 4
+3     600    10   100%/100% 45%/95%*  33%/67%*  0%/0%     67%/100%* 53%/79%*  0.146
+3     600    20   100%/100% 85%/95%   60%/67%   0%/0%     83%/100%* 73%/79%   0.146
+3     600    50   100%/100% 95%/95%   60%/73%   0%/0%     83%/100%* 76%/80%   0.146
+  size 5 (1000 ops): 0 of 100 questions excluded — by axis: A 0, B 0, C 0, D 0, E 0
+5     1000   10   100%/100% 32%/96%*  36%/72%*  0%/0%     50%/90%*  47%/76%*  0.232
+5     1000   20   100%/100% 72%/96%*  60%/72%   0%/0%     80%/90%   66%/76%   0.232
+5     1000   50   100%/100% 88%/96%   68%/80%   0%/0%     80%/100%* 72%/79%   0.232
+```
+
+**Excluded questions, at the sizes below five services.** The corpus was
+written against the full five-service fixture, so at sizes 1-3 a question
+whose only answers live in a service not yet in the catalogue cannot be
+asked of it at all - that is not the mechanism failing, it is the question
+not applying. Such a question is dropped from every recall figure at that
+size (never scored zero) and the count is printed instead: 82/100 at size 1,
+53/100 at size 2, 34/100 at size 3, 0/100 at size 5. Axis B is the extreme
+case - all 25 excluded at size 1, because every axis-B question's answers
+span two services and the size-1 catalogue is one service (inventory), so
+none of the pairs a cross-service question needs exist yet.
+
+**Axis D scores 0/0/0 at every size and every K. This is the measurement
+working, not a defect.** `docs/specs/narrowing.md` section 7 says the
+lexical baseline cannot answer a vocabulary-gap question by construction,
+and the pre-measured number quoted in the spec (0/15 at K=20 against the
+full catalogue) is reproduced here exactly, at every size and K, because
+none of axis D's fifteen questions - 休みたい, PO を出したい, 立て替えた分を
+出したい and the rest - share a single character bigram with the operation
+that answers them. `narrow`'s own definition (`lexical.ts`) excludes a
+zero-scored operation from the shortlist entirely, so there is no K large
+enough to recover these: the baseline does not rank them low, it does not
+rank them at all. That gap is exactly what the subproject exists to
+measure, per spec section 1 and section 7 - the size of the hole is the
+argument for whatever mechanism comes next. Nothing in `lexical.ts` was
+touched to move this number.
+
+**Axis A is 100% everywhere, at every K down to 10, with no gap between
+worst and best.** Spec section 4 built axis A to guarantee that the verb
+alone (一覧, matching a fifth of the whole catalogue) carries no
+selectivity - but every axis-A question in the corpus names a noun the
+answer's summary also carries, so the noun alone separates the answer from
+the other operations sharing the verb, cleanly enough that no other
+operation ties it even at the thousand-operation size. This is not axis A
+"failing to be hard" - the axis is doing its job (proving the verb adds
+nothing) and the corpus's nouns are doing theirs (still findable by exact
+overlap); what would fail here is a mechanism that used the verb as its
+main signal, which bigram overlap over the whole summary does not.
+
+**Axis B and axis E are where the worst/best gap is largest, and both
+widen it as the catalogue grows.** At 1000 operations, K=10, axis B reads
+32%/96% and axis E reads 50%/90% - the pessimistic and optimistic figures
+disagree by 40-64 points, the largest gaps in the table. Both axes are
+built around collisions by design: axis B's shared nouns (注文, 明細,
+承認, 社員, 取引先) put two or more genuinely tied answers at the same
+score, and axis E's decoys are picked because they out-score the true
+answer, and often other unrelated settings operations tie near the same
+score band too, on the same vocabulary. A bigger catalogue means more
+things sharing that vocabulary, hence a wider tie, hence a wider best/worst
+gap - the "186 operations tie at 「注文を一覧」's tenth place" example in
+spec section 6 is this same effect. Both axes recover almost to 100%/100%
+by K=50, which is the honest way to say what K a caller would need to pick
+if it wanted axis B and E answers found reliably rather than merely
+findable in principle.
+
+**Axis C sits in between, and stays incomplete even at K=50.** At size 5 it
+tops out at 68%/80% (K=50) - the near-neighbour groups (在庫品目 / 在庫ロット
+/ 在庫引当 / 棚卸 / 在庫調整ほか) are close enough in vocabulary that a
+"見たい"-style question keeps several equally-plausible candidates
+competing, and unlike B/E the true answer does not always win that
+competition outright - some of these questions never surface their answer
+inside the top 50 regardless of tie handling. This is the axis the plan
+predicted would be the hardest to separate cleanly with bigram overlap
+alone (spec section 4, "roughly equal candidates").
+
+**Overall reads 47%/76% at size 5, K=10, and climbs to 72%/79% by K=50 -
+still short of what a narrowing mechanism would need to ship, which is the
+point of measuring it now.** Per-query wall-clock stays well under a
+millisecond even at the full 1000-operation catalogue (0.232ms average),
+so cost is not what limits K here; recall is. That reproduces spec section
+7's own framing: if the baseline reached usable recall at a usable K, a
+vector store would be unnecessary; it does not, axis D and (at low K) axis
+B/C/E are the shortfall, and that shortfall is the input the next
+subproject (choosing a narrowing mechanism) needs.
+
+**How to repeat it.** `make narrowing` (`cd e2e && node
+narrowing/measure.ts`), from a checkout with no build step needed - the
+fixture and corpus are read directly, nothing is compiled or served.
