@@ -18,7 +18,14 @@ _Nothing in progress._
    narrowing. The mapping needs the company's words in the catalogue:
    what an operation's description and `x-ui-hint` should carry, and how
    the corpus measures it, is the next spec.
-2. **Choose what the product uses, and wire it into `services/platform`.**
+2. **Measure the pick, not only the recall.** `make narrowing` reports
+   recall@K; the product's number is "right operation chosen, or asked
+   back". The local picker on a reranker-ordered shortlist of 20 scores 83
+   (`DECISIONS.md`, 2026-09-15, "reads the shortlist in reranker order"),
+   measured by hand in a session scratchpad. It should be a row in the
+   report, with the picker's `ambiguous` flag scored against axis B.
+3. **Choose what the product uses, and wire it into `services/platform`.**
+   The pick reads the reranker's order and about 20 candidates; see above.
    `docs/plans/retrieving.md`'s own closing note names this as what comes
    after and is deliberately not in that subproject - a hybrid of lexical
    and vector scoring is named as the obvious next mechanism, excluded
@@ -34,7 +41,7 @@ _Nothing in progress._
    full table (superseding 2026-09-14's), the contract-check cross-check,
    and the alternation cost a deployment running narrowing and answering on
    the same GPU would pay.
-3. A genre/domain layer above individual services - grouping services by
+4. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
    exposed operation in `services/inventory` carries the single tag `items`
@@ -42,12 +49,12 @@ _Nothing in progress._
    group nothing beyond what `OperationPicker`'s own `groupBy` (off
    `serviceDisplayName`) already does. Worth building once a service
    carries more than one tag over its own exposed operations.
-4. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+5. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-5. **Open defect: a question whose filter word matches no enum value gets
+6. **Open defect: a question whose filter word matches no enum value gets
    every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
    在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
    variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
@@ -62,7 +69,7 @@ _Nothing in progress._
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
-6. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+7. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -73,13 +80,13 @@ _Nothing in progress._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-7. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+8. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
 
-8. **`<Typography color="text.secondary">` is a silent no-op almost
+9. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
