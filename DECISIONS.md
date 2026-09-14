@@ -5060,3 +5060,79 @@ unchanged across `make check` (27632 before, 27632 after) - `make check`
 calls no model of any kind. `make narrowing`'s lexical and embedding-
 configuration rows are byte-identical before and after this task's changes
 except `ms/query`, which naturally varies run to run.
+
+## 2026-09-14 A frontier model reads the whole catalogue: the ceiling, and a defect in the corpus it exposed
+
+**Context.** Every mechanism measured so far is mechanical - bigram counts,
+embeddings, a reranker - and all of them leave the vocabulary-gap axis (D)
+under half at K=10. Before deciding what to build next, the question worth
+answering is whether the mapping those questions ask for is reachable **at
+all**. If a model that understands the domain and reads all 1000 operations
+cannot do it either, the answer is not a better retriever; it is asking the
+person.
+
+**Method, and what it is not.** A subagent with no access to the corpus's
+answer key was given two files - the 1000 operations as
+`operationId / service / summary`, and the 100 questions - and asked to name
+one operation per question, plus a flag saying whether the question is
+`ambiguous`: underdetermined, so a person would have to be asked back. It was
+told not to write code. The agent is Claude, so this measures what Claude can
+do, not what every frontier model can do; it is a go/no-go, not a survey. It
+is a hand-run probe and is **not** reproducible by `make narrowing`.
+
+**Result, scored against the corpus's answer key.**
+
+| axis | primary answer in key | any named answer in key | flagged ambiguous | best mechanical, K=10 |
+| ---- | --------------------- | ----------------------- | ----------------- | --------------------- |
+| A    | 25/25                 | 25/25                   | 2                 | 25/25                 |
+| B    | 25/25                 | 25/25                   | **25**            | 25/25                 |
+| C    | 21/25                 | 23/25                   | 19                | 20/25                 |
+| D    | 10/15                 | 11/15                   | 3                 | 7/15                  |
+| E    | 3/10                  | 3/10                    | 0                 | 9/10                  |
+
+**The vocabulary gap is reachable.** Axis D is 10/15 against the mechanical
+7/15, and four of the five misses are answers better than the key's:
+「休みたい」 answered `createAttendanceLeaveRequest` where the key says
+`listAttendancePaidLeaves`; 「そろそろダメになりそうな商品を確認したい」
+answered `searchInventoryExpiringItems` where the key says
+`listInventoryExpiryDates`. The fifth, 「値段を安くしてほしいと頼みたい」, is
+genuinely undecidable - asking for a discount as a buyer and granting one as a
+seller are different operations and the sentence picks neither.
+
+**Axis E's 3/10 is the key, not the model.** Checked separately: the model
+chose the decoy in **0 of 10**. Every answer was a record operation; what cost
+it the score was choosing `残業を集計する` where the key lists `残業の一覧`, and
+similar. For what axis E exists to measure - is the settings operation
+mistaken for the transaction - it scored 10/10.
+
+**Which is a defect in the corpus, and it is ours.** The answer key names
+`list*` operations and rejects the `search*`, `summarize*` and `aggregate*`
+operations over the same business object, which are often the better answer to
+the question as asked. Axis B and C were written with several defensible
+answers each; A, D and E were not, and should have been. Every mechanism's
+axis-D and axis-E numbers therefore carry some measurement of "does this
+mechanism prefer `list*`" mixed into them. The axis-E claim survives (avoiding
+the decoy is what it tests, and the key's answers and the better ones are all
+record operations); the axis-D numbers are the ones to distrust.
+
+**The model knows when to ask.** All 25 structurally ambiguous questions - the
+ones whose noun exists in two or three services - were flagged `ambiguous`,
+against 2 false positives in 25 on the axis where questions are not ambiguous
+at all. Axis B is the axis no retriever can resolve, because the information is
+not in the question; `ask_user` is a correct answer to it, and the model can
+tell when to give it.
+
+**What this changes.** Narrowing to ten was the wrong target. The mechanical
+methods put 11 of 15 axis-D answers inside 50 and 7 inside 10; a model reading
+the shortlist gets 10 or more. So a narrowing's job is not to rank the answer
+first, it is to not lose it - and what happens after the shortlist is the
+model's, including deciding that the question cannot be answered without
+asking.
+
+**Correction to `docs/specs/retrieving.md` section 5.** The alternation cost is
+recorded there as 34.8s and 4.7s, which was one measurement of a model being
+read from disk for the first time. Measured twice more since: 6.6s/2.6s and
+4.8s/2.7s. The honest figure is about 7-8 seconds warm and up to 40 cold. The
+conclusion is unchanged - the narrowing it serves costs 0.3 ms to 80 ms, four
+orders of magnitude less either way - but a single number was misleading and
+the spec now carries the range.

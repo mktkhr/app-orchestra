@@ -110,15 +110,19 @@ Measured on this machine, 2026-09-14, RTX 4080 SUPER (16 GB), llama-swap with
 no `groups` - one model resident at a time, which is llama-swap's default and
 what the deployment currently uses:
 
-| call                                             | seconds  |
-| ------------------------------------------------ | -------- |
-| embedding call, model already resident           | **0.0**  |
-| chat call, model already resident                | **0.1**  |
-| chat call that first unloads the embedder        | **34.8** |
-| embedding call that first unloads the chat model | **4.7**  |
+| call                                             | seconds        |
+| ------------------------------------------------ | -------------- |
+| embedding call, model already resident           | **0.0**        |
+| chat call, model already resident                | **0.1**        |
+| chat call that first unloads the embedder        | **4.8 - 34.8** |
+| embedding call that first unloads the chat model | **2.6 - 4.7**  |
 
-One alternation costs about **40 seconds**. The narrowing it serves takes
-0.24 ms. The loading is five orders of magnitude larger than the work.
+Measured three times. The high figures are a model being read from disk for the
+first time; warm, one alternation costs about **7-8 seconds**, and cold about
+**40**. The narrowing it serves takes 0.24 ms, and the most expensive one
+measured - retrieve fifty and rerank them - takes 80 ms. The loading is four
+orders of magnitude larger than the work at its most expensive reading, and
+five at its cheapest.
 
 So a narrowing that embeds the question at the moment the question is asked
 cannot share a GPU slot with the model that answers it. Either both stay
