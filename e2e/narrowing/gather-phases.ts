@@ -7,19 +7,13 @@
  * next. `measure.ts`'s `gatherReport` is a plain sequence of calls into
  * this file.
  */
-import {
-  EMBEDDING_CONFIGS,
-  checkContract,
-  embedCatalogue,
-  vectorNarrowerOf,
-  type EmbeddingConfig,
-} from "./embedding/index.ts";
-import { twoStageNarrowerOf } from "./rerank/index.ts";
+import { EMBEDDING_CONFIGS } from "./embedding/index.ts";
 import { catalogOf } from "./fixture/index.ts";
-import { measureAcrossSizes, type K } from "./recall.ts";
+import type { K } from "./recall.ts";
 import type { Question } from "./corpus/index.ts";
 import {
   TWO_STAGE_BOTH_CONFIG_ID,
+  TWO_STAGE_WRITTEN_CONFIG_ID,
   generateUtterances,
   measureTwoStageWithUtterancesConfiguration,
   measureUtteranceConfiguration,
@@ -28,91 +22,17 @@ import {
   type OperationUtterances,
 } from "./utterances/index.ts";
 import {
-  embedQuestionsOnce,
-  retrieverConfig,
-  sliceVectors,
-  transportOptionsOf,
   unreachableReason,
   utteranceCacheOptionsOf,
   type ConfigurationResult,
   type GatherOptions,
   type SkippedConfiguration,
 } from "./gather-helpers.ts";
-
-/** One embedding configuration's full report: its catalogue vectors cached, its contract checked, and its recall measured at every size. Throws when the transport cannot be reached at all — the phase functions below turn that into a skip. */
-async function measureEmbeddingConfiguration(
-  config: EmbeddingConfig,
-  testQuestions: readonly Question[],
-  kValues: readonly K[],
-  options: GatherOptions,
-): Promise<ConfigurationResult> {
-  const fullCatalog = catalogOf(5);
-  const transportOptions = transportOptionsOf(options);
-  const fullVectors = await embedCatalogue(config, fullCatalog, transportOptions);
-  const contractCheck = await checkContract(
-    config,
-    fullCatalog,
-    transportOptions.fetchImpl,
-    transportOptions.baseUrl,
-  );
-  const sizes = await measureAcrossSizes(
-    (catalog) =>
-      vectorNarrowerOf(
-        sliceVectors(fullVectors, catalog),
-        config,
-        transportOptions.fetchImpl,
-        transportOptions.baseUrl,
-      ),
-    testQuestions,
-    kValues,
-  );
-
-  return { configId: config.id, contractCheck, sizes };
-}
-
-/** The two-stage configuration's id in the report — one block, not two (spec V6). */
-export const TWO_STAGE_CONFIG_ID = "e5-large-q8+reranker";
-
-/**
- * The two-stage configuration's full report (spec V6, AC-V-104): `e5-large-
- * q8`'s catalogue vectors (already cached from its own row above this one,
- * so this call is a disk read, not a network one), its contract check, and
- * every test question's vector — all embedded before any rerank call, so the
- * whole run alternates between the retriever and the reranker exactly once
- * rather than once per question.
- */
-async function measureTwoStageConfiguration(
-  testQuestions: readonly Question[],
-  kValues: readonly K[],
-  options: GatherOptions,
-): Promise<ConfigurationResult> {
-  const config = retrieverConfig();
-  const fullCatalog = catalogOf(5);
-  const transportOptions = transportOptionsOf(options);
-  const fullVectors = await embedCatalogue(config, fullCatalog, transportOptions);
-  const contractCheck = await checkContract(
-    config,
-    fullCatalog,
-    transportOptions.fetchImpl,
-    transportOptions.baseUrl,
-  );
-  const questionVectors = await embedQuestionsOnce(config, testQuestions, transportOptions);
-
-  const sizes = await measureAcrossSizes(
-    (catalog) =>
-      twoStageNarrowerOf(
-        sliceVectors(fullVectors, catalog),
-        catalog,
-        questionVectors,
-        transportOptions.fetchImpl,
-        transportOptions.baseUrl,
-      ),
-    testQuestions,
-    kValues,
-  );
-
-  return { configId: TWO_STAGE_CONFIG_ID, contractCheck, sizes };
-}
+import {
+  TWO_STAGE_CONFIG_ID,
+  measureEmbeddingConfiguration,
+  measureTwoStageConfiguration,
+} from "./gather-base-rows.ts";
 
 /** One row of the utterance sweep: which layer, and its cache's set name (`embedUtteranceVectors`). */
 interface UtteranceRow {
@@ -252,9 +172,24 @@ export async function runUtteranceRows(
   return stillReachable;
 }
 
-/** The two reranked rows — the plain two-stage and the one scored with both utterance layers (spec section 7, the headline). */
+/** One reranked-with-utterances row: which layer, its cache's set name, and whether to attach that layer's contract rates (spec section 6) to this row too. */
+interface RerankedUtteranceRow {
+  readonly configId: string;
+  readonly setName: string;
+  readonly utterances: OperationUtterances;
+  readonly includeContractCheck: boolean;
+}
+
+/**
+ * The three reranked rows: the plain two-stage, then the two scored with
+ * an utterance layer before reranking — `+both` and `+written`, the row
+ * the coordinator's follow-up asks for because the written layer alone
+ * beats "both" on axis D (the generated layer's noise drags "both" down).
+ * `+written` carries its own contract rates; `+both` does not, matching
+ * how it already printed before this row existed.
+ */
 export async function runRerankedRows(
-  bothUtterances: OperationUtterances,
+  phase: GenerationPhaseResult,
   testQuestions: readonly Question[],
   kValues: readonly K[],
   options: GatherOptions,
@@ -278,23 +213,45 @@ export async function runRerankedRows(
     });
   }
 
-  if (stillReachable) {
+  const rows: readonly RerankedUtteranceRow[] = [
+    {
+      configId: TWO_STAGE_BOTH_CONFIG_ID,
+      setName: "both",
+      utterances: phase.bothUtterances,
+      includeContractCheck: false,
+    },
+    {
+      configId: TWO_STAGE_WRITTEN_CONFIG_ID,
+      setName: "written",
+      utterances: phase.writtenUtterances,
+      includeContractCheck: true,
+    },
+  ];
+
+  for (const row of rows) {
+    if (!stillReachable) {
+      skipped.push({
+        configId: row.configId,
+        reason: "llama-swap was unreachable for an earlier configuration; not retried",
+      });
+      continue;
+    }
+
     try {
       configurations.push(
         await measureTwoStageWithUtterancesConfiguration(
-          bothUtterances,
+          row.configId,
+          row.setName,
+          row.utterances,
+          row.includeContractCheck,
           testQuestions,
           kValues,
           options,
         ),
       );
     } catch (error) {
-      skipped.push({ configId: TWO_STAGE_BOTH_CONFIG_ID, reason: unreachableReason(error) });
+      stillReachable = false;
+      skipped.push({ configId: row.configId, reason: unreachableReason(error) });
     }
-  } else {
-    skipped.push({
-      configId: TWO_STAGE_BOTH_CONFIG_ID,
-      reason: "llama-swap was unreachable for an earlier configuration; not retried",
-    });
   }
 }

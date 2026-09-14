@@ -181,7 +181,8 @@ test("gatherReport still runs the lexical row and skips generation, every embedd
 
   expect(result.configurations.map((configuration) => configuration.configId)).toEqual(["lexical"]);
   // Generation itself (one skip entry), every embedding configuration, the
-  // three utterance rows, and the two reranked rows (docs/plans/
-  // describing.md Task 2) — the lexical row above still ran unconditionally.
-  expect(result.skipped.length).toBe(EMBEDDING_CONFIGS.length + 6);
+  // three utterance rows, and the three reranked rows - plain two-stage,
+  // +both and +written (docs/plans/describing.md Task 2) - the lexical row
+  // above still ran unconditionally.
+  expect(result.skipped.length).toBe(EMBEDDING_CONFIGS.length + 7);
 });

@@ -91,7 +91,7 @@ export async function gatherReport(
   );
 
   await runRerankedRows(
-    phase.bothUtterances,
+    phase,
     testQuestions,
     kValues,
     options,

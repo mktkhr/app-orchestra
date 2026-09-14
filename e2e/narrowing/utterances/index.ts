@@ -26,6 +26,7 @@ export { twoStageWithUtterancesNarrowerOf } from "./two-stage.ts";
 export { mergeUtterances, writtenUtterancesOf } from "./layers.ts";
 export {
   TWO_STAGE_BOTH_CONFIG_ID,
+  TWO_STAGE_WRITTEN_CONFIG_ID,
   measureTwoStageWithUtterancesConfiguration,
   measureUtteranceConfiguration,
 } from "./rows.ts";
