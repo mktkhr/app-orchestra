@@ -84,3 +84,8 @@
 # llama-swap on demand. docs/specs/narrowing.md T5 already says generated
 # things do not enter the repository.
 /e2e/narrowing/.vectors/
+
+# The generated utterance cache (docs/plans/describing.md Task 1 Step 5):
+# one JSON file per operation, rebuilt from the fixture and llama-swap on
+# demand. Same rule as .vectors/ above - generated things stay out of git.
+/e2e/narrowing/.utterances/
