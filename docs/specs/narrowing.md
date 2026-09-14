@@ -103,11 +103,17 @@ roughly equal candidates. Three such groups per service.
 **D - vocabulary gap.**
 The words the question uses do not appear in the operation's summary.
 
-| Question      | Summary            |
-| ------------- | ------------------ |
-| 品切れの商品  | 在庫切れ品目の一覧 |
-| 休みたい      | 有給休暇申請の登録 |
-| PO を出したい | 発注書の作成       |
+| Question               | Summary, as the fixture writes it | Operation                  |
+| ---------------------- | --------------------------------- | -------------------------- |
+| 休みたい               | 有給休暇の一覧                    | `listAttendancePaidLeaves` |
+| PO を出したい          | 発注の作成                        | `createPurchasingOrder`    |
+| 立て替えた分を出したい | 経費申請の作成                    | `createExpenseClaim`       |
+
+Each of these shares **no character bigram at all** with the operation that
+answers it, measured against the fixture rather than asserted. 品切れ → 在庫切れ
+品目の一覧 was the obvious fourth and does not qualify: the two share 切れ, so a
+lexical mechanism can find it and the question is not measuring this axis. A
+question that half-overlaps belongs in axis A or C.
 
 A lexical mechanism cannot answer these; that is not a flaw in the fixture,
 it is the measurement. **The distance between a lexical baseline and a

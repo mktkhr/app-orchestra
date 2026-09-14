@@ -402,8 +402,9 @@ test("axis E decoys out-score their answers", () => {
 ```
 
 - [ ] **Step 3: write the questions**, per axis, following spec section 4.
-      Axis D's fifteen use vocabulary the fixture never wrote — 品切れ, 休みたい,
-      PO, 立て替え, 締め日. Axis E's ten each name a decoy. Iterate until the
+      Axis D's fifteen use vocabulary the fixture never wrote — 休みたい, PO,
+      立て替え, 締め日. **Not 品切れ**: it shares 切れ with 在庫切れ品目 and so
+      fails the Step 2 check, which is the check working.
       Step 2 checks pass: a D question that overlaps, or an E decoy that loses, is
       rewritten, not excused.
 
