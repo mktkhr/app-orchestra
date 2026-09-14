@@ -20,9 +20,13 @@ can be changed and re-scored in a loop.
 `docs/plans/proposing.md`'s Global constraints section still holds. The ones
 this subproject is most likely to meet:
 
-- **Nothing here joins `make check`'s gate.** No new target is added to
-  `check`, `test`, `acceptance` or `lint`'s dependency lists. The one new
-  target is run deliberately, like `make eval`.
+- **The unit tests join `make check`; the measurement does not.** The tests
+  that assert the fixture's contract rules and the corpus's axes are cheap,
+  need nothing running and call no LLM — they are how AC-T-103 and AC-T-105
+  hold, so they run in the gate. They get there by one line in
+  `e2e/vite.config.ts` (Task 1, Step 0), not by a new target. The **measurement
+  run** is a deliberate target like `make eval` and is added to no dependency
+  list.
 - `e2e/` **is** in the web workspace, so `make check` still lints and
   typechecks every file written here (`web-lint`, `web-fmt-check`). New code
   must pass oxlint type-aware rules and `tsc` with no suppressions.
@@ -72,6 +76,17 @@ this subproject is most likely to meet:
 **Produces:** `services()` returning the five `ServiceFixture` values,
 `catalogOf(size)` returning the first N services, and `toOpenAPI(fixture)`
 returning one OpenAPI 3.0.3 document object.
+
+- [ ] **Step 0: let the tests run**
+
+Add `narrowing/**/*.test.ts` to `e2e/vite.config.ts`'s `test.include`, beside
+`src/**/*.test.ts`. That is the whole wiring: `make check` already runs
+`acceptance-e2e` over that config. Say in a comment that these, unlike the
+`src/` tests, need nothing built and nothing running.
+
+`e2e/vite.config.ts` is **not** a protected path (only the root
+`vite.config.ts` is). If `harness/guard/protected-paths.sh` disagrees at commit
+time, stop and report it rather than setting the override.
 
 - [ ] **Step 1: write the types**
 
