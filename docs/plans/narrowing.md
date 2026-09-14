@@ -413,10 +413,15 @@ test("axis E decoys out-score their answers", () => {
 
 - [ ] **Step 5: write `measure.ts` and `report.ts`** — for sizes 1/2/3/5
       services × K of 10/20/50, report recall per axis, recall overall, and
-      per-query wall-clock. One line per (size, K); axes as columns. **State the
-      direction in the header** — the model comparison had to be rewritten once
-      because a column did not say whether bigger was better (`DECISIONS.md`,
-      2026-09-14).
+      per-query wall-clock. One line per (size, K); axes as columns. **State
+      the direction in the header** — the model comparison had to be rewritten
+      once because a column did not say whether bigger was better
+      (`DECISIONS.md`, 2026-09-14). Recall is computed on `rankRangeOf`'s
+      `worst` (spec section 6, "a tie is not a hit"): an answer counts only if
+      it is inside K even when every operation tied with it is ranked ahead of
+      it. Report the optimistic figure too, and say on the line when the two
+      differ by more than a little — 186 operations tie at 「注文を一覧」's
+      tenth place, so this is not a hypothetical.
 
 - [ ] **Step 6: add the target** — `make narrowing`, depending on nothing,
       running `node e2e/narrowing/measure.ts`, not quiet (it prints its own

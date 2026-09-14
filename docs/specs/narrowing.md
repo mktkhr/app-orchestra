@@ -160,6 +160,20 @@ is enough to see a mechanism answer none of them.
 K operations the narrowing returned. Reported per axis and overall, for
 K = 10, 20 and 50, at each of the four catalogue sizes.
 
+**A tie is not a hit.** Scores tie in bulk: measured on the fixture, 186
+operations share the score at 「注文を一覧」's tenth place, and 「休みたい」
+scores zero against all thousand. Cutting the top K out of a tie that large
+returns whatever the catalogue's order put first, so recall computed that way
+measures the fixture's ordering, not the mechanism. An answer therefore counts
+as recalled only if it would still be inside K when every operation tied with
+it is ranked ahead of it. Both ends of the range are reported, and a large gap
+between them is the report saying the number is a coin toss.
+
+**An operation with no evidence is not a candidate.** A narrowing that has
+found nothing returns nothing, rather than K operations it cannot tell apart.
+A question whose answers are all unfound scores zero, which is the truthful
+statement about what happened.
+
 K is not a constant to be chosen in advance. How small K can get before
 recall falls is half the result: it is the number that says how many
 operations the model has to be handed, and therefore whether any of this

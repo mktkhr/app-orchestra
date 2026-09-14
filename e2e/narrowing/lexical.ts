@@ -103,24 +103,71 @@ export interface NarrowResult {
 }
 
 /**
- * The top `k` operation ids for `question`, scored against `index`.
+ * Every operation with a non-zero score, best first. Operations the question
+ * shares no bigram with are **not** in the result at all.
+ *
+ * That exclusion is a definition, not a filter added to flatter the numbers.
+ * Measured on the fixture, 「休みたい」 scores 0 against all 1000 operations -
+ * it is an axis-D question and the baseline cannot answer it (spec section
+ * 7). Had zero-scored operations stayed in, a top-K cut would still have
+ * returned K of them, chosen by whatever order the catalogue happened to be
+ * in, and axis-D recall would have measured the fixture's ordering rather
+ * than the mechanism. A shortlist is evidence; padding it is not.
  *
  * Holds no state between calls: everything it reads comes from `index` or
- * from its arguments, it allocates a fresh result array every call, and it
- * never writes to `index`.
+ * from its arguments, it allocates a fresh array every call, and it never
+ * writes to `index`.
  */
-export function narrow(index: LexicalIndex, question: string, k: number): readonly NarrowResult[] {
+function scoredCandidates(index: LexicalIndex, question: string): readonly NarrowResult[] {
   const queryBigrams = bigramsOf(question);
   const results: NarrowResult[] = [];
 
-  for (const { operation, bigrams } of index.values()) {
-    const score =
-      queryBigrams.size === 0 ? 0 : overlapCount(queryBigrams, bigrams) / queryBigrams.size;
+  if (queryBigrams.size === 0) return results;
 
-    results.push({ operationId: operation.operationId, score });
+  for (const { operation, bigrams } of index.values()) {
+    const score = overlapCount(queryBigrams, bigrams) / queryBigrams.size;
+
+    if (score > 0) results.push({ operationId: operation.operationId, score });
   }
 
   results.sort((a, b) => b.score - a.score);
 
-  return results.slice(0, k);
+  return results;
+}
+
+/**
+ * The top `k` operation ids for `question`. Fewer than `k` when fewer than
+ * `k` operations share any bigram with it - including none at all.
+ */
+export function narrow(index: LexicalIndex, question: string, k: number): readonly NarrowResult[] {
+  return scoredCandidates(index, question).slice(0, k);
+}
+
+/**
+ * Where `operationId` sits in the ranking for `question`, as a range,
+ * because scores tie in bulk: measured on the fixture, 186 operations share
+ * the score at 「注文を一覧」's tenth place. A single rank would be decided by
+ * the catalogue's order inside that tie, so this reports both ends.
+ *
+ * `best` counts only the operations that score strictly higher; `worst` also
+ * counts every other operation with the same score. A measurement should be
+ * read on `worst` - a mechanism that cannot separate an answer from 185 other
+ * operations has not found it - and the gap between the two is how much of
+ * the result is a coin toss. Undefined when the operation scores zero, which
+ * means it is not a candidate at all.
+ */
+export function rankRangeOf(
+  index: LexicalIndex,
+  question: string,
+  operationId: string,
+): { readonly best: number; readonly worst: number } | undefined {
+  const candidates = scoredCandidates(index, question);
+  const found = candidates.find((c) => c.operationId === operationId);
+
+  if (found === undefined) return undefined;
+
+  const better = candidates.filter((c) => c.score > found.score).length;
+  const equal = candidates.filter((c) => c.score === found.score).length;
+
+  return { best: better + 1, worst: better + equal };
 }
