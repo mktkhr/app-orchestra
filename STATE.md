@@ -1,13 +1,33 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-14 (`docs/plans/narrowing.md` Task 1 done - the
-narrowing fixture's definition table and OpenAPI generator, 1000 operations
-across five services, none of it built or served yet; see below)_
+_Last updated: 2026-09-14 (`docs/plans/narrowing.md` Task 2 done - the
+fixture is served over HTTP and the platform confirmed to build a
+1000-operation catalogue from it; see below)_
 
 ## Summary
 
+**`docs/plans/narrowing.md` Task 2 is done - the fixture is served, and the
+platform agrees with it.** `e2e/narrowing/serve.ts`: one `node:http` server,
+`start(port)` (default `NARROWING_PORT` 8090, or port 0 for the test), that
+answers `GET /<service>/openapi.yaml` for each of the five fixture services
+with `JSON.stringify(toOpenAPI(service))` under `content-type:
+application/yaml` and 404s otherwise. No YAML serialiser was added — every
+JSON document is already a valid YAML document, and both this server's own
+test (`serve.test.ts`, `JSON.parse` reading the body straight back) and the
+platform's real loader (`kin-openapi/openapi3`, verified by hand below) read
+it the same way. The server implements no operation, only contracts (spec
+section 8). Verified by hand (Step 5, not part of any make target): fixture
+server on `:8090`, `services/platform/bin/api` on `:8099` with
+`ORCHESTRA_SERVICES` pointed at all five fixture URLs (replacing the real
+`inventory`/`attendance` services, never alongside them),
+`ORCHESTRA_DB_PATH`/`ORCHESTRA_ADMIN_PASSWORD` set, no `ORCHESTRA_LLM_BASE_URL` —
+signed in as `admin`, `GET /api/catalog` returned **1000** operations, all
+`operationId`s unique, no Go change needed (AC-T-101, AC-T-102). Confirmed
+no LLM was called (`docker logs llama-swap` call count unchanged, 414 before
+and after) and no process was left listening afterward.
+
 **`docs/plans/narrowing.md` Task 1 is done - the fourteenth subproject's
-fixture catalogue, not yet served or measured.** `e2e/narrowing/fixture/`:
+fixture catalogue.** `e2e/narrowing/fixture/`:
 `types.ts` (the definition table types from the plan, verbatim), one file
 per service (`inventory.ts`, `sales.ts`, `purchasing.ts`, `attendance.ts`,
 `expense.ts` - 30 resources × 5 verbs + 20 aggregates + 20 settings + 10
@@ -35,8 +55,7 @@ request body) - Redocly itself is not wired to the fixture, since it is not
 a service (spec T4). `e2e/vite.config.ts` now includes
 `narrowing/**/*.test.ts` and `e2e/tsconfig.json` includes `narrowing`, so
 `make check` runs and typechecks all of it with no suppressions. Not done:
-the fixture is not served over HTTP, the platform has not been pointed at
-it, and nothing has been measured (Tasks 2-4).
+the corpus and the lexical baseline (Tasks 3-4).
 
 **`docs/specs/conversation-ui.md` is closed - the twelfth subproject.**
 `web/src/features/conversation/ui/TurnList.tsx`: a question turn is now a

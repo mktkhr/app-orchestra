@@ -4,10 +4,11 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-1. `docs/plans/narrowing.md` Task 2 - serve the fixture (`e2e/narrowing/serve.ts`)
-   over HTTP and record, by hand, that the platform builds a 1000-operation
-   catalogue from it (AC-T-101, AC-T-102). Task 1 (the definition table and
-   the OpenAPI generator, `e2e/narrowing/fixture/`) is done; see `STATE.md`.
+1. `docs/plans/narrowing.md` Task 3 - the lexical baseline
+   (`e2e/narrowing/lexical.ts`): a character-bigram index over the catalogue,
+   built once, no tokeniser/model/network. Tasks 1 and 2 (the fixture and
+   the server that proved the platform builds a 1000-operation catalogue
+   from it) are done; see `STATE.md`.
 
 ## Next
 
