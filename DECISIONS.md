@@ -5230,7 +5230,17 @@ defect), which depresses every row by some amount and axes D and E most. The
 frontier figures are Claude only. All figures are one run at temperature 0.
 
 **Spend.** $3.80 of $20: Phase 2 wasted run $1.37, Phase 2 $1.32, Phase 3
-$0.41, Phase 4 $0.70. Ledger and per-run outputs are in the session
+$0.41, Phase 4 $0.70.
+
+**Re-scored against the corrected answer key (later the same day).** The
+key fix (`75e221d`) widened axes A, D and E; every saved run above was
+re-scored against it without re-running anything. Overall, old → new:
+local qwen3.5-9b 69 → 78; Haiku 4.5 67 → 79; Sonnet 5 73 → 83; Opus 5 73 →
+84; Sonnet 5 with thinking 73 → 82; Sonnet 5 with the whole catalogue 64 →
+70; the subagent on the shortlist 82 → 90 and on the whole catalogue 84 → 93. Axis D, new key: local 9, Haiku 7, Sonnet 9, Opus 11, subagent-on-1000
+14 of 15. The local-to-Opus gap is six points, not four, and D17 says six.
+Every other conclusion holds: thinking is flat (83 vs 82), the whole
+catalogue is worst (70), and the loop is worth seven to nine points. Ledger and per-run outputs are in the session
 scratchpad, not the repository; the key is read from a file outside the
 repository and never appears in it.
 
