@@ -44,11 +44,24 @@ test("an exact noun match out-ranks a shared verb", () => {
   expect(otherListOperations.includes("listInventoryLots")).toBe(false);
 });
 
-test("scoring 1000 operations takes under 5ms", () => {
-  // Warm up once so JIT compilation is not what gets measured.
-  scoringDurationMs("在庫ロットを見せて");
+/**
+ * The fastest of several runs, after a warm-up. A single timed run also
+ * measures whatever else the machine was doing at that instant, and this
+ * repository's browser suite has already been flaked once by load
+ * (`DECISIONS.md`, 2026-09-13). The best of five is still a wall-clock
+ * measurement of this code - it just is not a measurement of the scheduler.
+ */
+function bestScoringDurationMs(question: string): number {
+  scoringDurationMs(question);
 
-  expect(scoringDurationMs("在庫ロットを見せて")).toBeLessThan(5);
+  return Math.min(...Array.from({ length: 5 }, () => scoringDurationMs(question)));
+}
+
+test("scoring 1000 operations takes under 5ms", () => {
+  // Measured 0.24ms per query over the whole catalogue (make narrowing,
+  // 2026-09-14), so 5ms is twenty times the headroom: this fails when the
+  // scorer stops being linear, not when the machine is busy.
+  expect(bestScoringDurationMs("在庫ロットを見せて")).toBeLessThan(5);
 });
 
 test("the index is built once and holds no state between queries", () => {
