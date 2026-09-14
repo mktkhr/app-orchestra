@@ -3,10 +3,13 @@
  * "approval" (経費承認/発注承認/勤怠承認) and "employee" (社員) with sales,
  * purchasing and attendance — axis B.
  */
+import { EXPENSE_EXAMPLES } from "./examples-expense.ts";
 import { ALL_VERBS, pluralOf } from "./naming.ts";
 import type { Aggregate, Resource, ServiceFixture, Setting, Workflow } from "./types.ts";
 
 function r(id: string, noun: string, opts?: { group?: string; shared?: string }): Resource {
+  const examples = EXPENSE_EXAMPLES.resources[id];
+
   return {
     id,
     plural: pluralOf(id),
@@ -14,6 +17,7 @@ function r(id: string, noun: string, opts?: { group?: string; shared?: string })
     verbs: ALL_VERBS,
     ...(opts?.group === undefined ? {} : { group: opts.group }),
     ...(opts?.shared === undefined ? {} : { shared: opts.shared }),
+    ...(examples === undefined ? {} : { examples }),
   };
 }
 
@@ -54,7 +58,19 @@ const resources: readonly Resource[] = [
   r("AuditLog", "経費監査ログ"),
 ];
 
-const aggregates: readonly Aggregate[] = [
+/** Attaches `x-orchestra-examples` from a flat lookup, keyed by `id`. */
+function withExamples<T extends { readonly id: string; readonly examples?: readonly string[] }>(
+  items: readonly T[],
+  table: Readonly<Record<string, readonly string[]>>,
+): readonly T[] {
+  return items.map((item) => {
+    const examples = table[item.id];
+
+    return examples === undefined ? item : Object.assign({}, item, { examples });
+  });
+}
+
+const aggregatesRaw: readonly Aggregate[] = [
   { id: "ExpenseClaims", kind: "search", noun: "経費申請" },
   { id: "ExpenseLines", kind: "search", noun: "経費明細" },
   { id: "Receipts", kind: "summarize", noun: "領収書" },
@@ -76,8 +92,9 @@ const aggregates: readonly Aggregate[] = [
   { id: "PerDiems", kind: "aggregate", noun: "日当" },
   { id: "Relocations", kind: "summarize", noun: "転勤費用" },
 ];
+const aggregates = withExamples(aggregatesRaw, EXPENSE_EXAMPLES.aggregates);
 
-const settings: readonly Setting[] = [
+const settingsRaw: readonly Setting[] = [
   {
     id: "ReimbursementApprovalThreshold",
     verb: "get",
@@ -179,12 +196,18 @@ const settings: readonly Setting[] = [
     displayName: "領収書添付必須金額設定",
   },
 ];
+const settings = withExamples(settingsRaw, EXPENSE_EXAMPLES.settings);
 
-const workflows: readonly Workflow[] = [
+const workflowsRaw: readonly Workflow[] = [
   { id: "ExpenseClaim", noun: "経費申請", actions: ["submit", "approve", "reject", "withdraw"] },
   { id: "Advance", noun: "仮払", actions: ["submit", "approve", "reject", "withdraw"] },
   { id: "Reimbursement", noun: "精算", actions: ["submit", "approve"] },
 ];
+const workflows: readonly Workflow[] = workflowsRaw.map((workflow) => {
+  const examples = EXPENSE_EXAMPLES.workflows[workflow.id];
+
+  return examples === undefined ? workflow : Object.assign({}, workflow, { examples });
+});
 
 export const expense: ServiceFixture = {
   name: "expense",

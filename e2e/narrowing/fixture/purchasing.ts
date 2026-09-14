@@ -3,10 +3,36 @@
  * "line" (受注明細/発注明細/経費明細), "approval" (経費承認/発注承認/勤怠承認)
  * and "partner" (取引先) with other services — axis B.
  */
+import { purchasingExamples } from "./examples-purchasing.ts";
 import { ALL_VERBS, pluralOf } from "./naming.ts";
-import type { Aggregate, Resource, ServiceFixture, Setting, Workflow } from "./types.ts";
+import type {
+  Aggregate,
+  Resource,
+  ServiceFixture,
+  Setting,
+  Verb,
+  Workflow,
+  WorkflowAction,
+} from "./types.ts";
+
+type ResourceExamples = Partial<Readonly<Record<Verb, readonly string[]>>>;
+type WorkflowExamples = Partial<Readonly<Record<WorkflowAction, readonly string[]>>>;
+
+/**
+ * Index-signature views onto `purchasingExamples`, so an id can be looked up
+ * dynamically (`Record<string, ...>`, not a fixed literal union) without a
+ * type assertion - a plain-typed variable declaration is enough because the
+ * literal object is structurally assignable to it.
+ */
+const resourceExamples: Readonly<Record<string, ResourceExamples>> = purchasingExamples.resources;
+const aggregateExamples: Readonly<Record<string, readonly string[]>> =
+  purchasingExamples.aggregates;
+const settingExamples: Readonly<Record<string, readonly string[]>> = purchasingExamples.settings;
+const workflowExamples: Readonly<Record<string, WorkflowExamples>> = purchasingExamples.workflows;
 
 function r(id: string, noun: string, opts?: { group?: string; shared?: string }): Resource {
+  const examples = resourceExamples[id];
+
   return {
     id,
     plural: pluralOf(id),
@@ -14,6 +40,7 @@ function r(id: string, noun: string, opts?: { group?: string; shared?: string })
     verbs: ALL_VERBS,
     ...(opts?.group === undefined ? {} : { group: opts.group }),
     ...(opts?.shared === undefined ? {} : { shared: opts.shared }),
+    ...(examples === undefined ? {} : { examples }),
   };
 }
 
@@ -201,11 +228,35 @@ const workflows: readonly Workflow[] = [
   { id: "Contract", noun: "取引契約", actions: ["submit", "approve"] },
 ];
 
+function withAggregateExamples(list: readonly Aggregate[]): readonly Aggregate[] {
+  return list.map((aggregate) => {
+    const examples = aggregateExamples[aggregate.id];
+
+    return { ...aggregate, ...(examples === undefined ? {} : { examples }) };
+  });
+}
+
+function withSettingExamples(list: readonly Setting[]): readonly Setting[] {
+  return list.map((setting) => {
+    const examples = settingExamples[setting.id];
+
+    return { ...setting, ...(examples === undefined ? {} : { examples }) };
+  });
+}
+
+function withWorkflowExamples(list: readonly Workflow[]): readonly Workflow[] {
+  return list.map((workflow) => {
+    const examples = workflowExamples[workflow.id];
+
+    return { ...workflow, ...(examples === undefined ? {} : { examples }) };
+  });
+}
+
 export const purchasing: ServiceFixture = {
   name: "purchasing",
   displayName: "購買管理",
   resources,
-  aggregates,
-  settings,
-  workflows,
+  aggregates: withAggregateExamples(aggregates),
+  settings: withSettingExamples(settings),
+  workflows: withWorkflowExamples(workflows),
 };

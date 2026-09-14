@@ -2,10 +2,25 @@
  * 在庫 (inventory) — 200 operations: 30 resources × 5 verbs, 20 aggregates,
  * 20 settings, 10 workflow actions. See docs/specs/narrowing.md section 3.
  */
+import {
+  aggregateExamples,
+  resourceExamples,
+  settingExamples,
+  workflowExamples,
+} from "./examples-inventory.ts";
 import { ALL_VERBS, pluralOf } from "./naming.ts";
-import type { Aggregate, Resource, ServiceFixture, Setting, Workflow } from "./types.ts";
+import type {
+  Aggregate,
+  Resource,
+  ServiceFixture,
+  Setting,
+  WorkflowAction,
+  Workflow,
+} from "./types.ts";
 
 function r(id: string, noun: string, group?: string, also?: readonly string[]): Resource {
+  const examples = resourceExamples[id];
+
   return {
     id,
     plural: pluralOf(id),
@@ -13,6 +28,41 @@ function r(id: string, noun: string, group?: string, also?: readonly string[]): 
     verbs: ALL_VERBS,
     ...(group === undefined ? {} : { group }),
     ...(also === undefined ? {} : { also }),
+    ...(examples === undefined ? {} : { examples }),
+  };
+}
+
+function a(id: string, kind: Aggregate["kind"], noun: string): Aggregate {
+  const examples = aggregateExamples[id];
+
+  return {
+    id,
+    kind,
+    noun,
+    ...(examples === undefined ? {} : { examples }),
+  };
+}
+
+function s(id: string, verb: Setting["verb"], summary: string, displayName: string): Setting {
+  const examples = settingExamples[id];
+
+  return {
+    id,
+    verb,
+    summary,
+    displayName,
+    ...(examples === undefined ? {} : { examples }),
+  };
+}
+
+function w(id: string, noun: string, actions: readonly WorkflowAction[]): Workflow {
+  const examples = workflowExamples[id];
+
+  return {
+    id,
+    noun,
+    actions,
+    ...(examples === undefined ? {} : { examples }),
   };
 }
 
@@ -54,157 +104,67 @@ const resources: readonly Resource[] = [
 ];
 
 const aggregates: readonly Aggregate[] = [
-  { id: "Items", kind: "search", noun: "在庫品目" },
-  { id: "Lots", kind: "search", noun: "在庫ロット" },
-  { id: "StockLevel", kind: "summarize", noun: "在庫量" },
-  { id: "Adjustments", kind: "summarize", noun: "在庫調整" },
-  { id: "Allocations", kind: "aggregate", noun: "在庫引当" },
-  { id: "Warehouses", kind: "search", noun: "倉庫" },
-  { id: "StorageLocations", kind: "search", noun: "保管ロケーション" },
-  { id: "Receivings", kind: "summarize", noun: "入庫" },
-  { id: "Shipments", kind: "summarize", noun: "出庫" },
-  { id: "Transfers", kind: "aggregate", noun: "移動" },
-  { id: "StockCounts", kind: "summarize", noun: "棚卸" },
-  { id: "ExpiringItems", kind: "search", noun: "使用期限切れ間近品目" },
-  { id: "OutOfStockItems", kind: "search", noun: "在庫切れ品目" },
-  { id: "SafetyStockGap", kind: "aggregate", noun: "安全在庫差異" },
-  { id: "CostLayers", kind: "aggregate", noun: "原価レイヤー" },
-  { id: "PickLists", kind: "search", noun: "ピッキングリスト" },
-  { id: "PackingLists", kind: "search", noun: "梱包リスト" },
-  { id: "QualityInspections", kind: "summarize", noun: "品質検査" },
-  { id: "VendorReturns", kind: "summarize", noun: "仕入先返品" },
-  { id: "StockAlerts", kind: "search", noun: "在庫アラート" },
+  a("Items", "search", "在庫品目"),
+  a("Lots", "search", "在庫ロット"),
+  a("StockLevel", "summarize", "在庫量"),
+  a("Adjustments", "summarize", "在庫調整"),
+  a("Allocations", "aggregate", "在庫引当"),
+  a("Warehouses", "search", "倉庫"),
+  a("StorageLocations", "search", "保管ロケーション"),
+  a("Receivings", "summarize", "入庫"),
+  a("Shipments", "summarize", "出庫"),
+  a("Transfers", "aggregate", "移動"),
+  a("StockCounts", "summarize", "棚卸"),
+  a("ExpiringItems", "search", "使用期限切れ間近品目"),
+  a("OutOfStockItems", "search", "在庫切れ品目"),
+  a("SafetyStockGap", "aggregate", "安全在庫差異"),
+  a("CostLayers", "aggregate", "原価レイヤー"),
+  a("PickLists", "search", "ピッキングリスト"),
+  a("PackingLists", "search", "梱包リスト"),
+  a("QualityInspections", "summarize", "品質検査"),
+  a("VendorReturns", "summarize", "仕入先返品"),
+  a("StockAlerts", "search", "在庫アラート"),
 ];
 
 // axis E: settings named after transactions they do not answer for. Decoys
 // are marked so a reader can see the design; the type itself carries none.
 const settings: readonly Setting[] = [
-  {
-    id: "SafetyStockThreshold",
-    verb: "get",
-    summary: "安全在庫数の下限設定を取得",
-    displayName: "安全在庫下限設定",
-  },
-  {
-    id: "ReorderPointThreshold",
-    verb: "update",
-    summary: "発注点の閾値を更新",
-    displayName: "発注点閾値設定",
-  },
-  {
-    id: "UnitOfMeasureCategory",
-    verb: "list",
-    summary: "単位カテゴリの一覧",
-    displayName: "単位カテゴリ一覧",
-  },
-  {
-    id: "WarehouseCapacitySetting",
-    verb: "get",
-    summary: "倉庫容量設定を取得",
-    displayName: "倉庫容量設定",
-  },
-  {
-    id: "QuarantinePeriodSetting",
-    verb: "update",
-    summary: "検品保留期間の設定を更新",
-    displayName: "検品保留期間設定",
-  },
-  {
-    id: "StockAlertCategory",
-    verb: "list",
-    summary: "在庫アラート区分の一覧",
-    displayName: "在庫アラート区分一覧",
-  },
-  {
-    id: "CycleCountFrequencySetting",
-    verb: "get",
-    summary: "実地棚卸の頻度設定を取得",
-    displayName: "棚卸頻度設定",
-  },
-  {
-    id: "AdjustmentApprovalThreshold",
-    verb: "update",
-    summary: "在庫調整の承認金額しきい値を更新",
-    displayName: "在庫調整承認しきい値",
-  },
-  {
-    id: "ExpiryAlertLeadTimeSetting",
-    verb: "get",
-    summary: "使用期限アラートのリードタイム設定を取得",
-    displayName: "使用期限アラート設定",
-  },
-  {
-    id: "LotAttributeCategory",
-    verb: "list",
-    summary: "ロット属性区分の一覧",
-    displayName: "ロット属性区分一覧",
-  },
-  {
-    id: "PickingPrioritySetting",
-    verb: "get",
-    summary: "ピッキング優先度の設定を取得",
-    displayName: "ピッキング優先度設定",
-  },
-  {
-    id: "PackingDefaultSetting",
-    verb: "update",
-    summary: "梱包デフォルト設定を更新",
-    displayName: "梱包デフォルト設定",
-  },
-  {
-    id: "SupplierCategory",
-    verb: "list",
-    summary: "仕入先区分の一覧",
-    displayName: "仕入先区分一覧",
-  },
-  {
-    id: "BarcodeFormatSetting",
-    verb: "get",
-    summary: "バーコード形式の設定を取得",
-    displayName: "バーコード形式設定",
-  },
-  {
-    id: "ContainerCapacitySetting",
-    verb: "update",
-    summary: "コンテナ容量の設定を更新",
-    displayName: "コンテナ容量設定",
-  },
-  {
-    id: "KitComponentCategory",
-    verb: "list",
-    summary: "キット構成区分の一覧",
-    displayName: "キット構成区分一覧",
-  },
-  {
-    id: "CostLayerMethodSetting",
-    verb: "get",
-    summary: "原価レイヤー算出方式の設定を取得",
-    displayName: "原価算出方式設定",
-  },
-  {
-    id: "QualityInspectionThreshold",
-    verb: "update",
-    summary: "品質検査の合格基準を更新",
-    displayName: "品質検査合格基準",
-  },
-  {
-    id: "ReturnReasonCategory",
-    verb: "list",
-    summary: "返品理由区分の一覧",
-    displayName: "返品理由区分一覧",
-  },
-  {
-    id: "PalletCapacitySetting",
-    verb: "get",
-    summary: "パレット積載量の設定を取得",
-    displayName: "パレット積載量設定",
-  },
+  s("SafetyStockThreshold", "get", "安全在庫数の下限設定を取得", "安全在庫下限設定"),
+  s("ReorderPointThreshold", "update", "発注点の閾値を更新", "発注点閾値設定"),
+  s("UnitOfMeasureCategory", "list", "単位カテゴリの一覧", "単位カテゴリ一覧"),
+  s("WarehouseCapacitySetting", "get", "倉庫容量設定を取得", "倉庫容量設定"),
+  s("QuarantinePeriodSetting", "update", "検品保留期間の設定を更新", "検品保留期間設定"),
+  s("StockAlertCategory", "list", "在庫アラート区分の一覧", "在庫アラート区分一覧"),
+  s("CycleCountFrequencySetting", "get", "実地棚卸の頻度設定を取得", "棚卸頻度設定"),
+  s(
+    "AdjustmentApprovalThreshold",
+    "update",
+    "在庫調整の承認金額しきい値を更新",
+    "在庫調整承認しきい値",
+  ),
+  s(
+    "ExpiryAlertLeadTimeSetting",
+    "get",
+    "使用期限アラートのリードタイム設定を取得",
+    "使用期限アラート設定",
+  ),
+  s("LotAttributeCategory", "list", "ロット属性区分の一覧", "ロット属性区分一覧"),
+  s("PickingPrioritySetting", "get", "ピッキング優先度の設定を取得", "ピッキング優先度設定"),
+  s("PackingDefaultSetting", "update", "梱包デフォルト設定を更新", "梱包デフォルト設定"),
+  s("SupplierCategory", "list", "仕入先区分の一覧", "仕入先区分一覧"),
+  s("BarcodeFormatSetting", "get", "バーコード形式の設定を取得", "バーコード形式設定"),
+  s("ContainerCapacitySetting", "update", "コンテナ容量の設定を更新", "コンテナ容量設定"),
+  s("KitComponentCategory", "list", "キット構成区分の一覧", "キット構成区分一覧"),
+  s("CostLayerMethodSetting", "get", "原価レイヤー算出方式の設定を取得", "原価算出方式設定"),
+  s("QualityInspectionThreshold", "update", "品質検査の合格基準を更新", "品質検査合格基準"),
+  s("ReturnReasonCategory", "list", "返品理由区分の一覧", "返品理由区分一覧"),
+  s("PalletCapacitySetting", "get", "パレット積載量の設定を取得", "パレット積載量設定"),
 ];
 
 const workflows: readonly Workflow[] = [
-  { id: "Adjustment", noun: "在庫調整", actions: ["submit", "approve", "reject", "withdraw"] },
-  { id: "StockCount", noun: "棚卸", actions: ["submit", "approve", "reject", "withdraw"] },
-  { id: "Transfer", noun: "移動", actions: ["submit", "approve"] },
+  w("Adjustment", "在庫調整", ["submit", "approve", "reject", "withdraw"]),
+  w("StockCount", "棚卸", ["submit", "approve", "reject", "withdraw"]),
+  w("Transfer", "移動", ["submit", "approve"]),
 ];
 
 export const inventory: ServiceFixture = {

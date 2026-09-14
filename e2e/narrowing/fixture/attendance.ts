@@ -4,10 +4,13 @@
  * `OvertimeThreshold` is the axis E example worked through in
  * docs/specs/narrowing.md section 4.
  */
+import { attendanceExamples } from "./examples-attendance.ts";
 import { ALL_VERBS, pluralOf } from "./naming.ts";
 import type { Aggregate, Resource, ServiceFixture, Setting, Workflow } from "./types.ts";
 
 function r(id: string, noun: string, opts?: { group?: string; shared?: string }): Resource {
+  const examples = attendanceExamples.resources[id];
+
   return {
     id,
     plural: pluralOf(id),
@@ -15,7 +18,26 @@ function r(id: string, noun: string, opts?: { group?: string; shared?: string })
     verbs: ALL_VERBS,
     ...(opts?.group === undefined ? {} : { group: opts.group }),
     ...(opts?.shared === undefined ? {} : { shared: opts.shared }),
+    ...(examples === undefined ? {} : { examples }),
   };
+}
+
+function withAggregateExamples(aggregate: Aggregate): Aggregate {
+  const examples: readonly string[] | undefined = attendanceExamples.aggregates[aggregate.id];
+
+  return examples === undefined ? aggregate : { ...aggregate, examples };
+}
+
+function withSettingExamples(setting: Setting): Setting {
+  const examples: readonly string[] | undefined = attendanceExamples.settings[setting.id];
+
+  return examples === undefined ? setting : { ...setting, examples };
+}
+
+function withWorkflowExamples(workflow: Workflow): Workflow {
+  const examples = attendanceExamples.workflows[workflow.id];
+
+  return examples === undefined ? workflow : { ...workflow, examples };
 }
 
 const resources: readonly Resource[] = [
@@ -197,7 +219,7 @@ export const attendance: ServiceFixture = {
   name: "attendance",
   displayName: "勤怠管理",
   resources,
-  aggregates,
-  settings,
-  workflows,
+  aggregates: aggregates.map((aggregate) => withAggregateExamples(aggregate)),
+  settings: settings.map((setting) => withSettingExamples(setting)),
+  workflows: workflows.map((workflow) => withWorkflowExamples(workflow)),
 };

@@ -71,12 +71,19 @@ test("every service has three or more near-neighbour groups of four or more (axi
 
 // G6: no fixture examples are written in this task - every real operation
 // carries an empty examples array, not undefined, until Task 4 lands.
-test("no service's operations carry any examples yet", () => {
-  const counts = services().flatMap((service) =>
-    operationsOf(service).map((op) => op.examples.length),
+// AC-G-105: the written layer covers the whole fixture. Each service's own
+// examples-<service>.test.ts checks its 200 operations in detail; this is
+// the union - no operation anywhere is left without at least one example,
+// which is what lets the "+written" rows of the report claim to measure the
+// written layer rather than a fraction of it.
+test("every operation in every service carries at least one written example", () => {
+  const uncovered = services().flatMap((service) =>
+    operationsOf(service)
+      .filter((op) => op.examples.length === 0)
+      .map((op) => op.operationId),
   );
 
-  expect(counts.every((count) => count === 0)).toBe(true);
+  expect(uncovered).toEqual([]);
 });
 
 // AC-G-104: FixtureOperation.examples round-trips a definition table
