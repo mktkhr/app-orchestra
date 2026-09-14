@@ -124,10 +124,41 @@ function contractLine(configuration: ConfigurationResult): string {
   );
 }
 
-/** One configuration's block: its header (id and contract-check rate), the shared column header, then one size-block per catalogue size. */
+/**
+ * The utterance contract-check line for a configuration's block header
+ * (spec section 6, AC-G-103) - the retrieval rate and the novelty rate,
+ * printed together because they pull against each other: a layer that
+ * scores high on retrieval by repeating the operation's own words scores
+ * low on novelty, and neither number alone says whether the layer is any
+ * good.
+ */
+function utteranceContractLine(configuration: ConfigurationResult): string {
+  const check = configuration.utteranceContractCheck;
+
+  if (check === undefined) return "";
+
+  const retrievalPercent = percent(
+    check.totalUtterances - check.failures.length,
+    check.totalUtterances,
+  );
+  const noveltyPercent = percent(
+    Math.round(check.noveltyRate * check.totalUtterances),
+    check.totalUtterances,
+  );
+
+  return (
+    ` — utterance contract (spec section 6, AC-G-103): retrieval ${retrievalPercent}, ` +
+    `novelty ${noveltyPercent}, over ${String(check.totalUtterances)} utterances from ` +
+    `${String(check.sampledOperationIds.length)} sampled operations`
+  );
+}
+
+/** One configuration's block: its header (id, contract-check rate and utterance contract rates), the shared column header, then one size-block per catalogue size. */
 function printConfiguration(configuration: ConfigurationResult, kValues: readonly K[]): void {
   console.log("");
-  console.log(`== ${configuration.configId} ==${contractLine(configuration)}`);
+  console.log(
+    `== ${configuration.configId} ==${contractLine(configuration)}${utteranceContractLine(configuration)}`,
+  );
   console.log(
     "size  ops    K    " + AXIS_COLUMNS.map((axis) => axis.padEnd(10)).join("") + "ms/query",
   );

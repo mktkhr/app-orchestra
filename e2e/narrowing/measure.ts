@@ -1,44 +1,36 @@
 /**
  * The whole report `make narrowing` prints (docs/plans/narrowing.md Task 4;
- * docs/plans/retrieving.md Task 2). The recall computation itself is
- * `recall.ts` (split out only for eslint's `max-lines`; re-exported below so
- * nothing outside these two files needs to know that). What this file adds
- * is `gatherReport`: running the lexical floor, then every embedding
- * configuration in `embedding/configs.ts` that llama-swap can actually
- * serve, catching the point where it stops being reachable rather than
- * throwing (AC-V-104; docs/plans/retrieving.md Task 2 Step 5).
+ * docs/plans/retrieving.md Task 2; docs/plans/describing.md Task 2). The
+ * recall computation is `recall.ts`, the result shapes are `report-types.ts`
+ * (re-exported by `gather-helpers.ts`), and every phase `gatherReport` runs
+ * is `gather-phases.ts` - all split out only for eslint's `max-lines`, and
+ * re-exported below so nothing outside these files needs to know the split
+ * happened. What this file adds is `gatherReport` itself: the lexical
+ * floor, then generation, then the base embedding configurations, the four
+ * utterance rows, then the two reranked rows - one call into
+ * `gather-phases.ts` per phase, threading "is the transport still
+ * reachable" from one call to the next (AC-V-104).
  *
  * Run directly — `node e2e/narrowing/measure.ts` (`make narrowing`) — to
  * print the full report. Every other export here is a plain function so
  * `measure.test.ts` can exercise it without paying for the whole corpus,
  * and without reaching llama-swap at all (AC-V-106): `gatherReport` takes a
- * `fetchImpl`/`baseUrl`/`vectorsDir` exactly so a test can hand it a fake
- * transport and a throwaway cache directory instead.
+ * `fetchImpl`/`baseUrl`/`vectorsDir`/`utterancesDir` exactly so a test can
+ * hand it a fake transport and throwaway cache directories instead.
  */
 import { pathToFileURL } from "node:url";
 
-import {
-  EMBEDDING_CONFIGS,
-  checkContract,
-  embedCatalogue,
-  vectorNarrowerOf,
-  type CatalogueVectors,
-  type ContractCheckResult,
-  type EmbeddingConfig,
-} from "./embedding/index.ts";
-import { embedMany, type EmbeddingVector, type FetchLike } from "./embedding/client.ts";
 import { measureAlternation } from "./loading.ts";
-import { twoStageNarrowerOf } from "./rerank/index.ts";
-import { catalogOf, type FixtureOperation } from "./fixture/index.ts";
-import {
-  K_VALUES,
-  lexicalNarrowerOf,
-  measureAcrossSizes,
-  type K,
-  type SizeResult,
-} from "./recall.ts";
+import { K_VALUES, lexicalNarrowerOf, measureAcrossSizes, type K } from "./recall.ts";
 import { printReport } from "./report.ts";
 import { questions, type Question } from "./corpus/index.ts";
+import {
+  runEmbeddingConfigurations,
+  runGenerationPhase,
+  runRerankedRows,
+  runUtteranceRows,
+} from "./gather-phases.ts";
+import type { ConfigurationResult, GatherOptions, SkippedConfiguration } from "./gather-helpers.ts";
 
 export {
   CATALOG_SIZES,
@@ -52,171 +44,20 @@ export {
   type RecallAtK,
   type SizeResult,
 } from "./recall.ts";
-
-/** One configuration's full report: every catalogue size, and the contract check when it has one (embedding configurations only — the lexical floor has no contract to check). */
-export interface ConfigurationResult {
-  readonly configId: string;
-  readonly contractCheck?: ContractCheckResult;
-  readonly sizes: readonly SizeResult[];
-}
-
-/** A configuration that could not be measured at all — llama-swap was unreachable — and why. */
-export interface SkippedConfiguration {
-  readonly configId: string;
-  readonly reason: string;
-}
-
-/** `fullVectors`, restricted to the operations `catalog` actually holds — the smaller catalogue sizes are prefixes of the full one, so this slices the cache rather than re-embedding (docs/plans/retrieving.md Task 2). */
-function sliceVectors(
-  fullVectors: CatalogueVectors,
-  catalog: readonly FixtureOperation[],
-): CatalogueVectors {
-  const catalogIds = new Set(catalog.map((operation) => operation.operationId));
-
-  return new Map(Array.from(fullVectors).filter(([operationId]) => catalogIds.has(operationId)));
-}
-
-/** How `gatherReport` reaches the transport and the vector cache — overridable so tests never reach llama-swap (AC-V-106). */
-export interface GatherOptions {
-  readonly fetchImpl?: FetchLike;
-  readonly baseUrl?: string;
-  readonly vectorsDir?: string;
-}
-
-/** `options`, as the subset of optional fields `embedCatalogue`/`checkContract` accept — built by spreading only the ones actually set, because `exactOptionalPropertyTypes` (tsconfig.base.json) treats an explicit `undefined` differently from an absent key. */
-function transportOptionsOf(options: GatherOptions): {
-  readonly dir?: string;
-  readonly fetchImpl?: FetchLike;
-  readonly baseUrl?: string;
-} {
-  return {
-    ...(options.vectorsDir === undefined ? {} : { dir: options.vectorsDir }),
-    ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
-    ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
-  };
-}
-
-function unreachableReason(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-
-  return `llama-swap was unreachable — ${message}`;
-}
-
-/** One embedding configuration's full report: its catalogue vectors cached, its contract checked, and its recall measured at every size. Throws when the transport cannot be reached at all — `gatherReport` is what turns that into a skip. */
-async function measureEmbeddingConfiguration(
-  config: EmbeddingConfig,
-  testQuestions: readonly Question[],
-  kValues: readonly K[],
-  options: GatherOptions,
-): Promise<ConfigurationResult> {
-  const fullCatalog = catalogOf(5);
-  const transportOptions = transportOptionsOf(options);
-  const fullVectors = await embedCatalogue(config, fullCatalog, transportOptions);
-  const contractCheck = await checkContract(
-    config,
-    fullCatalog,
-    transportOptions.fetchImpl,
-    transportOptions.baseUrl,
-  );
-  const sizes = await measureAcrossSizes(
-    (catalog) =>
-      vectorNarrowerOf(
-        sliceVectors(fullVectors, catalog),
-        config,
-        transportOptions.fetchImpl,
-        transportOptions.baseUrl,
-      ),
-    testQuestions,
-    kValues,
-  );
-
-  return { configId: config.id, contractCheck, sizes };
-}
-
-/** The two-stage configuration's id in the report — one block, not two (spec V6). */
-const TWO_STAGE_CONFIG_ID = "e5-large-q8+reranker";
-
-/** The embedding configuration id the two-stage narrower retrieves with — `rerank/narrower.ts` says why `e5-large-q8`. */
-const TWO_STAGE_RETRIEVER_ID = "e5-large-q8";
-
-/** `EMBEDDING_CONFIGS`'s own `e5-large-q8` entry — the two-stage narrower reuses its prefix and pooling rather than redeclaring them. */
-function retrieverConfig(): EmbeddingConfig {
-  const found = EMBEDDING_CONFIGS.find((config) => config.id === TWO_STAGE_RETRIEVER_ID);
-
-  if (found === undefined) {
-    throw new Error(`measure.ts: no embedding configuration named ${TWO_STAGE_RETRIEVER_ID}`);
-  }
-
-  return found;
-}
-
-/** Every test question's vector, keyed by its own text — computed once, in one batch, before any rerank call (docs/plans/retrieving.md Task 3, "things that will bite"). */
-async function embedQuestionsOnce(
-  config: EmbeddingConfig,
-  testQuestions: readonly Question[],
-  transportOptions: { readonly fetchImpl?: FetchLike; readonly baseUrl?: string },
-): Promise<ReadonlyMap<string, EmbeddingVector>> {
-  const texts = testQuestions.map((question) => question.text);
-  const vectors = await embedMany(
-    config,
-    texts,
-    "query",
-    transportOptions.fetchImpl,
-    transportOptions.baseUrl,
-  );
-
-  return new Map(texts.map((text, index) => [text, vectors[index] ?? []]));
-}
+export type { ConfigurationResult, GatherOptions, SkippedConfiguration } from "./gather-helpers.ts";
 
 /**
- * The two-stage configuration's full report (spec V6, AC-V-104): `e5-large-
- * q8`'s catalogue vectors (already cached from its own row above this one,
- * so this call is a disk read, not a network one), its contract check, and
- * every test question's vector — all embedded before any rerank call, so the
- * whole run alternates between the retriever and the reranker exactly once
- * rather than once per question.
- */
-async function measureTwoStageConfiguration(
-  testQuestions: readonly Question[],
-  kValues: readonly K[],
-  options: GatherOptions,
-): Promise<ConfigurationResult> {
-  const config = retrieverConfig();
-  const fullCatalog = catalogOf(5);
-  const transportOptions = transportOptionsOf(options);
-  const fullVectors = await embedCatalogue(config, fullCatalog, transportOptions);
-  const contractCheck = await checkContract(
-    config,
-    fullCatalog,
-    transportOptions.fetchImpl,
-    transportOptions.baseUrl,
-  );
-  const questionVectors = await embedQuestionsOnce(config, testQuestions, transportOptions);
-
-  const sizes = await measureAcrossSizes(
-    (catalog) =>
-      twoStageNarrowerOf(
-        sliceVectors(fullVectors, catalog),
-        catalog,
-        questionVectors,
-        transportOptions.fetchImpl,
-        transportOptions.baseUrl,
-      ),
-    testQuestions,
-    kValues,
-  );
-
-  return { configId: TWO_STAGE_CONFIG_ID, contractCheck, sizes };
-}
-
-/**
- * Every configuration `make narrowing` reports: the lexical floor, measured
- * unconditionally, plus every embedding configuration in `EMBEDDING_CONFIGS`
- * that could actually be reached. The first embedding configuration to fail
- * to embed its catalogue is read as llama-swap being down rather than that
- * one configuration being broken, and every configuration from that point on
- * is recorded as skipped instead of retried (docs/plans/retrieving.md Task 2
- * Step 5) — the lexical row still runs either way, and nothing here throws.
+ * Every configuration `make narrowing` reports, phase by phase: the lexical
+ * floor (unconditional), generation, the base embedding configurations, the
+ * four utterance rows, then the two reranked rows (`gather-phases.ts`). The
+ * first configuration to fail to reach the transport is read as llama-swap
+ * being down rather than that one configuration being broken, and every
+ * configuration from that point on is recorded as skipped instead of
+ * retried (docs/plans/retrieving.md Task 2 Step 5) — the lexical row still
+ * runs either way, and nothing here throws. The phase order is deliberate:
+ * llama-swap holds one model at a time, and interleaving per question would
+ * pay a model load on every question rather than once per phase
+ * (docs/plans/describing.md, "Details that decide").
  */
 export async function gatherReport(
   testQuestions: readonly Question[],
@@ -229,39 +70,35 @@ export async function gatherReport(
   const lexicalSizes = await measureAcrossSizes(lexicalNarrowerOf, testQuestions, kValues);
   const configurations: ConfigurationResult[] = [{ configId: "lexical", sizes: lexicalSizes }];
   const skipped: SkippedConfiguration[] = [];
-  let reachable = true;
 
-  for (const config of EMBEDDING_CONFIGS) {
-    if (!reachable) {
-      skipped.push({
-        configId: config.id,
-        reason: "llama-swap was unreachable for an earlier configuration; not retried",
-      });
-      continue;
-    }
+  const phase = await runGenerationPhase(options, skipped);
+  const reachableAfterEmbedding = await runEmbeddingConfigurations(
+    testQuestions,
+    kValues,
+    options,
+    configurations,
+    skipped,
+    phase.reachable,
+  );
+  const reachableAfterUtterances = await runUtteranceRows(
+    phase,
+    testQuestions,
+    kValues,
+    options,
+    configurations,
+    skipped,
+    reachableAfterEmbedding,
+  );
 
-    try {
-      configurations.push(
-        await measureEmbeddingConfiguration(config, testQuestions, kValues, options),
-      );
-    } catch (error) {
-      reachable = false;
-      skipped.push({ configId: config.id, reason: unreachableReason(error) });
-    }
-  }
-
-  if (reachable) {
-    try {
-      configurations.push(await measureTwoStageConfiguration(testQuestions, kValues, options));
-    } catch (error) {
-      skipped.push({ configId: TWO_STAGE_CONFIG_ID, reason: unreachableReason(error) });
-    }
-  } else {
-    skipped.push({
-      configId: TWO_STAGE_CONFIG_ID,
-      reason: "llama-swap was unreachable for an earlier configuration; not retried",
-    });
-  }
+  await runRerankedRows(
+    phase.bothUtterances,
+    testQuestions,
+    kValues,
+    options,
+    configurations,
+    skipped,
+    reachableAfterUtterances,
+  );
 
   return { configurations, skipped };
 }

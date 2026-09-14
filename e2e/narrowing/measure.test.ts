@@ -155,25 +155,33 @@ function refusingFetch(): Promise<Response> {
 }
 
 let vectorsDir: string;
+let utterancesDir: string;
 
 beforeEach(() => {
   vectorsDir = mkdtempSync(join(tmpdir(), "retrieving-measure-test-"));
+  // A throwaway, always-cold cache: without this, `gatherReport` would read
+  // the repo's own `.utterances/` cache (warm once Task 1 has run) and
+  // generation would succeed via the disk, making this test's outcome
+  // depend on repo state rather than on `refusingFetch`.
+  utterancesDir = mkdtempSync(join(tmpdir(), "describing-measure-test-"));
 });
 
 afterEach(() => {
   rmSync(vectorsDir, { recursive: true, force: true });
+  rmSync(utterancesDir, { recursive: true, force: true });
 });
 
-test("gatherReport still runs the lexical row and skips every embedding configuration, plus the two-stage one, when the transport refuses to connect", async () => {
+test("gatherReport still runs the lexical row and skips generation, every embedding configuration and every utterance and reranked row, when the transport refuses to connect", async () => {
   const result = await gatherReport([], [10], {
     fetchImpl: refusingFetch,
     baseUrl: "http://fake-llama-swap.invalid",
     vectorsDir,
+    utterancesDir,
   });
 
   expect(result.configurations.map((configuration) => configuration.configId)).toEqual(["lexical"]);
-  // Every embedding configuration, plus the two-stage configuration that
-  // retrieves with one of them (docs/plans/retrieving.md Task 3) — the
-  // lexical row above still ran unconditionally.
-  expect(result.skipped.length).toBe(EMBEDDING_CONFIGS.length + 1);
+  // Generation itself (one skip entry), every embedding configuration, the
+  // three utterance rows, and the two reranked rows (docs/plans/
+  // describing.md Task 2) — the lexical row above still ran unconditionally.
+  expect(result.skipped.length).toBe(EMBEDDING_CONFIGS.length + 6);
 });

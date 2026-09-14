@@ -26,3 +26,10 @@ export {
   type ContractCheckResult,
 } from "./contract.ts";
 export { narrow, vectorNarrowerOf } from "./narrower.ts";
+export {
+  DEFAULT_UTTERANCE_VECTORS_DIR,
+  embedUtteranceVectors,
+  type UtteranceTexts,
+  type UtteranceVectorCacheOptions,
+  type UtteranceVectors,
+} from "./utterance-cache.ts";

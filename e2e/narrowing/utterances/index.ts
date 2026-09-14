@@ -21,3 +21,11 @@ export {
   type UtteranceContractFailure,
   type UtteranceContractResult,
 } from "./contract.ts";
+export { narrow, utteranceNarrowerOf } from "./narrower.ts";
+export { twoStageWithUtterancesNarrowerOf } from "./two-stage.ts";
+export { mergeUtterances, writtenUtterancesOf } from "./layers.ts";
+export {
+  TWO_STAGE_BOTH_CONFIG_ID,
+  measureTwoStageWithUtterancesConfiguration,
+  measureUtteranceConfiguration,
+} from "./rows.ts";
