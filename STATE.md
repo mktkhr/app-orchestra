@@ -1,9 +1,24 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-15 (frontier models measured on the same shortlist as
-the local model; D17 recorded; the subproject returns to local models)_
+_Last updated: 2026-09-15 (the corpus answer key is fixed; every recall
+figure re-recorded)_
 
 ## Summary
+
+**2026-09-15 - the corpus answer key is fixed (TODO.md item 2).** Axes A, D
+and E named `list*` and rejected `search*`/`summarize*`/`aggregate*` over
+the same object and `create`/`submit` verb variants the question admitted;
+axes B and C were already complete. 30 of 100 questions changed
+(`e2e/narrowing/corpus/axis-{a,d,e}.ts`), 164 answers before, 196 after — see
+`DECISIONS.md`, 2026-09-15 ("the corpus answer key is fixed, and every
+recall figure moves") for the per-axis count, every left-out candidate and
+why, and the full recall@K table for all eight configurations at 1000
+operations, which replaces the 2026-09-14 table. `make check` calls no
+model (`docker logs llama-swap`'s `POST /v1/` count: 30879 before and after).
+The lexical baseline's axis D stays exactly 0% (unreachable by construction,
+unaffected by a wider key); every embedding configuration moved on axis D,
+`bge-m3-q8` most (+20 points at K=10) — the old key's defect was
+concentrated there.
 
 **2026-09-15 - frontier measured, not adopted (D17).** With an API key and a
 $20 limit, the same 100 questions and the same 50 `e5-large-q8` candidates

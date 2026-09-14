@@ -18,29 +18,23 @@ _Nothing in progress._
    narrowing. The mapping needs the company's words in the catalogue:
    what an operation's description and `x-ui-hint` should carry, and how
    the corpus measures it, is the next spec.
-2. **Fix the corpus answer key.** It names `list*` and rejects `search*`,
-   `summarize*` and `aggregate*` over the same object, which are often the
-   better answer (`DECISIONS.md`, 2026-09-14, "a defect in the corpus it
-   exposed"). Axes B and C already list every defensible answer; A, D and E
-   do not. Every recorded recall figure moves when this is fixed, so it is
-   done deliberately and re-recorded, not patched.
-3. **Choose what the product uses, and wire it into `services/platform`.**
+2. **Choose what the product uses, and wire it into `services/platform`.**
    `docs/plans/retrieving.md`'s own closing note names this as what comes
    after and is deliberately not in that subproject - a hybrid of lexical
    and vector scoring is named as the obvious next mechanism, excluded
    because it moves two numbers at once and neither pure mechanism had been
-   measured yet. It now has: the lexical baseline at 47%/76% overall at
+   measured yet. It now has: the lexical baseline at 48%/76% overall at
    K=10 (100% on axis A, 0% on axis D by construction, wide worst/best gaps
    on B/C/E driven by ties); six embedding configurations clustering at
-   72-82% overall where their contract check passes, and dropping to 42-59%
+   80-89% overall where their contract check passes, and dropping to 44-59%
    where it does not; and the retrieve-then-rerank configuration
-   (`e5-large-q8` + `bge-reranker-v2-m3-q8`) at 86% overall, including 47%
-   on axis D against the baseline's 0% - see `DECISIONS.md`, 2026-09-14
-   ("docs/plans/retrieving.md closes: six embedding configurations, the
-   rerank stage, and what keeping a model loaded costs") for the full
-   table, the contract-check cross-check, and the alternation cost a
-   deployment running narrowing and answering on the same GPU would pay.
-4. A genre/domain layer above individual services - grouping services by
+   (`e5-large-q8` + `bge-reranker-v2-m3-q8`) at 88% overall, including 60%
+   on axis D against the baseline's 0% - see `DECISIONS.md`, 2026-09-15
+   ("the corpus answer key is fixed, and every recall figure moves") for the
+   full table (superseding 2026-09-14's), the contract-check cross-check,
+   and the alternation cost a deployment running narrowing and answering on
+   the same GPU would pay.
+3. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
    exposed operation in `services/inventory` carries the single tag `items`
@@ -48,12 +42,12 @@ _Nothing in progress._
    group nothing beyond what `OperationPicker`'s own `groupBy` (off
    `serviceDisplayName`) already does. Worth building once a service
    carries more than one tag over its own exposed operations.
-5. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+4. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-6. **Open defect: a question whose filter word matches no enum value gets
+5. **Open defect: a question whose filter word matches no enum value gets
    every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
    在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
    variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
@@ -68,7 +62,7 @@ _Nothing in progress._
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
-7. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+6. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -79,13 +73,13 @@ _Nothing in progress._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-8. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+7. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
 
-9. **`<Typography color="text.secondary">` is a silent no-op almost
+8. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
@@ -107,6 +101,19 @@ _Nothing in progress._
 
 ## Done
 
+- **The corpus answer key is fixed, and every recall figure re-recorded.**
+  Axes A, D and E named `list*` and rejected `search*`/`summarize*`/
+  `aggregate*` over the same object and `create`/`submit` verb variants the
+  question admitted; axes B and C were already complete. 30 of 100
+  questions changed (`e2e/narrowing/corpus/axis-{a,d,e}.ts`), 164 answers
+  before, 196 after; every non-obvious inclusion carries a one-line comment
+  on the question. `make check` still calls no model (`docker logs
+llama-swap`'s `POST /v1/` count: 30879 before and after). See `STATE.md`
+  and `DECISIONS.md`, 2026-09-15 ("the corpus answer key is fixed, and every
+  recall figure moves") for the per-axis count, the candidates left out and
+  why, and the full recall@K table for all eight configurations at 1000
+  operations, replacing 2026-09-14's table. Next: item 1 above (the
+  catalogue's own vocabulary) and item 2 (choosing what the product uses).
 - **`docs/plans/retrieving.md` closes: six embedding configurations, the
   retrieve-then-rerank stage, and the alternation cost, all measured
   beside the lexical floor** (AC-V-101 through AC-V-107). Tasks 1-3

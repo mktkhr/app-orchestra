@@ -5233,3 +5233,138 @@ frontier figures are Claude only. All figures are one run at temperature 0.
 $0.41, Phase 4 $0.70. Ledger and per-run outputs are in the session
 scratchpad, not the repository; the key is read from a file outside the
 repository and never appears in it.
+
+## 2026-09-15 The corpus answer key is fixed, and every recall figure moves
+
+**Context.** TODO.md item 2. The 2026-09-14 entry "A frontier model reads
+the whole catalogue" found the defect: the answer key named `list*` and
+rejected `search*`, `summarize*` and `aggregate*` operations over the same
+business object, and rejected verb variants (`create` vs `submit`) where the
+question admits both. Axes B and C were written with every defensible
+answer; A, D and E were not. Every recall figure recorded 2026-09-14 was
+scored against the old key and is superseded by this entry.
+
+**What changed, per axis.** One standard applied to all 100 questions: an
+answer is every operation a reasonable person in that company could mean by
+the question, over the same business object — not every operation that
+merely mentions the noun. Non-obvious inclusions carry a one-line comment on
+the question in `e2e/narrowing/corpus/axis-{a,d,e}.ts`.
+
+| axis      | questions changed         | answers before | answers after |
+| --------- | ------------------------- | -------------- | ------------- |
+| A         | 14 / 25                   | 25             | 39            |
+| B         | 0 / 25 (already complete) | 60             | 60            |
+| C         | 0 / 25 (already complete) | 53             | 53            |
+| D         | 11 / 15                   | 15             | 28            |
+| E         | 5 / 10                    | 11             | 16            |
+| **total** | **30 / 100**              | **164**        | **196**       |
+
+Axis A gained a `search*`/`summarize*`/`aggregate*` sibling wherever the
+question's wording does not commit to "every record" over "the matching
+ones" or "a computed figure" (e.g. a16 「関税ってどれくらいかかってる？」 now
+also accepts `aggregatePurchasingCustomsDuties` — 「どれくらい」asks for a
+figure), and one `create` sibling where a verb reasonably reads as "release"
+rather than "show" (a12 セット商品を出したい). Axis D gained `create`/`submit`
+pairs where "出したい"/"直したい" admits either drafting a record or filing
+it into a workflow (d01-d04, d07), 出荷準備's three stages as three answers
+(d06), the three genuine readings of "money coming back" (d09: 精算, 経費申
+請, 仮払), the buyer/seller reading DECISIONS.md 2026-09-14 already called
+"genuinely undecidable" (d12), and the model's better answers on d13-d15.
+Axis E gained a same-object `search*`/`summarize*`/`aggregate*` sibling on
+five of its ten questions (e01, e03, e04, e05, e09) — every one checked to
+still score below its decoy, so the axis's own claim (the decoy is what
+costs a mechanism the point, not the answer set) is unweakened.
+
+**Answers considered and left out.** None failed the axis-D bigram check or
+the axis-E outscore check — every candidate was checked with `lexical.ts`'s
+own `bigramsOf`/`scoreOperation` before being added, so nothing had to be
+discarded for breaking those. Two axis-E candidates were checked and pass
+both structural checks (`aggregateSalesCreditLimits` for e06, still below
+its decoy at 0.167 vs 0.375; `summarizeAttendanceBusinessTrips` for e08,
+0.125 vs 0.3125) but were left out on judgement: neither operation expresses
+"nearing a threshold" the way `aggregateInventorySafetyStockGap` (e09, kept)
+does — a generic aggregate is not the same claim as a gap computed against
+the limit itself, and adding it would have been widening for its own sake
+rather than because a reasonable person would mean it.
+
+**Verification the fix touches no harness.** `make check` — green (one
+`acceptance-e2e` failure on the first run, `src/auth.test.ts`'s `afterAll`
+hook timing out at 30s; reproduced as passing in isolation in under 500ms
+and matches the flake DECISIONS.md already recorded 2026-09-13, "the browser
+suite's flake is load, measured"; the retry was green start to finish).
+`docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read 30879 before
+`make check` and 30879 after, across both runs — `make check` calls no
+model.
+
+**The new table, all eight configurations, 1000 operations, K = 10/20/50
+(`make narrowing`, this run).** Cells are `worst%/best%`; embedding
+configurations never tie (2026-09-14 finding, reconfirmed), so their two
+figures are always equal.
+
+```
+                                    K   A         B         C         D         E         overall
+lexical                            10  100%/100% 32%/96%   36%/72%   0%/0%     60%/90%   48%/76%
+                                    20  100%/100% 72%/96%   60%/72%   0%/0%     80%/90%   66%/76%
+                                    50  100%/100% 88%/96%   68%/80%   0%/0%     80%/100%  72%/79%
+bge-m3-q8                          10  100%      88%       84%       47%       100%      85%
+                                    20  100%      96%       88%       53%       100%      89%
+                                    50  100%      100%      92%       60%       100%      92%
+e5-large-q8                        10  100%      100%      72%       33%       100%      83%
+                                    20  100%      100%      80%       60%       100%      89%
+                                    50  100%      100%      84%       80%       100%      93%
+ruri-v3-310m-q8-mean                10  100%      88%       68%       40%       100%      80%
+                                    20  100%      100%      76%       53%       100%      87%
+                                    50  100%      100%      92%       60%       100%      92%
+ruri-v3-310m-q8                    10  76%       24%       44%       13%       60%       44%
+                                    20  88%       32%       64%       13%       60%       54%
+                                    50  92%       56%       80%       20%       80%       68%
+qwen3-embedding-0.6b-q8             10  88%       68%       60%       13%       30%       59%
+                                    20  96%       76%       72%       33%       60%       72%
+                                    50  96%       92%       76%       40%       90%       81%
+qwen3-embedding-0.6b-q8-plain       10  100%      76%       72%       33%       80%       75%
+                                    20  100%      84%       76%       40%       80%       79%
+                                    50  100%      96%       80%       53%       100%      87%
+e5-large-q8+reranker                10  100%      100%      80%       60%       90%       88%
+                                    20  100%      100%      84%       73%       100%      92%
+                                    50  100%      100%      84%       80%       100%      93%
+```
+
+**These replace the 2026-09-14 figures as the citable ones. The delta, K=10
+overall (old -> new):** lexical 47%/76% -> 48%/76% (worst +1, best +0);
+`bge-m3-q8` 82% -> 85% (+3); `e5-large-q8` 81% -> 83% (+2);
+`ruri-v3-310m-q8-mean` 78% -> 80% (+2); `ruri-v3-310m-q8` 42% -> 44% (+2);
+`qwen3-embedding-0.6b-q8` 59% -> 59% (+0); `qwen3-embedding-0.6b-q8-plain`
+72% -> 75% (+3); `e5-large-q8+reranker` 86% -> 88% (+2).
+
+**Stated plainly, not editorialised: every embedding configuration except
+`qwen3-embedding-0.6b-q8` moved more than the lexical baseline did.** The
+two-stage configuration (`e5-large-q8+reranker`) moved +2 points at K=10
+overall against the lexical baseline's +1/+0. The lexical baseline's axis D
+is unchanged at exactly 0% at every size and K — every new axis-D answer is,
+by the same bigram-disjoint construction as the old ones, unreachable by a
+mechanism that only counts character overlap, so widening the key could not
+move it. What did move on axis D is every embedding configuration:
+`bge-m3-q8` 27% -> 47% (+20), `e5-large-q8` 20% -> 33% (+13),
+`ruri-v3-310m-q8-mean` 27% -> 40% (+13), `qwen3-embedding-0.6b-q8-plain`
+20% -> 33% (+13), `e5-large-q8+reranker` 47% -> 60% (+13) — axis D is where
+the old key's defect concentrated, and it is where fixing it moved the most.
+`ruri-v3-310m-q8` and `qwen3-embedding-0.6b-q8` (the two configurations that
+already fail the contract check) show no axis-D movement at all: 13% both
+times, on both rows — a mechanism that cannot retrieve an operation by its
+own text is not helped by a wider answer key either.
+
+**What the spec and the checks got right.** `corpus.test.ts`'s axis-D and
+axis-E checks did their job exactly as designed: several candidate answers
+were tried against `bigramsOf`/`scoreOperation` before being written down,
+and the tooling used to check them (a throwaway script over
+`fixture/index.ts` and `lexical.ts`, not committed) is the same two
+functions the test file itself calls — there was no case where a defensible
+answer had to be discarded because it broke either check, which is the
+outcome the checks were designed to force. Nothing in `docs/specs/
+narrowing.md` needed correcting.
+
+**How to repeat it.** `make narrowing` (`cd e2e && node narrowing/measure.ts`),
+same as 2026-09-14 - the fixture and corpus are read directly, no build
+step. `e2e/narrowing/corpus/corpus.test.ts` (`cd e2e && pnpm exec vp test
+run narrowing/corpus/corpus.test.ts`) checks the key's own structure in
+under 300ms.
