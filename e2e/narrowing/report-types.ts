@@ -8,8 +8,9 @@
  */
 import type { ContractCheckResult } from "./embedding/index.ts";
 import type { UtteranceContractResult } from "./utterances/index.ts";
-import type { SizeResult } from "./recall.ts";
+import type { CatalogSize, SizeResult } from "./recall.ts";
 import type { FetchLike } from "./embedding/client.ts";
+import type { Axis } from "./corpus/index.ts";
 
 /** One configuration's full report: every catalogue size, and the contract check when it has one (embedding configurations only — the lexical floor has no contract to check). */
 export interface ConfigurationResult {
@@ -24,6 +25,39 @@ export interface ConfigurationResult {
 export interface SkippedConfiguration {
   readonly configId: string;
   readonly reason: string;
+}
+
+/**
+ * One axis's pick figures at one catalogue size, or `"overall"` across all
+ * five (TODO.md "Measure the pick, not only the recall"): `correct` counts
+ * a picked operationId among the question's `answers`; `flagged` counts the
+ * picker returning `ambiguous` - both out of `total`, the same eligibility
+ * rule the recall rows use (`recall.ts`'s `isEligible`). Unlike `AxisRecall`
+ * there is no worst/best split (the picker's chat output is not a scored
+ * ranking to take a tie range over) and no per-K sweep (the pick rows read
+ * one shortlist size, `gather-pick-shortlists.ts`'s `PICK_SHORTLIST_K`).
+ */
+export interface PickAxisResult {
+  readonly axis: Axis | "overall";
+  readonly total: number;
+  readonly excluded: number;
+  readonly correct: number;
+  readonly flagged: number;
+}
+
+/** One catalogue size's pick figures, plus the picker's own per-question wall-clock at that size. */
+export interface PickSizeResult {
+  readonly size: CatalogSize;
+  readonly operationCount: number;
+  /** One entry per axis (A-E), then one for `"overall"` — six in total, the same shape `MeasureResult.axisRecalls` uses. */
+  readonly axisResults: readonly PickAxisResult[];
+  readonly averageQueryMillis: number;
+}
+
+/** One pick row's full report: every catalogue size (`gather-pick.ts`). */
+export interface PickConfigurationResult {
+  readonly configId: string;
+  readonly sizes: readonly PickSizeResult[];
 }
 
 /** How `gatherReport` reaches the transport and the vector cache — overridable so tests never reach llama-swap (AC-V-106). */

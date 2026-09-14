@@ -30,7 +30,9 @@ import {
   runRerankedRows,
   runUtteranceRows,
 } from "./gather-phases.ts";
+import { runPickRows } from "./gather-pick.ts";
 import type { ConfigurationResult, GatherOptions, SkippedConfiguration } from "./gather-helpers.ts";
+import type { PickConfigurationResult } from "./report-types.ts";
 
 export {
   CATALOG_SIZES,
@@ -45,6 +47,7 @@ export {
   type SizeResult,
 } from "./recall.ts";
 export type { ConfigurationResult, GatherOptions, SkippedConfiguration } from "./gather-helpers.ts";
+export type { PickAxisResult, PickConfigurationResult, PickSizeResult } from "./report-types.ts";
 
 /**
  * Every configuration `make narrowing` reports, phase by phase: the lexical
@@ -65,6 +68,7 @@ export async function gatherReport(
   options: GatherOptions = {},
 ): Promise<{
   readonly configurations: readonly ConfigurationResult[];
+  readonly pickConfigurations: readonly PickConfigurationResult[];
   readonly skipped: readonly SkippedConfiguration[];
 }> {
   const lexicalSizes = await measureAcrossSizes(lexicalNarrowerOf, testQuestions, kValues);
@@ -90,7 +94,7 @@ export async function gatherReport(
     reachableAfterEmbedding,
   );
 
-  await runRerankedRows(
+  const reachableAfterReranked = await runRerankedRows(
     phase,
     testQuestions,
     kValues,
@@ -100,14 +104,25 @@ export async function gatherReport(
     reachableAfterUtterances,
   );
 
-  return { configurations, skipped };
+  const pickConfigurations: PickConfigurationResult[] = [];
+
+  await runPickRows(
+    phase,
+    testQuestions,
+    options,
+    pickConfigurations,
+    skipped,
+    reachableAfterReranked,
+  );
+
+  return { configurations, pickConfigurations, skipped };
 }
 
 async function main(): Promise<void> {
-  const { configurations, skipped } = await gatherReport(questions(), K_VALUES);
+  const { configurations, pickConfigurations, skipped } = await gatherReport(questions(), K_VALUES);
   const alternation = await measureAlternation();
 
-  printReport(configurations, skipped, K_VALUES, alternation);
+  printReport(configurations, pickConfigurations, skipped, K_VALUES, alternation);
 }
 
 // Runs only when this file is the process's entry point (`node

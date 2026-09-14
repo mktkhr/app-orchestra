@@ -186,7 +186,10 @@ interface RerankedUtteranceRow {
  * the coordinator's follow-up asks for because the written layer alone
  * beats "both" on axis D (the generated layer's noise drags "both" down).
  * `+written` carries its own contract rates; `+both` does not, matching
- * how it already printed before this row existed.
+ * how it already printed before this row existed. Returns whether the
+ * transport is still reachable, the same way every earlier phase does - so
+ * `gather-pick.ts`'s pick rows, which read these same reranked shortlists,
+ * know whether to run at all.
  */
 export async function runRerankedRows(
   phase: GenerationPhaseResult,
@@ -196,7 +199,7 @@ export async function runRerankedRows(
   configurations: ConfigurationResult[],
   skipped: SkippedConfiguration[],
   reachable: boolean,
-): Promise<void> {
+): Promise<boolean> {
   let stillReachable = reachable;
 
   if (stillReachable) {
@@ -254,4 +257,6 @@ export async function runRerankedRows(
       skipped.push({ configId: row.configId, reason: unreachableReason(error) });
     }
   }
+
+  return stillReachable;
 }

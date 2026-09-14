@@ -17,11 +17,13 @@ import type {
   AxisRecall,
   ConfigurationResult,
   K,
+  PickConfigurationResult,
   RecallAtK,
   SizeResult,
   SkippedConfiguration,
 } from "./measure.ts";
 import type { AlternationResult } from "./loading.ts";
+import { printPickRows } from "./report-pick.ts";
 
 const AXIS_COLUMNS: readonly ("A" | "B" | "C" | "D" | "E" | "overall")[] = [
   "A",
@@ -221,6 +223,7 @@ function printAlternation(alternation: AlternationResult): void {
  */
 export function printReport(
   configurations: readonly ConfigurationResult[],
+  pickConfigurations: readonly PickConfigurationResult[],
   skipped: readonly SkippedConfiguration[],
   kValues: readonly K[],
   alternation: AlternationResult,
@@ -246,6 +249,7 @@ export function printReport(
   console.log("ms/query is per-query wall-clock for the narrowing call itself, no LLM involved.");
 
   for (const configuration of configurations) printConfiguration(configuration, kValues);
+  printPickRows(pickConfigurations);
   if (skipped.length > 0) printSkipped(skipped);
   printAlternation(alternation);
 }
