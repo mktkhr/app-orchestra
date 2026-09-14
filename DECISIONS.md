@@ -4667,3 +4667,76 @@ tests pin AC-C-104/AC-C-105 (`findByLabelText`/`queryByLabelText` on
 "回答を生成中"), rather than a new test file, since both already exercise
 the pending-then-resolved and pending-then-rejected paths this needed to
 watch.
+
+## 2026-09-14 — nine local models on one corpus
+
+**Context.** The default local model was chosen on 2026-09-11 by hand: four
+models, one query (`在庫を全部見せて`), five runs each. That was the evidence
+available then. It is not comparable to anything now - the corpus is
+eighteen cases and two hundred runs, and the tool list the model is offered
+has changed (`propose_panel` rides in every request since
+`docs/specs/proposing.md`). So nothing from that entry carries into this one:
+every model here was measured again, at `ada4068`, on the same corpus, with
+the same tools.
+
+**What the numbers are.** Sixteen of the eighteen cases came out identical
+across almost every model, so the table reports those as one column. The two
+that discriminate are the deliberately broken questions - 破損した在庫はある？
+and 有給の勤怠はある？, whose filter word exists in no enum - and the number
+is how often the model silently dropped the filter and returned every row.
+Lower is better.
+
+```
+model                 16 cases        破損        有給        seconds
+qwen38-27b-iq3s       near-perfect     0/30       0/10         1888
+gemma4-12b-q8         perfect          2/30      10/10          826
+qwen36-35b-iq4xs      perfect         13/30      10/10          739
+qwen3.5-9b            near-perfect    17/30       6/10          375
+qwen3.5-9b-q8         perfect         18/30       7/10          587
+minicpm5-2b-q8        unanswerable 5  19/30       1/10          142
+ornith15-9b-q8        near-perfect    25/30      10/10          395
+gemma4-26b-a4b-qat    unanswerable 6  25/30       7/10          428
+granite41-8b-q8       broken           0/30      (void)          96
+lfm25-8b-a1b-q8       could not be measured
+```
+
+**Four things worth keeping.**
+
+**Size does not help.** `qwen36-35b-iq4xs` is worse than `qwen38-27b-iq3s`
+on both broken questions; `gemma4-26b-a4b-qat` (26B, MoE) is far worse than
+`gemma4-12b-q8` (12B, dense). What is good is one particular model, not a
+bigger one.
+
+**The 2026-09-11 entry measured the wrong gemma.** It records gemma as
+dropping filters, and the model it measured was `gemma4-26b-a4b-qat`. The
+dense 12B is the opposite - second best of everything here on 破損. That
+entry is not wrong about what it saw; it is wrong as a statement about
+"gemma".
+
+**Two cases are not a benchmark.** `granite41-8b-q8` reads 0/30 and 0/10 -
+apparently perfect - and is the worst model in the table: it scores zero by
+failing to call anything correctly at all. `list-everything` 5/10, `create`
+5/10, `follow-up-other-service` 1/10, and its 有給 answers match neither
+accept nor reject because it is returning something else entirely. Ninety-six
+seconds, because it is not doing the work. Read alone, those two columns
+would have made it the winner.
+
+**A model can stop the suite.** `lfm25-8b-a1b-q8` answered 破損した在庫はある？
+by inventing an operation - `inventory/inventory_damage_query` - which the
+platform refused and which `e2e/eval/plan-client.ts` treats as an unparseable
+shape, ending the run eight seconds in. As a comparison that is a result (the
+model is out), but it means one fabrication costs every remaining case.
+
+**Decision.** None. The default stays `qwen3.5-9b-q8` until somebody decides
+what four to five seconds a question is worth: `qwen38-27b-iq3s` is the only
+model here that answers both broken questions correctly _and_ leaves the
+other sixteen cases alone, and it is three times slower than what ships
+today. `e2e/eval/baseline.json` is untouched - it is the regression line for
+the default model, not a scoreboard.
+
+**How to repeat it.** One `node eval/run.ts` per model with
+`ORCHESTRA_EVAL_MODEL` set, from a tree already built. Not `make eval` in a
+loop: that target depends on `build`, so every model re-runs vite, and vite
+beside a loaded 12B crossed this machine's memory limit three times. Warm
+each model with a single foreground request before its run - the load spike,
+not the run, is what gets killed.
