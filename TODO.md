@@ -75,6 +75,25 @@ Nothing - see "Next" for what is queued.
 
 ## Done
 
+- **`docs/specs/offering.md` closes: a built-in tool declares its own
+  condition, and `propose_panel` applies only when the question was asked
+  from a workspace** (AC-O-101 through AC-O-105).
+  `usecase.BuiltinTool{Tool, Applies func(PlanContext) bool}` and
+  `PlanContext{WorkspaceID string}`
+  (`internal/usecase/tools.go`); `ToolsFor(catalog, planCtx)` now takes the
+  context and skips a builtin whose condition fails - `ask_user`/
+  `list_capabilities` carry no condition at all. `PlanRequest.workspaceId`
+  (optional, `openapi.yaml`) threads through the handler and
+  `Orchestrator.Plan`'s new parameter into `PlanContext`; the browser's
+  `ConversationPanel.tsx` already knew this (`defaultWorkspaceId`) and now
+  forwards it through `Conversation`/`conversationStore` into `postPlan`.
+  `Orchestrator.Plan` refuses a `DecisionProposal` with `ErrToolNotOffered`
+  when propose_panel was not in the tools list it itself built, the way an
+  unknown operation is refused; `jsonmode.Planner` additionally never tells
+  the model about propose_panel at all (two precomputed prompt/schema
+  variants) when it does not apply, since that transport has no declared
+  function list to lean on the way `toolcall.Planner` does. See `STATE.md`
+  and `DECISIONS.md`, 2026-09-14.
 - **`docs/specs/conversation-ui.md` closes: a question is a bubble on the
   right, a result keeps the width it always had, a sentence answer is a
   bubble on the left, and a spinner (not a progress claim) holds the

@@ -64,10 +64,12 @@ var ErrUnknownOperation = errors.New("planner named an operation not in the cata
 // (docs/specs/orchestration.md, section 8).
 var ErrEnumValue = errors.New("planner returned a value outside the parameter's enum")
 
-// systemPromptHeader is prepended to the rendered catalogue. It is English
-// even though every example and every question in it is Japanese, the same
-// convention internal/adapter/planner/toolcall's systemPrompt follows.
-const systemPromptHeader = "You are given a catalogue of internal services below, rendered as plain text " +
+// systemPromptHeaderPrefix is prepended to the rendered catalogue: the
+// call/ask/list_capabilities shapes every request can use, regardless of
+// whether propose_panel is offered. It is English even though every
+// example and every question in it is Japanese, the same convention
+// internal/adapter/planner/toolcall's systemPrompt follows.
+const systemPromptHeaderPrefix = "You are given a catalogue of internal services below, rendered as plain text " +
 	"because this model cannot call tools. Read the user's question, in Japanese, and reply with exactly one " +
 	"JSON object and nothing else - no markdown fence, no explanation before or after it. Its shape is one of:\n\n" +
 	`{"kind":"call","service":<service>,"operationId":<operationId>,"args":{...}}` + "  call one operation that " +
@@ -76,14 +78,24 @@ const systemPromptHeader = "You are given a catalogue of internal services below
 	"  when a parameter's enum value cannot be told from the question - the service and operationId are the " +
 	"operation you would have called instead, had the value been clear.\n" +
 	`{"kind":"list_capabilities","service":<service, optional>}` + "  when the question asks what can be done at " +
-	"all, rather than asking to do something.\n" +
-	`{"kind":"propose_panel","service":<service>,"operationId":<operationId>,"args":{...},` +
+	"all, rather than asking to do something.\n"
+
+// systemPromptProposePanelBlock describes the "propose_panel" shape - only
+// ever appended to the prompt when the request carries a workspace id
+// (O2/O3, docs/specs/offering.md): a question with none has no workspace
+// to put a panel on, and telling the model about a shape it should never
+// use is exactly the prompt-the-model-did-not-need section 5's third
+// exclusion warns against.
+const systemPromptProposePanelBlock = `{"kind":"propose_panel","service":<service>,"operationId":<operationId>,"args":{...},` +
 	`"component":<component, optional>,"chart":{"category":<field>,"value":<field>,"kind":<bar|line|pie>} (optional),` +
 	`"transform":{"groupBy":<field>,"aggregate":<count|sum|avg>,"field":<field, optional>} (optional),` +
 	`"title":<title, optional>}` + "  when the question asks to put something on the workspace's screen " +
 	"rather than asking to look something up - name the operation and args exactly as \"call\" would, and " +
-	"leave component/chart/transform/title out to let the platform fill them in.\n" +
-	`{"kind":"none"}` + "  when nothing in the catalogue answers the question.\n\n" +
+	"leave component/chart/transform/title out to let the platform fill them in.\n"
+
+// systemPromptHeaderSuffix closes the header: the "none" shape, the enum
+// reminder, and the "Catalogue:" label the rendered catalogue follows.
+const systemPromptHeaderSuffix = `{"kind":"none"}` + "  when nothing in the catalogue answers the question.\n\n" +
 	"Only ever use a value listed in a parameter's own enum; never invent one that is not listed.\n\nCatalogue:\n"
 
 // responseFormatName names the JSON schema sent in ResponseFormat.
@@ -92,11 +104,22 @@ const responseFormatName = "orchestra_decision"
 // Planner implements usecase.Planner by rendering catalog as text and
 // asking a model for a single JSON object over chat.Client, per
 // docs/plans/orchestration.md Task 11.
+//
+// Both the system prompt and the response format schema are precomputed in
+// two variants - with and without propose_panel - rather than assembled on
+// every Plan call: whether propose_panel is offered depends only on
+// usecase.PlanContext (O2), which is one of exactly two states today, so
+// there are only ever two prefixes the prompt cache needs to be warm for
+// (M3, docs/specs/context.md section 4), not one recomputed per request.
 type Planner struct {
-	client         *chat.Client
-	catalog        domain.Catalog
-	systemPrompt   string
-	responseFormat *chat.ResponseFormat
+	client  *chat.Client
+	catalog domain.Catalog
+
+	systemPromptWithProposePanel    string
+	systemPromptWithoutProposePanel string
+
+	responseFormatWithProposePanel    *chat.ResponseFormat
+	responseFormatWithoutProposePanel *chat.ResponseFormat
 }
 
 var _ usecase.Planner = (*Planner)(nil)
@@ -111,41 +134,57 @@ var _ usecase.Planner = (*Planner)(nil)
 // is no equivalent ambiguity here - catalog is needed for validation, not
 // resolution (see DECISIONS.md).
 func New(client *chat.Client, catalog domain.Catalog) *Planner {
+	catalogText := renderCatalog(catalog)
+
 	return &Planner{
-		client:         client,
-		catalog:        catalog,
-		systemPrompt:   systemPromptHeader + renderCatalog(catalog),
-		responseFormat: buildResponseFormat(),
+		client:  client,
+		catalog: catalog,
+
+		systemPromptWithProposePanel: systemPromptHeaderPrefix + systemPromptProposePanelBlock +
+			systemPromptHeaderSuffix + catalogText,
+		systemPromptWithoutProposePanel: systemPromptHeaderPrefix + systemPromptHeaderSuffix + catalogText,
+
+		responseFormatWithProposePanel:    buildResponseFormat(true),
+		responseFormatWithoutProposePanel: buildResponseFormat(false),
 	}
 }
 
 // Plan sends query (with answers folded in) and the rendered catalogue,
 // followed by turns, to the model, parses and validates the one JSON
 // object it answers with, and retries once - quoting the failure back -
-// when that fails. tools is accepted only to satisfy usecase.Planner: this
-// adapter renders its own text from catalog (New's parameter) rather than
-// from usecase.ToolsFor's wire-shaped schemas, which toolcall.Planner
-// needs but this one does not.
+// when that fails.
 //
-// turns is rendered after p.systemPrompt (systemPromptFor), never before
-// it or inside it: p.systemPrompt is built once, in New, from catalog
-// alone, so its bytes stay the same across every question of a
-// conversation - the prompt cache is warm for exactly that prefix (M3,
-// docs/specs/context.md section 4).
+// tools decides, once per call, which of the two system prompt and
+// response format variants this request gets (O2, docs/specs/offering.md):
+// propose_panel's own shape is described, and its kind allowed by the
+// response schema, only when tools carries it - i.e. only when
+// usecase.ToolsFor's own condition for it held. A "propose_panel" answer
+// that arrives anyway (offerProposePanel false) is refused exactly as an
+// unknown operation is (see parse, decisionFromProposePanel) - the same
+// discipline toolcall.Planner's caller (Orchestrator.Plan) applies, since
+// this transport has no equivalent of "the model was never offered the
+// function at all" to lean on alone (O5).
+//
+// turns is rendered after the chosen base prompt (systemPromptFor), never
+// before it or inside it: the base itself is one of the two fixed strings
+// precomputed in New, so its own bytes stay the same across every question
+// of a conversation (M3).
 func (p *Planner) Plan(
-	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, _ []usecase.Tool,
+	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, tools []usecase.Tool,
 ) (usecase.Decision, error) {
-	messages := buildMessages(p.systemPromptFor(turns), query, answers)
+	offerProposePanel := toolOffered(tools, usecase.ProposePanelToolName)
+
+	messages := buildMessages(p.systemPromptFor(turns, offerProposePanel), query, answers)
 
 	var lastErr error
 
 	for range maxAttempts {
-		resp, err := p.complete(ctx, messages)
+		resp, err := p.complete(ctx, messages, offerProposePanel)
 		if err != nil {
 			return usecase.Decision{}, err
 		}
 
-		decision, parseErr := p.parse(resp.Message.Content)
+		decision, parseErr := p.parse(resp.Message.Content, offerProposePanel)
 		if parseErr == nil {
 			return decision, nil
 		}
@@ -160,16 +199,34 @@ func (p *Planner) Plan(
 	return usecase.Decision{}, fmt.Errorf("planner gave up after %d attempts: %w", maxAttempts, lastErr)
 }
 
-// complete sends messages with responseFormat set, and - only when the
-// endpoint answers that request with a non-2xx status - retries once more
-// without it. Not every OpenAI-compatible backend accepts response_format
+// toolOffered reports whether name is one of tools - the list
+// usecase.ToolsFor built for this one request. See Plan's own doc comment.
+func toolOffered(tools []usecase.Tool, name string) bool {
+	for i := range tools {
+		if tools[i].Name == name {
+			return true
+		}
+	}
+
+	return false
+}
+
+// complete sends messages with the responseFormat variant offerProposePanel
+// selects, and - only when the endpoint answers that request with a
+// non-2xx status - retries once more without it. Not every
+// OpenAI-compatible backend accepts response_format
 // (docs/plans/orchestration.md, Task 11); this is that fallback, verified
 // by hand against llama.cpp/llama-swap, which does accept it (DECISIONS.md).
 // A failure of the plain retry is returned as-is: at that point the
 // endpoint itself is unreachable or erroring for a reason response_format
 // was never the cause of.
-func (p *Planner) complete(ctx context.Context, messages []chat.Message) (chat.Response, error) {
-	resp, err := p.client.Complete(ctx, chat.Request{Messages: messages, ResponseFormat: p.responseFormat})
+func (p *Planner) complete(ctx context.Context, messages []chat.Message, offerProposePanel bool) (chat.Response, error) {
+	responseFormat := p.responseFormatWithoutProposePanel
+	if offerProposePanel {
+		responseFormat = p.responseFormatWithProposePanel
+	}
+
+	resp, err := p.client.Complete(ctx, chat.Request{Messages: messages, ResponseFormat: responseFormat})
 	if err == nil {
 		return resp, nil
 	}
@@ -220,7 +277,13 @@ type wireDecision struct {
 // parse extracts a JSON object from content, decodes it, and maps it onto a
 // usecase.Decision - validating a "call" answer's service, operation id and
 // argument enums along the way (see decisionFromCall).
-func (p *Planner) parse(content string) (usecase.Decision, error) {
+//
+// offerProposePanel is Plan's own (see its doc comment): a "propose_panel"
+// kind arriving when it is false is refused exactly like a kind this
+// planner never recognises at all (ErrUnknownKind) - the list is what the
+// model was offered, not what the platform trusts (O5,
+// docs/specs/offering.md).
+func (p *Planner) parse(content string, offerProposePanel bool) (usecase.Decision, error) {
 	extracted := extractJSON(content)
 	if extracted == "" {
 		return usecase.Decision{}, ErrEmptyResponse
@@ -244,6 +307,10 @@ func (p *Planner) parse(content string) (usecase.Decision, error) {
 	case kindCall:
 		return p.decisionFromCall(&wire)
 	case kindProposePanel:
+		if !offerProposePanel {
+			return usecase.Decision{}, fmt.Errorf("%w: %q", ErrUnknownKind, wire.Kind)
+		}
+
 		return p.decisionFromProposePanel(&wire)
 	default:
 		return usecase.Decision{}, fmt.Errorf("%w: %q", ErrUnknownKind, wire.Kind)
@@ -417,17 +484,23 @@ const turnsIntro = "Here is the conversation so far, oldest first. Each line is 
 	"never the data the operation returned. Use it only to understand what \"it\", \"the same thing\" " +
 	"or an unnamed service in the new question below refers to."
 
-// systemPromptFor returns p.systemPrompt unchanged when there are no
-// turns, or p.systemPrompt with renderTurns appended after it otherwise.
-// p.systemPrompt itself (built once, in New) is never mutated or
-// recomputed here - only ever concatenated with something after it - so
-// its own bytes are identical on every call regardless of turns (M3).
-func (p *Planner) systemPromptFor(turns []usecase.Turn) string {
-	if len(turns) == 0 {
-		return p.systemPrompt
+// systemPromptFor picks the base system prompt offerProposePanel selects -
+// one of the two fixed strings New precomputed - and returns it unchanged
+// when there are no turns, or with renderTurns appended after it otherwise.
+// The base itself is never mutated or recomputed here - only ever
+// concatenated with something after it - so its own bytes are identical on
+// every call for the same offerProposePanel, regardless of turns (M3).
+func (p *Planner) systemPromptFor(turns []usecase.Turn, offerProposePanel bool) string {
+	base := p.systemPromptWithoutProposePanel
+	if offerProposePanel {
+		base = p.systemPromptWithProposePanel
 	}
 
-	return p.systemPrompt + "\n\n" + renderTurns(turns)
+	if len(turns) == 0 {
+		return base
+	}
+
+	return base + "\n\n" + renderTurns(turns)
 }
 
 // renderTurns renders turns as turnsIntro followed by one line each,
@@ -590,29 +663,63 @@ func sortedNames(m map[string]domain.Schema) []string {
 // schema's property order was made to match the order every kind's example
 // already appears in systemPromptHeader (kind, service, operationId,
 // args, param, question). See DECISIONS.md.
-const decisionSchemaJSON = `{"type":"object","properties":{` +
-	`"kind":{"type":"string","enum":["` + kindCall + `","` + kindAsk + `","` + kindNone + `","` +
-	kindListCapabilities + `","` + kindProposePanel + `"]},` +
-	`"service":{"type":"string"},` +
-	`"operationId":{"type":"string"},` +
-	`"args":{"type":"object"},` +
-	`"param":{"type":"string"},` +
-	`"question":{"type":"string"},` +
-	`"component":{"type":"string"},` +
-	`"chart":{"type":"object","properties":{"category":{"type":"string"},"value":{"type":"string"},"kind":{"type":"string"}}},` +
-	`"transform":{"type":"object","properties":{"groupBy":{"type":"string"},"aggregate":{"type":"string"},"field":{"type":"string"}}},` +
-	`"title":{"type":"string"}` +
-	`},"required":["kind"]}`
+// decisionSchemaKinds is decisionSchemaJSON's "kind" enum, with
+// propose_panel appended only when offerProposePanel (O2,
+// docs/specs/offering.md) - a grammar-constrained model literally cannot
+// emit a "kind" this omits, which is this transport's own equivalent of a
+// tool never being declared to a tool-calling model at all.
+func decisionSchemaKinds(offerProposePanel bool) string {
+	kinds := `"` + kindCall + `","` + kindAsk + `","` + kindNone + `","` + kindListCapabilities + `"`
+	if offerProposePanel {
+		kinds += `,"` + kindProposePanel + `"`
+	}
 
-// buildResponseFormat builds the ResponseFormat sent with every request -
-// see decisionSchemaJSON for what it constrains and why it is not a
-// map[string]any like every other schema this package builds.
-func buildResponseFormat() *chat.ResponseFormat {
+	return kinds
+}
+
+// decisionSchemaJSON builds the JSON Schema sent as ResponseFormat: a
+// permissive object naming every field any kind of answer might use, with
+// only "kind" required. It is deliberately not a stricter oneOf keyed on
+// kind - docs/specs/orchestration.md notes strict mode has no equivalent
+// for this transport, so the real validation is parse/validateArgs in Go,
+// not the grammar this schema constrains the model's tokens with.
+//
+// It is hand-written, not a map[string]any built the way every other
+// schema in this codebase is: encoding/json always marshals a map's keys
+// in sorted order, which would put "args" before "kind" and "service" -
+// and a grammar-constrained local model (llama.cpp/llama-swap,
+// qwen3.5-9b-q8) was observed, by hand, to corrupt its own JSON under that
+// reordering, splicing broken escape sequences into "service"'s value where
+// the schema forced it earlier than the model's own generation order
+// wanted it. The same catalogue and question produced clean JSON once the
+// schema's property order was made to match the order every kind's example
+// already appears in systemPromptHeaderPrefix (kind, service, operationId,
+// args, param, question). See DECISIONS.md.
+func decisionSchemaJSON(offerProposePanel bool) string {
+	return `{"type":"object","properties":{` +
+		`"kind":{"type":"string","enum":[` + decisionSchemaKinds(offerProposePanel) + `]},` +
+		`"service":{"type":"string"},` +
+		`"operationId":{"type":"string"},` +
+		`"args":{"type":"object"},` +
+		`"param":{"type":"string"},` +
+		`"question":{"type":"string"},` +
+		`"component":{"type":"string"},` +
+		`"chart":{"type":"object","properties":{"category":{"type":"string"},"value":{"type":"string"},"kind":{"type":"string"}}},` +
+		`"transform":{"type":"object","properties":{"groupBy":{"type":"string"},"aggregate":{"type":"string"},"field":{"type":"string"}}},` +
+		`"title":{"type":"string"}` +
+		`},"required":["kind"]}`
+}
+
+// buildResponseFormat builds the ResponseFormat sent with a request whose
+// offerProposePanel this is - see decisionSchemaJSON for what it
+// constrains and why it is not a map[string]any like every other schema
+// this package builds.
+func buildResponseFormat(offerProposePanel bool) *chat.ResponseFormat {
 	return &chat.ResponseFormat{
 		Type: "json_schema",
 		JSONSchema: map[string]any{
 			"name":   responseFormatName,
-			"schema": json.RawMessage(decisionSchemaJSON),
+			"schema": json.RawMessage(decisionSchemaJSON(offerProposePanel)),
 		},
 	}
 }

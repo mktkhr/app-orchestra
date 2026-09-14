@@ -32,7 +32,7 @@ func TestPlanProposalCarriesTheModelsOwnValues(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫をステータス別に棒グラフで置いて", nil, nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫をステータス別に棒グラフで置いて", nil, nil, "ws-1")
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindProposal, result.Kind)
@@ -79,7 +79,7 @@ func TestPlanProposalWithNoViewFillsInFromTheCatalogue(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalogWithDisplayNameAndChartHint(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫をステータス別に置いて", nil, nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫をステータス別に置いて", nil, nil, "ws-1")
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindProposal, result.Kind)
@@ -109,7 +109,7 @@ func TestPlanProposalComponentFallsBackToRenderResultShapeWithNoChartHint(t *tes
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を置いて", nil, nil)
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を置いて", nil, nil, "ws-1")
 
 	require.NoError(t, err)
 	assert.Equal(t, domain.ComponentTable, result.Component)
@@ -139,7 +139,7 @@ func TestPlanProposalOnAnOperationTheUserMayNotCallFails(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, permissions)
 
-	_, err := orchestrator.Plan(t.Context(), regularUser(), "在庫アイテムを作るパネルを置いて", nil, nil)
+	_, err := orchestrator.Plan(t.Context(), regularUser(), "在庫アイテムを作るパネルを置いて", nil, nil, "ws-1")
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
@@ -159,9 +159,35 @@ func TestPlanProposalOnAnUnknownEndpointFails(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "存在しない操作のパネルを置いて", nil, nil)
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "存在しない操作のパネルを置いて", nil, nil, "ws-1")
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
 	assert.Zero(t, invoker.calls)
+}
+
+// TestPlanRefusesAProposalWithNoWorkspaceID is AC-O-104
+// (docs/specs/offering.md): a propose_panel decision arriving with no
+// workspace id is refused the way an unknown tool is, even though the
+// planner itself named a real, permitted operation - the planner here is a
+// fakePlanner that ignores the tools it was offered entirely (a stand-in
+// for a model that calls propose_panel anyway), so this proves the
+// platform itself, not the planner's own good behaviour, is what refuses
+// it (O5: "the list is what the model is offered, not what the platform
+// trusts"). Nothing is written either way (N1).
+func TestPlanRefusesAProposalWithNoWorkspaceID(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionProposal,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
+
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を置いて", nil, nil, "")
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, usecase.ErrToolNotOffered)
+	assert.Zero(t, invoker.calls, "a refused proposal must never reach the service")
 }

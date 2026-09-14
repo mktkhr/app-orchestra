@@ -235,7 +235,13 @@ func TestNewWiresAProposePlanFixtureThroughToAProposalResult(t *testing.T) {
 	t.Cleanup(server.Close)
 	signInTestAdmin(t, server)
 
-	raw, err := json.Marshal(map[string]string{"query": "widgets as a bar chart please"})
+	// workspaceId is required here since docs/specs/offering.md: propose_panel
+	// is only offered to a question asked from a workspace (O3/O4) - this
+	// proposal fixture would otherwise be refused as a tool this request was
+	// never offered (usecase.ErrToolNotOffered).
+	raw, err := json.Marshal(map[string]string{
+		"query": "widgets as a bar chart please", "workspaceId": "fixture-workspace",
+	})
 	require.NoError(t, err)
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))

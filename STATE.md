@@ -1928,3 +1928,69 @@ existing "submits a typed question..." and "...request fails" tests) pin
 AC-C-104/AC-C-105 directly - `findByLabelText("回答を生成中")` present
 while the mocked `postPlan` is unresolved, `queryByLabelText` null once it
 resolves or rejects.
+
+## What the model is offered (docs/specs/offering.md), the thirteenth subproject
+
+Closes AC-O-101 through AC-O-105: `propose_panel` no longer rides in every
+`/api/plan` request's tool list - it is offered only when the question
+carries a workspace id, which is what stopped `qwen38-27b-iq3s` proposing a
+panel for a plain question three times in ten (measured, `DECISIONS.md`,
+2026-09-14).
+
+**O1/O2, the shape.** `usecase.BuiltinTool{Tool, Applies func(PlanContext)
+bool}` (`internal/usecase/tools.go`); `PlanContext{WorkspaceID string}` is
+what a request carries that a condition can read. `builtinTools()` lists
+`AskUserTool`, `ListCapabilitiesTool` and `ProposePanelTool` in that fixed
+order, the last one alone carrying `Applies: appliesFromWorkspace`
+(`ctx.WorkspaceID != ""`, O3) - `ask_user`/`list_capabilities` carry no
+`Applies` at all, which is what "always present" now means (AC-O-103).
+`ToolsFor(catalog, planCtx)` appends every catalogue endpoint first,
+unchanged, then only the `builtinTools()` entries whose condition holds (or
+has none) - a tool whose condition fails is simply never appended, not
+marked disabled.
+
+**O4, the request says where it was asked from.** `PlanRequest.workspaceId`
+(optional, `openapi.yaml`) threads through `handler.Plan.PostPlan` →
+`Orchestrator.Plan`'s new `workspaceID string` parameter →
+`PlanContext{WorkspaceID: workspaceID}`, built once per request, right
+where `ToolsFor` is called. The browser already knew this: `ConversationPanel.tsx`'s
+`defaultWorkspaceId` is now also passed to `Conversation` as `workspaceId`,
+threaded through `useConversation(key, workspaceId)` into
+`conversationStore.ask`, which adds `workspaceId` to `postPlan`'s body only
+when given one - `pages/chat`'s `<ConversationPanel />` sends none,
+`pages/workspace`'s always does, exactly as N4 already required for
+drawing a proposal.
+
+**O5, refused as an unknown tool.** `Orchestrator.Plan` recomputes
+`tools := ToolsFor(catalog, planCtx)` itself (never trusting what a planner
+adapter did with it) and, before dispatching a `DecisionProposal`, checks
+`toolOffered(tools, usecase.ProposePanelToolName)`; if propose_panel was not
+in that list, it returns `usecase.ErrToolNotOffered` and never reaches
+`propose` - nothing is written, the same guarantee `ErrEndpointNotFound`
+already gives an unknown/forbidden operation. `toolcall.Planner` needed no
+local check: propose_panel is simply absent from the wire `tools` array -
+a model cannot call a function it was never declared - so there is nothing
+new to refuse there beyond the orchestrator's own backstop.
+`jsonmode.Planner` needed more, because its prompt is free text rather than
+a declared function list: it now precomputes two full system-prompt
+variants and two `ResponseFormat` variants (the `"kind"` enum with and
+without `"propose_panel"`) in `New`, and `Plan` picks between them per
+request from `toolOffered(tools, ...)` - a model that answers
+`"propose_panel"` anyway when it was not offered is refused the same way an
+unrecognised `kind` is (`ErrUnknownKind`).
+
+**AC-O-105, proved two ways.** `usecase_test.TestToolsForCatalogueToolsAreUnaffectedByPlanContext`
+compares the catalogue-derived prefix of `ToolsFor`'s own return value (`assert.Equal`
+on the slice, which already proves same content _and_ same order - `internal/usecase`
+may not import `encoding/json` at all, so this is not a wire re-encoding).
+`toolcall_test.TestPlanOffersByteIdenticalCatalogueToolsRegardlessOfProposePanel`
+proves the same thing at the actual wire boundary - re-marshaled bytes, not
+a re-encoded/decoded comparison, the same reasoning
+`TestPlanOffersByteIdenticalToolsWithAndWithoutTurns` (`docs/plans/context.md`
+Task 2 Step 4) already established for turns.
+
+**What this does not fix (section 7):** a workspace's own chat still offers
+propose_panel, and the model may still reach for it there when asked to
+look something up rather than place a panel - the eval corpus asks every
+question with no workspace today, so it will simply stop seeing this
+particular failure mode rather than prove the workspace case is fine.

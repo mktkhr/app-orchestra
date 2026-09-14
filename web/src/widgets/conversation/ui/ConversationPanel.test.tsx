@@ -81,6 +81,10 @@ describe("ConversationPanel", () => {
     const picker = await screen.findByRole("combobox", { name: "保存先のワークスペース" });
 
     expect(picker).toHaveProperty("textContent", "在庫ボード");
+
+    // docs/specs/offering.md, O4: the workspace this conversation is asked
+    // from must reach postPlan's own request, not only the save control.
+    expect(postPlan).toHaveBeenCalledWith({ query: "在庫の一覧を見せて", workspaceId: "ws-1" });
   });
 
   it("offers a proposal's own form when asked from a workspace, and places it through onPanelPlaced", async () => {

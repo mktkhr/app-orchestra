@@ -67,7 +67,7 @@ func catalogWithEnumParameter() domain.Catalog {
 func TestToolsForBuildsOneToolPerCatalogueEndpointPlusAskUser(t *testing.T) {
 	c := catalogWithEnumParameter()
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	// 3 catalogue endpoints (ListInventoryItems, CreateInventoryItem,
 	// GetInventoryItem) + ask_user + list_capabilities + propose_panel.
@@ -96,7 +96,7 @@ func TestToolsForBuildsOneToolPerCatalogueEndpointPlusAskUser(t *testing.T) {
 func TestToolsForIncludesListCapabilitiesExactlyOnce(t *testing.T) {
 	c := catalogWithEnumParameter()
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	// 3 catalogue endpoints + ask_user + list_capabilities + propose_panel.
 	require.Len(t, tools, 6)
@@ -135,7 +135,7 @@ func TestListCapabilitiesToolHasAnOptionalServiceParameterThatIsNotAnEnum(t *tes
 func TestToolsForIncludesProposePanelExactlyOnce(t *testing.T) {
 	c := catalogWithEnumParameter()
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	count := 0
 	for _, tool := range tools {
@@ -207,7 +207,7 @@ func TestToolsForDoesNotExcludeAnEndpointWithNoResponseAndNoRequestBody(t *testi
 		},
 	}}
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	require.Len(t, tools, 4)
 	names := []string{tools[0].Name, tools[1].Name, tools[2].Name}
@@ -219,7 +219,7 @@ func TestToolsForDoesNotExcludeAnEndpointWithNoResponseAndNoRequestBody(t *testi
 func TestToolsForSetsStrictTrue(t *testing.T) {
 	c := catalogWithEnumParameter()
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	for _, tool := range tools {
 		assert.True(t, tool.Strict, "tool %q must be strict", tool.Name)
@@ -229,7 +229,7 @@ func TestToolsForSetsStrictTrue(t *testing.T) {
 func TestToolsForUsesOperationSummaryAsDescription(t *testing.T) {
 	c := catalogWithEnumParameter()
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	found := false
 	for _, tool := range tools {
@@ -244,7 +244,7 @@ func TestToolsForUsesOperationSummaryAsDescription(t *testing.T) {
 func TestToolsForEnumParameterCarriesEnumAndJapaneseLabelsInDescription(t *testing.T) {
 	c := catalogWithEnumParameter()
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	var listTool usecase.Tool
 	for _, tool := range tools {
@@ -276,7 +276,7 @@ func TestToolsForEnumParameterCarriesEnumAndJapaneseLabelsInDescription(t *testi
 func TestToolsForEnumParameterAlsoCarriesStructuredEnumLabels(t *testing.T) {
 	c := catalogWithEnumParameter()
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	var listTool usecase.Tool
 	for _, tool := range tools {
@@ -313,7 +313,7 @@ func TestToolsForEnumParameterAlsoCarriesStructuredEnumLabels(t *testing.T) {
 func TestToolsForCreateEndpointMergesRequestBodyIntoInputSchema(t *testing.T) {
 	c := catalogWithEnumParameter()
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	var createTool usecase.Tool
 	for _, tool := range tools {
@@ -346,7 +346,7 @@ func TestToolsForMarksRequiredParametersInOrder(t *testing.T) {
 		},
 	}}
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	var listTool usecase.Tool
 	for _, tool := range tools {
@@ -370,7 +370,7 @@ func TestToolsForNonObjectRequestBodyBecomesBodyProperty(t *testing.T) {
 		},
 	}}
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	require.Len(t, tools, 4)
 	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
@@ -404,7 +404,7 @@ func TestToolsForObjectRequestBodyMergesRequiredFieldsIntoTopLevel(t *testing.T)
 		},
 	}}
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	require.Len(t, tools, 4)
 	assert.Equal(t, []string{"name", "quantity", "status"}, tools[0].InputSchema["required"],
@@ -433,7 +433,7 @@ func TestToolsForMergesParameterAndRequestBodyRequiredNamesDeduped(t *testing.T)
 		},
 	}}
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	require.Len(t, tools, 4)
 	assert.Equal(t, []string{"id", "status"}, tools[0].InputSchema["required"],
@@ -466,7 +466,7 @@ func TestSchemaToJSONSchemaIncludesRequiredForObjectProperties(t *testing.T) {
 		},
 	}}
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	require.Len(t, tools, 4)
 	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
@@ -508,7 +508,7 @@ func TestToolsForNestedObjectAndArraySchemasRecurse(t *testing.T) {
 		},
 	}}
 
-	tools := usecase.ToolsFor(c)
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
 
 	require.Len(t, tools, 4)
 	properties, ok := tools[0].InputSchema["properties"].(map[string]any)
@@ -545,4 +545,81 @@ func TestAskUserToolShape(t *testing.T) {
 	assert.ElementsMatch(t, []string{"question", "service", "operationId", "param", "options"},
 		tool.InputSchema["required"], "service and operationId must be required: a param name alone "+
 			"is not unique across services")
+}
+
+// countByName returns how many of tools are named name - shared by every
+// test below that only cares whether one tool appears, and how many times.
+func countByName(tools []usecase.Tool, name string) int {
+	count := 0
+
+	for _, tool := range tools {
+		if tool.Name == name {
+			count++
+		}
+	}
+
+	return count
+}
+
+// TestToolsForOffersNoProposePanelWithNoWorkspace is AC-O-101
+// (docs/specs/offering.md): a question asked with no workspace id is
+// offered no propose_panel at all - not present, not disabled, not
+// described as unavailable (section 5's third exclusion) - and every other
+// tool is unaffected.
+func TestToolsForOffersNoProposePanelWithNoWorkspace(t *testing.T) {
+	c := catalogWithEnumParameter()
+
+	tools := usecase.ToolsFor(c, usecase.PlanContext{})
+
+	// 3 catalogue endpoints + ask_user + list_capabilities, no propose_panel.
+	require.Len(t, tools, 5)
+	assert.Equal(t, 0, countByName(tools, "propose_panel"), "propose_panel must not be offered")
+	assert.Equal(t, 1, countByName(tools, "ask_user"))
+	assert.Equal(t, 1, countByName(tools, "list_capabilities"))
+}
+
+// TestToolsForOffersProposePanelWithAWorkspace is AC-O-102: a question
+// asked from a workspace is offered propose_panel.
+func TestToolsForOffersProposePanelWithAWorkspace(t *testing.T) {
+	c := catalogWithEnumParameter()
+
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
+
+	require.Len(t, tools, 6)
+	assert.Equal(t, 1, countByName(tools, "propose_panel"))
+}
+
+// TestToolsForAlwaysOffersAskUserAndListCapabilities is AC-O-103: a tool
+// with no condition (ask_user, list_capabilities) is offered whether or
+// not the request carries a workspace id.
+func TestToolsForAlwaysOffersAskUserAndListCapabilities(t *testing.T) {
+	c := catalogWithEnumParameter()
+
+	for _, workspaceID := range []string{"", "ws-1"} {
+		tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: workspaceID})
+
+		assert.Equal(t, 1, countByName(tools, "ask_user"), "workspaceID=%q", workspaceID)
+		assert.Equal(t, 1, countByName(tools, "list_capabilities"), "workspaceID=%q", workspaceID)
+	}
+}
+
+// TestToolsForCatalogueToolsAreUnaffectedByPlanContext is AC-O-105: the
+// catalogue's own operation tools - everything ToolsFor appends before its
+// built-ins - are unchanged by PlanContext, the same tools in the same
+// order, regardless of which built-in condition holds. assert.Equal on the
+// slices themselves (not a wire re-encoding: internal/usecase may not
+// import encoding/json at all, depguard) already proves both same content
+// and same order - a reordering would fail the slice-index-by-index
+// comparison testify's ObjectsAreEqual/reflect.DeepEqual performs here,
+// exactly as internal/adapter/planner/toolcall's own byte-identical test
+// proves it at the wire, where map key order can otherwise hide a shift.
+func TestToolsForCatalogueToolsAreUnaffectedByPlanContext(t *testing.T) {
+	c := catalogWithEnumParameter()
+	catalogueCount := len(c.Endpoints)
+
+	withWorkspace := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
+	withoutWorkspace := usecase.ToolsFor(c, usecase.PlanContext{})
+
+	assert.Equal(t, withoutWorkspace[:catalogueCount], withWorkspace[:catalogueCount],
+		"catalogue tools must be identical, in the same order, regardless of PlanContext")
 }

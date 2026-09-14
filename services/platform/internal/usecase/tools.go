@@ -230,6 +230,12 @@ func proposePanelTransformSchema() map[string]any {
 	}
 }
 
+// ProposePanelToolName mirrors ProposePanelTool's own Name: named once so
+// a caller that only needs to compare against it (Orchestrator.Plan's
+// ErrToolNotOffered check, docs/specs/offering.md O5) does not have to
+// build the whole Tool value just to read one field off it.
+const ProposePanelToolName = "propose_panel"
+
 // ProposePanelTool is one further tool, always present, not derived from
 // any service's spec: it lets the model answer with a panel it composed
 // rather than doing anything (docs/specs/proposing.md, N1, section 3). It
@@ -237,7 +243,7 @@ func proposePanelTransformSchema() map[string]any {
 // gochecknoglobals reason AskUserTool is (see its own doc comment).
 func ProposePanelTool() Tool {
 	return Tool{
-		Name:        "propose_panel",
+		Name:        ProposePanelToolName,
 		Description: proposePanelDescription,
 		InputSchema: map[string]any{
 			keyType: domain.SchemaTypeObject,
@@ -272,9 +278,59 @@ func ProposePanelTool() Tool {
 	}
 }
 
+// PlanContext is what one /api/plan request carries that a BuiltinTool's
+// own condition can read (O2, docs/specs/offering.md) - built once, in
+// Orchestrator.Plan, from what the request itself said, never from the
+// conversation's content (section 5's second exclusion): a condition that
+// read what the model said would be a tool the model could talk its way
+// into.
+//
+// It grows when a condition needs something new; today it carries only
+// whether the question came from a workspace (O3, O4).
+type PlanContext struct {
+	// WorkspaceID is the workspace the question was asked from, or "" for
+	// a question asked from the chat screen, which has no workspace to put
+	// a panel on (docs/specs/proposing.md, N4).
+	WorkspaceID string
+}
+
+// BuiltinTool is one further tool ToolsFor may add beyond the catalogue's
+// own endpoints: its definition, plus the condition - if any - that
+// decides whether one request is offered it at all (O1,
+// docs/specs/offering.md). Applies is nil for a tool that applies to every
+// request, which is what ask_user and list_capabilities do (AC-O-103) -
+// "always present" is the absence of a condition, not a case the mechanism
+// has to special-case.
+type BuiltinTool struct {
+	Tool    Tool
+	Applies func(PlanContext) bool
+}
+
+// appliesFromWorkspace is O3: propose_panel applies only when the question
+// was asked from a workspace - what ConversationPanel already knows and
+// already uses to decide whether a proposal can be drawn at all
+// (docs/specs/proposing.md, N4; web/src/widgets/conversation/ui/ConversationPanel.tsx).
+func appliesFromWorkspace(ctx PlanContext) bool {
+	return ctx.WorkspaceID != ""
+}
+
+// builtinTools lists every tool ToolsFor adds beyond the catalogue's own
+// endpoints, in the order it appends them. Order matters here: it is what
+// keeps ToolsFor's output stable (AC-O-105) regardless of which condition
+// holds for a given request.
+func builtinTools() []BuiltinTool {
+	return []BuiltinTool{
+		{Tool: AskUserTool()},
+		{Tool: ListCapabilitiesTool()},
+		{Tool: ProposePanelTool(), Applies: appliesFromWorkspace},
+	}
+}
+
 // ToolsFor converts a catalogue into the tool definitions a planner offers
-// the model: one per endpoint the catalogue carries, plus AskUserTool,
-// ListCapabilitiesTool and ProposePanelTool.
+// the model: one per endpoint the catalogue carries, plus every
+// builtinTools entry whose condition planCtx satisfies (O2) - a tool whose
+// condition is not met is not in the list the model sees, not disabled and
+// not described as unavailable (section 5's third exclusion).
 //
 // Every endpoint here is already one the operator marked
 // x-orchestra-expose: true (internal/adapter/specsource/http.parseSpec) —
@@ -288,13 +344,14 @@ func ProposePanelTool() Tool {
 // never draw a component for — is a mistake in the spec, not a case to
 // silently drop. harness/guard/exposed-ops.sh catches it before it reaches
 // here.
-// builtinToolCount is how many tools ToolsFor adds beyond the catalogue's
-// own endpoints (AskUserTool, ListCapabilitiesTool, ProposePanelTool) -
-// named so the capacity hint below isn't a bare "magic number" (mnd,
-// harness/quality/go/golangci.yml).
+// builtinToolCount is how many tools builtinTools declares - named so the
+// capacity hint below isn't a bare "magic number" (mnd,
+// harness/quality/go/golangci.yml). It is a capacity hint, not a
+// guarantee: fewer may actually be appended, when planCtx fails a
+// condition.
 const builtinToolCount = 3
 
-func ToolsFor(c domain.Catalog) []Tool {
+func ToolsFor(c domain.Catalog, planCtx PlanContext) []Tool {
 	tools := make([]Tool, 0, len(c.Endpoints)+builtinToolCount)
 
 	for i := range c.Endpoints {
@@ -308,7 +365,11 @@ func ToolsFor(c domain.Catalog) []Tool {
 		})
 	}
 
-	tools = append(tools, AskUserTool(), ListCapabilitiesTool(), ProposePanelTool())
+	for _, bt := range builtinTools() {
+		if bt.Applies == nil || bt.Applies(planCtx) {
+			tools = append(tools, bt.Tool)
+		}
+	}
 
 	return tools
 }

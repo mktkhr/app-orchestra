@@ -26,7 +26,7 @@ export interface ConversationHandle extends ConversationState {
 
 export interface ConversationStoreValue {
   getConversation: (key: string) => ConversationState;
-  ask: (key: string, query: string) => Promise<void>;
+  ask: (key: string, query: string, workspaceId?: string) => Promise<void>;
   submitForm: (key: string, result: PlanResult) => void;
   newConversation: (key: string) => void;
 }
@@ -40,8 +40,14 @@ const NOT_WRAPPED = "useConversation must be used inside a ConversationProvider"
  * reader sits under the one `ConversationProvider` `App` mounts, so a `null`
  * context here is a wiring mistake, not a state to render around - the same
  * contract `useSession` makes for `SessionProvider`.
+ *
+ * `workspaceId` is forwarded, unchanged, onto every `ask` this handle makes
+ * - what `POST /api/plan` carries as its own `workspaceId`
+ * (`docs/specs/offering.md`, O4), so `propose_panel` is offered only when
+ * the caller (`ConversationPanel`) actually has one. Left undefined by the
+ * chat screen, which sits on no particular workspace.
  */
-export function useConversation(key: string): ConversationHandle {
+export function useConversation(key: string, workspaceId?: string): ConversationHandle {
   const store = useContext(ConversationStoreContext);
 
   const ask = useCallback(
@@ -50,9 +56,9 @@ export function useConversation(key: string): ConversationHandle {
         throw new Error(NOT_WRAPPED);
       }
 
-      return store.ask(key, query);
+      return store.ask(key, query, workspaceId);
     },
-    [store, key],
+    [store, key, workspaceId],
   );
 
   const submitForm = useCallback(

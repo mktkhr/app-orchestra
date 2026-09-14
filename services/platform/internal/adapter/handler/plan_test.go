@@ -21,10 +21,11 @@ type fakeOrchestrator struct {
 	result usecase.Result
 	err    error
 
-	user    *domain.User
-	query   string
-	answers []usecase.Answer
-	turns   []usecase.Turn
+	user        *domain.User
+	query       string
+	answers     []usecase.Answer
+	turns       []usecase.Turn
+	workspaceID string
 }
 
 func (f *fakeOrchestrator) Plan(
@@ -33,11 +34,13 @@ func (f *fakeOrchestrator) Plan(
 	query string,
 	answers []usecase.Answer,
 	turns []usecase.Turn,
+	workspaceID string,
 ) (usecase.Result, error) {
 	f.user = user
 	f.query = query
 	f.answers = answers
 	f.turns = turns
+	f.workspaceID = workspaceID
 
 	return f.result, f.err
 }
@@ -325,6 +328,41 @@ func TestPostPlanPassesAnswersThrough(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, orchestrator.answers, 1)
 	assert.Equal(t, usecase.Answer{Param: "status", Value: "allocated"}, orchestrator.answers[0])
+}
+
+// TestPostPlanPassesWorkspaceIDThrough is O4 (docs/specs/offering.md):
+// PostPlan reads PlanRequest's own optional workspaceId and forwards it to
+// Orchestrator.Plan unchanged.
+func TestPostPlanPassesWorkspaceIDThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	workspaceID := "ws-1"
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて", WorkspaceId: &workspaceID},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "ws-1", orchestrator.workspaceID)
+}
+
+// TestPostPlanWithNoWorkspaceIDPassesEmptyStringThrough is the chat
+// screen's own case: PlanRequest with no workspaceId at all (what
+// pages/chat sends) must reach Orchestrator.Plan as "", not as a nil the
+// orchestrator has to guess the meaning of.
+func TestPostPlanWithNoWorkspaceIDPassesEmptyStringThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて"},
+	})
+
+	require.NoError(t, err)
+	assert.Empty(t, orchestrator.workspaceID)
 }
 
 func TestPostPlanPassesTurnsThrough(t *testing.T) {

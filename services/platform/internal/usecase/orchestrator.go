@@ -98,6 +98,16 @@ var ErrInvalidArguments = errors.New("invalid arguments")
 // can distinguish "nothing fits" from "this isn't built yet".
 var ErrNotImplemented = errors.New("not implemented")
 
+// ErrToolNotOffered is returned when a Decision resolves to a built-in
+// tool (BuiltinTool) whose condition ToolsFor(catalog, planCtx) evaluated
+// false for this request - propose_panel called from a question with no
+// workspace id, today. O5 (docs/specs/offering.md): the list is what the
+// model was offered, not what the platform trusts, so a call to a tool
+// that was not on it is refused the same way an unknown operation is
+// (ErrEndpointNotFound) - a distinct sentinel because nothing here names a
+// catalogue endpoint at all.
+var ErrToolNotOffered = errors.New("tool not offered for this request")
+
 // messageNoEndpoint is the message a ResultKindNone result carries: the
 // planner itself decided nothing in the catalogue fits the question. It
 // points at list_capabilities rather than leaving the person at a dead
@@ -186,15 +196,25 @@ func NewOrchestrator(
 // permission check that silently passes; an argument cannot be forgotten,
 // because the code does not compile without it (docs/specs/auth.md,
 // section 5, A6).
+//
+// workspaceID is what the browser's POST /api/plan carries in the same
+// field (docs/specs/offering.md, O4): "" for a question asked from the
+// chat screen, which has no workspace to put a panel on, and the
+// workspace's own id otherwise. It becomes the PlanContext every
+// BuiltinTool's own condition is evaluated against (O2) - here, and only
+// here, once per request - so the tool list o.planner is offered, and the
+// list a later DecisionProposal is checked against (see the ErrToolNotOffered
+// check below), can never disagree.
 func (o *Orchestrator) Plan(
-	ctx context.Context, user *domain.User, query string, answers []Answer, turns []Turn,
+	ctx context.Context, user *domain.User, query string, answers []Answer, turns []Turn, workspaceID string,
 ) (Result, error) {
 	catalog, err := o.catalogFor(ctx, user)
 	if err != nil {
 		return Result{}, err
 	}
 
-	tools := ToolsFor(catalog)
+	planCtx := PlanContext{WorkspaceID: workspaceID}
+	tools := ToolsFor(catalog, planCtx)
 
 	decision, err := o.planner.Plan(ctx, query, answers, truncateTurns(turns, o.contextWindow), tools)
 	if err != nil {
@@ -211,10 +231,27 @@ func (o *Orchestrator) Plan(
 	case DecisionListCapabilities:
 		return o.listCapabilities(catalog, &decision), nil
 	case DecisionProposal:
+		if !toolOffered(tools, ProposePanelToolName) {
+			return Result{}, fmt.Errorf("%w: %s", ErrToolNotOffered, ProposePanelToolName)
+		}
+
 		return o.propose(catalog, &decision)
 	default:
 		return Result{}, fmt.Errorf("%w: unknown decision kind %q", ErrNotImplemented, decision.Kind)
 	}
+}
+
+// toolOffered reports whether name is one of tools - the list ToolsFor
+// built for this one request, which may have excluded a BuiltinTool whose
+// condition planCtx did not satisfy (O2). See ErrToolNotOffered.
+func toolOffered(tools []Tool, name string) bool {
+	for i := range tools {
+		if tools[i].Name == name {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Invoke executes a confirmed call: it is what POST /api/invoke drives

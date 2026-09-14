@@ -123,7 +123,7 @@ const callResponse = `{
 func TestPlanMapsAToolCallOntoADecisionCallWithItsService(t *testing.T) {
 	planner := newPlanner(t, callResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "検品保留の在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "検品保留の在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionCall, decision.Kind)
@@ -152,7 +152,7 @@ const askResponse = `{
 func TestPlanMapsAskUserOntoADecisionAsk(t *testing.T) {
 	planner := newPlanner(t, askResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "破損した在庫はある？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "破損した在庫はある？", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionAsk, decision.Kind)
@@ -188,7 +188,7 @@ const listCapabilitiesResponse = `{
 func TestPlanMapsListCapabilitiesOntoADecisionListCapabilities(t *testing.T) {
 	planner := newPlanner(t, listCapabilitiesResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "在庫について、どういう操作ができる？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "在庫について、どういう操作ができる？", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionListCapabilities, decision.Kind)
@@ -212,7 +212,7 @@ const listCapabilitiesNoServiceResponse = `{
 func TestPlanMapsListCapabilitiesWithNoServiceArgumentToAnEmptyFilter(t *testing.T) {
 	planner := newPlanner(t, listCapabilitiesNoServiceResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "何ができるの？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "何ができるの？", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionListCapabilities, decision.Kind)
@@ -229,7 +229,7 @@ const noToolCallResponse = `{
 func TestPlanMapsNoToolCallOntoDecisionNone(t *testing.T) {
 	planner := newPlanner(t, noToolCallResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "今日の天気は？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "今日の天気は？", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionNone, decision.Kind)
@@ -248,7 +248,7 @@ func TestPlanOnUnknownOperationReturnsAnError(t *testing.T) {
 
 	planner := newPlanner(t, response, fixtureCatalog())
 
-	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.Error(t, err)
 }
 
@@ -266,7 +266,7 @@ func TestPlanOnAmbiguousOperationIDPicksFirstCatalogueMatch(t *testing.T) {
 	catalog := fixtureCatalog()
 	planner := newPlanner(t, response, catalog)
 
-	decision, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(catalog))
+	decision, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(catalog, usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionCall, decision.Kind)
@@ -299,7 +299,7 @@ const proposePanelResponse = `{
 func TestPlanMapsProposePanelOntoADecisionProposal(t *testing.T) {
 	planner := newPlanner(t, proposePanelResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "在庫をステータス別に棒グラフで置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "在庫をステータス別に棒グラフで置いて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
@@ -343,7 +343,7 @@ const proposePanelWithNoOptionalArgumentsResponse = `{
 func TestPlanMapsProposePanelWithNoOptionalArgumentsToAZeroValuedDecision(t *testing.T) {
 	planner := newPlanner(t, proposePanelWithNoOptionalArgumentsResponse, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "在庫の一覧を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "在庫の一覧を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
@@ -373,7 +373,7 @@ func TestPlanSendsAnswersAlongsideTheQuery(t *testing.T) {
 
 	answers := []usecase.Answer{{Param: "status", Value: "quarantined"}}
 
-	_, err := planner.Plan(context.Background(), "破損した在庫を見せて", answers, nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := planner.Plan(context.Background(), "破損した在庫を見せて", answers, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	messages, ok := gotBody["messages"].([]any)
@@ -409,7 +409,7 @@ func TestPlanShapesToolsWithAdditionalPropertiesFalseAndPerToolStrict(t *testing
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	planner := toolcall.New(client, fixtureCatalog())
 
-	_, err := planner.Plan(context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := planner.Plan(context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	tools, ok := gotBody["tools"].([]any)
@@ -520,7 +520,7 @@ func TestPlanRendersTurnsInTheUserMessageBeforeTheQuestion(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	planner := toolcall.New(client, fixtureCatalog())
 
-	_, err := planner.Plan(context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()))
+	_, err := planner.Plan(context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	require.Len(t, *requests, 1)
@@ -563,7 +563,7 @@ func TestPlanRendersNoRowOfAnyPreviousAnswer(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	planner := toolcall.New(client, fixtureCatalog())
 
-	_, err := planner.Plan(context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()))
+	_, err := planner.Plan(context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	messages, ok := (*requests)[0].decoded["messages"].([]any)
@@ -604,11 +604,11 @@ func TestPlanOffersByteIdenticalToolsWithAndWithoutTurns(t *testing.T) {
 	clientWithTurns := chat.New(chat.Config{BaseURL: serverWithTurns.URL, Model: "test-model"})
 	plannerWithTurns := toolcall.New(clientWithTurns, fixtureCatalog())
 
-	_, err := plannerWithoutTurns.Plan(context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := plannerWithoutTurns.Plan(context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	_, err = plannerWithTurns.Plan(
-		context.Background(), "在庫を見せて", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()),
+		context.Background(), "在庫を見せて", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}),
 	)
 	require.NoError(t, err)
 
@@ -630,6 +630,123 @@ func extractToolsRaw(t *testing.T, raw []byte) []byte {
 
 	require.NoError(t, json.Unmarshal(raw, &wire))
 	require.NotEmpty(t, wire.Tools)
+
+	return wire.Tools
+}
+
+// toolNamesSent decodes request's own "tools" field into the bare list of
+// function names the model was actually offered - what proves AC-O-101/102
+// at the wire level, not merely at usecase.ToolsFor's own return value.
+func toolNamesSent(t *testing.T, raw []byte) []string {
+	t.Helper()
+
+	var wire struct {
+		Tools []struct {
+			Function struct {
+				Name string `json:"name"`
+			} `json:"function"`
+		} `json:"tools"`
+	}
+
+	require.NoError(t, json.Unmarshal(raw, &wire))
+
+	names := make([]string, len(wire.Tools))
+	for i, tool := range wire.Tools {
+		names[i] = tool.Function.Name
+	}
+
+	return names
+}
+
+// TestPlanOffersNoProposePanelToTheModelWithNoWorkspace is AC-O-101 at the
+// wire level: a question with no workspace id is sent no propose_panel
+// function definition at all - not merely told not to call it - and
+// ask_user/list_capabilities are unaffected (AC-O-103).
+func TestPlanOffersNoProposePanelToTheModelWithNoWorkspace(t *testing.T) {
+	server, requests := captureBody(t)
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := toolcall.New(client, fixtureCatalog())
+
+	_, err := planner.Plan(
+		context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{}),
+	)
+	require.NoError(t, err)
+
+	names := toolNamesSent(t, (*requests)[0].raw)
+	assert.NotContains(t, names, "propose_panel")
+	assert.Contains(t, names, "ask_user")
+	assert.Contains(t, names, "list_capabilities")
+}
+
+// TestPlanOffersProposePanelToTheModelWithAWorkspace is AC-O-102 at the
+// wire level.
+func TestPlanOffersProposePanelToTheModelWithAWorkspace(t *testing.T) {
+	server, requests := captureBody(t)
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := toolcall.New(client, fixtureCatalog())
+
+	_, err := planner.Plan(
+		context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}),
+	)
+	require.NoError(t, err)
+
+	names := toolNamesSent(t, (*requests)[0].raw)
+	assert.Contains(t, names, "propose_panel")
+}
+
+// TestPlanOffersByteIdenticalCatalogueToolsRegardlessOfProposePanel is
+// AC-O-105 at this planner's own wire boundary: the catalogue's own
+// operation tools - everything usecase.ToolsFor appends before its
+// built-ins - must reach the model byte for byte the same whether or not
+// propose_panel's own condition holds, mirroring
+// TestPlanOffersByteIdenticalToolsWithAndWithoutTurns's own reasoning for
+// turns.
+func TestPlanOffersByteIdenticalCatalogueToolsRegardlessOfProposePanel(t *testing.T) {
+	serverWithWorkspace, requestsWithWorkspace := captureBody(t)
+	serverWithoutWorkspace, requestsWithoutWorkspace := captureBody(t)
+
+	clientWithWorkspace := chat.New(chat.Config{BaseURL: serverWithWorkspace.URL, Model: "test-model"})
+	plannerWithWorkspace := toolcall.New(clientWithWorkspace, fixtureCatalog())
+
+	clientWithoutWorkspace := chat.New(chat.Config{BaseURL: serverWithoutWorkspace.URL, Model: "test-model"})
+	plannerWithoutWorkspace := toolcall.New(clientWithoutWorkspace, fixtureCatalog())
+
+	_, err := plannerWithWorkspace.Plan(
+		context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}),
+	)
+	require.NoError(t, err)
+
+	_, err = plannerWithoutWorkspace.Plan(
+		context.Background(), "在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{}),
+	)
+	require.NoError(t, err)
+
+	catalogueCount := len(fixtureCatalog().Endpoints)
+
+	toolsWithWorkspace := decodeToolsRaw(t, (*requestsWithWorkspace)[0].raw)
+	toolsWithoutWorkspace := decodeToolsRaw(t, (*requestsWithoutWorkspace)[0].raw)
+
+	catalogueToolsWithWorkspace, err := json.Marshal(toolsWithWorkspace[:catalogueCount])
+	require.NoError(t, err)
+
+	catalogueToolsWithoutWorkspace, err := json.Marshal(toolsWithoutWorkspace[:catalogueCount])
+	require.NoError(t, err)
+
+	assert.True(t, bytes.Equal(catalogueToolsWithWorkspace, catalogueToolsWithoutWorkspace),
+		"catalogue tools bytes differ:\nwith workspace:    %s\nwithout workspace: %s",
+		catalogueToolsWithWorkspace, catalogueToolsWithoutWorkspace)
+}
+
+// decodeToolsRaw decodes request's "tools" field into raw per-tool JSON
+// messages, in wire order, for a slice-and-remarshal byte comparison.
+func decodeToolsRaw(t *testing.T, raw []byte) []json.RawMessage {
+	t.Helper()
+
+	var wire struct {
+		Tools []json.RawMessage `json:"tools"`
+	}
+
+	require.NoError(t, json.Unmarshal(raw, &wire))
 
 	return wire.Tools
 }

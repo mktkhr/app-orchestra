@@ -20,6 +20,12 @@ interface ConversationProps {
    */
   readonly conversationKey: string;
   /**
+   * The workspace this conversation is asked from, if any - forwarded to
+   * every `ask` as `POST /api/plan`'s own `workspaceId`
+   * (`docs/specs/offering.md`, O4). Left undefined by the chat screen.
+   */
+  readonly workspaceId?: string | undefined;
+  /**
    * Draws a result turn's "save to a workspace" control - forwarded
    * straight to `TurnList`. See that prop's doc for why this is a slot
    * rather than an import: `features/conversation` cannot reach into the
@@ -44,11 +50,14 @@ interface ConversationProps {
  */
 export function Conversation({
   conversationKey,
+  workspaceId,
   renderSaveControl,
   renderProposal,
 }: ConversationProps): JSX.Element {
-  const { turns, pending, error, ask, submitForm, newConversation } =
-    useConversation(conversationKey);
+  const { turns, pending, error, ask, submitForm, newConversation } = useConversation(
+    conversationKey,
+    workspaceId,
+  );
 
   const handleSubmit = (query: string): void => {
     void ask(query);

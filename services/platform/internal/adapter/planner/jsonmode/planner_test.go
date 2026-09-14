@@ -134,7 +134,7 @@ func TestPlanMapsAValidCallJSONObjectOntoADecisionCall(t *testing.T) {
 		`{"kind":"call","service":"inventory","operationId":"ListInventoryItems","args":{"status":"quarantined"}}`,
 	))
 
-	decision, err := fixture.planner.Plan(context.Background(), "検品保留の在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := fixture.planner.Plan(context.Background(), "検品保留の在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionCall, decision.Kind)
@@ -171,7 +171,7 @@ func TestPlanRendersAParameterSDescriptionInTheCatalogueText(t *testing.T) {
 
 	fixture := newPlanner(t, catalog, chatContent(t, `{"kind":"none"}`))
 
-	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(catalog))
+	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(catalog, usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	messages, ok := fixture.requests[0]["messages"].([]any)
@@ -191,7 +191,7 @@ func TestPlanMapsAskKindOntoADecisionAsk(t *testing.T) {
 		`{"kind":"ask","service":"inventory","operationId":"ListInventoryItems","param":"status","question":"どのステータスですか？"}`,
 	))
 
-	decision, err := fixture.planner.Plan(context.Background(), "破損した在庫はある？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := fixture.planner.Plan(context.Background(), "破損した在庫はある？", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionAsk, decision.Kind)
@@ -215,7 +215,7 @@ func TestPlanMapsProposePanelKindOntoADecisionProposal(t *testing.T) {
 			`"title":"ステータス別の在庫"}`,
 	))
 
-	decision, err := fixture.planner.Plan(context.Background(), "在庫をステータス別に棒グラフで置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := fixture.planner.Plan(context.Background(), "在庫をステータス別に棒グラフで置いて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
@@ -244,7 +244,7 @@ func TestPlanMapsProposePanelWithNoOptionalFieldsToAZeroValuedDecision(t *testin
 		`{"kind":"propose_panel","service":"inventory","operationId":"ListInventoryItems","args":{}}`,
 	))
 
-	decision, err := fixture.planner.Plan(context.Background(), "在庫の一覧を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := fixture.planner.Plan(context.Background(), "在庫の一覧を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
@@ -261,7 +261,7 @@ func TestPlanProposePanelOnUnknownOperationReturnsAnError(t *testing.T) {
 		`{"kind":"propose_panel","service":"inventory","operationId":"NoSuchOperation","args":{}}`,
 	))
 
-	_, err := fixture.planner.Plan(context.Background(), "何か置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := fixture.planner.Plan(context.Background(), "何か置いて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.Error(t, err)
 }
 
@@ -280,7 +280,7 @@ func TestPlanProposePanelRejectsAnOutOfEnumArgument(t *testing.T) {
 		),
 	)
 
-	decision, err := fixture.planner.Plan(context.Background(), "検品保留の在庫を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := fixture.planner.Plan(context.Background(), "検品保留の在庫を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 	assert.Equal(t, usecase.DecisionProposal, decision.Kind)
 	assert.Equal(t, map[string]any{"status": "quarantined"}, decision.Args)
@@ -291,7 +291,7 @@ func TestPlanMapsListCapabilitiesKindOntoADecisionListCapabilities(t *testing.T)
 	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"list_capabilities","service":"inventory"}`))
 
 	decision, err := fixture.planner.Plan(
-		context.Background(), "在庫について、どういう操作ができる？", nil, nil, usecase.ToolsFor(fixtureCatalog()),
+		context.Background(), "在庫について、どういう操作ができる？", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}),
 	)
 	require.NoError(t, err)
 
@@ -302,7 +302,7 @@ func TestPlanMapsListCapabilitiesKindOntoADecisionListCapabilities(t *testing.T)
 func TestPlanMapsListCapabilitiesWithNoServiceToAnEmptyFilter(t *testing.T) {
 	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"list_capabilities"}`))
 
-	decision, err := fixture.planner.Plan(context.Background(), "何ができるの？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := fixture.planner.Plan(context.Background(), "何ができるの？", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionListCapabilities, decision.Kind)
@@ -312,7 +312,7 @@ func TestPlanMapsListCapabilitiesWithNoServiceToAnEmptyFilter(t *testing.T) {
 func TestPlanMapsNoneKindOntoDecisionNone(t *testing.T) {
 	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
 
-	decision, err := fixture.planner.Plan(context.Background(), "今日の天気は？", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := fixture.planner.Plan(context.Background(), "今日の天気は？", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionNone, decision.Kind)
@@ -323,7 +323,7 @@ func TestPlanOnUnknownOperationReturnsAnError(t *testing.T) {
 		`{"kind":"call","service":"inventory","operationId":"NoSuchOperation","args":{}}`,
 	))
 
-	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.Error(t, err)
 }
 
@@ -338,7 +338,7 @@ func TestPlanRetriesOnceOnAnEnumValueOutsideTheParameterAndQuotesItBack(t *testi
 		chatContent(t, `{"kind":"call","service":"inventory","operationId":"ListInventoryItems","args":{"status":"quarantined"}}`),
 	)
 
-	decision, err := fixture.planner.Plan(context.Background(), "紛失した在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := fixture.planner.Plan(context.Background(), "紛失した在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.DecisionCall, decision.Kind)
@@ -366,7 +366,7 @@ func TestPlanGivesUpAfterASecondBadAnswer(t *testing.T) {
 		chatContent(t, `not json at all`),
 	)
 
-	_, err := fixture.planner.Plan(context.Background(), "紛失した在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := fixture.planner.Plan(context.Background(), "紛失した在庫を見せて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.Error(t, err)
 	assert.Len(t, fixture.requests, 2)
 }
@@ -377,7 +377,7 @@ func TestPlanRetriesOnceOnUnparseableJSON(t *testing.T) {
 		chatContent(t, `{"kind":"none"}`),
 	)
 
-	decision, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 	assert.Equal(t, usecase.DecisionNone, decision.Kind)
 	assert.Len(t, fixture.requests, 2)
@@ -390,7 +390,7 @@ func TestPlanSendsAnswersAlongsideTheQuery(t *testing.T) {
 
 	answers := []usecase.Answer{{Param: "status", Value: "quarantined"}}
 
-	_, err := fixture.planner.Plan(context.Background(), "破損した在庫を見せて", answers, nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := fixture.planner.Plan(context.Background(), "破損した在庫を見せて", answers, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	messages, ok := fixture.requests[0]["messages"].([]any)
@@ -414,7 +414,7 @@ func TestPlanSendsAnswersAlongsideTheQuery(t *testing.T) {
 func TestPlanRendersTheCatalogueAndSetsResponseFormat(t *testing.T) {
 	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
 
-	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 
 	body := fixture.requests[0]
@@ -472,7 +472,7 @@ func TestPlanFallsBackWithoutResponseFormatWhenTheEndpointRejectsIt(t *testing.T
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	planner := jsonmode.New(client, fixtureCatalog())
 
-	decision, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog()))
+	decision, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 	assert.Equal(t, usecase.DecisionNone, decision.Kind)
 
@@ -524,7 +524,7 @@ func TestPlanRendersTurnsAfterTheCatalogueInTheSystemPrompt(t *testing.T) {
 	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
 
 	_, err := fixture.planner.Plan(
-		context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()),
+		context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}),
 	)
 	require.NoError(t, err)
 
@@ -551,7 +551,7 @@ func TestPlanRendersNoRowOfAnyPreviousAnswer(t *testing.T) {
 	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
 
 	_, err := fixture.planner.Plan(
-		context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()),
+		context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}),
 	)
 	require.NoError(t, err)
 
@@ -568,23 +568,23 @@ func TestPlanRendersNoRowOfAnyPreviousAnswer(t *testing.T) {
 }
 
 // TestPlanRendersTheCataloguePrefixByteIdenticallyWithAndWithoutTurns is
-// AC-M-102's equivalent for this planner: it has no separate tools field
-// to leave untouched (Plan ignores the tools argument entirely - see
-// Plan's own doc comment), so the invariant M3 protects here is that the
-// rendered catalogue - the prefix a prompt cache would be warm for - is
-// exactly the same bytes whether or not turns is empty; systemPromptFor
-// only ever appends after it, never rewrites it.
+// AC-M-102's equivalent for this planner: tools only ever selects between
+// the two fixed system prompt variants New precomputed (offering.md, O2),
+// so the invariant M3 protects here is that the rendered catalogue - the
+// prefix a prompt cache would be warm for - is exactly the same bytes
+// whether or not turns is empty; systemPromptFor only ever appends after
+// it, never rewrites it.
 func TestPlanRendersTheCataloguePrefixByteIdenticallyWithAndWithoutTurns(t *testing.T) {
 	fixtureWithoutTurns := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
 	fixtureWithTurns := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
 
 	_, err := fixtureWithoutTurns.planner.Plan(
-		context.Background(), "在庫について教えて", nil, nil, usecase.ToolsFor(fixtureCatalog()),
+		context.Background(), "在庫について教えて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}),
 	)
 	require.NoError(t, err)
 
 	_, err = fixtureWithTurns.planner.Plan(
-		context.Background(), "在庫について教えて", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog()),
+		context.Background(), "在庫について教えて", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}),
 	)
 	require.NoError(t, err)
 
@@ -594,4 +594,56 @@ func TestPlanRendersTheCataloguePrefixByteIdenticallyWithAndWithoutTurns(t *test
 	assert.True(t, strings.HasPrefix(contentWithTurns, contentWithoutTurns),
 		"the catalogue prefix must be byte-identical with and without turns")
 	assert.Greater(t, len(contentWithTurns), len(contentWithoutTurns))
+}
+
+// TestPlanDoesNotMentionProposePanelWithNoWorkspace is AC-O-101
+// (docs/specs/offering.md) for this planner: when tools carries no
+// propose_panel - usecase.ToolsFor's own condition for it, evaluated with
+// no workspace id - the system prompt never describes it at all, which is
+// what actually stops the model from reaching for it (section 5's third
+// exclusion: an absent tool is absent, not disabled and explained).
+func TestPlanDoesNotMentionProposePanelWithNoWorkspace(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
+
+	_, err := fixture.planner.Plan(
+		context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{}),
+	)
+	require.NoError(t, err)
+
+	content := systemContent(t, fixture.requests[0])
+	assert.NotContains(t, content, "propose_panel")
+}
+
+// TestPlanMentionsProposePanelWithAWorkspace is AC-O-102: a question asked
+// from a workspace (tools carries propose_panel) is told about it.
+func TestPlanMentionsProposePanelWithAWorkspace(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
+
+	_, err := fixture.planner.Plan(
+		context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}),
+	)
+	require.NoError(t, err)
+
+	content := systemContent(t, fixture.requests[0])
+	assert.Contains(t, content, "propose_panel")
+}
+
+// TestPlanRefusesAProposePanelAnswerWithNoWorkspace is AC-O-104 for this
+// planner: a model that answers "propose_panel" anyway - despite never
+// being told the shape (this stub server just returns it regardless) - is
+// refused the same way an unrecognised kind is (ErrUnknownKind), not
+// treated as a valid proposal. maxAttempts (2) bounds the retries this
+// causes, so Plan gives up rather than looping forever on a model that
+// keeps insisting.
+func TestPlanRefusesAProposePanelAnswerWithNoWorkspace(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t,
+		`{"kind":"propose_panel","service":"inventory","operationId":"ListInventoryItems","args":{}}`,
+	))
+
+	_, err := fixture.planner.Plan(
+		context.Background(), "在庫を置いて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{}),
+	)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, jsonmode.ErrUnknownKind)
 }

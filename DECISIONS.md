@@ -4740,3 +4740,87 @@ loop: that target depends on `build`, so every model re-runs vite, and vite
 beside a loaded 12B crossed this machine's memory limit three times. Warm
 each model with a single foreground request before its run - the load spike,
 not the run, is what gets killed.
+
+## 2026-09-14 `docs/specs/offering.md`: a conditional tool, not a workspace flag on the mechanism
+
+**Context.** `propose_panel` has ridden in every `/api/plan` request's tool
+list since `docs/specs/proposing.md`, including a question asked from the
+chat screen, which has no workspace to put a panel on - the browser already
+drops such a proposal (N4), so nobody saw a bug, only a question that did
+not get answered. `docs/specs/offering.md` section 1 cites the measurement
+that made this worth fixing: `qwen38-27b-iq3s` answering plain questions
+like 出荷準備完了の在庫を見せて with a panel proposal three times in ten,
+against a default model (`qwen3.5-9b-q8`) that does this rarely enough to
+sit inside its own noise. That measurement is not repeated here - a model
+comparison is running concurrently on this machine's only GPU
+(`docs/specs/eval.md`'s "nine local models on one corpus", above), and this
+subproject deliberately touches nothing that calls a real model: every test
+added is against the stub planner or a stub HTTP server, and
+`docker logs llama-swap`'s `POST /v1/chat/completions` count did not move
+across `make check`.
+
+**O1's shape: `BuiltinTool{Tool, Applies func(PlanContext) bool}`, not a
+`workspaceOnly bool` flag on the mechanism.** The spec's own section 4 argues
+this and the code follows it exactly: `PlanContext{WorkspaceID string}` is
+the one thing a condition can read today, and `propose_panel` is the only
+entry in `builtinTools()` that carries an `Applies` at all - `ask_user` and
+`list_capabilities` carry none, which is what "applies unconditionally"
+means now instead of being the reason the loop existed in the first place.
+Naming the general shape at three tools, while it is still obvious what it
+is for, is meant to cost the next call site nothing when a fourth tool
+needs a different condition (an admin-only tool, a tool gated on some
+service being reachable) - it becomes one more `builtinTools()` entry, not a
+second flag beside the first.
+
+**Where AC-O-105 actually gets proved.** The spec calls out that the
+catalogue's own operation tools must stay byte-for-byte identical
+regardless of `PlanContext`, and points at the existing turns-don't-move-
+tools test (`docs/plans/context.md` Task 2 Step 4) as the pattern to copy.
+Two versions exist now, at two different boundaries: `internal/usecase`
+cannot import `encoding/json` at all (depguard: "serialisation concerns
+belong to the adapter layer"), so
+`TestToolsForCatalogueToolsAreUnaffectedByPlanContext` proves it with
+`assert.Equal` on the slice itself - which already proves same content and
+same order, since a `reflect.DeepEqual`-backed comparison of two slices
+fails the moment an element moves - while
+`toolcall_test.TestPlanOffersByteIdenticalCatalogueToolsRegardlessOfProposePanel`
+proves the same claim at the actual wire boundary, where a `map[string]any`'s
+randomised key order could otherwise hide a real shift behind
+`json.Marshal`'s own reordering (the same reasoning the turns test's own
+comment gives).
+
+**O5 lives in the orchestrator, not in either planner - with one exception.**
+`Orchestrator.Plan` already re-derives `catalog` from `catalogFor` and
+re-checks every `Decision` against it rather than trusting what a planner
+said (the existing `ErrEndpointNotFound` pattern for `call`/`ask`/
+`propose`); the same discipline extends naturally to the tool list itself.
+It recomputes `tools := ToolsFor(catalog, planCtx)` once, and before
+dispatching a `DecisionProposal` checks whether `propose_panel` is actually
+in that list - if not, `ErrToolNotOffered`, and `propose` (which never
+touches the invoker anyway) is never called at all. This is enough for
+`toolcall.Planner`: a tool-calling model literally cannot call a function it
+was never sent a definition for, so nothing else needed to change there
+beyond threading `PlanContext` through to `ToolsFor`'s call site.
+`jsonmode.Planner` is the exception the spec's own M5 cross-reference
+(`docs/specs/context.md`, "both planners get the same list") anticipates:
+its catalogue is rendered as free text once in `New`, and the previous code
+hard-coded the `propose_panel` JSON shape into that text unconditionally,
+which meant the actual behaviour this subproject exists to change - the
+model reaching for a panel it was never supposed to know about - would not
+have moved for that adapter at all, only the after-the-fact refusal would
+have fired. Fixed by precomputing two full variants (system prompt and
+`ResponseFormat`'s `"kind"` enum, with and without `propose_panel`) in `New`
+and selecting between them per `Plan` call from the same `tools` argument
+`toolcall.Planner` already reads - plus a local `parse` check
+(`ErrUnknownKind`) for a model that answers `"propose_panel"` anyway, since
+this transport has no structural "undeclared function" backstop the way
+tool calling does.
+
+**What was not touched.** No `web/` component beyond the three files O4
+names (`ConversationPanel.tsx`, `Conversation.tsx`,
+`conversationStore.tsx`/`conversationContext.ts`) needed a change - the
+save-control and proposal-form wiring already switched on
+`defaultWorkspaceId`/`workspaceId` being defined, and now also causes the
+same value to reach `postPlan`'s own request body. `pages/chat` and
+`pages/workspace` themselves are unchanged: they already called
+`ConversationPanel` with no id and always an id, respectively.

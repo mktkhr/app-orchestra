@@ -57,6 +57,7 @@ export function ConversationPanel({
   return (
     <Conversation
       conversationKey={defaultWorkspaceId ?? "chat"}
+      workspaceId={defaultWorkspaceId}
       renderSaveControl={(props) => (
         <SaveToWorkspaceControl {...props} defaultWorkspaceId={defaultWorkspaceId} />
       )}

@@ -24,6 +24,7 @@ var errUnrenderableData = errors.New("result data is not a JSON object")
 type planner interface {
 	Plan(
 		ctx context.Context, user *domain.User, query string, answers []usecase.Answer, turns []usecase.Turn,
+		workspaceID string,
 	) (usecase.Result, error)
 }
 
@@ -46,6 +47,7 @@ func (h *Plan) PostPlan(
 ) (openapi.PostPlanResponseObject, error) {
 	result, err := h.orchestrator.Plan(
 		ctx, currentUser(ctx), request.Body.Query, toAnswers(request.Body.Answers), toTurns(request.Body.Turns),
+		toWorkspaceID(request.Body.WorkspaceId),
 	)
 	if err != nil {
 		return planErrorResponse(err), nil
@@ -125,6 +127,17 @@ func toTurns(turns *[]openapi.Turn) []usecase.Turn {
 	}
 
 	return out
+}
+
+// toWorkspaceID reads PlanRequest.WorkspaceId, "" when the browser sent
+// none - a question asked from the chat screen (docs/specs/offering.md,
+// O4).
+func toWorkspaceID(workspaceID *string) string {
+	if workspaceID == nil {
+		return ""
+	}
+
+	return *workspaceID
 }
 
 // toAPIPlanResult converts a usecase.Result into the wire PlanResult.

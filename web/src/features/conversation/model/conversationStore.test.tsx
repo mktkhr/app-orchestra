@@ -13,8 +13,14 @@ vi.mock("@/shared/api/client", () => ({
 }));
 
 /** Renders one conversation's turns as text, and buttons to drive it. */
-function Probe({ conversationKey }: { readonly conversationKey: string }): JSX.Element {
-  const conversation = useConversation(conversationKey);
+function Probe({
+  conversationKey,
+  workspaceId,
+}: {
+  readonly conversationKey: string;
+  readonly workspaceId?: string;
+}): JSX.Element {
+  const conversation = useConversation(conversationKey, workspaceId);
 
   return (
     <div>
@@ -127,6 +133,26 @@ describe("conversationStore", () => {
     await screen.findByText("結果はありません。", { exact: false });
 
     expect(postPlan).toHaveBeenCalledWith({ query: "質問" });
+  });
+
+  // docs/specs/offering.md, O4: workspaceId is forwarded to postPlan
+  // unchanged when the caller has one, and left off the body entirely when
+  // it does not - the chat screen's own case, proven by the test above.
+  it("sends workspaceId when the caller has one", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(postPlan).mockResolvedValue({ kind: "none", message: "結果はありません。" });
+
+    render(
+      <ConversationProvider>
+        <Probe conversationKey="ws-1" workspaceId="ws-1" />
+      </ConversationProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ask-ws-1" }));
+    await screen.findByText("結果はありません。", { exact: false });
+
+    expect(postPlan).toHaveBeenCalledWith({ query: "質問", workspaceId: "ws-1" });
   });
 
   it("sends the first question and its resolved operation as a turn with the second question", async () => {

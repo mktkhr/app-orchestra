@@ -229,11 +229,13 @@ describe("asking a workspace's chat for a panel (AC-N-101, AC-N-102, AC-N-106)",
 
     const workspace = parseWorkspaceCreated(await createWorkspace.json());
 
+    // workspaceId required: propose_panel is offered only from a workspace
+    // (docs/specs/offering.md, O3/O4).
     const planResponse = await fetch(`http://127.0.0.1:${port}/api/plan`, {
       ...withSession(requireSession(), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query: proposeQuery }),
+        body: JSON.stringify({ query: proposeQuery, workspaceId: workspace.id }),
       }),
     });
 

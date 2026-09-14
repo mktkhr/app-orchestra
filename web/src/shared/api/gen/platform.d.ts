@@ -323,6 +323,8 @@ export type components = {
             readonly answers?: readonly components["schemas"]["Answer"][];
             /** @description The conversation so far, oldest first. Absent or empty means what it means today: a question with no history (docs/specs/context.md, section 5). */
             readonly turns?: readonly components["schemas"]["Turn"][];
+            /** @description The workspace this question was asked from, if any - what the browser already knows and already uses to decide whether a proposal can be drawn at all (docs/specs/proposing.md, N4). Absent for a question asked from the chat screen, which has no workspace to put a panel on: `propose_panel` is offered only when this is present (docs/specs/offering.md, O3/O4). */
+            readonly workspaceId?: string;
         };
         /**
          * @description What the planner decided to do about a question.
