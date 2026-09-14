@@ -5136,3 +5136,100 @@ read from disk for the first time. Measured twice more since: 6.6s/2.6s and
 conclusion is unchanged - the narrowing it serves costs 0.3 ms to 80 ms, four
 orders of magnitude less either way - but a single number was misleading and
 the spec now carries the range.
+
+## 2026-09-15 Frontier models on the same shortlist, single call, $3.80 of a $20 budget
+
+**Context.** The 2026-09-14 ceiling probe gave a Claude subagent the whole
+catalogue and minutes of tool use, and reported 10/15 on the vocabulary-gap
+axis. That number had three things mixed into it - the model, an agent loop,
+and reading all 1000 operations - and no latency, which is the number that
+decides whether any of it is usable. With an API key and a $20 limit, this run
+separates them: same 100 questions, same 50 candidates from `e5-large-q8`,
+one `POST /v1/messages` per question, no tools.
+
+**Discipline, and where it failed.** Everything that could be learned for free
+was learned first: the token counting endpoint is free, so every prompt was
+counted exactly before anything was billed (Sonnet 5 / Opus 5: 1,526 tokens a
+question on average, 27,489 for the whole catalogue; Haiku 4.5: 1,313 and
+23,187). Each phase then ran two questions and checked `usage` before running
+a hundred. The first Phase 2 run still wasted **$1.37**: Claude Sonnet 5 and
+Opus 5 think by default, thinking tokens count toward `max_tokens`, and
+`max_tokens: 64` left no room for an answer - 65 of Opus's 100 answers were
+empty. The three-question smoke test had not caught it because all three were
+unambiguous and needed almost no thinking. This was the same failure the local
+run had hit hours earlier. Re-run with `thinking: {type: "disabled"}` and a
+smoke test that asserts `output_tokens_details.thinking_tokens` and
+`stop_reason`.
+
+**Phase 2 - the comparison the ceiling probe could not make.** Fifty
+candidates, thinking off, one call each, 100 questions.
+
+| model                                                      | correct | A   | B   | C   | D   | E   | flagged ambiguous | s/question | $/100 |
+| ---------------------------------------------------------- | ------- | --- | --- | --- | --- | --- | ----------------- | ---------- | ----- |
+| local qwen3.5-9b-q8, no thinking                           | 69      | 22  | 20  | 17  | 6   | 4   | 57                | 0.4        | 0     |
+| Claude Haiku 4.5                                           | 67      | 20  | 24  | 15  | 3   | 5   | 66                | 0.79       | 0.14  |
+| Claude Sonnet 5                                            | 73      | 20  | 24  | 17  | 7   | 5   | 73                | 1.78       | 0.35  |
+| Claude Opus 5                                              | 73      | 18  | 24  | 18  | 7   | 6   | 89                | 2.30       | 0.83  |
+| (2026-09-14) Claude subagent, same shortlist, tools + loop | 82      | 23  | 25  | 20  | 7   | 7   | 47                | minutes    | -     |
+
+Under identical conditions the local 9B and the frontier models are four
+points apart, and Haiku is behind the local model. Axis D - the vocabulary
+gap - is 6, 3, 7, 7: **no model closes it from a shortlist**, which settles
+that the gap is in what the catalogue says about itself, not in who reads it.
+The subagent's 82 is nine points above the same model's single call; that is
+the loop, not the model. The local model is also the fastest: the API adds
+network and a larger model on top.
+
+Calibration differs. Every model flags the structurally ambiguous axis-B
+questions (24-25 of 25). On axis A, whose questions are not ambiguous, false
+flags are local 2, Haiku 10, Sonnet 14, Opus 19 of 25. Larger models err
+toward asking.
+
+**Phase 3 - thinking on the frontier.** Sonnet 5 with its default adaptive
+thinking, `max_tokens` 4000, 257 thinking tokens a question on average:
+**73/100, axis D 7/15 - identical to thinking off**, at 2.46 s instead of
+1.78 and $0.41 instead of $0.35. The local model had shown the same on axis D
+(6/15 either way, at 85 s a question with thinking). Thinking buys nothing
+here on any model.
+
+**Phase 4 - the whole catalogue, cached (the D2 question).** All 1000
+operations in the system prompt behind a 1-hour cache breakpoint, Sonnet 5,
+thinking off. The cache did what the docs say: one write of 27,515 tokens
+($0.11), then 99 reads at $0.0057 a question - $0.70 for the run, against a
+$0.69 estimate. So D2's cost argument holds when caching is available: a
+question against the whole catalogue costs roughly what a question against 50
+candidates costs.
+
+The precision argument does not. **64/100, against 73 from the shortlist.**
+Axis B fell from 24 to 13 and the misses are not ambiguity: 「明細を追加したい」
+answered `listInventoryItems`, 「明細を修正したい」 answered
+`updateInventoryItem`. The model kept the verb and lost the noun, and what it
+grabbed is from the first service in the list. Given a thousand lines a
+frontier model grabs from the top. This is the precision collapse the seventh
+tool showed `qwen38-27b` on 2026-09-14, now measured on a frontier model with
+a thousand.
+
+**What this settles.**
+
+- Narrowing is not optional and not a cost measure. Sending everything is
+  cheap with a cache and worse for precision even on Opus-class models.
+- The shortlist is the ceiling. Fifty candidates from `e5-large-q8` hold
+  11 of the 15 axis-D answers, and no model - local, Haiku, Sonnet, Opus, with
+  or without thinking - gets more than 7 of them into first place. The
+  remaining gap is the catalogue's vocabulary (2026-09-14 entry, residual
+  gap), and the next work is there.
+- Model choice is not where the accuracy is. Four points separate a 0.4-second
+  local model from a 2.3-second frontier model on the same input.
+- Asking back is something every model can do; how often it does it
+  unnecessarily is the parameter to tune, and the local model is best
+  calibrated on it here.
+
+**Caveats that still apply.** The answer key prefers `list*` and rejects
+`search*`/`summarize*`/`aggregate*` over the same object (2026-09-14, corpus
+defect), which depresses every row by some amount and axes D and E most. The
+frontier figures are Claude only. All figures are one run at temperature 0.
+
+**Spend.** $3.80 of $20: Phase 2 wasted run $1.37, Phase 2 $1.32, Phase 3
+$0.41, Phase 4 $0.70. Ledger and per-run outputs are in the session
+scratchpad, not the repository; the key is read from a file outside the
+repository and never appears in it.
