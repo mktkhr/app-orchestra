@@ -72,6 +72,7 @@ export function Conversation({
         <>
           <TurnList
             turns={turns}
+            pending={pending}
             onFormSubmitted={handleFormSubmitted}
             renderSaveControl={renderSaveControl}
             renderProposal={renderProposal}

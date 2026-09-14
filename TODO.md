@@ -75,6 +75,24 @@ Nothing - see "Next" for what is queued.
 
 ## Done
 
+- **`docs/specs/conversation-ui.md` closes: a question is a bubble on the
+  right, a result keeps the width it always had, a sentence answer is a
+  bubble on the left, and a spinner (not a progress claim) holds the
+  answer's place while a question is in flight** (AC-C-101 through
+  AC-C-106). `web/src/features/conversation/ui/TurnList.tsx` bounds the
+  question `Paper` to 75% width and right-aligns it; bounds `kind: "none"`
+  and the contract-fallback branch the same way, left-aligned; leaves
+  `proposal`/`form`/`ask` and every `kind: "result"` branch (table, detail,
+  chart) full width, unchanged. `Conversation.tsx` now forwards its
+  existing `pending` into `TurnList`, which draws one more bounded bubble -
+  a `CircularProgress aria-label="回答を生成中"` and one honest line, no
+  percentage - only while a question is in flight; `pending` already goes
+  false on both success and failure, so the spinner's removal needed no new
+  wiring. Verified live against `qwen3.5-9b-q8` (`make dev-services`,
+  Playwright): the spinner is attached immediately, gone once the answer
+  replaces it. Contrast measured by hand in both colour schemes (~15-17:1,
+  reusing existing theme tokens); `make guard-a11y`/`make guard-layout`
+  stayed green. See `STATE.md` and `DECISIONS.md`, 2026-09-14.
 - **`docs/specs/storage.md` closes: one `*sql.DB` per database file, WAL, a
   busy timeout, and a 500 that reaches the log** (AC-S-101 through
   AC-S-104). `pkg/app.build` now opens `ORCHESTRA_DB_PATH` once

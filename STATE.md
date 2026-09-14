@@ -1,10 +1,44 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-14 (`docs/specs/storage.md` closed - one `*sql.DB`
-per database file, WAL, a busy timeout, and a 500 that reaches the log; see
-below and `DECISIONS.md`)_
+_Last updated: 2026-09-14 (`docs/specs/conversation-ui.md` closed - a
+question is a bubble on the right, a result keeps the width it always had,
+a sentence answer is a bubble on the left, and a spinner holds the answer's
+place while a question is in flight; see below and `DECISIONS.md`)_
 
 ## Summary
+
+**`docs/specs/conversation-ui.md` is closed - the twelfth subproject.**
+`web/src/features/conversation/ui/TurnList.tsx`: a question turn is now a
+`Paper` bounded to 75% width, right-aligned (`alignSelf: "flex-end"`, C1,
+AC-C-101); a `kind: "result"` answer (table/detail/chart, `renderResultAnswer.tsx`)
+and a `proposal`/`form`/`ask` answer are unchanged - still full width, on
+the left (C2, AC-C-102); a `kind: "none"` answer and the contract-fallback
+branch are now bounded the same way as the question but left-aligned (C3,
+AC-C-103). `Conversation.tsx` forwards its existing `pending` into
+`TurnList`, which draws one more bounded left bubble - a small
+`CircularProgress` (`aria-label="回答を生成中"`) and the line
+「回答を作成しています…」 - only while `pending` is true (C4/C5, AC-C-104,
+AC-C-105); `pending` goes false the instant the answer turn is appended or
+the request fails, so the spinner's own lifetime needs no separate wiring.
+Verified live against the running platform (`make dev-services`,
+`qwen3.5-9b-q8`): the spinner is attached from the moment a question is
+clicked, still attached the instant its `click()` resolves, and gone once
+the table/sentence answer replaces it - a Playwright script raced the
+spinner's `waitFor` against the click itself to catch this, since the
+answer can return in well under a second on a warm model. `docker logs
+llama-swap`'s `POST /v1/chat/completions` count was unchanged across
+`make check` (unaffected by this - `make check` never talks to a real
+model) and moved only during that manual verification. Contrast measured,
+not assumed, in both colour schemes (`getComputedStyle`, WCAG luminance
+formula, not just `make guard-a11y`'s pass/fail): the question bubble's
+text is ~15:1 in light and ~15.3:1 in dark; the sentence/spinner bubble's
+text is ~16:1 in light and ~16.7:1 in dark - both bubbles reuse existing
+theme tokens (`action.hover`, default `Paper` elevation) rather than new
+colours, so nothing here was at risk of moving `make guard-a11y`/
+`make guard-layout`, and both stayed green in both colour schemes. See
+`DECISIONS.md`, 2026-09-14, for why C2's boundary (which branches are a
+"sentence" and which are a "result") also covers the contract-fallback
+branch, not only `kind: "none"`.
 
 **`docs/specs/storage.md` is closed - the eleventh subproject, and the
 correction to 2026-09-13's "load, measured" reading.** Forty concurrent
@@ -1790,3 +1824,107 @@ eval` exits non-zero when a case's accept rate falls more than
 Both are new `Makefile` targets, neither a dependency of `check` or
 `acceptance`; see `DECISIONS.md`, 2026-09-12, for the location, N/tolerance
 and operationId-casing decisions.
+
+## A conversation that looks like one (docs/specs/conversation-ui.md), the twelfth subproject
+
+Changes no behaviour - the same questions reach the same planner and the
+same answers come back - only how the chat screen draws them
+(`web/src/features/conversation/ui/TurnList.tsx`, `Conversation.tsx`).
+
+**C1/AC-C-101, a question is a bubble on the right.** The question `Paper`
+gained `sx={{ maxWidth: "75%", overflowWrap: "break-word", alignSelf:
+"flex-end" }}` on top of its existing `bgcolor: "action.hover"` - the
+colour is unchanged from before this subproject, only the shape. `Stack`'s
+default `flex-direction: column` makes `alignSelf` the cross-axis
+(horizontal) placement, so this needed no wrapping `Box` around each turn.
+`overflowWrap: "break-word"` (not just relying on ordinary word-wrap) is
+what keeps an unbroken run of characters - a long id, a URL - from
+stretching the bubble past 75% and pushing the page sideways at 375px
+(AC-C-106).
+
+**C2/AC-C-102, where the "sentence vs. result" boundary actually landed.**
+Not only `kind: "none"` (as C3/AC-C-103 names by itself) but also
+`AnswerResult`'s own generic fallback - the `この回答（{kind}）には表示に
+必要な情報が含まれていません` branch, for a `kind`/`component` combination
+the contract allows but this deployment cannot render - is now a bounded
+left bubble too. Both are text, not a rendered widget with its own
+controls or a table needing the width; C2's own rule ("about what the
+thing is, not who said it") does not carve out an exception for an error
+that happens to come from this list's own code rather than from the
+`PlanResult` itself. `proposal`, `form`, `ask`, and the three `kind:
+"result"` branches (`renderResultAnswer.tsx`: table, detail, chart) are
+untouched - no `maxWidth`, no `alignSelf`, so they keep `Stack`'s default
+`alignItems: "stretch"` and draw exactly as wide as they did before this
+subproject.
+
+**C4/C5/AC-C-104/AC-C-105, the spinner.** `Conversation.tsx` now forwards
+its own `pending` (already computed by `useConversation`, previously spent
+only on disabling the form) straight into `TurnList`. `TurnList` appends
+one more item after the mapped turns when `pending` is true: a `Paper`
+styled like the sentence bubble above, holding a `CircularProgress
+size={20} aria-label="回答を生成中"` and the line 「回答を作成しています…」
+
+- no percentage, no step name, per C5. This needed no new state: the store
+  (`conversationStore.tsx`) already appends the question turn and sets
+  `pending: true` in the same `update` call, before `postPlan` resolves, so
+  by the time `pending` is true the question is already the last turn in
+  `turns` and the spinner draws right after it; `pending` goes back to
+  `false` in both the success and the `catch` branch of `ask`, so the
+  spinner's removal on failure (AC-C-105) needed no separate wiring - it
+  falls out of `pending` alone deciding whether the spinner renders.
+
+**The `import/max-dependencies` (10) constraint shaped one refactor.**
+Adding `CircularProgress` to `TurnList.tsx` pushed it to 11 distinct
+imported modules. Rather than move the spinner to a new file (which would
+have added a _different_ 11th dependency), `ProposalSlot`/`SaveControlSlot`
+
+- previously imported directly from `./answerSlots` - are now imported from
+  `./renderResultAnswer` instead, which already re-exports them
+  (`export type { ProposalSlot, SaveControlSlot } from "./answerSlots";`,
+  added there for this reason). `TurnList.tsx` already imported
+  `renderResultAnswer` from that module, so this collapses two distinct
+  module dependencies into one, freeing the slot `CircularProgress` needed.
+
+**Verified live**, not only in `vitest`/jsdom (which cannot show _when_
+something appears, only that it can render): `make dev-services` against
+`qwen3.5-9b-q8`, driven with Playwright. Racing the spinner's own
+`waitFor({state: "attached"})` against the triggering `click()` (rather
+than awaiting the click first) was necessary - the local model answers in
+well under a second when warm, faster than two sequential MCP round trips,
+so a naive "click, then look" sequence saw the answer already drawn.
+Confirmed: attached immediately after the click fires, still attached once
+the click's own promise resolves, detached once the table (or the `none`
+sentence) replaces it. Screenshotted in both `light` and `dark`
+(`page.emulateMedia({ colorScheme })`); alternation (question bubbles
+right, table full-width, sentence bubble left) is visible in both, and
+`docker logs llama-swap`'s `POST /v1/chat/completions` count did not move
+across any `make check` run - only across this manual verification.
+
+**Contrast, measured rather than assumed** (`getComputedStyle`'s
+`backgroundColor`/`color` chains resolved by hand against the WCAG
+relative-luminance formula, the same one `harness/quality/browser/layout.spec.ts`
+uses for its own boundary check):
+
+| Bubble                                 | Light                                                | Dark                                                                             |
+| -------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Question (`action.hover`)              | `rgba(0,0,0,.87)` on ~`rgb(245,245,245)` → **~15:1** | `#fff` on ~`rgb(37,37,37)` (8% white overlay on `#121212`) → **~15.3:1**         |
+| Sentence/spinner (`Paper` elevation 1) | `rgba(0,0,0,.87)` on `#fff` → **~16.1:1**            | `#fff` on ~`rgb(30,30,30)` (elevation-1's 5% overlay on `#121212`) → **~16.7:1** |
+
+Both bubbles reuse tokens the app already drew with before this
+subproject (`action.hover`, default `Paper`/`text.primary`), so none of
+this was expected to move `make guard-a11y` (WCAG AA, 4.5:1 for body text)
+or `make guard-layout` (which only measures interactive controls -
+`button, a[href], input, select, textarea` - not a `Paper`, so the new
+bubbles were never in its selector to begin with); both stayed green in
+both colour schemes, and the live numbers above confirm the floor those
+guards check is nowhere near being tested by this change - the ratios sit
+far above 4.5:1, on the "too readable to fail" side the spec's own note
+about `guard-a11y` warns not to mistake for "fine" without looking.
+
+No `openapi.yaml`/contract change - this is a `web/`-only, presentation-only
+change, and no test doubles or fixtures needed touching. Two assertions
+added to `web/src/features/conversation/ui/Conversation.test.tsx` (in the
+existing "submits a typed question..." and "...request fails" tests) pin
+AC-C-104/AC-C-105 directly - `findByLabelText("回答を生成中")` present
+while the mocked `postPlan` is unresolved, `queryByLabelText` null once it
+resolves or rejects.

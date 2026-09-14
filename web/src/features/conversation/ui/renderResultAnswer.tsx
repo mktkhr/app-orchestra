@@ -6,6 +6,13 @@ import type { PlanResult } from "@/shared/api/client";
 
 import type { SaveControlSlot } from "./answerSlots";
 
+// Re-exported so `TurnList.tsx` can pull both slot types from this module
+// instead of importing "./answerSlots" directly - one fewer distinct
+// dependency there, which is what keeps it under oxlint's
+// `import/max-dependencies` now that it also imports `CircularProgress`
+// for the pending spinner (C4).
+export type { ProposalSlot, SaveControlSlot } from "./answerSlots";
+
 /**
  * The `kind: "result"` branches of `AnswerResult` - `table`, `detail` and
  * `chart` - split into their own file (and function) so `TurnList.tsx`

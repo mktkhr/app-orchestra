@@ -82,11 +82,16 @@ describe("Conversation", () => {
 
     expect(screen.getByLabelText("質問を入力")).toHaveProperty("disabled", true);
     expect(await screen.findByText("出勤簿を見せて")).toBeTruthy();
+    // AC-C-104: the spinner occupies the answer's position from the moment
+    // the question is sent until the answer replaces it.
+    expect(await screen.findByLabelText("回答を生成中")).toBeTruthy();
 
     resolvePlan?.();
 
     expect(await screen.findByText("結果はありません。")).toBeTruthy();
     expect(screen.getByLabelText("質問を入力")).toHaveProperty("disabled", false);
+    // AC-C-104 (second half): gone once the answer is drawn.
+    expect(screen.queryByLabelText("回答を生成中")).toBeNull();
   });
 
   it("shows an error and re-enables the form when the request fails", async () => {
@@ -105,6 +110,8 @@ describe("Conversation", () => {
 
     expect(await screen.findByText(/質問の送信に失敗しました/u)).toBeTruthy();
     expect(screen.getByLabelText("質問を入力")).toHaveProperty("disabled", false);
+    // AC-C-105: a failed request leaves no spinner behind.
+    expect(screen.queryByLabelText("回答を生成中")).toBeNull();
   });
 
   it("renders a table result paginated, with its provenance and arguments revealed on expand", async () => {

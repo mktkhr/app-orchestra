@@ -1,4 +1,5 @@
 import Alert from "@mui/material/Alert";
+import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -8,13 +9,42 @@ import { ResultChoice, ResultForm } from "@/entities/rendering";
 import type { PlanResult } from "@/shared/api/client";
 
 import type { Turn } from "../model/turn";
-import type { ProposalSlot, SaveControlSlot } from "./answerSlots";
 import { renderResultAnswer } from "./renderResultAnswer";
+import type { ProposalSlot, SaveControlSlot } from "./renderResultAnswer";
 
 export type { ProposalSlotProps, SaveControlSlotProps } from "./answerSlots";
 
+/**
+ * How wide a bubble - a question, or a sentence-shaped answer (C1/C3) - is
+ * allowed to get before it wraps. Bounded well short of full width so the
+ * alternation (AC-C-101, AC-C-106) reads even when every turn is short; a
+ * percentage rather than a fixed pixel count so it still leaves visible
+ * margin at 375px (AC-C-106) instead of nearly filling the viewport.
+ */
+const BUBBLE_MAX_WIDTH = "75%";
+
+/**
+ * Shared by every bubble - a question (right), a sentence answer, and the
+ * pending spinner (both left, C3/C4) - so the three read as the same shape.
+ * `overflowWrap` keeps an unbroken run of characters (a long id, a URL)
+ * from stretching the bubble past `BUBBLE_MAX_WIDTH` and pushing the page
+ * sideways (AC-C-106); MUI's own word-wrapping handles ordinary text.
+ */
+const BUBBLE_SX = {
+  maxWidth: BUBBLE_MAX_WIDTH,
+  overflowWrap: "break-word",
+} as const;
+
 interface TurnListProps {
   readonly turns: readonly Turn[];
+  /**
+   * Whether the most recent question is still waiting on its answer
+   * (`Conversation`'s own `pending`, from `useConversation`). The store adds
+   * the question turn before the request resolves, so by the time this is
+   * true it is already the last turn in `turns`; this draws the spinner
+   * that follows it (C4, AC-C-104) and nothing when it isn't.
+   */
+  readonly pending: boolean;
   /**
    * Forwarded down to every `ResultForm`/`ResultChoice` this list renders.
    * Defined in `Conversation` (the state owner) and passed down rather than
@@ -29,6 +59,7 @@ interface TurnListProps {
 /** The conversation's turns, in order: a question, then the answer to it. */
 export function TurnList({
   turns,
+  pending,
   onFormSubmitted,
   renderSaveControl,
   renderProposal,
@@ -45,7 +76,34 @@ export function TurnList({
           renderProposal={renderProposal}
         />
       ))}
+      {pending ? <PendingAnswer /> : null}
     </Stack>
+  );
+}
+
+/**
+ * The answer's position, while there is none yet (C4). A spinner and one
+ * honest line - not a percentage or a step name, because a single LLM call
+ * has no intermediate state to report (C5) - gone as soon as the answer
+ * turn is drawn or the request fails (AC-C-105), since `pending` alone
+ * decides whether this renders at all.
+ */
+function PendingAnswer(): JSX.Element {
+  return (
+    <Paper
+      elevation={1}
+      sx={{
+        ...BUBBLE_SX,
+        alignSelf: "flex-start",
+        p: 2,
+        display: "flex",
+        alignItems: "center",
+        gap: 1.5,
+      }}
+    >
+      <CircularProgress size={20} aria-label="回答を生成中" />
+      <Typography variant="body1">回答を作成しています…</Typography>
+    </Paper>
   );
 }
 
@@ -94,7 +152,10 @@ function TurnItem({
 }: TurnItemProps): JSX.Element {
   if (turn.role === "question") {
     return (
-      <Paper elevation={0} sx={{ p: 2, bgcolor: "action.hover" }}>
+      <Paper
+        elevation={0}
+        sx={{ ...BUBBLE_SX, alignSelf: "flex-end", p: 2, bgcolor: "action.hover" }}
+      >
         <Typography variant="body1">{turn.text}</Typography>
       </Paper>
     );
@@ -153,7 +214,7 @@ function AnswerResult({
 
   if (result.kind === "none") {
     return (
-      <Paper elevation={1} sx={{ p: 2 }}>
+      <Paper elevation={1} sx={{ ...BUBBLE_SX, alignSelf: "flex-start", p: 2 }}>
         <Typography variant="overline" color="textSecondary">
           {result.kind}
         </Typography>
@@ -206,7 +267,7 @@ function AnswerResult({
   // matches - a `kind`/`component` combination missing one of its required
   // fields. Shows what kind of answer came back rather than nothing.
   return (
-    <Paper elevation={1} sx={{ p: 2 }}>
+    <Paper elevation={1} sx={{ ...BUBBLE_SX, alignSelf: "flex-start", p: 2 }}>
       <Typography variant="overline" color="textSecondary">
         {result.kind}
       </Typography>

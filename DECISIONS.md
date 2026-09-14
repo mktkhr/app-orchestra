@@ -4588,3 +4588,82 @@ wrong answer. A future flake investigation should read both: the mechanism
 2026-09-13 named, and the reminder here that a measurement has to reproduce
 the load the defect needs, not just run in the defect's absence and call
 the silence a result.
+
+## 2026-09-14 `docs/specs/conversation-ui.md`: what counts as a "sentence", and where the spinner lives
+
+**Context.** The spec's own C2/C3 draw the line between a bubble and a
+full-width answer at "what the thing is": a rendered result (table, form,
+chart, proposal) keeps its width; a sentence is a bubble. The spec names
+`kind: "none"` explicitly as the sentence example. `AnswerResult` in
+`TurnList.tsx` has a second text-only branch the spec does not name: the
+generic fallback for a `kind`/`component` combination this deployment's
+contract allows but nothing above matches (`この回答（{kind}）には表示に
+必要な情報が含まれていません`).
+
+**Decision.** Treated as a sentence too, bounded and left-aligned the same
+way as `kind: "none"`. It carries no controls and needs no width for
+anything - the same facts that make `kind: "none"` a sentence apply to it
+unchanged, and C2's own rule ("about what the thing is, not who said it")
+gives no reason to draw the fallback differently just because this list's
+own code produced the message rather than the `PlanResult` itself. Left as
+a full-width, un-bounded `Paper` would have reintroduced exactly the "two
+paragraphs of a document" reading section 1 argues against, for the one
+answer shape most likely to appear while this feature is still catching up
+with the contract.
+
+**Where the spinner's markup lives.** C4 says the spinner belongs "in the
+answer's position, not beside the form" - inside `TurnList`, as the item
+that would become the answer. The first attempt put `CircularProgress`
+and the pending `Paper` directly in `TurnList.tsx`, which pushed that
+file's import count from 10 to 11 and failed `oxlint`'s
+`import/max-dependencies` (`make check`'s `web-lint`, not a suppression
+candidate under AGENTS.md rule 2). Moving the spinner to a new file was
+briefly considered and rejected: it would only trade one 11th dependency
+(`CircularProgress`) for a different 11th (the new file) - the count is
+per distinct module, and `TurnList.tsx` was already at the ceiling before
+this subproject touched it. Instead, `ProposalSlot`/`SaveControlSlot` -
+previously imported directly from `./answerSlots` - now come from
+`./renderResultAnswer`, which already imports `./answerSlots` and now
+re-exports both types from there. `TurnList.tsx` already depended on
+`renderResultAnswer` for the value import; routing the type import through
+the same module collapses two dependencies into one, freeing the slot
+`CircularProgress` needed without moving the spinner out of the file the
+spec asks it to live in, and without weakening the harness's own limit.
+
+**Verified, not assumed: what a unit test cannot show.** The spec says
+outright that "a unit test that asserts a spinner exists cannot tell you
+it appears at the right moment or leaves at the right one" - so this was
+checked live, against `qwen3.5-9b-q8` via `make dev-services`, with
+Playwright. The first attempt (click, then check) saw the answer already
+drawn: the model answers in well under a second when warm, faster than two
+sequential tool round trips. Racing the spinner's own
+`locator(...).waitFor({ state: "attached" })` against the triggering
+`click()` - not awaiting the click first - caught it: attached
+immediately, still attached once the click's promise resolved, detached
+once the table (or the `kind: "none"` sentence) replaced it.
+`docker logs llama-swap`'s `POST /v1/chat/completions` count was identical
+before and after every `make check` run in this session (79919, then
+79924 only after the manual Playwright verification that followed) -
+`make check` itself made zero real model calls, consistent with
+`docs/specs/eval.md`'s own AC-E-202 verification method reused here.
+
+**Contrast was measured, not assumed**, per the spec's own instruction
+that `guard-a11y` measures a floor a bubble can pass while still being
+wrong. Both new bubble treatments reuse existing theme tokens - the
+question bubble's `action.hover` tint is unchanged from before this
+subproject (only its width and alignment are new), and the sentence/
+spinner bubble is an ordinary `Paper` elevation 1, the same one
+`kind: "none"` already drew inside, just now bounded. Resolved
+`getComputedStyle` background/foreground chains by hand against the WCAG
+relative-luminance formula in both `light` and `dark`
+(`page.emulateMedia`): ~15:1/~16:1 in light, ~15.3:1/~16.7:1 in dark for
+the question/sentence bubbles respectively - all far above the 4.5:1 AA
+floor, and `make guard-a11y`/`make guard-layout` stayed green in both
+schemes without needing a change to either gate.
+
+**Consequences.** No `openapi.yaml` change; no test double or fixture
+changed. Two assertions added to the existing `Conversation.test.tsx`
+tests pin AC-C-104/AC-C-105 (`findByLabelText`/`queryByLabelText` on
+"回答を生成中"), rather than a new test file, since both already exercise
+the pending-then-resolved and pending-then-rejected paths this needed to
+watch.
