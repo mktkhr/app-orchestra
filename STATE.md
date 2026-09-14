@@ -1,11 +1,42 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-14 (`docs/specs/conversation-ui.md` closed - a
-question is a bubble on the right, a result keeps the width it always had,
-a sentence answer is a bubble on the left, and a spinner holds the answer's
-place while a question is in flight; see below and `DECISIONS.md`)_
+_Last updated: 2026-09-14 (`docs/plans/narrowing.md` Task 1 done - the
+narrowing fixture's definition table and OpenAPI generator, 1000 operations
+across five services, none of it built or served yet; see below)_
 
 ## Summary
+
+**`docs/plans/narrowing.md` Task 1 is done - the fourteenth subproject's
+fixture catalogue, not yet served or measured.** `e2e/narrowing/fixture/`:
+`types.ts` (the definition table types from the plan, verbatim), one file
+per service (`inventory.ts`, `sales.ts`, `purchasing.ts`, `attendance.ts`,
+`expense.ts` - 30 resources × 5 verbs + 20 aggregates + 20 settings + 10
+workflow actions = 200 operations each, `shape.test.ts` asserts this),
+`openapi.ts` + `openapi-document.ts` (`toOpenAPI(fixture)` synthesises one
+OpenAPI 3.0.3 document per service in memory; no generated document is
+committed, per spec T5), and `index.ts` (`services()`, `catalogOf(size)`,
+`operationCount()`). All four axes the plan asked for are built into the
+data, not left to emerge: axis A (every `list` summarises as `の一覧`,
+uniform); axis B (five keys - `order`, `line`, `approval`, `employee`,
+`partner` - reach two or more services each, and a shared resource's
+`x-ui-hint.displayName` collapses to the shared word, e.g. sales' `Order`
+(受注) and purchasing's `Order` (発注) both display as 注文); axis C (three
+near-neighbour groups of four or more resources per service, e.g.
+inventory's 在庫品目/在庫ロット/在庫引当/棚卸/在庫調整); axis E (20
+hand-written settings per service, at least ten fixture-wide are decoys
+whose summary names a transactional noun they do not answer for, e.g.
+attendance's `getAttendanceOvertimeThreshold` - 残業時間の上限設定を取得 -
+the spec's own worked example). `openapi.test.ts` asserts the same contract
+rules `harness/guard/operation-ids.sh`/`exposed-ops.sh` and Redocly apply to
+real services (1000 unique operation ids, every exposed operation carries
+`x-orchestra-expose`/`x-ui-hint.displayName`, every enum's `x-enum-labels`
+matches its `enum` length, every operation has a response schema or a
+request body) - Redocly itself is not wired to the fixture, since it is not
+a service (spec T4). `e2e/vite.config.ts` now includes
+`narrowing/**/*.test.ts` and `e2e/tsconfig.json` includes `narrowing`, so
+`make check` runs and typechecks all of it with no suppressions. Not done:
+the fixture is not served over HTTP, the platform has not been pointed at
+it, and nothing has been measured (Tasks 2-4).
 
 **`docs/specs/conversation-ui.md` is closed - the twelfth subproject.**
 `web/src/features/conversation/ui/TurnList.tsx`: a question turn is now a
