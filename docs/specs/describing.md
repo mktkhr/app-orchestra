@@ -41,12 +41,23 @@ does not break the four axes that already work.
 
 ## 3. The two layers
 
-**Generated.** For each exposed operation, the local model is asked, once:
-"この操作を、社内の人が日常語で頼むとしたら、どう言うか。短い言い方を五つ。" The
-input is the operation's summary, description, display name and service
-display name - the same text every retriever reads, so the generator knows
-exactly what the retriever knows and nothing more. The output is five
-strings.
+**Generated.** For each exposed operation, the local model is asked, once,
+for five things a person who needs that operation would say first - in the
+words of their problem, not the system's - with two worked examples from
+domains outside the fixture (a meeting-room booking, a lost staff card) and
+an explicit ban on the operation's own words. The input is the operation's
+summary, description, display name and service display name - the same text
+every retriever reads, so the generator knows exactly what the retriever
+knows and nothing more. The output is five strings.
+
+The ban and the examples are not decoration. The first prompt tried
+(2026-09-15) asked for "short ways of saying this operation" and got, for
+経費申請の作成, 「経費申請作って / 経費申請作成 / 経費申請作りたい」: the noun
+repeated with verb endings, which the retriever already has, and which
+bridges nothing. The words that the residual gap needs - 届いた, 受け取った,
+安く - appeared zero times in 4,960 utterances. With the examples and the
+ban, the same model writes 「仕入れの荷物が届いたから確認したい」 for 検収の作成
+and 「この商品だけ安くしたいんだけど」 for 値引の作成.
 
 **Written.** `x-orchestra-examples` is a vendor extension on an operation in
 `openapi.yaml`: a list of strings, each one thing a person might type. It is
@@ -86,13 +97,24 @@ exactly as the vector rows are.
 
 ## 6. The contract check, for utterances
 
-For a deterministic sample of operations (every 50th, as `retrieving.md`
-does), each utterance is embedded as a query and the parent operation must
-come back first among the thousand. The rate is printed beside the
-configuration's rows. It is a rate, not a gate, for the reason
-`retrieving.md` section 4 gives - but a generated layer whose own
-utterances mostly fail to find their operation is not evidence about
-anything, and the report says so.
+Two rates, printed together, and they pull against each other.
+
+**Retrieval.** For a deterministic sample of operations (every 50th, as
+`retrieving.md` does), each utterance is embedded as a query and the parent
+operation must come back first among the thousand. A rate, not a gate, for
+the reason `retrieving.md` section 4 gives.
+
+**Novelty.** The share of utterances that share **no character bigram** with
+their own operation's text - the same definition the corpus's axis D uses
+for a question. The first prompt scored perfectly on retrieval precisely
+because it repeated the operation's noun; retrieval alone rewards the
+failure. An utterance is only worth having if it says something the summary
+does not, and a layer whose utterances are mostly not novel has added
+nothing the retriever did not have.
+
+A good layer is high on both and will be lower on retrieval than a bad one.
+The report shows both numbers so that trade can be read, and the recall
+table is what decides.
 
 ## 7. What is measured
 
@@ -136,8 +158,8 @@ The utterance contract-check rate, per layer, is printed with them.
   regenerates that operation's utterances and no others.
 - **AC-G-102** Every utterance is embedded and cached as its own vector, and
   an operation's score is the maximum over its text and its utterances (G3).
-- **AC-G-103** The utterance contract check (section 6) is printed beside
-  each utterance configuration.
+- **AC-G-103** The utterance contract check (section 6) - retrieval rate
+  and novelty rate - is printed beside each utterance configuration.
 - **AC-G-104** `x-orchestra-examples` is defined in the platform's contract
   handling: the spec source reads it, the catalogue endpoint carries it, and
   the fixture's `toOpenAPI` emits it. `make check` is green with no change to
