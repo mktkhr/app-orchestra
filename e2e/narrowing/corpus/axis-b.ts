@@ -15,7 +15,7 @@ export const AXIS_B: readonly Question[] = [
   {
     id: "b01",
     axis: "B",
-    text: "注文を一覧したい",
+    text: "注文を見たい",
     answers: ["listSalesOrders", "listPurchasingOrders"],
   },
   {
@@ -27,26 +27,26 @@ export const AXIS_B: readonly Question[] = [
   {
     id: "b03",
     axis: "B",
-    text: "注文を新規作成したい",
+    text: "注文を入れたい",
     answers: ["createSalesOrder", "createPurchasingOrder"],
   },
   {
     id: "b04",
     axis: "B",
-    text: "注文の内容を更新したい",
+    text: "注文の内容を変えたい",
     answers: ["updateSalesOrder", "updatePurchasingOrder"],
   },
   {
     id: "b05",
     axis: "B",
-    text: "注文を削除したい",
+    text: "注文を取り消したい",
     answers: ["deleteSalesOrder", "deletePurchasingOrder"],
   },
   // shared key "line" (sales/purchasing/expense): 受注明細/発注明細/経費明細 collapse to 明細.
   {
     id: "b06",
     axis: "B",
-    text: "明細を一覧で見たい",
+    text: "明細をまとめて見たい",
     answers: ["listSalesOrderLines", "listPurchasingOrderLines", "listExpenseLines"],
   },
   {
@@ -77,7 +77,7 @@ export const AXIS_B: readonly Question[] = [
   {
     id: "b11",
     axis: "B",
-    text: "承認状況を一覧したい",
+    text: "承認の状況を知りたい",
     answers: ["listPurchasingApprovals", "listAttendanceApprovals", "listExpenseApprovals"],
   },
   {
@@ -95,7 +95,7 @@ export const AXIS_B: readonly Question[] = [
   {
     id: "b14",
     axis: "B",
-    text: "承認内容を更新したい",
+    text: "承認の内容を直したい",
     answers: ["updatePurchasingApproval", "updateAttendanceApproval", "updateExpenseApproval"],
   },
   {
@@ -108,7 +108,7 @@ export const AXIS_B: readonly Question[] = [
   {
     id: "b16",
     axis: "B",
-    text: "社員を一覧したい",
+    text: "社員を見たい",
     answers: ["listAttendanceEmployees", "listExpenseEmployees"],
   },
   {
@@ -126,20 +126,20 @@ export const AXIS_B: readonly Question[] = [
   {
     id: "b19",
     axis: "B",
-    text: "社員情報を更新したい",
+    text: "社員情報を直したい",
     answers: ["updateAttendanceEmployee", "updateExpenseEmployee"],
   },
   {
     id: "b20",
     axis: "B",
-    text: "社員を削除したい",
+    text: "社員を消したい",
     answers: ["deleteAttendanceEmployee", "deleteExpenseEmployee"],
   },
   // shared key "partner" (sales/purchasing): 取引先.
   {
     id: "b21",
     axis: "B",
-    text: "取引先を一覧したい",
+    text: "取引先を見たい",
     answers: ["listSalesPartners", "listPurchasingPartners"],
   },
   {
@@ -157,13 +157,13 @@ export const AXIS_B: readonly Question[] = [
   {
     id: "b24",
     axis: "B",
-    text: "取引先情報を更新したい",
+    text: "取引先情報を直したい",
     answers: ["updateSalesPartner", "updatePurchasingPartner"],
   },
   {
     id: "b25",
     axis: "B",
-    text: "取引先を削除したい",
+    text: "取引先を消したい",
     answers: ["deleteSalesPartner", "deletePurchasingPartner"],
   },
 ];

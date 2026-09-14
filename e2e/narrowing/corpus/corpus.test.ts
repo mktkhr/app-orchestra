@@ -20,7 +20,6 @@ import type { Axis, Question } from "./types.ts";
 const CATALOG = catalogOf(5);
 const OPERATIONS_BY_ID = new Map(CATALOG.map((op) => [op.operationId, op]));
 const INDEX = buildIndex(CATALOG);
-const DECOY_OPERATION_ID_PATTERN = /Threshold|Setting|Category$/u;
 
 function operationOf(operationId: string): FixtureOperation {
   const found = OPERATIONS_BY_ID.get(operationId);
@@ -126,17 +125,38 @@ function axisEQuestionsWithoutAnOutscoringDecoy(): readonly string[] {
     .map((q) => q.id);
 }
 
-/** Whether `question`'s decoy is missing, or is not a settings/master-data operation. */
+/**
+ * Whether `question`'s decoy is missing, or is not a settings/master-data
+ * operation — read structurally off `FixtureOperation.isSetting`
+ * (`fixture/index.ts`, set from the operation's OpenAPI `tags`), not
+ * guessed from the operationId's spelling.
+ */
 function axisEDecoyIsNotASettingsOperation(question: Question): boolean {
-  const decoyId = question.decoy ?? "";
-
-  return !DECOY_OPERATION_ID_PATTERN.test(decoyId);
+  return question.decoy === undefined || !operationOf(question.decoy).isSetting;
 }
 
 /** Axis E question ids whose decoy is missing or not a settings operation. */
 function axisEQuestionsWithoutASettingsDecoy(): readonly string[] {
   return questionsOf("E")
     .filter((q) => axisEDecoyIsNotASettingsOperation(q))
+    .map((q) => q.id);
+}
+
+/**
+ * Whether any answer of `question` is itself a settings/master-data
+ * operation. A person asking about a transaction never wants the setting
+ * that configures it; a question whose answer IS the settings operation is
+ * not measuring axis E, it is measuring nothing — `corpus.test.ts` was
+ * fooled by nine of these before this check existed.
+ */
+function axisEQuestionHasASettingsAnswer(question: Question): boolean {
+  return question.answers.some((answerId) => operationOf(answerId).isSetting);
+}
+
+/** Axis E question ids where an answer is itself a settings operation. */
+function axisEQuestionsWithASettingsAnswer(): readonly string[] {
+  return questionsOf("E")
+    .filter((q) => axisEQuestionHasASettingsAnswer(q))
     .map((q) => q.id);
 }
 
@@ -193,6 +213,10 @@ test("axis E decoys out-score every answer", () => {
 
 test("axis E decoys are settings operations", () => {
   expect(axisEQuestionsWithoutASettingsDecoy()).toEqual([]);
+});
+
+test("axis E answers are never settings operations", () => {
+  expect(axisEQuestionsWithASettingsAnswer()).toEqual([]);
 });
 
 test("no question is a substring of its answer's text, and no answer's text is a substring of the question", () => {

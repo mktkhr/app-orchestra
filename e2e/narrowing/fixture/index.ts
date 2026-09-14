@@ -31,6 +31,14 @@ export interface FixtureOperation {
   readonly summary: string;
   readonly description: string;
   readonly displayName: string;
+  /**
+   * Whether this operation was generated from a service's `settings` array
+   * (`openapi.ts`'s `settingPath`, tagged `"settings"`) rather than from a
+   * `Resource`, `Aggregate` or `Workflow`. Structural, not a guess from the
+   * operationId's spelling — the corpus (Task 4) uses it to tell a real
+   * axis-E decoy (a settings operation) from an answer that must not be one.
+   */
+  readonly isSetting: boolean;
 }
 
 /** Every exposed operation a service's contract carries, read back off the generator. */
@@ -49,6 +57,7 @@ export function operationsOf(service: ServiceFixture): readonly FixtureOperation
         summary: op.summary,
         description: op.description,
         displayName: op["x-ui-hint"].displayName,
+        isSetting: op.tags.includes("settings"),
       });
     }
   }
