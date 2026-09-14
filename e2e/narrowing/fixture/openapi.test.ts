@@ -3,6 +3,7 @@ import { expect, test } from "vite-plus/test";
 import { services } from "./index.ts";
 import { toOpenAPI } from "./openapi.ts";
 import type { OpenAPIDocument, Operation } from "./openapi.ts";
+import type { ServiceFixture } from "./types.ts";
 
 function operationsOf(doc: OpenAPIDocument): readonly Operation[] {
   const found: Operation[] = [];
@@ -70,4 +71,47 @@ function hasContractSurface(op: Operation): boolean {
 
 test("every exposed operation has a response schema or a request body", () => {
   expect(allOperations().every((op) => hasContractSurface(op))).toBe(true);
+});
+
+// AC-G-104: x-orchestra-examples round-trips through toOpenAPI when the
+// definition table's entry declares it, and is absent (not an empty
+// array) when it does not - neither the fixture nor any real service
+// writes examples in this task (G6), so this is a synthetic fixture.
+const EXAMPLE_FIXTURE: ServiceFixture = {
+  name: "example",
+  displayName: "サンプル",
+  resources: [
+    {
+      id: "Thing",
+      plural: "Things",
+      noun: "モノ",
+      verbs: ["list", "get"],
+      examples: ["モノを見せて", "モノの一覧"],
+    },
+  ],
+  aggregates: [{ id: "Overview", kind: "summarize", noun: "概要" }],
+  settings: [{ id: "Rule", verb: "get", summary: "ルール取得", displayName: "ルール" }],
+  workflows: [],
+};
+
+function findOperation(doc: OpenAPIDocument, operationId: string): Operation {
+  const op = operationsOf(doc).find((candidate) => candidate.operationId === operationId);
+
+  if (op === undefined) throw new Error(`no operation ${operationId} in the synthesised document`);
+
+  return op;
+}
+
+test("toOpenAPI emits x-orchestra-examples when the definition table declares it", () => {
+  const doc = toOpenAPI(EXAMPLE_FIXTURE);
+  const list = findOperation(doc, "listExampleThings");
+
+  expect(list["x-orchestra-examples"]).toEqual(["モノを見せて", "モノの一覧"]);
+});
+
+test("toOpenAPI omits x-orchestra-examples when the definition table declares none", () => {
+  const doc = toOpenAPI(EXAMPLE_FIXTURE);
+  const summarize = findOperation(doc, "summarizeExampleOverview");
+
+  expect(summarize["x-orchestra-examples"]).toBeUndefined();
 });

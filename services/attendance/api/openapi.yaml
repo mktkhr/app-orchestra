@@ -46,6 +46,10 @@ paths:
       x-orchestra-expose: true
       x-ui-hint:
         displayName: 勤怠記録一覧
+      x-orchestra-examples:
+        - 勤怠記録を見せて
+        - 今月の出勤状況を教えて
+        - 振替休日の記録だけ見たい
       parameters:
         - name: kind
           in: query
@@ -71,6 +75,9 @@ paths:
       x-orchestra-expose: true
       x-ui-hint:
         displayName: 勤怠記録の作成
+      x-orchestra-examples:
+        - 勤怠記録を登録して
+        - 振替休日を申請したい
       requestBody:
         required: true
         content:
@@ -94,6 +101,9 @@ paths:
       x-orchestra-expose: true
       x-ui-hint:
         displayName: 勤怠記録の詳細
+      x-orchestra-examples:
+        - この記録の詳細を教えて
+        - この勤怠の中身を見たい
       parameters:
         - name: id
           in: path

@@ -130,6 +130,7 @@ function crudOperation(service: string, resource: Resource, verb: Verb): Operati
       ? { requestBody: requestBodyOf("NewFixtureRecord") }
       : {}),
     responses: CRUD_RESPONSES[verb],
+    ...(resource.examples === undefined ? {} : { "x-orchestra-examples": resource.examples }),
   };
 }
 
@@ -169,6 +170,7 @@ function aggregatePath(service: string, aggregate: Aggregate): Readonly<Record<s
     "x-orchestra-expose": true,
     "x-ui-hint": { displayName: `${aggregate.noun}${label}` },
     responses: { "200": response(`${aggregate.noun}の${label}結果。`, "FixtureRecordList") },
+    ...(aggregate.examples === undefined ? {} : { "x-orchestra-examples": aggregate.examples }),
   };
 
   return { [path]: { get: operation } };
@@ -190,6 +192,7 @@ function settingPath(service: string, setting: Setting): Readonly<Record<string,
         setting.verb === "list" ? "FixtureRecordList" : "FixtureRecord",
       ),
     },
+    ...(setting.examples === undefined ? {} : { "x-orchestra-examples": setting.examples }),
   };
 
   return { [path]: { [setting.verb === "update" ? "put" : "get"]: operation } };
@@ -216,6 +219,7 @@ function workflowPaths(service: string, workflow: Workflow): Readonly<Record<str
       "x-orchestra-expose": true,
       "x-ui-hint": { displayName: `${workflow.noun}${label}` },
       responses: { "200": response(`${label}後の状態。`, "FixtureRecord") },
+      ...(workflow.examples === undefined ? {} : { "x-orchestra-examples": workflow.examples }),
     };
 
     paths[path] = { post: operation };

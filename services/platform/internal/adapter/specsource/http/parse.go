@@ -16,11 +16,14 @@ import (
 // route by which the model learns it); x-ui-hint.component overrides the
 // component the rendering rule would otherwise pick; x-orchestra-expose
 // marks an operation as one the platform may show to the model and answer
-// at /api/invoke (see extExpose below).
+// at /api/invoke (see extExpose below); x-orchestra-examples carries things
+// a person might type when they want an operation, written by the service
+// owner (docs/specs/describing.md, section 3; see examplesHint below).
 const (
 	extEnumLabels = "x-enum-labels"
 	extUIHint     = "x-ui-hint"
 	extExpose     = "x-orchestra-expose"
+	extExamples   = "x-orchestra-examples"
 )
 
 // jsonMediaType is the only content type the catalogue looks for in a
@@ -38,6 +41,15 @@ const jsonMediaType = "application/json"
 // never guessable the way "fall back to the response schema" is for a
 // component.
 var errMalformedChartHint = errors.New("malformed x-ui-hint.chart")
+
+// errMalformedExamples marks an x-orchestra-examples that is present but
+// is not an array of strings. Like errMalformedChartHint (see its own
+// comment) and unlike x-ui-hint.component's leniency, this fails the fetch
+// rather than dropping the field silently: an example nobody can see
+// failing to parse is an example that silently stops existing, and there
+// is no fallback to degrade to the way component falls back to the
+// response schema.
+var errMalformedExamples = errors.New("malformed x-orchestra-examples")
 
 // parseSpec parses one service's OpenAPI document and converts every
 // operation into a domain.Endpoint. The loader resolves the document's
@@ -78,6 +90,11 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 				return nil, fmt.Errorf("%s %s %s: %w", service, method, path, err)
 			}
 
+			examples, err := examplesHint(op.Extensions)
+			if err != nil {
+				return nil, fmt.Errorf("%s %s %s: %w", service, method, path, err)
+			}
+
 			endpoints = append(endpoints, domain.Endpoint{
 				Service:            service,
 				OperationID:        op.OperationID,
@@ -91,6 +108,7 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 				ChartHint:          chart,
 				DisplayName:        displayName,
 				ServiceDisplayName: svcDisplayName,
+				Examples:           examples,
 			})
 		}
 	}
@@ -411,4 +429,35 @@ func parseChartHint(raw any) (*domain.Chart, error) {
 	}
 
 	return &domain.Chart{Category: category, Value: value, Kind: kind}, nil
+}
+
+// examplesHint reads x-orchestra-examples off an operation's extensions:
+// things a person might type when they want it (docs/specs/describing.md,
+// section 3). Absent yields nil, nil - no examples, not an error. Present
+// as anything other than an array of strings yields errMalformedExamples;
+// see its own comment for why this is not treated as leniently as
+// x-ui-hint.component is.
+func examplesHint(extensions map[string]any) ([]string, error) {
+	raw, ok := extensions[extExamples]
+	if !ok {
+		return nil, nil
+	}
+
+	items, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%w: not an array", errMalformedExamples)
+	}
+
+	examples := make([]string, 0, len(items))
+
+	for _, item := range items {
+		s, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: element %v is not a string", errMalformedExamples, item)
+		}
+
+		examples = append(examples, s)
+	}
+
+	return examples, nil
 }

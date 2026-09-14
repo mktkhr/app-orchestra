@@ -43,6 +43,7 @@ func TestGetCatalogConvertsEveryEntryOntoTheWire(t *testing.T) {
 			Component:          domain.ComponentTable,
 			Schema:             map[string]any{"type": "object"},
 			Fields:             map[string]any{"status": map[string]any{"type": "string"}},
+			Examples:           []string{"在庫を見せて"},
 		},
 		{
 			Service:     "inventory",
@@ -71,11 +72,14 @@ func TestGetCatalogConvertsEveryEntryOntoTheWire(t *testing.T) {
 	assert.Equal(t, openapi.Component("table"), out[0].Component)
 	require.NotNil(t, out[0].Fields)
 	assert.Nil(t, out[0].View)
+	require.NotNil(t, out[0].Examples)
+	assert.Equal(t, []string{"在庫を見せて"}, *out[0].Examples)
 
 	require.NotNil(t, out[1].View)
 	require.NotNil(t, out[1].View.Chart)
 	assert.Equal(t, "status", out[1].View.Chart.Category)
 	assert.Nil(t, out[1].Fields, "no fields given: absent, not an empty object")
+	assert.Nil(t, out[1].Examples, "no examples given: absent, not an empty array")
 
 	assert.Same(t, testAdminUser, c.user, "the signed-in user reaches the usecase")
 }

@@ -35,6 +35,9 @@ paths:
       tags:
         - widgets
       x-orchestra-expose: true
+      x-orchestra-examples:
+        - 引当済のウィジェットを見せて
+        - ウィジェット一覧
       parameters:
         - name: status
           in: query

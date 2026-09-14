@@ -36,6 +36,7 @@ function op(operationId: string, summary: string): FixtureOperation {
     description: "",
     displayName: "",
     isSetting: false,
+    examples: [],
   };
 }
 

@@ -17,9 +17,9 @@ import (
 func findCatalogEntry(t *testing.T, entries []usecase.CatalogEntry, operationID string) usecase.CatalogEntry {
 	t.Helper()
 
-	for _, e := range entries {
-		if e.Service == "inventory" && e.OperationID == operationID {
-			return e
+	for i := range entries {
+		if entries[i].Service == "inventory" && entries[i].OperationID == operationID {
+			return entries[i]
 		}
 	}
 
@@ -218,4 +218,42 @@ func TestCatalogEntryOmitsFieldsWhenTheResponseDescribesNone(t *testing.T) {
 	entry := findCatalogEntry(t, entries, "CreateInventoryItem")
 
 	assert.Nil(t, entry.Fields)
+}
+
+// TestCatalogEntryCarriesTheEndpointsExamples is AC-G-104's usecase half
+// (docs/specs/describing.md, section 3): an endpoint's x-orchestra-examples
+// (domain.Endpoint.Examples) reaches CatalogEntry unchanged.
+func TestCatalogEntryCarriesTheEndpointsExamples(t *testing.T) {
+	catalog := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "ListInventoryItems",
+			Summary:     "List stock items, optionally filtered by status.",
+			Examples:    []string{"在庫を見せて", "在庫一覧"},
+			Response:    &domain.Schema{Type: domain.SchemaTypeObject},
+		},
+	}}
+
+	c := usecase.NewCatalog(catalog, &fakePermissionStore{})
+
+	entries, err := c.For(t.Context(), adminUser())
+	require.NoError(t, err)
+
+	entry := findCatalogEntry(t, entries, "ListInventoryItems")
+
+	assert.Equal(t, []string{"在庫を見せて", "在庫一覧"}, entry.Examples)
+}
+
+// TestCatalogEntryOmitsExamplesWhenTheContractDeclaresNone is the other
+// half: an endpoint with no x-orchestra-examples carries a nil Examples,
+// exactly as domain.Endpoint.Examples itself does.
+func TestCatalogEntryOmitsExamplesWhenTheContractDeclaresNone(t *testing.T) {
+	c := usecase.NewCatalog(inventoryCatalog(), &fakePermissionStore{})
+
+	entries, err := c.For(t.Context(), adminUser())
+	require.NoError(t, err)
+
+	entry := findCatalogEntry(t, entries, "ListInventoryItems")
+
+	assert.Nil(t, entry.Examples)
 }

@@ -65,6 +65,11 @@ func toAPICatalogEntry(e *usecase.CatalogEntry) openapi.CatalogEntry {
 		out.Fields = &fields
 	}
 
+	if len(e.Examples) > 0 {
+		examples := e.Examples
+		out.Examples = &examples
+	}
+
 	out.View = toAPIView(e.View)
 
 	return out

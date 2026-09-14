@@ -40,6 +40,11 @@ type CatalogEntry struct {
 	// as chartViewFor builds it for a Result (docs/specs/dashboard.md,
 	// P2) - nil when the contract declares none.
 	View *domain.View
+	// Examples carries the endpoint's x-orchestra-examples: things a
+	// person might type when they want it (docs/specs/describing.md,
+	// section 3) - nil when the contract declares none. Inert for now:
+	// nothing downstream of GET /api/catalog reads it yet.
+	Examples []string
 }
 
 // Catalog is the usecase behind GET /api/catalog: every operation the
@@ -99,5 +104,6 @@ func toCatalogEntry(e *domain.Endpoint) CatalogEntry {
 		Schema:             inputSchemaFor(e),
 		Fields:             fieldsFor(e),
 		View:               chartViewFor(e),
+		Examples:           e.Examples,
 	}
 }

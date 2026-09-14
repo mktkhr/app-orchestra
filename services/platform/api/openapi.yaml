@@ -1250,6 +1250,15 @@ components:
           additionalProperties: true
         view:
           $ref: "#/components/schemas/View"
+        examples:
+          type: array
+          description: >
+            Things a person might type when they want this operation, from
+            its contract's `x-orchestra-examples` (docs/specs/describing.md,
+            section 3) - absent when the contract declares none. Inert for
+            now: `/api/plan` does not read it.
+          items:
+            type: string
     Permission:
       type: object
       description: >

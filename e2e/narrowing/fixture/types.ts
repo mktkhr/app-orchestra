@@ -29,6 +29,12 @@ export interface Resource {
   readonly shared?: string;
   /** Extra vocabulary the description carries, for realism. */
   readonly also?: readonly string[];
+  /**
+   * `x-orchestra-examples` for every operation this resource generates:
+   * things a person might type when they want it (docs/specs/describing.md,
+   * section 3). Optional; written blind, by Task 4, never here (G6).
+   */
+  readonly examples?: readonly string[];
 }
 
 /** Axis E lives here: settings named after the transactions they configure. */
@@ -38,18 +44,27 @@ export interface Setting {
   /** Written by hand, because the decoy is the whole point. */
   readonly summary: string;
   readonly displayName: string;
+  /** `x-orchestra-examples` for the operation this setting generates. */
+  readonly examples?: readonly string[];
 }
 
 export interface Aggregate {
   readonly id: string;
   readonly kind: "search" | "summarize" | "aggregate";
   readonly noun: string;
+  /** `x-orchestra-examples` for the operation this aggregate generates. */
+  readonly examples?: readonly string[];
 }
 
 export interface Workflow {
   readonly id: string;
   readonly noun: string;
   readonly actions: readonly ("submit" | "approve" | "reject" | "withdraw")[];
+  /**
+   * `x-orchestra-examples` for every operation this workflow generates -
+   * one per action, all sharing this list, exactly as Resource's does.
+   */
+  readonly examples?: readonly string[];
 }
 
 export interface ServiceFixture {

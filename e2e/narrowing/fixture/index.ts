@@ -39,6 +39,12 @@ export interface FixtureOperation {
    * axis-E decoy (a settings operation) from an answer that must not be one.
    */
   readonly isSetting: boolean;
+  /**
+   * The operation's `x-orchestra-examples`, from the definition table's
+   * `examples` field (docs/specs/describing.md, section 3) - empty, never
+   * undefined, when the entry carries none.
+   */
+  readonly examples: readonly string[];
 }
 
 /** Every exposed operation a service's contract carries, read back off the generator. */
@@ -58,6 +64,7 @@ export function operationsOf(service: ServiceFixture): readonly FixtureOperation
         description: op.description,
         displayName: op["x-ui-hint"].displayName,
         isSetting: op.tags.includes("settings"),
+        examples: op["x-orchestra-examples"] ?? [],
       });
     }
   }

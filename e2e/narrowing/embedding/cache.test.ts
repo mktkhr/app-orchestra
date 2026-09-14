@@ -34,6 +34,7 @@ function operation(id: string, summary: string): FixtureOperation {
     description: "a description",
     displayName: id,
     isSetting: false,
+    examples: [],
   };
 }
 

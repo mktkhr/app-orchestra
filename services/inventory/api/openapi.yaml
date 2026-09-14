@@ -46,6 +46,10 @@ paths:
       x-orchestra-expose: true
       x-ui-hint:
         displayName: 在庫一覧
+      x-orchestra-examples:
+        - 在庫を見せて
+        - 今の在庫状況を教えて
+        - 引当済の在庫だけ見たい
       parameters:
         - name: status
           in: query
@@ -71,6 +75,9 @@ paths:
       x-orchestra-expose: true
       x-ui-hint:
         displayName: 在庫アイテムの作成
+      x-orchestra-examples:
+        - 新しい在庫アイテムを登録して
+        - 在庫を追加したい
       requestBody:
         required: true
         content:
@@ -94,6 +101,9 @@ paths:
       x-orchestra-expose: true
       x-ui-hint:
         displayName: 在庫アイテムの詳細
+      x-orchestra-examples:
+        - このアイテムの詳細を教えて
+        - この在庫の中身を見たい
       parameters:
         - name: id
           in: path

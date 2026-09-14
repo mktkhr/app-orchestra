@@ -104,6 +104,12 @@ type Endpoint struct {
 	// 2026-09-13). Empty when the contract declares none - see
 	// ServiceDisplayNameOr.
 	ServiceDisplayName string
+	// Examples is the operation's x-orchestra-examples: things a person
+	// might type when they want it, written by the service owner into the
+	// contract (docs/specs/describing.md, section 3). nil when the
+	// contract declares none. Inert for now - nothing downstream of
+	// /api/catalog reads it yet.
+	Examples []string
 }
 
 // DisplayNameOr returns e.DisplayName when the contract declares one,

@@ -227,6 +227,35 @@ func TestFetchConvertsChartHint(t *testing.T) {
 	assert.Nil(t, get.ChartHint)
 }
 
+// assertFetchFailsOnEachSpec runs one table of malformed-extension bodies
+// (each a paths fragment, appended to a bare openapi/info header) and
+// asserts that fetching each one fails with an empty catalogue - the
+// shape TestFetchFailsOnMalformedChartHint and TestFetchFailsOnMalformedExamples
+// both need, extracted so golangci's dupl check sees one copy, not two.
+func assertFetchFailsOnEachSpec(t *testing.T, tests map[string]string, errMessage string) {
+	t.Helper()
+
+	for name, spec := range tests {
+		t.Run(name, func(t *testing.T) {
+			doc := "openapi: 3.0.3\ninfo: {title: bad, version: '1'}\n" + spec
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if _, err := w.Write([]byte(doc)); err != nil {
+					t.Errorf("writing malformed response: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			source := specsourcehttp.New([]specsourcehttp.Service{{Name: "bad", URL: server.URL}}, nil)
+
+			catalog, err := source.Fetch(context.Background())
+
+			require.Error(t, err, errMessage)
+			assert.Empty(t, catalog.Endpoints)
+		})
+	}
+}
+
 func TestFetchFailsOnMalformedChartHint(t *testing.T) {
 	tests := map[string]string{
 		"not an object": `
@@ -286,25 +315,60 @@ paths:
 `,
 	}
 
-	for name, spec := range tests {
-		t.Run(name, func(t *testing.T) {
-			doc := "openapi: 3.0.3\ninfo: {title: bad, version: '1'}\n" + spec
+	assertFetchFailsOnEachSpec(t, tests, "a malformed x-ui-hint.chart is a fetch error, not a silently empty hint")
+}
 
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				if _, err := w.Write([]byte(doc)); err != nil {
-					t.Errorf("writing malformed chart-hint response: %v", err)
-				}
-			}))
-			defer server.Close()
+// TestFetchConvertsExamples is AC-G-104: x-orchestra-examples travels from
+// an operation into domain.Endpoint.Examples, and an operation that
+// declares none carries a nil slice rather than an error or a fallback.
+func TestFetchConvertsExamples(t *testing.T) {
+	server := fixtureServer(t)
+	defer server.Close()
 
-			source := specsourcehttp.New([]specsourcehttp.Service{{Name: "bad", URL: server.URL}}, nil)
+	source := specsourcehttp.New(
+		[]specsourcehttp.Service{{Name: "fixture", URL: server.URL}},
+		nil,
+	)
 
-			catalog, err := source.Fetch(context.Background())
+	catalog, err := source.Fetch(context.Background())
+	require.NoError(t, err)
 
-			require.Error(t, err, "a malformed x-ui-hint.chart is a fetch error, not a silently empty hint")
-			assert.Empty(t, catalog.Endpoints)
-		})
+	list, ok := catalog.Find("fixture", "listWidgets")
+	require.True(t, ok)
+	assert.Equal(t, []string{"引当済のウィジェットを見せて", "ウィジェット一覧"}, list.Examples)
+
+	get, ok := catalog.Find("fixture", "getWidget")
+	require.True(t, ok)
+	assert.Empty(t, get.Examples, "getWidget declares no x-orchestra-examples at all")
+}
+
+func TestFetchFailsOnMalformedExamples(t *testing.T) {
+	tests := map[string]string{
+		"not an array": `
+paths:
+  /bad:
+    get:
+      operationId: getBad
+      x-orchestra-expose: true
+      x-orchestra-examples: "widget list"
+      responses:
+        "200": {description: n/a}
+`,
+		"array with a non-string element": `
+paths:
+  /bad:
+    get:
+      operationId: getBad
+      x-orchestra-expose: true
+      x-orchestra-examples: ["widget list", 3]
+      responses:
+        "200": {description: n/a}
+`,
 	}
+
+	assertFetchFailsOnEachSpec(
+		t, tests, "a malformed x-orchestra-examples is a fetch error, not a silently empty list",
+	)
 }
 
 func TestFetchOmitsResponseForNonJSONContent(t *testing.T) {

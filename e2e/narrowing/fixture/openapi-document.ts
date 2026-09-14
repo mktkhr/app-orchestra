@@ -23,6 +23,13 @@ export interface Operation {
   readonly "x-ui-hint": { readonly displayName: string };
   readonly requestBody?: RequestBody;
   readonly responses: Readonly<Record<string, Response>>;
+  /**
+   * Things a person might type when they want this operation
+   * (docs/specs/describing.md, section 3). Absent when the definition
+   * table's entry carries none - `toOpenAPI` emits it only when present
+   * (`exactOptionalPropertyTypes`).
+   */
+  readonly "x-orchestra-examples"?: readonly string[];
 }
 
 export interface PathItem {

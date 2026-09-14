@@ -582,6 +582,8 @@ export type components = {
                 readonly [key: string]: unknown;
             };
             readonly view?: components["schemas"]["View"];
+            /** @description Things a person might type when they want this operation, from its contract's `x-orchestra-examples` (docs/specs/describing.md, section 3) - absent when the contract declares none. Inert for now: `/api/plan` does not read it. */
+            readonly examples?: readonly string[];
         };
         /** @description One operation a person may call (docs/specs/auth.md, section 4, A3). A row says this person may call this operation; there is no deny, because there is nothing to override. */
         readonly Permission: {

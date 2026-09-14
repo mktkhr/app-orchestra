@@ -1,6 +1,7 @@
 import { expect, test } from "vite-plus/test";
 
-import { catalogOf, operationCount, services } from "./index.ts";
+import { catalogOf, operationCount, operationsOf, services } from "./index.ts";
+import type { ServiceFixture } from "./types.ts";
 
 const SHARED_KEYS = ["order", "line", "approval", "employee", "partner"];
 
@@ -66,4 +67,48 @@ test("every axis B shared key reaches two or more services", () => {
 
 test("every service has three or more near-neighbour groups of four or more (axis C)", () => {
   expect(eachServiceHasThreeBigGroups()).toEqual(services().map(() => true));
+});
+
+// G6: no fixture examples are written in this task - every real operation
+// carries an empty examples array, not undefined, until Task 4 lands.
+test("no service's operations carry any examples yet", () => {
+  const counts = services().flatMap((service) =>
+    operationsOf(service).map((op) => op.examples.length),
+  );
+
+  expect(counts.every((count) => count === 0)).toBe(true);
+});
+
+// AC-G-104: FixtureOperation.examples round-trips a definition table
+// entry's examples field, and is an empty array (not undefined) when the
+// entry declares none.
+const EXAMPLES_FIXTURE: ServiceFixture = {
+  name: "example",
+  displayName: "サンプル",
+  resources: [
+    {
+      id: "Thing",
+      plural: "Things",
+      noun: "モノ",
+      verbs: ["list", "get"],
+      examples: ["モノを見せて"],
+    },
+  ],
+  aggregates: [{ id: "Overview", kind: "summarize", noun: "概要" }],
+  settings: [],
+  workflows: [],
+};
+
+test("FixtureOperation.examples carries the definition table's examples", () => {
+  const list = operationsOf(EXAMPLES_FIXTURE).find((op) => op.operationId === "listExampleThings");
+
+  expect(list?.examples).toEqual(["モノを見せて"]);
+});
+
+test("FixtureOperation.examples is empty, not undefined, when the entry declares none", () => {
+  const summarize = operationsOf(EXAMPLES_FIXTURE).find(
+    (op) => op.operationId === "summarizeExampleOverview",
+  );
+
+  expect(summarize?.examples).toEqual([]);
 });

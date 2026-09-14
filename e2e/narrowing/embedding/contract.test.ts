@@ -30,6 +30,7 @@ function operation(index: number): FixtureOperation {
     description: "a description",
     displayName: `op${String(index)}`,
     isSetting: false,
+    examples: [],
   };
 }
 
