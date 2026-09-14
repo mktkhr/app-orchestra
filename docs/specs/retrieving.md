@@ -73,16 +73,36 @@ than reporting their numbers as facts about the models:
 
 - **`qwen3-embedding-0.6b-q8`** is the only one pooled on the last token and
   the only one whose query prefix is an instruction sentence. Its weak probe
-  numbers may be the model or may be the contract, exactly as Ruri's were.
+  numbers may be the model or may be the contract, exactly as Ruri's were. It
+  is therefore measured twice, with the instruction and without it
+  (`qwen3-embedding-0.6b-q8-plain`), and the recall table decides rather than
+  the model card.
 - **`bge-m3-q8`** uses CLS, which is right for it, but that was assumed from
   the model card rather than shown.
 
-V2 is what settles these: each configuration has to demonstrate its contract is
-right before its numbers count. The cheapest demonstration that does not beg
-the question is a **retrieval of a document by its own text** - embed an
-operation's text as a query, and the same operation must come back first. A
-configuration that cannot find a document by quoting it is misconfigured, and
-no ranking number from it means anything.
+V2 is what settles these. The cheapest demonstration that does not beg the
+question is a **retrieval of a document by its own text**: embed an operation's
+text as a query, exactly as the configuration would encode a real question, and
+see whether the same operation comes back first.
+
+What that probes is narrower than "is this model configured correctly", and the
+spec says which, because the difference was measured on 2026-09-14 and is not
+obvious. Encoded symmetrically - the document prefix on both sides - **every**
+configuration retrieves itself, including the CLS-pooled Ruri that goes on to
+score 6/25 on axis B. The check only has teeth when it encodes the two sides
+the way the configuration really does: query prefix on one, document prefix on
+the other. So what it measures is whether a configuration's **query encoding
+and document encoding land in the same space** - which is what an asymmetric
+prefix, or a pooling that disagrees with the one the model was trained under,
+actually breaks.
+
+It is reported as a rate, not as a gate. Three failures in twenty and one in
+twenty are not the same finding, and one of them has an innocent explanation: a
+model whose queries carry an instruction its documents do not is being asked to
+match a document wrapped in an instruction it has never seen. A configuration's
+rate is printed beside its recall so the two can be read together; a
+configuration that fails often is not evidence about its model, and one that
+fails once is not disqualified.
 
 ## 5. Loading, and what it costs
 
@@ -151,10 +171,11 @@ mechanism rather than dropping them for the ones that do not need them.
 
 ## 8. Acceptance criteria
 
-- **AC-V-101** Every configuration in section 3 retrieves an operation first
-  when queried with that operation's own text - section 4's contract check -
-  and a configuration that fails it is reported as misconfigured rather than as
-  a weak model.
+- **AC-V-101** Every configuration in section 3 is measured on section 4's
+  contract check - how often it retrieves an operation first when queried with
+  that operation's own text, encoded the way that configuration encodes a real
+  question - and the rate is printed beside its recall, so a configuration that
+  fails often is not read as evidence about its model.
 - **AC-V-102** The catalogue's vectors are cached on disk, keyed so that a
   change to the fixture or to a configuration invalidates only what it should,
   and a second run reuses them.

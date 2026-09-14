@@ -56,7 +56,8 @@ call it.
 | `qwen3-embedding-0.6b-q8` | `/v1/embeddings` | last    | `Instruct: …\nQuery: ` | none            |
 | `bge-reranker-v2-m3-q8`   | `/v1/rerank`     | -       | -                      | -               |
 
-All five embedding models return 1024 dimensions. `/v1/rerank` takes
+`ruri-v3-310m-q8` and `ruri-v3-310m-q8-mean` return **768** dimensions; the
+others return 1024. Nothing may assume a fixed dimension. `/v1/rerank` takes
 `{model, query, documents}` and returns `results: [{index, relevance_score}]`,
 **not sorted** — sort by `relevance_score` descending yourself.
 

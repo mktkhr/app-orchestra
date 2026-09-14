@@ -65,11 +65,29 @@ export const EMBEDDING_CONFIGS: readonly EmbeddingConfig[] = [
     documentPrefix: "検索文書: ",
   },
   {
+    // The instruction is the model's own contract, and "…" was a placeholder
+    // in docs/plans/retrieving.md's table that should never have been copied
+    // into data. Measured 2026-09-14: with the placeholder, and with this real
+    // instruction, this configuration retrieves a document by its own text
+    // less reliably than the same model with no query prefix at all - which is
+    // why the next entry exists rather than this one being "fixed".
     id: "qwen3-embedding-0.6b-q8",
     model: "qwen3-embedding-0.6b-q8",
     endpoint: "/v1/embeddings",
     pooling: "last",
-    queryPrefix: "Instruct: …\nQuery: ",
+    queryPrefix: "Instruct: Given a question, retrieve the API operation that answers it\nQuery: ",
+    documentPrefix: "",
+  },
+  {
+    // The same model with no query prefix. An instruction on the query side
+    // and nothing on the document side is an asymmetry, and whether it helps
+    // or hurts is a question for the recall table rather than for the model
+    // card (docs/specs/retrieving.md V2: configurations are what is measured).
+    id: "qwen3-embedding-0.6b-q8-plain",
+    model: "qwen3-embedding-0.6b-q8",
+    endpoint: "/v1/embeddings",
+    pooling: "last",
+    queryPrefix: "",
     documentPrefix: "",
   },
 ] as const;
