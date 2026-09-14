@@ -78,3 +78,9 @@
 
 # Per-developer Claude Code overrides; the shared config is .claude/settings.json.
 /.claude/settings.local.json
+
+# The embedding cache (docs/plans/retrieving.md Task 1 Step 5): derived
+# vectors, a few megabytes per configuration, rebuilt from the fixture and
+# llama-swap on demand. docs/specs/narrowing.md T5 already says generated
+# things do not enter the repository.
+/e2e/narrowing/.vectors/
