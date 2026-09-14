@@ -163,7 +163,7 @@ afterEach(() => {
   rmSync(vectorsDir, { recursive: true, force: true });
 });
 
-test("gatherReport still runs the lexical row and skips every embedding configuration when the transport refuses to connect", async () => {
+test("gatherReport still runs the lexical row and skips every embedding configuration, plus the two-stage one, when the transport refuses to connect", async () => {
   const result = await gatherReport([], [10], {
     fetchImpl: refusingFetch,
     baseUrl: "http://fake-llama-swap.invalid",
@@ -171,5 +171,8 @@ test("gatherReport still runs the lexical row and skips every embedding configur
   });
 
   expect(result.configurations.map((configuration) => configuration.configId)).toEqual(["lexical"]);
-  expect(result.skipped.length).toBe(EMBEDDING_CONFIGS.length);
+  // Every embedding configuration, plus the two-stage configuration that
+  // retrieves with one of them (docs/plans/retrieving.md Task 3) — the
+  // lexical row above still ran unconditionally.
+  expect(result.skipped.length).toBe(EMBEDDING_CONFIGS.length + 1);
 });

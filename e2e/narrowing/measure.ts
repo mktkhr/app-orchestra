@@ -26,7 +26,8 @@ import {
   type ContractCheckResult,
   type EmbeddingConfig,
 } from "./embedding/index.ts";
-import type { FetchLike } from "./embedding/client.ts";
+import { embedMany, type EmbeddingVector, type FetchLike } from "./embedding/client.ts";
+import { twoStageNarrowerOf } from "./rerank/index.ts";
 import { catalogOf, type FixtureOperation } from "./fixture/index.ts";
 import {
   K_VALUES,
@@ -131,6 +132,82 @@ async function measureEmbeddingConfiguration(
   return { configId: config.id, contractCheck, sizes };
 }
 
+/** The two-stage configuration's id in the report — one block, not two (spec V6). */
+const TWO_STAGE_CONFIG_ID = "e5-large-q8+reranker";
+
+/** The embedding configuration id the two-stage narrower retrieves with — `rerank/narrower.ts` says why `e5-large-q8`. */
+const TWO_STAGE_RETRIEVER_ID = "e5-large-q8";
+
+/** `EMBEDDING_CONFIGS`'s own `e5-large-q8` entry — the two-stage narrower reuses its prefix and pooling rather than redeclaring them. */
+function retrieverConfig(): EmbeddingConfig {
+  const found = EMBEDDING_CONFIGS.find((config) => config.id === TWO_STAGE_RETRIEVER_ID);
+
+  if (found === undefined) {
+    throw new Error(`measure.ts: no embedding configuration named ${TWO_STAGE_RETRIEVER_ID}`);
+  }
+
+  return found;
+}
+
+/** Every test question's vector, keyed by its own text — computed once, in one batch, before any rerank call (docs/plans/retrieving.md Task 3, "things that will bite"). */
+async function embedQuestionsOnce(
+  config: EmbeddingConfig,
+  testQuestions: readonly Question[],
+  transportOptions: { readonly fetchImpl?: FetchLike; readonly baseUrl?: string },
+): Promise<ReadonlyMap<string, EmbeddingVector>> {
+  const texts = testQuestions.map((question) => question.text);
+  const vectors = await embedMany(
+    config,
+    texts,
+    "query",
+    transportOptions.fetchImpl,
+    transportOptions.baseUrl,
+  );
+
+  return new Map(texts.map((text, index) => [text, vectors[index] ?? []]));
+}
+
+/**
+ * The two-stage configuration's full report (spec V6, AC-V-104): `e5-large-
+ * q8`'s catalogue vectors (already cached from its own row above this one,
+ * so this call is a disk read, not a network one), its contract check, and
+ * every test question's vector — all embedded before any rerank call, so the
+ * whole run alternates between the retriever and the reranker exactly once
+ * rather than once per question.
+ */
+async function measureTwoStageConfiguration(
+  testQuestions: readonly Question[],
+  kValues: readonly K[],
+  options: GatherOptions,
+): Promise<ConfigurationResult> {
+  const config = retrieverConfig();
+  const fullCatalog = catalogOf(5);
+  const transportOptions = transportOptionsOf(options);
+  const fullVectors = await embedCatalogue(config, fullCatalog, transportOptions);
+  const contractCheck = await checkContract(
+    config,
+    fullCatalog,
+    transportOptions.fetchImpl,
+    transportOptions.baseUrl,
+  );
+  const questionVectors = await embedQuestionsOnce(config, testQuestions, transportOptions);
+
+  const sizes = await measureAcrossSizes(
+    (catalog) =>
+      twoStageNarrowerOf(
+        sliceVectors(fullVectors, catalog),
+        catalog,
+        questionVectors,
+        transportOptions.fetchImpl,
+        transportOptions.baseUrl,
+      ),
+    testQuestions,
+    kValues,
+  );
+
+  return { configId: TWO_STAGE_CONFIG_ID, contractCheck, sizes };
+}
+
 /**
  * Every configuration `make narrowing` reports: the lexical floor, measured
  * unconditionally, plus every embedding configuration in `EMBEDDING_CONFIGS`
@@ -170,6 +247,19 @@ export async function gatherReport(
       reachable = false;
       skipped.push({ configId: config.id, reason: unreachableReason(error) });
     }
+  }
+
+  if (reachable) {
+    try {
+      configurations.push(await measureTwoStageConfiguration(testQuestions, kValues, options));
+    } catch (error) {
+      skipped.push({ configId: TWO_STAGE_CONFIG_ID, reason: unreachableReason(error) });
+    }
+  } else {
+    skipped.push({
+      configId: TWO_STAGE_CONFIG_ID,
+      reason: "llama-swap was unreachable for an earlier configuration; not retried",
+    });
   }
 
   return { configurations, skipped };
