@@ -108,13 +108,24 @@ the reason `retrieving.md` section 4 gives.
 their own operation's text - the same definition the corpus's axis D uses
 for a question. The first prompt scored perfectly on retrieval precisely
 because it repeated the operation's noun; retrieval alone rewards the
-failure. An utterance is only worth having if it says something the summary
-does not, and a layer whose utterances are mostly not novel has added
-nothing the retriever did not have.
+failure, which is why novelty stays reported alongside it.
 
-A good layer is high on both and will be lower on retrieval than a bad one.
-The report shows both numbers so that trade can be read, and the recall
-table is what decides.
+Measured, novelty anti-correlates with what the recall table rewards
+(`DECISIONS.md`, 2026-09-15, "The catalogue says it"): the generated layer
+scores 43% novel and does not move axis D; the written layer scores 15%
+novel and moves axis D from 33% to 80% at K=10. The written layer's own
+failing utterances are the ones that dropped the operation's anchor noun
+entirely - exactly the utterances a novelty check scores highest, because
+losing the noun is one reliable way to stop sharing a bigram with it. A
+useful utterance keeps the anchor noun and adds the everyday situation
+around it; that is closer to what predicts a layer's value than novelty is,
+and this subproject did not build a check for it.
+
+The report still shows both rates, because retrieval and novelty are cheap,
+deterministic, and each catches a real failure mode (a layer that cannot
+find its own operation; a layer that only repeats the operation's own
+words) - but neither rate is what decides a layer's value. Section 7's
+recall table is what decides.
 
 ## 7. What is measured
 
@@ -126,14 +137,31 @@ existing ones:
 - `e5-large-q8` + written utterances
 - `e5-large-q8` + both
 
-and the two-stage (`e5-large-q8` + reranker) with both, which is the
-headline. `e5-large-q8` is the retriever because it is the one measured to
-hold the most axis-D answers inside fifty.
+and the two-stage (`e5-large-q8` + reranker), with written and with both -
+`e5-large-q8+reranker+written` and `e5-large-q8+reranker+both`.
+`e5-large-q8` is the retriever because it is the one measured to hold the
+most axis-D answers inside fifty.
 
-The numbers this subproject is for: axis D at K=10 and K=50, against the
-current 33% and 73% for `e5-large-q8` alone and 60% / 73% for the two-stage.
-The numbers it must not move: axes A, B, C and E, currently 100 / 100 / 72 /
-100 for `e5-large-q8`.
+**The headline row is `e5-large-q8+reranker+written`, not
+`e5-large-q8+reranker+both`.** Measured (`DECISIONS.md`, 2026-09-15, "The
+catalogue says it"), the written layer is this subproject's result and the
+generated layer is a negative one (section 6, and the same entry): unioning
+the generated layer's utterances into `+written` lowers axis D at every K
+measured. `e5-large-q8+reranker+both` is reported beside the headline as
+the trade it actually is - 93% overall against the headline's 89%, at axis
+D 67% against 73% - because the reranker filters enough of the generated
+layer's noise to let its coverage help axis C, while it still costs axis D.
+Neither row is named the winner; a product choosing between them is
+choosing between more overall recall and a working vocabulary bridge.
+
+The numbers this subproject was for: axis D at K=10 and K=50, against the
+then-current 33% and 73% for `e5-large-q8` alone and 60% / 73% for the
+two-stage. Reached: `e5-large-q8+written` alone moves axis D to 80% at
+K=10 and 93% at K=50; the headline `e5-large-q8+reranker+written` reaches
+73% at K=10. The numbers it must not move - axes A, B, C and E, then 100 /
+100 / 72 / 100 for `e5-large-q8` - hold under every row that carries the
+written layer alone; the generated layer is the one row that moves axis B
+down (100% → 64%), recorded as a regression, not folded into the headline.
 
 The utterance contract-check rate, per layer, is printed with them.
 
@@ -182,3 +210,23 @@ And the written layer is only as good as the service owner's ear for how
 their users talk. The fixture's examples, written blind, are a stand-in for
 that; a real service's examples will be better or worse than a stand-in, and
 the measurement cannot say which.
+
+The reranker never sees an utterance, written or generated - it rescores on
+`combinedTextOf` alone (section 4). Measured (`DECISIONS.md`, 2026-09-15),
+this costs the written layer's own axis D seven points at K=10 once the
+two-stage configuration runs (80% → 73%): the layer that closes the
+vocabulary gap is partially undone by the stage that runs after it.
+Whether the reranker should read the written examples, and what that would
+cost the axes it currently helps (it lifts every other axis measured), is
+not settled here.
+
+And the generated layer's failure was not a matter of prompting it once and
+stopping. Two prompts were tried: the first asked for short paraphrases and
+produced the operation's own noun with conjugated endings; the second added
+few-shot examples from outside the fixture and banned the operation's own
+words, and produced the intended register - genuinely novel, situational
+phrasing. Axis D did not move under either one, 33% at K=10 both times. A
+third prompt might do better, but this subproject's own working assumption
+(section 2, G2 - the generated layer gives "coverage for free") is now
+measured, not assumed, and twice over: in two attempts, it did not deliver
+coverage this corpus could detect.
