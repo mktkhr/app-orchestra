@@ -5378,3 +5378,38 @@ same as 2026-09-14 - the fixture and corpus are read directly, no build
 step. `e2e/narrowing/corpus/corpus.test.ts` (`cd e2e && pnpm exec vp test
 run narrowing/corpus/corpus.test.ts`) checks the key's own structure in
 under 300ms.
+
+## 2026-09-15 The local picker reads the shortlist in reranker order: 78 → 83, for nothing
+
+**Context.** Under the corrected key the local `qwen3.5-9b-q8`, thinking
+off, picking from the 50 `e5-large-q8` candidates in similarity order, scores
+78; Sonnet 5 scores 83 and Opus 5 84 on the same input (D17). The
+whole-catalogue run had shown what a model does with a long list: it keeps
+the verb, loses the noun, and grabs from the top. If a model reads from the
+top, the order of the shortlist is not neutral.
+
+**Measured.** Same 100 questions, same 50 candidates, now sorted by
+`bge-reranker-v2-m3-q8` before being shown to the picker, and cut to K.
+Hand-run in the session scratchpad, one run at temperature 0, thinking off.
+
+| shortlist order | K   | correct | A   | B   | C   | D   | E   | flagged ambiguous | s/question |
+| --------------- | --- | ------- | --- | --- | --- | --- | --- | ----------------- | ---------- |
+| e5 similarity   | 50  | 78      | 25  | 20  | 17  | 9   | 7   | 57                | 0.43       |
+| reranker        | 10  | 81      | 24  | 25  | 17  | 8   | 7   | 37                | 0.28       |
+| reranker        | 20  | **83**  | 25  | 25  | 18  | 8   | 7   | 50                | 0.31       |
+| reranker        | 50  | 82      | 25  | 23  | 17  | 9   | 8   | 63                | 0.43       |
+
+Ordering alone is worth four to five points; K barely matters between 10 and
+50 (one run, so ±2 is noise). At K=20 the local model scores what Sonnet 5
+scored and one below Opus 5, at 0.31 seconds a question and no cost. The
+D17 gap is closed by presentation, not by the model. Axis B goes to 25/25 -
+the ambiguous questions' defensible answers are now at the top of the list
+where the picker sees them. Axis D does not move (8-9 of 15): it was never a
+selection problem.
+
+**What it implies.** The reranker is already computed for narrowing; the
+picker should be handed its order, and about 20 candidates. This is the
+cheapest change in the whole subproject and is not yet wired into anything -
+`make narrowing` measures recall, not the pick. Wiring the pick into the
+measurement is now worth doing, since the headline the product cares about
+is "right operation chosen, or asked back", not recall@K.
