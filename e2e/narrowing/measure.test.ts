@@ -1,15 +1,29 @@
 /**
- * `measure()`'s own tests (docs/plans/narrowing.md Task 4, Step 4). A
- * handful of hand-built operations and questions, not the real fixture —
+ * `measure()`'s own tests (docs/plans/narrowing.md Task 4, Step 4), plus
+ * `gatherReport`'s down-handling (docs/plans/retrieving.md Task 2, Step 5).
+ * A handful of hand-built operations and questions, not the real fixture —
  * these check the recall computation's rules (a tie is not a hit, an answer
  * outside the catalogue is excluded rather than scored zero, several
  * answers means recalled if any one of them is found) against inputs where
- * the right numbers can be worked out by hand.
+ * the right numbers can be worked out by hand. `measure` is exercised
+ * through `Narrower`s built by hand or over the lexical index, never
+ * through llama-swap (AC-V-106).
  */
-import { expect, test } from "vite-plus/test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, expect, test } from "vite-plus/test";
 
 import type { FixtureOperation } from "./fixture/index.ts";
-import { measure, type AxisRecall, type MeasureResult, type RecallAtK } from "./measure.ts";
+import {
+  gatherReport,
+  measure,
+  type AxisRecall,
+  type MeasureResult,
+  type RecallAtK,
+} from "./measure.ts";
+import { EMBEDDING_CONFIGS } from "./embedding/index.ts";
 import type { Axis, Question } from "./corpus/index.ts";
 
 /** A minimal `FixtureOperation`: only `summary` carries text the bigram scorer reads. */
@@ -53,19 +67,19 @@ const CATALOG: readonly FixtureOperation[] = [
   op("unrelatedOperation", "無関係な文字列"),
 ];
 
-test("an answer with no tie is recalled the same way on best and worst", () => {
+test("an answer with no tie is recalled the same way on best and worst", async () => {
   const q = question("q1", "A", "在庫の一覧", ["unrelatedOperation"]);
   const catalog = [op("unrelatedOperation", "在庫の一覧"), op("other", "別の文字列")];
-  const result = measure(catalog, [q], [10]);
+  const result = await measure(catalog, [q], [10]);
   const recall = recallAtK(result, "A", 10);
 
   expect(recall.pessimisticHits).toBe(1);
   expect(recall.optimisticHits).toBe(1);
 });
 
-test("a tied answer is recalled on best but not on worst, at a K inside the tie", () => {
+test("a tied answer is recalled on best but not on worst, at a K inside the tie", async () => {
   const q = question("q1", "A", "在庫の一覧", ["listInventoryLots"]);
-  const result = measure(CATALOG, [q], [1]);
+  const result = await measure(CATALOG, [q], [1]);
   const recall = recallAtK(result, "A", 1);
 
   // Both listInventoryItems and listInventoryLots score identically against
@@ -75,26 +89,26 @@ test("a tied answer is recalled on best but not on worst, at a K inside the tie"
   expect(recall.pessimisticHits).toBe(0);
 });
 
-test("a question is recalled if any of its several answers is found", () => {
+test("a question is recalled if any of its several answers is found", async () => {
   const q = question("q1", "B", "在庫の一覧", ["unrelatedOperation", "listInventoryLots"]);
-  const result = measure(CATALOG, [q], [10]);
+  const result = await measure(CATALOG, [q], [10]);
   const recall = recallAtK(result, "B", 10);
 
   expect(recall.pessimisticHits).toBe(1);
 });
 
-test("a question whose answer is not in the catalogue is excluded, not scored zero", () => {
+test("a question whose answer is not in the catalogue is excluded, not scored zero", async () => {
   const q = question("q1", "A", "在庫の一覧", ["notInThisCatalogue"]);
-  const result = measure(CATALOG, [q], [10]);
+  const result = await measure(CATALOG, [q], [10]);
   const axis = axisRecall(result, "A");
 
   expect(axis.total).toBe(0);
   expect(axis.excluded).toBe(1);
 });
 
-test("a question whose answer shares no bigram with anything is included and scores zero", () => {
+test("a question whose answer shares no bigram with anything is included and scores zero", async () => {
   const q = question("q1", "A", "在庫の一覧", ["unrelatedOperation"]);
-  const result = measure(CATALOG, [q], [10]);
+  const result = await measure(CATALOG, [q], [10]);
   const axis = axisRecall(result, "A");
   const recall = recallAtK(result, "A", 10);
 
@@ -103,18 +117,59 @@ test("a question whose answer shares no bigram with anything is included and sco
   expect(recall.optimisticHits).toBe(0);
 });
 
-test("overall aggregates every axis's questions", () => {
+test("overall aggregates every axis's questions", async () => {
   const q1 = question("q1", "A", "在庫の一覧", ["listInventoryItems"]);
   const q2 = question("q2", "B", "在庫の一覧", ["listInventoryItems"]);
-  const result = measure(CATALOG, [q1, q2], [10]);
+  const result = await measure(CATALOG, [q1, q2], [10]);
   const overall = axisRecall(result, "overall");
 
   expect(overall.total).toBe(2);
 });
 
-test("reports a non-negative per-query wall-clock", () => {
+test("reports a non-negative per-query wall-clock", async () => {
   const q = question("q1", "A", "在庫の一覧", ["listInventoryItems"]);
-  const result = measure(CATALOG, [q], [10]);
+  const result = await measure(CATALOG, [q], [10]);
 
   expect(result.averageQueryMillis >= 0).toBe(true);
+});
+
+test("measure accepts a hand-built Narrower in place of the lexical index", async () => {
+  const q = question("q1", "A", "在庫の一覧", ["listInventoryItems"]);
+  const narrower = {
+    rank: () =>
+      Promise.resolve([
+        { operationId: "listInventoryItems", score: 1 },
+        { operationId: "listInventoryLots", score: 0.5 },
+      ]),
+  };
+  const result = await measure(CATALOG, [q], [10], narrower);
+  const recall = recallAtK(result, "A", 10);
+
+  expect(recall.pessimisticHits).toBe(1);
+});
+
+/** A fetch that always rejects, as if llama-swap were not listening at all. */
+function refusingFetch(): Promise<Response> {
+  return Promise.reject(new Error("connect ECONNREFUSED"));
+}
+
+let vectorsDir: string;
+
+beforeEach(() => {
+  vectorsDir = mkdtempSync(join(tmpdir(), "retrieving-measure-test-"));
+});
+
+afterEach(() => {
+  rmSync(vectorsDir, { recursive: true, force: true });
+});
+
+test("gatherReport still runs the lexical row and skips every embedding configuration when the transport refuses to connect", async () => {
+  const result = await gatherReport([], [10], {
+    fetchImpl: refusingFetch,
+    baseUrl: "http://fake-llama-swap.invalid",
+    vectorsDir,
+  });
+
+  expect(result.configurations.map((configuration) => configuration.configId)).toEqual(["lexical"]);
+  expect(result.skipped.length).toBe(EMBEDDING_CONFIGS.length);
 });

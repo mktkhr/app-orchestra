@@ -1,212 +1,184 @@
 /**
- * The measurement (docs/specs/narrowing.md section 6; docs/plans/narrowing.md
- * Task 4, Steps 4-5). recall@K over the fixture catalogue and the corpus, and
- * nothing else: no LLM is involved (spec T2) — a narrowing mechanism (today,
- * `lexical.ts`) produces a shortlist, and this module only asks whether each
- * question's answer is in it.
- *
- * **A tie is not a hit.** Recall is computed on `rankRangeOf`'s `worst`: an
- * answer counts as recalled at K only when it is still inside K even when
- * every operation tied with it is ranked ahead of it. The optimistic figure
- * (`best`) is computed alongside — an answer counts there if some ordering
- * of the tie could put it first — and `report.ts` flags a line where the two
- * differ by more than a little: that gap is how much of the result is a coin
- * toss (spec section 6).
- *
- * **A question is excluded, not scored zero, when none of its answers are in
- * the catalogue being measured.** The corpus (`corpus/index.ts`) was written
- * against the full five-service fixture; at catalogue sizes 1-3 some
- * questions' answers are not there at all — a service the question's answer
- * lives in simply was not included. That is not the mechanism failing to
- * find something; it is the question not being askable of that catalogue,
- * so it is left out of every recall figure at that size and the excluded
- * count is reported instead of being silently averaged away.
+ * The whole report `make narrowing` prints (docs/plans/narrowing.md Task 4;
+ * docs/plans/retrieving.md Task 2). The recall computation itself is
+ * `recall.ts` (split out only for eslint's `max-lines`; re-exported below so
+ * nothing outside these two files needs to know that). What this file adds
+ * is `gatherReport`: running the lexical floor, then every embedding
+ * configuration in `embedding/configs.ts` that llama-swap can actually
+ * serve, catching the point where it stops being reachable rather than
+ * throwing (AC-V-104; docs/plans/retrieving.md Task 2 Step 5).
  *
  * Run directly — `node e2e/narrowing/measure.ts` (`make narrowing`) — to
  * print the full report. Every other export here is a plain function so
- * `measure.test.ts` can exercise the recall computation without paying for
- * the whole corpus and all four catalogue sizes.
+ * `measure.test.ts` can exercise it without paying for the whole corpus,
+ * and without reaching llama-swap at all (AC-V-106): `gatherReport` takes a
+ * `fetchImpl`/`baseUrl`/`vectorsDir` exactly so a test can hand it a fake
+ * transport and a throwaway cache directory instead.
  */
 import { pathToFileURL } from "node:url";
 
+import {
+  EMBEDDING_CONFIGS,
+  checkContract,
+  embedCatalogue,
+  vectorNarrowerOf,
+  type CatalogueVectors,
+  type ContractCheckResult,
+  type EmbeddingConfig,
+} from "./embedding/index.ts";
+import type { FetchLike } from "./embedding/client.ts";
 import { catalogOf, type FixtureOperation } from "./fixture/index.ts";
-import { buildIndex, narrow, rankRangeOf, type LexicalIndex } from "./lexical.ts";
+import {
+  K_VALUES,
+  lexicalNarrowerOf,
+  measureAcrossSizes,
+  type K,
+  type SizeResult,
+} from "./recall.ts";
 import { printReport } from "./report.ts";
-import { questions, type Axis, type Question } from "./corpus/index.ts";
+import { questions, type Question } from "./corpus/index.ts";
 
-/** The four catalogue sizes the fixture defines (spec T6): 200/400/600/1000 operations. */
-export const CATALOG_SIZES = [1, 2, 3, 5] as const;
-export type CatalogSize = (typeof CATALOG_SIZES)[number];
+export {
+  CATALOG_SIZES,
+  K_VALUES,
+  measure,
+  measureAll,
+  type AxisRecall,
+  type CatalogSize,
+  type K,
+  type MeasureResult,
+  type RecallAtK,
+  type SizeResult,
+} from "./recall.ts";
 
-/** The three K values the spec asks for (section 6): the report's default. */
-export const K_VALUES = [10, 20, 50] as const;
-
-/**
- * A shortlist size. Left as plain `number` rather than the `K_VALUES`
- * literal union so `measure.test.ts` can probe a tie at a K small enough to
- * work out by hand (K=1) without widening the report's own column set.
- */
-export type K = number;
-
-const AXES: readonly Axis[] = ["A", "B", "C", "D", "E"];
-
-/** One question's outcome against one catalogue: whether it could be asked at all, and where its closest answer ranked. */
-interface QuestionRank {
-  readonly axis: Axis;
-  readonly eligible: boolean;
-  readonly best: number | undefined;
-  readonly worst: number | undefined;
+/** One configuration's full report: every catalogue size, and the contract check when it has one (embedding configurations only — the lexical floor has no contract to check). */
+export interface ConfigurationResult {
+  readonly configId: string;
+  readonly contractCheck?: ContractCheckResult;
+  readonly sizes: readonly SizeResult[];
 }
 
-/** Whether at least one of `question`'s answers is an operation this catalogue actually serves. */
-function isEligible(question: Question, catalogIds: ReadonlySet<string>): boolean {
-  return question.answers.some((answerId) => catalogIds.has(answerId));
+/** A configuration that could not be measured at all — llama-swap was unreachable — and why. */
+export interface SkippedConfiguration {
+  readonly configId: string;
+  readonly reason: string;
 }
 
-/** The smallest of a set of possibly-absent numbers, or undefined when none are present. */
-function minDefined(values: readonly (number | undefined)[]): number | undefined {
-  const present = values.filter((value): value is number => value !== undefined);
-
-  return present.length === 0 ? undefined : Math.min(...present);
-}
-
-/**
- * `question`'s rank against `index`: the closest of its answers' best and
- * worst ranks (spec section 6, "a question has several answers; it is
- * recalled if any of them is"). Ineligible when none of its answers are in
- * this catalogue at all — `best`/`worst` stay undefined and it never
- * reaches the per-K comparison.
- */
-function rankOf(
-  index: LexicalIndex,
-  catalogIds: ReadonlySet<string>,
-  question: Question,
-): QuestionRank {
-  if (!isEligible(question, catalogIds)) {
-    return { axis: question.axis, eligible: false, best: undefined, worst: undefined };
-  }
-
-  const ranges = question.answers.map((answerId) => rankRangeOf(index, question.text, answerId));
-
-  return {
-    axis: question.axis,
-    eligible: true,
-    best: minDefined(ranges.map((range) => range?.best)),
-    worst: minDefined(ranges.map((range) => range?.worst)),
-  };
-}
-
-/** Recall at one K, both ends of the range (spec section 6). */
-export interface RecallAtK {
-  readonly k: K;
-  /** Hits on `worst` — an answer still inside K even behind every tie. */
-  readonly pessimisticHits: number;
-  /** Hits on `best` — an answer inside K given the most favourable tie order. */
-  readonly optimisticHits: number;
-}
-
-/** Recall for one axis, or `"overall"` across all five, at every K. */
-export interface AxisRecall {
-  readonly axis: Axis | "overall";
-  /** Eligible questions — the denominator every hit count above is read against. */
-  readonly total: number;
-  /** Questions left out because none of their answers are in this catalogue. */
-  readonly excluded: number;
-  readonly recalls: readonly RecallAtK[];
-}
-
-/** One axis's recall figures, built from the ranks of the questions that belong to it. */
-function recallOf(
-  axis: Axis | "overall",
-  ranks: readonly QuestionRank[],
-  kValues: readonly K[],
-): AxisRecall {
-  const eligible = ranks.filter((rank) => rank.eligible);
-  const excluded = ranks.length - eligible.length;
-
-  const recalls = kValues.map((k) => ({
-    k,
-    pessimisticHits: eligible.filter((rank) => rank.worst !== undefined && rank.worst <= k).length,
-    optimisticHits: eligible.filter((rank) => rank.best !== undefined && rank.best <= k).length,
-  }));
-
-  return { axis, total: eligible.length, excluded, recalls };
-}
-
-/** The result of measuring one catalogue against one set of questions. */
-export interface MeasureResult {
-  readonly operationCount: number;
-  /** One entry per axis (A-E), then one for `"overall"` — six in total. */
-  readonly axisRecalls: readonly AxisRecall[];
-  readonly averageQueryMillis: number;
-}
-
-/**
- * Measures `testQuestions` against `catalog` (spec section 6). Builds one
- * index, then for every question times a `narrow` call at the largest K
- * requested — the cost a real caller pays, since a narrowing mechanism is
- * asked once per question and the result is cut to size afterwards, not
- * asked once per K — and separately reads `rankRangeOf` for every answer to
- * decide whether it is recalled at each K.
- */
-export function measure(
+/** `fullVectors`, restricted to the operations `catalog` actually holds — the smaller catalogue sizes are prefixes of the full one, so this slices the cache rather than re-embedding (docs/plans/retrieving.md Task 2). */
+function sliceVectors(
+  fullVectors: CatalogueVectors,
   catalog: readonly FixtureOperation[],
-  testQuestions: readonly Question[],
-  kValues: readonly K[] = K_VALUES,
-): MeasureResult {
-  const index = buildIndex(catalog);
+): CatalogueVectors {
   const catalogIds = new Set(catalog.map((operation) => operation.operationId));
-  const widestK = Math.max(...kValues);
-  const queryMillis: number[] = [];
-  const ranks: QuestionRank[] = [];
 
-  for (const question of testQuestions) {
-    const start = performance.now();
+  return new Map(Array.from(fullVectors).filter(([operationId]) => catalogIds.has(operationId)));
+}
 
-    narrow(index, question.text, widestK);
-    queryMillis.push(performance.now() - start);
-    ranks.push(rankOf(index, catalogIds, question));
-  }
+/** How `gatherReport` reaches the transport and the vector cache — overridable so tests never reach llama-swap (AC-V-106). */
+export interface GatherOptions {
+  readonly fetchImpl?: FetchLike;
+  readonly baseUrl?: string;
+  readonly vectorsDir?: string;
+}
 
-  const axisRecalls = [
-    ...AXES.map((axis) =>
-      recallOf(
-        axis,
-        ranks.filter((rank) => rank.axis === axis),
-        kValues,
-      ),
-    ),
-    recallOf("overall", ranks, kValues),
-  ];
-
-  const totalMillis = queryMillis.reduce((sum, ms) => sum + ms, 0);
-
+/** `options`, as the subset of optional fields `embedCatalogue`/`checkContract` accept — built by spreading only the ones actually set, because `exactOptionalPropertyTypes` (tsconfig.base.json) treats an explicit `undefined` differently from an absent key. */
+function transportOptionsOf(options: GatherOptions): {
+  readonly dir?: string;
+  readonly fetchImpl?: FetchLike;
+  readonly baseUrl?: string;
+} {
   return {
-    operationCount: catalog.length,
-    axisRecalls,
-    averageQueryMillis: testQuestions.length === 0 ? 0 : totalMillis / testQuestions.length,
+    ...(options.vectorsDir === undefined ? {} : { dir: options.vectorsDir }),
+    ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
   };
 }
 
-/** One catalogue size's result, paired with the size that produced it. */
-export interface SizeResult {
-  readonly size: CatalogSize;
-  readonly result: MeasureResult;
+function unreachableReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return `llama-swap was unreachable — ${message}`;
 }
 
-/** Measures every catalogue size against the full corpus (the report's input). */
-export function measureAll(
-  testQuestions: readonly Question[] = questions(),
-  kValues: readonly K[] = K_VALUES,
-): readonly SizeResult[] {
-  return CATALOG_SIZES.map((size) => ({
-    size,
-    result: measure(catalogOf(size), testQuestions, kValues),
-  }));
+/** One embedding configuration's full report: its catalogue vectors cached, its contract checked, and its recall measured at every size. Throws when the transport cannot be reached at all — `gatherReport` is what turns that into a skip. */
+async function measureEmbeddingConfiguration(
+  config: EmbeddingConfig,
+  testQuestions: readonly Question[],
+  kValues: readonly K[],
+  options: GatherOptions,
+): Promise<ConfigurationResult> {
+  const fullCatalog = catalogOf(5);
+  const transportOptions = transportOptionsOf(options);
+  const fullVectors = await embedCatalogue(config, fullCatalog, transportOptions);
+  const contractCheck = await checkContract(
+    config,
+    fullCatalog,
+    transportOptions.fetchImpl,
+    transportOptions.baseUrl,
+  );
+  const sizes = await measureAcrossSizes(
+    (catalog) =>
+      vectorNarrowerOf(
+        sliceVectors(fullVectors, catalog),
+        config,
+        transportOptions.fetchImpl,
+        transportOptions.baseUrl,
+      ),
+    testQuestions,
+    kValues,
+  );
+
+  return { configId: config.id, contractCheck, sizes };
 }
 
-function main(): void {
-  printReport(measureAll(), K_VALUES);
+/**
+ * Every configuration `make narrowing` reports: the lexical floor, measured
+ * unconditionally, plus every embedding configuration in `EMBEDDING_CONFIGS`
+ * that could actually be reached. The first embedding configuration to fail
+ * to embed its catalogue is read as llama-swap being down rather than that
+ * one configuration being broken, and every configuration from that point on
+ * is recorded as skipped instead of retried (docs/plans/retrieving.md Task 2
+ * Step 5) — the lexical row still runs either way, and nothing here throws.
+ */
+export async function gatherReport(
+  testQuestions: readonly Question[],
+  kValues: readonly K[],
+  options: GatherOptions = {},
+): Promise<{
+  readonly configurations: readonly ConfigurationResult[];
+  readonly skipped: readonly SkippedConfiguration[];
+}> {
+  const lexicalSizes = await measureAcrossSizes(lexicalNarrowerOf, testQuestions, kValues);
+  const configurations: ConfigurationResult[] = [{ configId: "lexical", sizes: lexicalSizes }];
+  const skipped: SkippedConfiguration[] = [];
+  let reachable = true;
+
+  for (const config of EMBEDDING_CONFIGS) {
+    if (!reachable) {
+      skipped.push({
+        configId: config.id,
+        reason: "llama-swap was unreachable for an earlier configuration; not retried",
+      });
+      continue;
+    }
+
+    try {
+      configurations.push(
+        await measureEmbeddingConfiguration(config, testQuestions, kValues, options),
+      );
+    } catch (error) {
+      reachable = false;
+      skipped.push({ configId: config.id, reason: unreachableReason(error) });
+    }
+  }
+
+  return { configurations, skipped };
+}
+
+async function main(): Promise<void> {
+  const { configurations, skipped } = await gatherReport(questions(), K_VALUES);
+
+  printReport(configurations, skipped, K_VALUES);
 }
 
 // Runs only when this file is the process's entry point (`node
@@ -215,5 +187,10 @@ function main(): void {
 const entryArgument = process.argv[1];
 
 if (entryArgument !== undefined && import.meta.url === pathToFileURL(entryArgument).href) {
-  main();
+  try {
+    await main();
+  } catch (error) {
+    console.error(error);
+    process.exitCode = 1;
+  }
 }

@@ -103,6 +103,19 @@ export interface NarrowResult {
 }
 
 /**
+ * The seam a narrowing mechanism exposes to `measure.ts`
+ * (docs/plans/retrieving.md Task 2 Step 1): given a question, the whole
+ * catalogue ranked best-first with scores — enough for `rankRangeIn` to
+ * compute a worst and a best rank, whichever kind of narrower produced it.
+ * `measure.ts` wraps this file's index-based scoring in one; `embedding/
+ * narrower.ts` implements the same shape over cached vectors instead of
+ * bigram counts.
+ */
+export interface Narrower {
+  readonly rank: (question: string) => Promise<readonly NarrowResult[]>;
+}
+
+/**
  * Every operation with a non-zero score, best first. Operations the question
  * shares no bigram with are **not** in the result at all.
  *
@@ -144,24 +157,38 @@ export function narrow(index: LexicalIndex, question: string, k: number): readon
 }
 
 /**
- * Where `operationId` sits in the ranking for `question`, as a range,
- * because scores tie in bulk: measured on the fixture, 186 operations share
- * the score at 「注文を一覧」's tenth place. A single rank would be decided by
- * the catalogue's order inside that tie, so this reports both ends.
- *
- * `best` counts only the operations that score strictly higher; `worst` also
- * counts every other operation with the same score. A measurement should be
- * read on `worst` - a mechanism that cannot separate an answer from 185 other
- * operations has not found it - and the gap between the two is how much of
- * the result is a coin toss. Undefined when the operation scores zero, which
- * means it is not a candidate at all.
+ * Every candidate for `question`, ranked best first - the same list `narrow`
+ * slices and `rankRangeOf` below searches, exposed so measure.ts's `Narrower`
+ * seam (docs/plans/retrieving.md Task 2 Step 1) can call it once per
+ * question and derive both a shortlist and every answer's rank range from
+ * one result, rather than recomputing the score for each answer separately.
  */
-export function rankRangeOf(
-  index: LexicalIndex,
-  question: string,
+export function candidatesFor(index: LexicalIndex, question: string): readonly NarrowResult[] {
+  return scoredCandidates(index, question);
+}
+
+/**
+ * Where `operationId` sits inside an already-ranked `candidates` list, as a
+ * range, because scores tie in bulk: measured on the fixture, 186 operations
+ * share the score at 「注文を一覧」's tenth place. A single rank would be
+ * decided by whatever order the list happens to be in, so this reports both
+ * ends.
+ *
+ * `best` counts only the candidates that score strictly higher; `worst` also
+ * counts every other candidate with the same score. A measurement should be
+ * read on `worst` - a mechanism that cannot separate an answer from 185
+ * other operations has not found it - and the gap between the two is how
+ * much of the result is a coin toss. Undefined when `operationId` is not in
+ * `candidates` at all - not a candidate, whatever the reason.
+ *
+ * Shared by both kinds of narrower: `rankRangeOf` below is this function
+ * applied to `scoredCandidates(index, question)`, and `embedding/
+ * narrower.ts` applies it to a vector narrower's ranking instead.
+ */
+export function rankRangeIn(
+  candidates: readonly NarrowResult[],
   operationId: string,
 ): { readonly best: number; readonly worst: number } | undefined {
-  const candidates = scoredCandidates(index, question);
   const found = candidates.find((c) => c.operationId === operationId);
 
   if (found === undefined) return undefined;
@@ -170,4 +197,19 @@ export function rankRangeOf(
   const equal = candidates.filter((c) => c.score === found.score).length;
 
   return { best: better + 1, worst: better + equal };
+}
+
+/**
+ * Where `operationId` sits in the ranking for `question` against `index` -
+ * `rankRangeIn` applied to this module's own `scoredCandidates`. Kept as its
+ * own export because `lexical.test.ts` and the lexical row's own numbers
+ * depend on this exact call shape; behaviour is unchanged by the refactor
+ * that added `rankRangeIn` underneath it.
+ */
+export function rankRangeOf(
+  index: LexicalIndex,
+  question: string,
+  operationId: string,
+): { readonly best: number; readonly worst: number } | undefined {
+  return rankRangeIn(scoredCandidates(index, question), operationId);
 }

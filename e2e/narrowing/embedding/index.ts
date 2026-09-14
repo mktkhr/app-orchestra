@@ -25,3 +25,4 @@ export {
   sampleOperations,
   type ContractCheckResult,
 } from "./contract.ts";
+export { narrow, vectorNarrowerOf } from "./narrower.ts";
