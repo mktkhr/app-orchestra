@@ -66,9 +66,10 @@ describe("Conversation, a result with alternatives", () => {
     );
 
     // The chip click is a choice, not a second question - the transcript
-    // shows "→ 候補3", not the question text a second time
+    // shows "候補3" as its own bubble, not the question text a second time
     // (docs/specs/shortlisting.md, section 4, H5).
-    expect(await screen.findByText("→ 候補3")).toBeTruthy();
+    // The label now appears twice: once on the chip, once as the bubble.
+    expect(await screen.findAllByText("候補3")).toHaveLength(2);
     expect(screen.getAllByText(QUESTION)).toHaveLength(1);
 
     // The user's own words: the chosen chip stays clearly visible, the
@@ -76,7 +77,8 @@ describe("Conversation, a result with alternatives", () => {
     // under one question.
     expect(screen.queryByRole("button", { name: "候補3" })).toBeNull();
     expect(screen.queryByRole("button", { name: "候補2" })).toBeNull();
-    expect(screen.getByText("候補3").closest(".MuiChip-colorPrimary")).toBeTruthy();
+    const chosenChips = Array.from(document.querySelectorAll(".MuiChip-colorPrimary"));
+    expect(chosenChips.map((el) => el.textContent)).toEqual(["候補3"]);
     expect(screen.getByText("候補2").closest(".Mui-disabled")).toBeTruthy();
 
     // A click on either chip now that the turn is answered posts nothing
@@ -87,7 +89,9 @@ describe("Conversation, a result with alternatives", () => {
     // class, the chosen one through having no `onClick` at all), and
     // `user.click` refuses to dispatch through that - which is itself the
     // proof neither chip is reachable by a real click any more.
-    fireEvent.click(screen.getByText("候補3"));
+    chosenChips.forEach((el) => {
+      fireEvent.click(el);
+    });
     fireEvent.click(screen.getByText("候補2"));
 
     expect(postPlan).toHaveBeenCalledTimes(2);

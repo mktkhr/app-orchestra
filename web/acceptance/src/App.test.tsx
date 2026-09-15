@@ -132,7 +132,8 @@ describe("App", () => {
 
     // The chip click reads as a choice, not the question being sent again
     // (docs/specs/shortlisting.md, section 4, H5).
-    expect(await screen.findByText("→ 在庫を登録")).toBeTruthy();
+    // The label now appears twice: once on the chip, once as the bubble.
+    expect(await screen.findAllByText("在庫を登録")).toHaveLength(2);
     expect(screen.getAllByText("在庫の一覧を見せて")).toHaveLength(1);
 
     // The chosen chip stays visible and reads as selected; it - and any
@@ -140,6 +141,7 @@ describe("App", () => {
     // second click can no longer stack a second operation under the same
     // 「違いましたか？」 (the user's own complaint this flow fixes).
     expect(screen.queryByRole("button", { name: "在庫を登録" })).toBeNull();
-    expect(screen.getByText("在庫を登録").closest(".MuiChip-colorPrimary")).toBeTruthy();
+    const chosenChips = Array.from(document.querySelectorAll(".MuiChip-colorPrimary"));
+    expect(chosenChips.map((el) => el.textContent)).toEqual(["在庫を登録"]);
   });
 });
