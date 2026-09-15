@@ -332,8 +332,8 @@ eval-accept: build ## Run the eval suite and rewrite eval/baseline.json from it 
 narrowing: ## Measure the lexical baseline's recall@K over the narrowing fixture (not quiet: it prints its own report; no LLM, no build)
 	cd e2e && node narrowing/measure.ts
 
-eval-shortlist: build ## Measure the product's own planner on the narrowing corpus, narrowing on and off, or per wording with WORDING=a,b,c (docs/specs/shortlisting.md, docs/plans/wording.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts)
-	cd e2e && node shortlist/run.ts $(if $(WORDING),--wording $(WORDING),)
+eval-shortlist: build ## Measure the product's own planner on the narrowing corpus, narrowing on and off, or per wording with WORDING=a,b,c, THINKING=on|off and REPEAT_PENALTY=<float> (docs/specs/shortlisting.md, docs/plans/wording.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts)
+	cd e2e && node shortlist/run.ts $(if $(WORDING),--wording $(WORDING),) $(if $(THINKING),--thinking $(THINKING),) $(if $(REPEAT_PENALTY),--repeat-penalty $(REPEAT_PENALTY),)
 	cd e2e && node shortlist/print-report.ts
 
 ## ---------------------------------------------------------------- misc

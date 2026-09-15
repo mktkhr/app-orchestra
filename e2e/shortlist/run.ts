@@ -1,10 +1,12 @@
+import path from "node:path";
+
 import { questions } from "../narrowing/corpus/index.ts";
 import { signIn, type Session } from "../src/helpers/auth.ts";
 import { boot, type Booted } from "./boot.ts";
 import { safeOperationIds } from "./catalogue-safety.ts";
 import { writeMisses } from "./misses.ts";
 import { readResults } from "./parse-result.ts";
-import { alreadyDone, appendResult, outputPathFor } from "./pass-io.ts";
+import { alreadyDone, appendResult, outDir, outputPathFor } from "./pass-io.ts";
 import { kindOf, postPlan } from "./plan-request.ts";
 import type { QuestionResult } from "./score.ts";
 
@@ -22,9 +24,23 @@ import type { QuestionResult } from "./score.ts";
  * a,b,c` runs one narrowing-on, K=20 pass per named wording instead,
  * setting `ORCHESTRA_PLANNER_WORDING=<name>` on the platform for that
  * pass; `v1` is always included first even when not named, so every
- * report has the baseline to compare against. `--wording` and
+ * report has the baseline to compare against - unless `--thinking` or
+ * `--repeat-penalty` is also given (see below), in which case only the
+ * named wording(s) run, `v1` not forced in. `--wording` and
  * `--on-only`/`--off-only` are mutually exclusive modes: without
  * `--wording`, run.ts behaves exactly as it did before this flag existed.
+ *
+ * `--thinking on|off` and `--repeat-penalty <float>` set
+ * `ORCHESTRA_PLANNER_THINKING` / `ORCHESTRA_PLANNER_REPEAT_PENALTY` on the
+ * booted platform for every pass this invocation runs (platform knobs
+ * subproject, 2026-09-16). Each carries its own suffix on the output file
+ * and miss list - `-nothink` for `--thinking off`, `-rp<value>` for
+ * `--repeat-penalty` - so a variant run never overwrites a plain wording
+ * pass's files, and multiple variants of the same wording can coexist
+ * (e.g. `on-v6-unmatched-filter-nothink.jsonl`,
+ * `on-v6-unmatched-filter-nothink-rp1.1.jsonl`). Given with no
+ * `--wording`, the pass runs against the platform's own default wording,
+ * labelled `default`.
  */
 
 const NARROWING = { embedModel: "e5-large-q8", rerankModel: "bge-reranker-v2-m3-q8", k: 20 };
@@ -136,10 +152,42 @@ async function runPass(pass: "on" | "off"): Promise<void> {
   }
 }
 
-/** One pass for one named wording: narrowing on, K=20, `ORCHESTRA_PLANNER_WORDING=<name>` (docs/plans/wording.md Task 2, Step 1). Rows go to `out/on-<name>.jsonl`; the miss list to `out/misses-<name>.txt`. */
-async function runWordingPass(name: string): Promise<void> {
-  const outputName = `on-${name}`;
-  const booted: Booted = await boot({ narrowing: NARROWING, wording: name });
+/** The `-nothink` / `-rp<value>` suffix a thinking/repeat-penalty variant's output files carry (see this file's own doc comment) - "" for a plain wording pass, unchanged from before either flag existed. */
+function variantSuffix(
+  thinking: "on" | "off" | undefined,
+  repeatPenalty: number | undefined,
+): string {
+  const nothink = thinking === "off" ? "-nothink" : "";
+  const rp = repeatPenalty === undefined ? "" : `-rp${String(repeatPenalty)}`;
+
+  return `${nothink}${rp}`;
+}
+
+/**
+ * One pass for one named wording, optionally overriding thinking and/or
+ * the repeat penalty: narrowing on, K=20, `ORCHESTRA_PLANNER_WORDING=<name>`
+ * (docs/plans/wording.md Task 2, Step 1) plus, when given,
+ * `ORCHESTRA_PLANNER_THINKING` / `ORCHESTRA_PLANNER_REPEAT_PENALTY`
+ * (platform knobs subproject, 2026-09-16). Rows go to
+ * `out/on-<name><suffix>.jsonl`; the miss list to
+ * `out/misses-<name><suffix>.txt`; the platform's own stdout/stderr -
+ * including the `planner truncated by max_tokens` warn line - to
+ * `out/on-<name><suffix>.log`.
+ */
+async function runWordingPass(
+  name: string,
+  thinking?: "on" | "off",
+  repeatPenalty?: number,
+): Promise<void> {
+  const variant = `${name}${variantSuffix(thinking, repeatPenalty)}`;
+  const outputName = `on-${variant}`;
+  const booted: Booted = await boot({
+    narrowing: NARROWING,
+    wording: name,
+    logFile: path.join(outDir, `${outputName}.log`),
+    ...(thinking === undefined ? {} : { thinking }),
+    ...(repeatPenalty === undefined ? {} : { repeatPenalty }),
+  });
 
   try {
     const session = await signIn(booted.baseUrl, "admin", booted.adminPassword);
@@ -149,14 +197,14 @@ async function runWordingPass(name: string): Promise<void> {
     // appended rows - so a resumed pass's miss list still covers every
     // row, including ones a previous run already wrote (pass-io.ts's
     // alreadyDone).
-    writeMisses(name, readResults(outputPathFor(outputName)));
+    writeMisses(variant, readResults(outputPathFor(outputName)));
   } finally {
     await booted.stop();
   }
 }
 
-/** `--wording a,b,c`'s names, deduplicated in first-seen order, with `v1` always first even when not named. */
-function wordingArg(): readonly string[] | undefined {
+/** `--wording a,b,c`'s names, deduplicated in first-seen order - `undefined` when `--wording` was not given at all. */
+function wordingNames(): readonly string[] | undefined {
   const flagIndex = process.argv.indexOf("--wording");
 
   if (flagIndex === -1) return undefined;
@@ -166,20 +214,72 @@ function wordingArg(): readonly string[] | undefined {
     .split(",")
     .map((n) => n.trim())
     .filter((n) => n.length > 0);
-  const ordered = ["v1", ...named];
 
-  return [...new Set(ordered)];
+  return [...new Set(named)];
+}
+
+/** One flag's value, e.g. `flagValue("--thinking")` for `--thinking off`. `undefined` when the flag was not given. */
+function flagValue(flag: string): string | undefined {
+  const flagIndex = process.argv.indexOf(flag);
+
+  if (flagIndex === -1) return undefined;
+
+  return process.argv[flagIndex + 1];
+}
+
+/** `--thinking on|off`, validated - anything else is a usage error, not a silent no-op. */
+function thinkingArg(): "on" | "off" | undefined {
+  const raw = flagValue("--thinking");
+
+  if (raw === undefined) return undefined;
+
+  if (raw !== "on" && raw !== "off") {
+    throw new Error(`--thinking must be "on" or "off", got ${JSON.stringify(raw)}`);
+  }
+
+  return raw;
+}
+
+/** `--repeat-penalty <float>`, validated - anything that does not parse as a finite number is a usage error. */
+function repeatPenaltyArg(): number | undefined {
+  const raw = flagValue("--repeat-penalty");
+
+  if (raw === undefined) return undefined;
+
+  const parsed = Number(raw);
+
+  if (!Number.isFinite(parsed)) {
+    throw new TypeError(`--repeat-penalty must be a number, got ${JSON.stringify(raw)}`);
+  }
+
+  return parsed;
 }
 
 async function main(): Promise<void> {
-  const wording = wordingArg();
+  const names = wordingNames();
+  const thinking = thinkingArg();
+  const repeatPenalty = repeatPenaltyArg();
+  const isVariant = thinking !== undefined || repeatPenalty !== undefined;
 
-  if (wording !== undefined) {
-    for (const name of wording) {
+  if (names !== undefined) {
+    // `v1` is always included first as a baseline, unless a thinking/
+    // repeat-penalty variant was asked for - that is a different
+    // experiment with its own recorded baseline (see this file's own doc
+    // comment), and forcing an extra `v1` pass through it would only cost
+    // GPU time nobody asked to spend.
+    const targets = isVariant ? names : [...new Set(["v1", ...names])];
+
+    for (const name of targets) {
       // Sequential and deliberate: one platform boot per wording, one at
       // a time (docs/plans/wording.md Task 2, Step 1).
-      await runWordingPass(name);
+      await runWordingPass(name, thinking, repeatPenalty);
     }
+
+    return;
+  }
+
+  if (isVariant) {
+    await runWordingPass("default", thinking, repeatPenalty);
 
     return;
   }

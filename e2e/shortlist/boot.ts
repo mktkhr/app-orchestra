@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { createWriteStream, mkdtempSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -41,6 +41,12 @@ export interface BootOptions {
   readonly narrowing?: NarrowingOptions;
   /** When set, `ORCHESTRA_PLANNER_WORDING` is set to this name on the platform (docs/plans/wording.md Task 2) - the whole contract with the `wording` package is this variable's name. */
   readonly wording?: string;
+  /** When set, `ORCHESTRA_PLANNER_THINKING` is set to this on the platform (config.go: "on" or "off"; unset leaves thinking on, today's behaviour). */
+  readonly thinking?: "on" | "off";
+  /** When set, `ORCHESTRA_PLANNER_REPEAT_PENALTY` is set to this on the platform; unset sends nothing. */
+  readonly repeatPenalty?: number;
+  /** When set, the platform's stdout and stderr - its JSON logs, including the `planner truncated by max_tokens` warn line - are written to this file instead of being discarded. */
+  readonly logFile?: string;
 }
 
 export interface Booted {
@@ -128,9 +134,20 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
             ORCHESTRA_NARROWING_K: String(options.narrowing.k),
           }),
       ...(options.wording === undefined ? {} : { ORCHESTRA_PLANNER_WORDING: options.wording }),
+      ...(options.thinking === undefined ? {} : { ORCHESTRA_PLANNER_THINKING: options.thinking }),
+      ...(options.repeatPenalty === undefined
+        ? {}
+        : { ORCHESTRA_PLANNER_REPEAT_PENALTY: String(options.repeatPenalty) }),
     }),
     port: platformPort,
   };
+
+  if (options.logFile !== undefined) {
+    const stream = createWriteStream(options.logFile);
+
+    platform.process.stdout?.pipe(stream, { end: false });
+    platform.process.stderr?.pipe(stream);
+  }
 
   await waitForReady(`http://127.0.0.1:${platformPort}/api/health`, 20_000);
 
