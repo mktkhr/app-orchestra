@@ -119,10 +119,15 @@ interface GetOutcome {
 }
 
 /** Fetches every GET invoke path a document declares and checks each body against its own schema. */
-function fetchGetOutcomes(origin: string, doc: OpenAPIDocument): Promise<readonly GetOutcome[]> {
+function fetchGetOutcomes(
+  origin: string,
+  serviceName: string,
+  doc: OpenAPIDocument,
+): Promise<readonly GetOutcome[]> {
   return Promise.all(
     getInvokes(doc).map(async ({ path, operation }) => {
-      const response = await fetch(`${origin}${path}`);
+      // The shape the platform really sends: base URL `/<service>` + path.
+      const response = await fetch(`${origin}/${serviceName}${path}`);
       const body: unknown = await response.json();
       const schema = responseSchema(doc, operation);
       const valid = schema === undefined || validatesAgainst(doc, schema, body);
@@ -193,7 +198,7 @@ describe.each(services())("$name", (service) => {
 
   test("every GET invoke path answers 200 with a body matching its own declared response schema", async () => {
     const doc = toOpenAPI(service);
-    const outcomes = await fetchGetOutcomes(baseUrl, doc);
+    const outcomes = await fetchGetOutcomes(baseUrl, service.name, doc);
 
     expect(getInvokes(doc).length).toBeGreaterThan(0);
     expect(allValid(outcomes)).toBe(true);

@@ -138,10 +138,21 @@ export function start(port: number): Promise<Serving> {
         return;
       }
     } else if (req.method === "GET") {
-      const invokeMatch = /^\/api\/([^/]+)\//u.exec(pathname);
+      // The platform invokes `<base URL> + <operation path>`, and a fixture
+      // service's base URL is `http://host/<service>` (the same prefix its
+      // contract is served under), so a real invoke arrives as
+      // `/<service>/api/<service>/...`. Strip that prefix before matching
+      // the operation's own path template; a bare `/api/<service>/...` is
+      // accepted too, so a test can address an operation directly.
+      const prefixMatch = /^\/([^/]+)(\/api\/.*)$/u.exec(pathname);
+      const operationPath =
+        prefixMatch !== null && byName.has(prefixMatch[1] ?? "")
+          ? (prefixMatch[2] ?? "")
+          : pathname;
+      const invokeMatch = /^\/api\/([^/]+)\//u.exec(operationPath);
       const service = invokeMatch === null ? undefined : byName.get(invokeMatch[1] ?? "");
       const doc = service === undefined ? undefined : toOpenAPI(service);
-      const operation = doc === undefined ? undefined : findGetOperation(doc.paths, pathname);
+      const operation = doc === undefined ? undefined : findGetOperation(doc.paths, operationPath);
 
       if (doc !== undefined && operation !== undefined) {
         res.writeHead(200, { "content-type": "application/json" });
