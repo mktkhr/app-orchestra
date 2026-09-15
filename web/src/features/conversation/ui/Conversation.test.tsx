@@ -55,7 +55,7 @@ describe("Conversation", () => {
 
     expect(await screen.findByText("在庫の一覧を見せて")).toBeTruthy();
     expect(await screen.findByText("該当する操作が見つかりませんでした。")).toBeTruthy();
-    expect(postPlan).toHaveBeenCalledWith({ query: "在庫の一覧を見せて" });
+    expect(postPlan).toHaveBeenCalledWith({ query: "在庫の一覧を見せて", thinking: false });
   });
 
   it("submits a typed question through the form and disables it while pending", async () => {

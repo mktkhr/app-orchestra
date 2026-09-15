@@ -75,6 +75,7 @@ describe("App", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     planRequests.length = 0;
+    globalThis.localStorage.clear();
   });
 
   it("offers example questions and answers one against the platform", async () => {
@@ -143,5 +144,34 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "在庫を登録" })).toBeNull();
     const chosenChips = Array.from(document.querySelectorAll(".MuiChip-colorPrimary"));
     expect(chosenChips.map((el) => el.textContent)).toEqual(["在庫を登録"]);
+  });
+
+  // Platform knobs subproject, decided 2026-09-16: the 「思考」 switch beside
+  // the question form defaults off (planner thinking off measured
+  // correct@1 67 / correct@shown 71 at a mean 1377ms, never hitting
+  // max_tokens; docs/specs/shortlisting.md) and, once turned on, every
+  // `/api/plan` request this app sends carries `thinking: true` explicitly.
+  it("sends thinking: true once the 「思考」 switch is turned on", async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal("fetch", vi.fn(respond));
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "在庫の一覧を見せて" });
+
+    const thinkingSwitch = screen.getByRole("switch", { name: "思考" });
+    expect(thinkingSwitch).toHaveProperty("checked", false);
+
+    await user.click(thinkingSwitch);
+    expect(thinkingSwitch).toHaveProperty("checked", true);
+
+    await user.type(screen.getByLabelText("質問を入力"), "在庫の一覧を見せて");
+    await user.click(screen.getByRole("button", { name: "送信" }));
+
+    expect(await screen.findByText("itm-001")).toBeTruthy();
+    expect(planRequests.at(-1)).toEqual(
+      expect.objectContaining({ query: "在庫の一覧を見せて", thinking: true }),
+    );
   });
 });

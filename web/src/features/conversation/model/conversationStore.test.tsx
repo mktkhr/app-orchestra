@@ -132,7 +132,7 @@ describe("conversationStore", () => {
     await user.click(screen.getByRole("button", { name: "ask-chat" }));
     await screen.findByText("結果はありません。", { exact: false });
 
-    expect(postPlan).toHaveBeenCalledWith({ query: "質問" });
+    expect(postPlan).toHaveBeenCalledWith({ query: "質問", thinking: false });
   });
 
   // docs/specs/offering.md, O4: workspaceId is forwarded to postPlan
@@ -152,7 +152,7 @@ describe("conversationStore", () => {
     await user.click(screen.getByRole("button", { name: "ask-ws-1" }));
     await screen.findByText("結果はありません。", { exact: false });
 
-    expect(postPlan).toHaveBeenCalledWith({ query: "質問", workspaceId: "ws-1" });
+    expect(postPlan).toHaveBeenCalledWith({ query: "質問", workspaceId: "ws-1", thinking: false });
   });
 
   it("sends the first question and its resolved operation as a turn with the second question", async () => {
@@ -195,6 +195,7 @@ describe("conversationStore", () => {
           args: {},
         },
       ],
+      thinking: false,
     });
   });
 
@@ -228,7 +229,7 @@ describe("conversationStore", () => {
     await user.click(screen.getByRole("button", { name: "ask-chat" }));
     await screen.findByText("結果はありません。", { exact: false });
 
-    expect(postPlan).toHaveBeenLastCalledWith({ query: "質問" });
+    expect(postPlan).toHaveBeenLastCalledWith({ query: "質問", thinking: false });
   });
 
   it("throws when used outside a ConversationProvider", () => {

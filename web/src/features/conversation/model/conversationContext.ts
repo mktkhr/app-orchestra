@@ -41,6 +41,17 @@ export interface ConversationHandle extends ConversationState {
   readonly submitForm: (result: PlanResult) => void;
   /** Empties this conversation only. No other key is touched. */
   readonly newConversation: () => void;
+  /**
+   * The 「思考」 switch's current value (platform knobs subproject, decided
+   * 2026-09-16): not keyed by conversation - one switch, read by `ask`
+   * (this hook's own `ask`, and the store's) at the moment a question is
+   * sent, whichever screen or turn started it, so a chip re-plan
+   * (`AlternativesRow`) and the next question typed into `QuestionForm`
+   * both carry the value that was showing when the person acted.
+   */
+  readonly thinking: boolean;
+  /** Sets the switch's value, persisting it (`model/thinkingPreference.ts`). */
+  readonly setThinking: (value: boolean) => void;
 }
 
 export interface ConversationStoreValue {
@@ -55,6 +66,8 @@ export interface ConversationStoreValue {
   ) => Promise<void>;
   submitForm: (key: string, result: PlanResult) => void;
   newConversation: (key: string) => void;
+  thinking: boolean;
+  setThinking: (value: boolean) => void;
 }
 
 export const ConversationStoreContext = createContext<ConversationStoreValue | null>(null);
@@ -119,5 +132,12 @@ export function useConversation(key: string, workspaceId?: string): Conversation
 
   const state = store.getConversation(key);
 
-  return { ...state, ask, submitForm, newConversation };
+  return {
+    ...state,
+    ask,
+    submitForm,
+    newConversation,
+    thinking: store.thinking,
+    setThinking: store.setThinking,
+  };
 }

@@ -9,6 +9,7 @@ import {
   type ConversationState,
   type ConversationStoreValue,
 } from "./conversationContext";
+import { useThinkingSwitch } from "./thinkingPreference";
 import { toContextTurns, type ContextTurn } from "./toContextTurns";
 import type { Turn } from "./turn";
 
@@ -56,18 +57,26 @@ function markChosen(
   );
 }
 
-/** `postPlan`'s body: `query` plus whichever of `turns`/`workspaceId`/`preferred` this call has. */
+/**
+ * `postPlan`'s body: `query` plus whichever of `turns`/`workspaceId`/`preferred`
+ * this call has, and `thinking` always - `true` or `false`, the switch's own
+ * value at the moment `ask` was called, never omitted (the contract's
+ * "omitted means the platform's configured default" is for other/future
+ * callers, not this client: a person's own choice is explicit either way).
+ */
 function planRequestBody(
   query: string,
   contextTurns: readonly ContextTurn[],
   workspaceId: string | undefined,
   preferred: string | undefined,
+  thinking: boolean,
 ): PlanRequest {
   return {
     query,
     ...(contextTurns.length === 0 ? {} : { turns: contextTurns }),
     ...(workspaceId === undefined ? {} : { workspaceId }),
     ...(preferred === undefined ? {} : { preferred }),
+    thinking,
   };
 }
 
@@ -92,6 +101,33 @@ function answeredTurns(current: readonly Turn[], result: PlanResult): readonly T
     answerTurn,
     { id: nextTurnId(), role: "alternatives", text: "違いましたか？", alternatives },
   ];
+}
+
+/**
+ * Sends `body` and folds the result (or failure) into `key`'s conversation
+ * via `update`. Extracted from `ask` to keep `ConversationProvider` under
+ * `harness/quality/eslint`'s `max-lines-per-function`.
+ */
+async function planAndUpdate(
+  update: (key: string, updater: (current: ConversationState) => ConversationState) => void,
+  key: string,
+  body: PlanRequest,
+): Promise<void> {
+  try {
+    const result = await postPlan(body);
+
+    update(key, (current) => ({
+      ...current,
+      pending: false,
+      turns: answeredTurns(current.turns, result),
+    }));
+  } catch {
+    update(key, (current) => ({
+      ...current,
+      pending: false,
+      error: "質問の送信に失敗しました。時間をおいて試してください。",
+    }));
+  }
 }
 
 interface ConversationProviderProps {
@@ -124,6 +160,10 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
   useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
+
+  // The 「思考」 switch (platform knobs subproject, decided 2026-09-16): one
+  // value for every conversation - see `useThinkingSwitch`'s own doc.
+  const { thinking, thinkingRef, setThinking } = useThinkingSwitch();
 
   const getConversation = useCallback(
     (key: string): ConversationState => conversations[key] ?? EMPTY_CONVERSATION,
@@ -165,23 +205,13 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
         ],
       }));
 
-      try {
-        const result = await postPlan(planRequestBody(query, contextTurns, workspaceId, preferred));
-
-        update(key, (current) => ({
-          ...current,
-          pending: false,
-          turns: answeredTurns(current.turns, result),
-        }));
-      } catch {
-        update(key, (current) => ({
-          ...current,
-          pending: false,
-          error: "質問の送信に失敗しました。時間をおいて試してください。",
-        }));
-      }
+      await planAndUpdate(
+        update,
+        key,
+        planRequestBody(query, contextTurns, workspaceId, preferred, thinkingRef.current),
+      );
     },
-    [update],
+    [update, thinkingRef],
   );
 
   const submitForm = useCallback(
@@ -199,8 +229,8 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
   }, []);
 
   const value = useMemo<ConversationStoreValue>(
-    () => ({ getConversation, ask, submitForm, newConversation }),
-    [getConversation, ask, submitForm, newConversation],
+    () => ({ getConversation, ask, submitForm, newConversation, thinking, setThinking }),
+    [getConversation, ask, submitForm, newConversation, thinking, setThinking],
   );
 
   return (

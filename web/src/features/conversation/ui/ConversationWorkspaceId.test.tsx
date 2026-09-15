@@ -29,6 +29,10 @@ describe("Conversation workspaceId", () => {
     await user.click(screen.getByRole("button", { name: "在庫の一覧を見せて" }));
 
     expect(await screen.findByText("結果はありません。")).toBeTruthy();
-    expect(postPlan).toHaveBeenCalledWith({ query: "在庫の一覧を見せて", workspaceId: "ws-1" });
+    expect(postPlan).toHaveBeenCalledWith({
+      query: "在庫の一覧を見せて",
+      workspaceId: "ws-1",
+      thinking: false,
+    });
   });
 });

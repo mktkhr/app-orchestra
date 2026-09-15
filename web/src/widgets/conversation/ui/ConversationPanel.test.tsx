@@ -84,7 +84,11 @@ describe("ConversationPanel", () => {
 
     // docs/specs/offering.md, O4: the workspace this conversation is asked
     // from must reach postPlan's own request, not only the save control.
-    expect(postPlan).toHaveBeenCalledWith({ query: "在庫の一覧を見せて", workspaceId: "ws-1" });
+    expect(postPlan).toHaveBeenCalledWith({
+      query: "在庫の一覧を見せて",
+      workspaceId: "ws-1",
+      thinking: false,
+    });
   });
 
   it("offers a proposal's own form when asked from a workspace, and places it through onPanelPlaced", async () => {

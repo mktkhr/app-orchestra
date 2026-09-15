@@ -88,7 +88,7 @@ describe("conversationStore, preferred and alternatives", () => {
       expect(postPlan).toHaveBeenCalled();
     });
 
-    expect(postPlan).toHaveBeenCalledWith({ query: "質問", preferred: "op-2" });
+    expect(postPlan).toHaveBeenCalledWith({ query: "質問", preferred: "op-2", thinking: false });
   });
 
   it("appends a choice turn, not a second question turn, when ask is given preferred and label", async () => {

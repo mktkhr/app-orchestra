@@ -54,10 +54,8 @@ export function Conversation({
   renderSaveControl,
   renderProposal,
 }: ConversationProps): JSX.Element {
-  const { turns, pending, error, ask, submitForm, newConversation } = useConversation(
-    conversationKey,
-    workspaceId,
-  );
+  const { turns, pending, error, ask, submitForm, newConversation, thinking, setThinking } =
+    useConversation(conversationKey, workspaceId);
 
   const handleSubmit = (query: string): void => {
     void ask(query);
@@ -113,7 +111,12 @@ export function Conversation({
         </>
       )}
       {error === null ? null : <Alert severity="error">{error}</Alert>}
-      <QuestionForm onSubmit={handleSubmit} disabled={pending} />
+      <QuestionForm
+        onSubmit={handleSubmit}
+        disabled={pending}
+        thinking={thinking}
+        onThinkingChange={setThinking}
+      />
     </Stack>
   );
 }
