@@ -188,7 +188,10 @@ async function runWordingPass(
   const outputName = `on-${variant}`;
   const booted: Booted = await boot({
     narrowing: NARROWING,
-    wording: name,
+    // "default" is a label for the report, not a wording the platform
+    // knows: leave ORCHESTRA_PLANNER_WORDING unset so the platform's own
+    // wording.Default() applies (its config rejects any unknown name).
+    ...(name === "default" ? {} : { wording: name }),
     logFile: path.join(outDir, `${outputName}.log`),
     ...(thinking === undefined ? {} : { thinking }),
     ...(repeatPenalty === undefined ? {} : { repeatPenalty }),
