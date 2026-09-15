@@ -6,13 +6,15 @@ import type { PlanResult } from "@/shared/api/client";
 
 import { AlternativesRow } from "./AlternativesRow";
 import type { SaveControlSlot } from "./answerSlots";
+import { nearestQuestion } from "./nearestQuestion";
 
-// Re-exported so `TurnList.tsx` can pull both slot types from this module
-// instead of importing "./answerSlots" directly - one fewer distinct
-// dependency there, which is what keeps it under oxlint's
-// `import/max-dependencies` now that it also imports `CircularProgress`
-// for the pending spinner (C4).
+// Re-exported so `TurnList.tsx` can pull both slot types and
+// `nearestQuestion` from this module instead of importing "./answerSlots"
+// and "./nearestQuestion" directly - two fewer distinct dependencies there,
+// which is what keeps it under oxlint's `import/max-dependencies` now that
+// it also imports `CircularProgress` for the pending spinner (C4).
 export type { ProposalSlot, SaveControlSlot } from "./answerSlots";
+export { nearestQuestion };
 
 /**
  * The `kind: "result"` branches of `AnswerResult` - `table`, `detail` and
@@ -36,7 +38,7 @@ export type { ProposalSlot, SaveControlSlot } from "./answerSlots";
 export function renderResultAnswer(
   result: PlanResult,
   originalQuery: string,
-  onAlternativeChosen: (question: string, preferred: string) => void,
+  onAlternativeChosen: (question: string, preferred: string, label: string) => void,
   renderSaveControl?: SaveControlSlot,
 ): JSX.Element | null {
   const matched = renderMatchedResult(result, originalQuery, renderSaveControl);
@@ -50,8 +52,8 @@ export function renderResultAnswer(
       {matched}
       <AlternativesRow
         alternatives={result.alternatives}
-        onSelect={(preferred) => {
-          onAlternativeChosen(originalQuery, preferred);
+        onSelect={(preferred, label) => {
+          onAlternativeChosen(originalQuery, preferred, label);
         }}
       />
     </>

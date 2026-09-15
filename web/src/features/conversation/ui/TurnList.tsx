@@ -9,7 +9,7 @@ import { ResultChoice, ResultForm } from "@/entities/rendering";
 import type { PlanResult } from "@/shared/api/client";
 
 import type { Turn } from "../model/turn";
-import { renderResultAnswer } from "./renderResultAnswer";
+import { nearestQuestion, renderResultAnswer } from "./renderResultAnswer";
 import type { ProposalSlot, SaveControlSlot } from "./renderResultAnswer";
 
 export type { ProposalSlotProps, SaveControlSlotProps } from "./answerSlots";
@@ -55,11 +55,13 @@ interface TurnListProps {
   /**
    * Chosen when a person clicks one of a `result`'s `AlternativesRow`
    * chips - the question that produced it (see `nearestQuestion` below),
-   * and the alternative's own `operationId` as `preferred`
-   * (docs/specs/shortlisting.md, section 4). `Conversation` re-asks with
-   * both, the same way `QuestionForm`'s own submit does.
+   * the alternative's own `operationId` as `preferred`, and its
+   * `displayName` as `label` (docs/specs/shortlisting.md, section 4).
+   * `Conversation` re-asks with `preferred` and `label`, the same way
+   * `QuestionForm`'s own submit sends a plain question - but the store
+   * appends a choice turn, not a second question turn, for this one.
    */
-  readonly onAlternativeChosen: (question: string, preferred: string) => void;
+  readonly onAlternativeChosen: (question: string, preferred: string, label: string) => void;
   readonly renderSaveControl?: SaveControlSlot | undefined;
   readonly renderProposal?: ProposalSlot | undefined;
 }
@@ -117,39 +119,11 @@ function PendingAnswer(): JSX.Element {
   );
 }
 
-/**
- * The text of the nearest `role: "question"` turn before `index`, walking
- * backward from it.
- *
- * A `kind: "ask"` answer carries the planner's own disambiguation question
- * (`PlanResult.question`), not what the person actually typed, and
- * resubmitting `answers` to `/api/plan` needs exactly that original text
- * (`docs/specs/orchestration.md` section 6). Rather than thread a `query`
- * field through `Turn` - every producer of an answer turn would have to
- * remember to set it, including `ResultForm`'s `onSubmitted` path, which has
- * no query to give - this reads it back out of the turn list `Conversation`
- * already keeps. Walking backward instead of just taking `turns[index - 1]`
- * keeps this correct once a choice has already been answered once: the
- * turn right before a second `ask` may be another answer, but the nearest
- * question is still the one to resend.
- */
-function nearestQuestion(turns: readonly Turn[], index: number): string {
-  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-    const candidate = turns[cursor];
-
-    if (candidate?.role === "question") {
-      return candidate.text;
-    }
-  }
-
-  return "";
-}
-
 interface TurnItemProps {
   readonly turn: Turn;
   readonly nearestQuestion: string;
   readonly onFormSubmitted: (result: PlanResult) => void;
-  readonly onAlternativeChosen: (question: string, preferred: string) => void;
+  readonly onAlternativeChosen: (question: string, preferred: string, label: string) => void;
   readonly renderSaveControl?: SaveControlSlot | undefined;
   readonly renderProposal?: ProposalSlot | undefined;
 }
@@ -173,6 +147,19 @@ function TurnItem({
     );
   }
 
+  if (turn.role === "choice") {
+    return (
+      <Paper
+        elevation={0}
+        sx={{ ...BUBBLE_SX, alignSelf: "flex-end", py: 0.5, px: 1.5, bgcolor: "action.hover" }}
+      >
+        <Typography variant="body2" color="textSecondary">
+          {`→ ${turn.label}`}
+        </Typography>
+      </Paper>
+    );
+  }
+
   return (
     <AnswerResult
       result={turn.result}
@@ -189,7 +176,7 @@ interface AnswerResultProps {
   readonly result: PlanResult;
   readonly originalQuery: string;
   readonly onFormSubmitted: (result: PlanResult) => void;
-  readonly onAlternativeChosen: (question: string, preferred: string) => void;
+  readonly onAlternativeChosen: (question: string, preferred: string, label: string) => void;
   readonly renderSaveControl?: SaveControlSlot | undefined;
   readonly renderProposal?: ProposalSlot | undefined;
 }

@@ -16,10 +16,14 @@ export interface ConversationState {
  * an alternative's `operationId` when the person chose one of a previous
  * `result`'s `alternatives` (docs/specs/shortlisting.md, section 4):
  * `/api/plan` narrows to that one operation and the planner fills in its
- * parameters, in place of an ordinary question.
+ * parameters, in place of an ordinary question. `label` is that
+ * alternative's own `displayName` - present exactly when `preferred` is,
+ * and what lets the store add a choice turn instead of a second question
+ * turn for the same text.
  */
 export interface AskOptions {
   readonly preferred?: string;
+  readonly label?: string;
 }
 
 /** What a screen can do with the conversation it asks: read it, add to it, end it. */
@@ -37,7 +41,13 @@ export interface ConversationHandle extends ConversationState {
 
 export interface ConversationStoreValue {
   getConversation: (key: string) => ConversationState;
-  ask: (key: string, query: string, workspaceId?: string, preferred?: string) => Promise<void>;
+  ask: (
+    key: string,
+    query: string,
+    workspaceId?: string,
+    preferred?: string,
+    label?: string,
+  ) => Promise<void>;
   submitForm: (key: string, result: PlanResult) => void;
   newConversation: (key: string) => void;
 }
@@ -67,7 +77,7 @@ export function useConversation(key: string, workspaceId?: string): Conversation
         throw new Error(NOT_WRAPPED);
       }
 
-      return store.ask(key, query, workspaceId, options?.preferred);
+      return store.ask(key, query, workspaceId, options?.preferred, options?.label);
     },
     [store, key, workspaceId],
   );

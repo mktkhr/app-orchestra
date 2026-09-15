@@ -123,5 +123,10 @@ describe("App", () => {
         preferred: "createInventoryItem",
       }),
     );
+
+    // The chip click reads as a choice, not the question being sent again
+    // (docs/specs/shortlisting.md, section 4, H5).
+    expect(await screen.findByText("→ 在庫を登録")).toBeTruthy();
+    expect(screen.getAllByText("在庫の一覧を見せて")).toHaveLength(1);
   });
 });

@@ -61,6 +61,12 @@ describe("Conversation, a result with alternatives", () => {
     expect(postPlan).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: QUESTION, preferred: "op-3" }),
     );
+
+    // The chip click is a choice, not a second question - the transcript
+    // shows "→ 候補3", not the question text a second time
+    // (docs/specs/shortlisting.md, section 4, H5).
+    expect(await screen.findByText("→ 候補3")).toBeTruthy();
+    expect(screen.getAllByText(QUESTION)).toHaveLength(1);
   });
 
   it("activates a chip on Enter, the same as a click", async () => {

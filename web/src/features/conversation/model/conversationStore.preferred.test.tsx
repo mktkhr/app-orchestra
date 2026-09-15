@@ -20,7 +20,7 @@ function Probe({ conversationKey }: { readonly conversationKey: string }): JSX.E
     <div>
       <span data-testid={`turns-${conversationKey}`}>
         {conversation.turns
-          .map((turn) => (turn.role === "question" ? turn.text : JSON.stringify(turn.result)))
+          .map((turn) => (turn.role === "answer" ? JSON.stringify(turn.result) : turn.text))
           .join("|")}
       </span>
       <button
@@ -34,18 +34,32 @@ function Probe({ conversationKey }: { readonly conversationKey: string }): JSX.E
   );
 }
 
-/** Asks "chat" with `preferred: "op-2"` on click - `PreferredProbe`'s own test below. */
+/**
+ * Asks "chat" with `preferred: "op-2"` and `label: "候補2"` on click -
+ * `PreferredProbe`'s own tests below. Renders the turns as `role:text` so a
+ * test can tell a `choice` turn (label) apart from a `question` turn (text)
+ * without reaching into the store directly.
+ */
 function PreferredProbe(): JSX.Element {
   const conversation = useConversation("chat");
 
   return (
-    <button
-      onClick={() => {
-        void conversation.ask("質問", { preferred: "op-2" });
-      }}
-    >
-      ask-preferred
-    </button>
+    <div>
+      <span data-testid="turns-chat">
+        {conversation.turns
+          .map((turn) =>
+            turn.role === "answer" ? JSON.stringify(turn.result) : `${turn.role}:${turn.text}`,
+          )
+          .join("|")}
+      </span>
+      <button
+        onClick={() => {
+          void conversation.ask("質問", { preferred: "op-2", label: "候補2" });
+        }}
+      >
+        ask-preferred
+      </button>
+    </div>
   );
 }
 
@@ -75,6 +89,27 @@ describe("conversationStore, preferred and alternatives", () => {
     });
 
     expect(postPlan).toHaveBeenCalledWith({ query: "質問", preferred: "op-2" });
+  });
+
+  it("appends a choice turn, not a second question turn, when ask is given preferred and label", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(postPlan).mockResolvedValue({ kind: "none", message: "結果はありません。" });
+
+    render(
+      <ConversationProvider>
+        <PreferredProbe />
+      </ConversationProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "ask-preferred" }));
+    await waitFor(() => {
+      expect(postPlan).toHaveBeenCalled();
+    });
+
+    expect(screen.getByTestId("turns-chat").textContent).toBe(
+      'choice:質問|{"kind":"none","message":"結果はありません。"}',
+    );
   });
 
   it("keeps alternatives on a result turn, and leaves them off a turn whose response has none", async () => {

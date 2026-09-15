@@ -13,7 +13,7 @@ interface Alternative {
 
 interface AlternativesRowProps {
   readonly alternatives: PlanResult["alternatives"];
-  readonly onSelect: (operationId: string) => void;
+  readonly onSelect: (operationId: string, displayName: string) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,7 +86,7 @@ export function AlternativesRow({
           title={alternative.service}
           clickable
           onClick={() => {
-            onSelect(alternative.operationId);
+            onSelect(alternative.operationId, alternative.displayName);
           }}
         />
       ))}

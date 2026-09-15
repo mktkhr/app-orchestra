@@ -26,7 +26,7 @@ function Probe({
     <div>
       <span data-testid={`turns-${conversationKey}`}>
         {conversation.turns
-          .map((turn) => (turn.role === "question" ? turn.text : JSON.stringify(turn.result)))
+          .map((turn) => (turn.role === "answer" ? JSON.stringify(turn.result) : turn.text))
           .join("|")}
       </span>
       <button

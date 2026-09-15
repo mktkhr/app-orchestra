@@ -9,8 +9,24 @@ import {
   type ConversationStoreValue,
 } from "./conversationContext";
 import { toContextTurns, type ContextTurn } from "./toContextTurns";
+import type { Turn } from "./turn";
 
 const EMPTY_CONVERSATION: ConversationState = { turns: [], pending: false, error: null };
+
+/**
+ * The turn `ask` (below) appends before its request resolves. A chip click
+ * carries both `preferred` and `label`, and is a choice, not a new question
+ * (docs/specs/shortlisting.md, section 4, H5): the transcript must not show
+ * `query` a second time, but `nearestQuestion` (`TurnList`) still needs
+ * `query` on this turn so any answer's own chip resends the same original
+ * question. An ordinary question - no `preferred`, or `preferred` with no
+ * `label` - appends the plain question turn it always has.
+ */
+function newQuestionTurn(query: string, preferred?: string, label?: string): Turn {
+  return preferred === undefined || label === undefined
+    ? { id: nextTurnId(), role: "question", text: query }
+    : { id: nextTurnId(), role: "choice", text: query, label };
+}
 
 interface ConversationProviderProps {
   readonly children: ReactNode;
@@ -59,7 +75,13 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
   );
 
   const ask = useCallback(
-    async (key: string, query: string, workspaceId?: string, preferred?: string): Promise<void> => {
+    async (
+      key: string,
+      query: string,
+      workspaceId?: string,
+      preferred?: string,
+      label?: string,
+    ): Promise<void> => {
       // Read before `update` adds this question as its own turn - the turns
       // this question follows, not the one it is about to add.
       const contextTurns: readonly ContextTurn[] = toContextTurns(
@@ -70,7 +92,7 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
         ...current,
         error: null,
         pending: true,
-        turns: [...current.turns, { id: nextTurnId(), role: "question", text: query }],
+        turns: [...current.turns, newQuestionTurn(query, preferred, label)],
       }));
 
       try {

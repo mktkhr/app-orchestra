@@ -68,10 +68,11 @@ export function Conversation({
    * planner picked (docs/specs/shortlisting.md, section 4): re-asks the
    * same question with that alternative's `operationId` as `preferred`, so
    * `/api/plan` narrows to it alone and the planner fills in its
-   * parameters.
+   * parameters. `label` (the alternative's `displayName`) rides along so
+   * the store can add a choice turn instead of asking the question again.
    */
-  const handleAlternativeChosen = (query: string, preferred: string): void => {
-    void ask(query, { preferred });
+  const handleAlternativeChosen = (query: string, preferred: string, label: string): void => {
+    void ask(query, { preferred, label });
   };
 
   /**

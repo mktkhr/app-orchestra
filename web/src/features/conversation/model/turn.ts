@@ -20,4 +20,20 @@ export interface AnswerTurn {
   readonly result: PlanResult;
 }
 
-export type Turn = QuestionTurn | AnswerTurn;
+/**
+ * A person picking one of a `result`'s alternatives
+ * (docs/specs/shortlisting.md, section 4, H5) - not a new question. `text`
+ * is the original question `preferred` re-asks with, so `nearestQuestion`
+ * (`TurnList`) can still find it for any answer that follows; `label` is
+ * the alternative's own `displayName`, which is what this turn actually
+ * shows. Kept distinct from `QuestionTurn` so a chip click never reads, to
+ * the person, as the question being sent a second time.
+ */
+export interface ChoiceTurn {
+  readonly id: string;
+  readonly role: "choice";
+  readonly text: string;
+  readonly label: string;
+}
+
+export type Turn = QuestionTurn | AnswerTurn | ChoiceTurn;
