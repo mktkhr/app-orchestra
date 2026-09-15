@@ -6327,3 +6327,31 @@ planner, and alternatives - the thing that turns a wrong pick into one
 click instead of a round trip - do not exist at all without it. D2's
 revision now has its numbers in front of it; that decision belongs to its
 owner (AC-H-108).
+
+## 2026-09-15 `eval-shortlist` gains `WORDING=`: the harness change docs/plans/wording.md Task 2 asks for
+
+`make eval-shortlist WORDING=v2-commit,v3-ask-on-collision` now passes
+`--wording $(WORDING)` through to `e2e/shortlist/run.ts`; without
+`WORDING` the target is byte-identical to before (`$(if $(WORDING),...)`
+expands empty). This is the runner half of `docs/plans/wording.md` Task 2,
+done in parallel with Task 1's `wording` package in
+`services/platform/internal/adapter/planner/wording` - the only thing the
+two share is the environment variable name `ORCHESTRA_PLANNER_WORDING`,
+agreed in the plan itself, not any code.
+
+`run.ts --wording a,b,c` boots one platform per named wording (narrowing
+on, K=20, `ORCHESTRA_PLANNER_WORDING=<name>` in its environment), always
+including `v1` first even when not named, and writes each pass's rows to
+`out/on-<name>.jsonl` and its miss list to `out/misses-<name>.txt`.
+Without `--wording` it is unchanged: `on.jsonl`/`off.jsonl`,
+`--on-only`/`--off-only` all still work exactly as before. `report.ts`
+gained `renderWordingReport` (one block per wording, `v1` first, the
+stand-in picker's row once at the bottom); `print-report.ts` now reads
+whichever `on-*.jsonl` files exist, and the plain `on.jsonl`/`off.jsonl`
+pair when both are present, instead of assuming exactly the latter.
+
+`make check` calls no model: `misses.test.ts` and the new
+`renderWordingReport` tests in `report.test.ts` use fakes only, the same
+way `score.test.ts` and the rest of `report.test.ts` already did.
+`docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read 102116 before
+this work and 102116 after - no request left this session.
