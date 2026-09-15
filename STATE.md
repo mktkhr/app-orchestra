@@ -1,9 +1,44 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-15 (two defects the shortlisting fixture measured,
-fixed: `ask_user`'s free-text `service` and no `temperature`)_
+_Last updated: 2026-09-15 (three defects the shortlisting fixture measured,
+fixed: `ask_user`'s free-text `service`, no `temperature`, no `max_tokens`)_
 
 ## Summary
+
+**2026-09-15 - a repetition loop with no `max_tokens` cost the whole 120s
+client timeout; it now costs 1024 tokens and degrades to `DecisionNone`.**
+Defect 3, reproduced deterministically after the two below: fixture
+platform, narrowing on, `POST /api/plan {"query":"明細を1件確認したい"}`.
+Narrowing took 9ms + 88ms, then the chat completion never returned headers
+at all; after exactly 120s the platform answered 500 "context deadline
+exceeded (Client.Timeout exceeded while awaiting headers)", and
+llama-swap's own log read `POST /v1/chat/completions 499 0 ... 2m0.000s` -
+the model was still generating when the client gave up. 4 of the first 42
+questions in the 100-question run hit this (a20, b07, b08, b12), each
+costing 120s and an error. Cause: `chat.Request` sent no `max_tokens` at
+all, so llama-server's own default (`n_predict = -1`, unbounded) applied;
+at temperature 0 (defect 2, below) with twenty strict tool schemas
+offered, the model can fall into a repetition loop with nothing to stop
+it - every planning answer is short, so an unbounded budget buys nothing
+and, on a loop, costs the whole timeout for nothing in return.
+`chat.Request` gains `MaxTokens *int`; `chat.MaxTokens()` builds the fixed
+value (1024) every planning call now sends, in both
+`toolcall.Planner.Plan` and both of `jsonmode.Planner.complete`'s
+attempts. A response whose `finish_reason` is `chat.FinishReasonLength`
+("length") is never decoded as if it were a real answer - `toolcall`
+answers `usecase.DecisionNone` directly; `jsonmode` feeds it into its
+existing one-retry bad-answer path (a new `ErrTruncated` sentinel) and,
+unlike a genuinely invalid answer twice in a row (still an error), two
+truncated answers in a row also resolve to `DecisionNone`, never an error
+
+- there is no bug in the model's JSON to report, it simply ran out of
+  budget. Both paths log one `slog.Default().WarnContext` line first, with
+  `chat.Preview` (first 200 runes) of the truncated content, so the next
+  person can see what the loop looked like without reproducing the 120s
+  timeout to find it. `docker logs llama-swap 2>&1 | grep -c 'POST /v1/'`
+  read 101396 both before and after this work's own `make check` - no model
+  call was made. See `DECISIONS.md`, 2026-09-15 ("A repetition loop with no
+  budget: the third defect the shortlisting fixture measured").
 
 **2026-09-15 - `ask_user` no longer asks the model to invent a service
 name; every planning call is now deterministic.** Two defects the

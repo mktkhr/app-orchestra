@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -71,6 +72,7 @@ func TestCompleteSendsModelMessagesAndTools(t *testing.T) {
 			},
 		},
 		Temperature: chat.Zero(),
+		MaxTokens:   chat.MaxTokens(),
 	}
 
 	resp, err := client.Complete(t.Context(), &req)
@@ -93,6 +95,13 @@ func TestCompleteSendsModelMessagesAndTools(t *testing.T) {
 	// two runs, nothing else changed. Every planning call now fixes it at
 	// 0 explicitly.
 	assert.InDelta(t, 0.0, gotBody["temperature"], 0)
+
+	// Defect 3 (docs/specs/shortlisting.md, measured 2026-09-15; see
+	// chat.MaxTokens's own doc comment): with no max_tokens on the wire, an
+	// unbounded llama-server default let a repetition loop run out the
+	// full 120s client timeout, 500ing 4 of the first 42 questions in the
+	// 100-question run. Every planning call now bounds it at 1024.
+	assert.InDelta(t, 1024.0, gotBody["max_tokens"], 0)
 
 	require.Len(t, resp.Message.ToolCalls, 1)
 	assert.Equal(t, "ListInventoryItems", resp.Message.ToolCalls[0].Function.Name)
@@ -251,4 +260,23 @@ func TestCompleteReturnsErrorWhenTheContextIsAlreadyDone(t *testing.T) {
 
 	_, err := client.Complete(ctx, &chat.Request{Messages: []chat.Message{{Role: "user", Content: "hi"}}})
 	require.Error(t, err)
+}
+
+// TestPreviewLeavesAShortStringUntouched and
+// TestPreviewTruncatesALongStringToPreviewLen are defect 3's logging half
+// (docs/specs/shortlisting.md, measured 2026-09-15; see chat.MaxTokens's
+// own doc comment): Preview is what a planner logs alongside
+// FinishReasonLength, so it must show a short answer whole and a
+// repetition loop's long one bounded, never flooding the log with it.
+func TestPreviewLeavesAShortStringUntouched(t *testing.T) {
+	assert.Equal(t, "短い answer", chat.Preview("短い answer"))
+}
+
+func TestPreviewTruncatesALongStringToPreviewLen(t *testing.T) {
+	long := strings.Repeat("あ", chat.PreviewLen+50)
+
+	preview := chat.Preview(long)
+
+	assert.Len(t, []rune(preview), chat.PreviewLen)
+	assert.Equal(t, strings.Repeat("あ", chat.PreviewLen), preview)
 }

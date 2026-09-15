@@ -5995,3 +5995,83 @@ was made and verified against the two defects' own root cause (the
 schema/prompt shape and the wire request), not by re-running the
 100-question fixture, which stays a manual, opt-in exercise
 (`ORCHESTRA_LIVE_LLM=1`).
+
+## 2026-09-15 A repetition loop with no budget: the third defect the shortlisting fixture measured
+
+Reproduced deterministically after the two defects fixed earlier the same
+day (see "Two defects the shortlisting fixture measured, fixed", above):
+fixture platform, narrowing on, `POST /api/plan
+{"query":"明細を1件確認したい"}`. Narrowing took 9ms + 88ms, then the chat
+completion never returned headers at all; after exactly 120s (the
+transport's own `requestTimeout`) the platform answered 500 "context
+deadline exceeded (Client.Timeout exceeded while awaiting headers)", and
+llama-swap's own log read `POST /v1/chat/completions 499 0 ...
+2m0.000s` - the model was still generating when the client gave up. 4 of
+the first 42 questions in the 100-question run hit this (a20, b07, b08,
+b12), each costing the full 120s and an error.
+
+Cause: `chat.Request` sent no `max_tokens` at all, so llama-server's own
+default (`n_predict = -1`, unbounded) applied. At temperature 0 (the
+previous defect's fix) with twenty strict tool schemas offered, the model
+can fall into a repetition loop with nothing to stop it - and every
+planning answer this product ever needs is short, one tool call or one
+sentence, so an unbounded budget buys nothing on a clean answer and costs
+the entire timeout on a looping one.
+
+Decision: `chat.Request` gains `MaxTokens *int`, the same pointer pattern
+`Temperature` already established (nil is genuinely "unset"). `MaxTokens`
+builds the fixed value every planning call now sends - `1024`, generous
+enough for the largest real answer (a `propose_panel` call with `chart`
+and `transform` both filled in) with room to spare, tight enough that a
+loop costs a few seconds of generation instead of two minutes of silence.
+Both `toolcall.Planner.Plan`'s one request and both of
+`jsonmode.Planner.complete`'s attempts (with and without
+`response_format`) now set it. The reproduction above lives in
+`planningMaxTokens`'s own doc comment in `chat/client.go`, next to the
+constant it explains, per the request that raised this defect.
+
+A response whose `finish_reason` comes back `chat.FinishReasonLength`
+("length") is a truncated answer, and a truncated answer - a partial tool
+call, a JSON object that never closed - is not a decision to decode, valid
+or not: decoding it anyway risks acting on a hallucinated fragment the
+model never actually finished choosing. `toolcall.Planner.Plan` treats it
+exactly like no tool call at all: `usecase.DecisionNone`, no attempt to
+decode `resp.Message.ToolCalls[0]`. `jsonmode.Planner.Plan` folds it into
+the retry mechanism Task 11 already built for a bad answer - a new
+`ErrTruncated` sentinel stands in for a parse error, so the same
+quote-it-back retry prompt fires - but with one difference from a
+genuinely invalid answer: exhausting both attempts on truncation alone now
+ends in `usecase.DecisionNone`, not the `"planner gave up after %d
+attempts"` error two bad JSON answers in a row still produce. The
+distinction is deliberate - a truncated answer is not a bug in the model's
+JSON to report, it simply ran out of budget, and "no usable decision" is
+the honest description of that outcome, the same one `toolcall.Planner`
+gives for an empty tool-call list.
+
+Both paths log one line at warn (`slog.Default().WarnContext`) before
+degrading, carrying `chat.Preview` of the truncated content - the first
+200 runes, via a small exported helper rather than duplicating a
+truncation loop in both planner packages. This is the whole point of the
+fix's third requirement: the next person debugging a slow or wrong plan
+should be able to see what a repetition loop actually generated from the
+log line alone, without spending 120s reproducing the timeout that first
+surfaced it.
+
+**Verification.** `docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read
+101396 both before this work and after `make check`'s Go-side gates
+(`services-fmt-check`, `services-lint`, `services-test`, `services-build`,
+`guard-suppressions`, `guard-arch`, `guard-fsd`, `guard-coverage`, all
+green) - no model call was made anywhere in the loop. New tests: at the
+transport boundary, `client_test.go` asserts `"max_tokens":1024` lands on
+the wire alongside `"temperature":0`, and exercises `chat.Preview` on both
+a short string (untouched) and one longer than `PreviewLen` (cut to
+exactly `PreviewLen` runes, not bytes - the fixture uses multi-byte
+Japanese characters to catch a byte-slicing mistake). At the planner
+boundary: `toolcall`'s `TestPlanMapsATruncatedAnswerOntoDecisionNone`
+(a truncated tool call maps to `DecisionNone`, never decoded);
+`jsonmode`'s `TestPlanRetriesOnceOnATruncatedAnswer` (one truncated
+answer, one clean one, succeeds after the retry) and
+`TestPlanOnTwoTruncatedAnswersInARowReturnsDecisionNoneNotAnError` (two in
+a row still resolves to `DecisionNone`, not the pre-existing
+"gave up" error `TestPlanGivesUpAfterASecondBadAnswer` still asserts for a
+genuinely invalid answer twice).

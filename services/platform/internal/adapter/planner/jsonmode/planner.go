@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"sort"
@@ -46,6 +47,22 @@ var ErrEmptyResponse = errors.New("planner returned an empty response")
 // the expected JSON object, after stripping any surrounding prose or
 // markdown fence.
 var ErrInvalidJSON = errors.New("planner returned invalid JSON")
+
+// roleUser mirrors chat.Message.Role's "user" value: named once so the
+// literal doesn't drift and to satisfy goconst
+// (harness/quality/go/golangci.yml, min-occurrences: 3).
+const roleUser = "user"
+
+// ErrTruncated stands in for a parse error when the model's answer was cut
+// off by chat.MaxTokens (defect 3, docs/specs/shortlisting.md - see
+// chat.MaxTokens's own doc comment for the measured reproduction) before it
+// could finish: there is nothing to parse, valid or not, so this is fed
+// into the same retry path as ErrInvalidJSON rather than treated as a
+// distinct failure - and, unlike a genuinely invalid answer, exhausting the
+// retries on this alone ends in usecase.DecisionNone, not an error, since
+// there is no bug in the model's JSON to report - it simply ran out of
+// budget.
+var ErrTruncated = errors.New("planner's answer was truncated by max_tokens")
 
 // ErrUnknownKind is returned when a parsed JSON object's "kind" is none of
 // call, ask, none or list_capabilities.
@@ -178,11 +195,35 @@ func (p *Planner) Plan(
 
 	var lastErr error
 
+	truncated := false
+
 	for range maxAttempts {
 		resp, err := p.complete(ctx, messages, offerProposePanel)
 		if err != nil {
 			return usecase.Decision{}, err
 		}
+
+		// Defect 3 (docs/specs/shortlisting.md, measured 2026-09-15;
+		// chat.MaxTokens's own doc comment carries the reproduction): a
+		// truncated answer is never valid JSON to parse - there is nothing
+		// here worth decoding, only worth logging so the next person can
+		// see what the repetition loop looked like without reproducing the
+		// 120s timeout that found it.
+		if resp.FinishReason == chat.FinishReasonLength {
+			slog.Default().WarnContext(ctx, "planner truncated by max_tokens",
+				slog.String("content", chat.Preview(resp.Message.Content)))
+
+			truncated = true
+			lastErr = ErrTruncated
+			messages = append(messages,
+				chat.Message{Role: "assistant", Content: resp.Message.Content},
+				chat.Message{Role: roleUser, Content: retryPrompt(resp.Message.Content, ErrTruncated)},
+			)
+
+			continue
+		}
+
+		truncated = false
 
 		decision, parseErr := p.parse(resp.Message.Content, offerProposePanel)
 		if parseErr == nil {
@@ -192,8 +233,17 @@ func (p *Planner) Plan(
 		lastErr = parseErr
 		messages = append(messages,
 			chat.Message{Role: "assistant", Content: resp.Message.Content},
-			chat.Message{Role: "user", Content: retryPrompt(resp.Message.Content, parseErr)},
+			chat.Message{Role: roleUser, Content: retryPrompt(resp.Message.Content, parseErr)},
 		)
+	}
+
+	// Every attempt was truncated: this is "no usable decision", the same
+	// as an empty tool call list would be for toolcall.Planner, never a
+	// reason to answer with an error (defect 3) - unlike exhausting the
+	// retries on a genuinely invalid answer, which still surfaces as an
+	// error below.
+	if truncated {
+		return usecase.Decision{Kind: usecase.DecisionNone}, nil
 	}
 
 	return usecase.Decision{}, fmt.Errorf("planner gave up after %d attempts: %w", maxAttempts, lastErr)
@@ -227,7 +277,7 @@ func (p *Planner) complete(ctx context.Context, messages []chat.Message, offerPr
 	}
 
 	resp, err := p.client.Complete(ctx, &chat.Request{
-		Messages: messages, ResponseFormat: responseFormat, Temperature: chat.Zero(),
+		Messages: messages, ResponseFormat: responseFormat, Temperature: chat.Zero(), MaxTokens: chat.MaxTokens(),
 	})
 	if err == nil {
 		return resp, nil
@@ -237,7 +287,9 @@ func (p *Planner) complete(ctx context.Context, messages []chat.Message, offerPr
 		return chat.Response{}, fmt.Errorf("calling chat completion: %w", err)
 	}
 
-	resp, err = p.client.Complete(ctx, &chat.Request{Messages: messages, Temperature: chat.Zero()})
+	resp, err = p.client.Complete(ctx, &chat.Request{
+		Messages: messages, Temperature: chat.Zero(), MaxTokens: chat.MaxTokens(),
+	})
 	if err != nil {
 		return chat.Response{}, fmt.Errorf("calling chat completion without response_format: %w", err)
 	}
@@ -566,7 +618,7 @@ func buildMessages(systemPrompt, query string, answers []usecase.Answer) []chat.
 
 	return []chat.Message{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: content},
+		{Role: roleUser, Content: content},
 	}
 }
 

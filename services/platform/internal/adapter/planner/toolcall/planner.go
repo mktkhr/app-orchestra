@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
@@ -78,9 +79,26 @@ func (p *Planner) Plan(
 		Messages:    buildMessages(query, answers, turns),
 		Tools:       shapeTools(tools),
 		Temperature: chat.Zero(),
+		MaxTokens:   chat.MaxTokens(),
 	})
 	if err != nil {
 		return usecase.Decision{}, fmt.Errorf("calling chat completion: %w", err)
+	}
+
+	// Defect 3 (docs/specs/shortlisting.md, measured 2026-09-15,
+	// chat.MaxTokens's own doc comment): a model that hit MaxTokens without
+	// finishing (a repetition loop, most often) never produced a usable
+	// tool call, whatever partial content or arguments it managed to emit
+	// before being cut off - this is "no usable decision", the same as no
+	// tool call at all, never a reason to try decoding it. Logged at warn,
+	// not error: no request failed, an answer was simply unusable, but the
+	// next person debugging a slow or wrong plan needs to see the loop
+	// without reproducing the 120s timeout to find it.
+	if resp.FinishReason == chat.FinishReasonLength {
+		slog.Default().WarnContext(ctx, "planner truncated by max_tokens",
+			slog.String("content", chat.Preview(resp.Message.Content)))
+
+		return usecase.Decision{Kind: usecase.DecisionNone}, nil
 	}
 
 	if len(resp.Message.ToolCalls) == 0 {

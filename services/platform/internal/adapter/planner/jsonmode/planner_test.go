@@ -82,6 +82,21 @@ func chatContent(t *testing.T, body string) string {
 	return `{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":` + string(raw) + `}}]}`
 }
 
+// chatTruncatedContent is chatContent's finish_reason "length" twin: what a
+// repetition loop looked like when measured (docs/specs/shortlisting.md,
+// 2026-09-15) - the model still generating, cut off mid-answer by
+// chat.MaxTokens rather than finishing on its own.
+func chatTruncatedContent(t *testing.T, body string) string {
+	t.Helper()
+
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshaling fixture content: %v", err)
+	}
+
+	return `{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":` + string(raw) + `}}]}`
+}
+
 // plannerFixture bundles a Planner under test with every request its stub
 // server received, so a test can both drive Plan and inspect what a retry
 // turn actually said - one struct field each, rather than a two-value
@@ -378,6 +393,42 @@ func TestPlanRetriesOnceOnUnparseableJSON(t *testing.T) {
 	)
 
 	decision, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	require.NoError(t, err)
+	assert.Equal(t, usecase.DecisionNone, decision.Kind)
+	assert.Len(t, fixture.requests, 2)
+}
+
+// TestPlanRetriesOnceOnATruncatedAnswer is defect 3 (measured 2026-09-15,
+// docs/specs/shortlisting.md; see chat.MaxTokens's own doc comment for the
+// reproduction): a finish_reason "length" answer is fed into the same
+// retry path as an unparseable one - there is nothing to parse in a
+// truncated answer either - and a clean second answer still produces a
+// real decision.
+func TestPlanRetriesOnceOnATruncatedAnswer(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(),
+		chatTruncatedContent(t, `{"kind":"call","service":"inventory","operationId":"ListInvent`),
+		chatContent(t, `{"kind":"none"}`),
+	)
+
+	decision, err := fixture.planner.Plan(context.Background(), "明細を1件確認したい", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	require.NoError(t, err)
+	assert.Equal(t, usecase.DecisionNone, decision.Kind)
+	assert.Len(t, fixture.requests, 2)
+}
+
+// TestPlanOnTwoTruncatedAnswersInARowReturnsDecisionNoneNotAnError is
+// defect 3's other half: unlike TestPlanGivesUpAfterASecondBadAnswer (a
+// genuinely invalid answer twice, which still surfaces as an error), a
+// model that never got the budget to finish on either attempt produced no
+// usable decision, not a bug worth reporting as one - it must degrade to
+// usecase.DecisionNone, never a 500.
+func TestPlanOnTwoTruncatedAnswersInARowReturnsDecisionNoneNotAnError(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(),
+		chatTruncatedContent(t, `{"kind":"call","service":"inventory","operationId":"ListInvent`),
+		chatTruncatedContent(t, `{"kind":"call","service":"inventory","operationId":"ListInvent`),
+	)
+
+	decision, err := fixture.planner.Plan(context.Background(), "明細を1件確認したい", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
 	require.NoError(t, err)
 	assert.Equal(t, usecase.DecisionNone, decision.Kind)
 	assert.Len(t, fixture.requests, 2)

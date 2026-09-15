@@ -132,6 +132,32 @@ _Nothing in progress._
   `make check` calls no model throughout (`docker logs llama-swap 2>&1 | grep
 -c 'POST /v1/'`: 101249 before and after). See `DECISIONS.md`, 2026-09-15
   ("Two defects the shortlisting fixture measured, fixed").
+- **Fixed a third defect the same fixture reproduced deterministically:
+  a repetition loop with no `max_tokens` cost the full 120s client
+  timeout.** `POST /api/plan {"query":"明細を1件確認したい"}` against the
+  fixture platform (narrowing on) never got a chat-completion response
+  back at all - the model kept generating past the client's 120s timeout,
+  which then answered 500 "context deadline exceeded", 4 of the first 42
+  questions in the 100-question run (a20, b07, b08, b12). `chat.Request`
+  sent no `max_tokens`, so llama-server's unbounded default
+  (`n_predict = -1`) applied; at temperature 0 (the second defect, above)
+  with twenty strict tool schemas offered, nothing stopped a loop, and
+  every planning answer is short enough that an unbounded budget buys
+  nothing. `chat.Request.MaxTokens *int` is now sent as 1024
+  (`chat.MaxTokens()`) on every planning call in both `toolcall` and
+  `jsonmode` (both of the latter's attempts). A `finish_reason` of
+  `chat.FinishReasonLength` ("length") is never decoded as a real answer:
+  `toolcall.Planner.Plan` maps it straight to `usecase.DecisionNone`;
+  `jsonmode.Planner.Plan` feeds it into its existing one-retry bad-answer
+  path (a new `ErrTruncated` sentinel) and, unlike two genuinely invalid
+  answers in a row (still an error), two truncated answers in a row also
+  resolve to `DecisionNone`, never an error. Both log one
+  `slog.Default().WarnContext` line first, with `chat.Preview` (first 200
+  runes) of the truncated content. `docker logs llama-swap 2>&1 | grep -c
+'POST /v1/'` read 101396 both before and after this fix's own
+  `make check` - no model call was made. See `DECISIONS.md`, 2026-09-15
+  ("A repetition loop with no budget: the third defect the shortlisting
+  fixture measured").
 - **Let the reranker read the written examples.** A new recall row,
   `e5-large-q8+reranker(w)+written` (`e2e/narrowing/utterances/reranker-written.ts`),
   reranks on `combinedTextOf(operation)` plus that operation's own written

@@ -101,6 +101,7 @@ type Request struct {
 	Tools          []ToolDefinition
 	ResponseFormat *ResponseFormat
 	Temperature    *float64
+	MaxTokens      *int
 }
 
 // Zero builds Request.Temperature's fixed value for every planning call
@@ -112,6 +113,60 @@ func Zero() *float64 {
 	temperature := 0.0
 
 	return &temperature
+}
+
+// planningMaxTokens is Request.MaxTokens's fixed value for every planning
+// call (defect 3, docs/specs/shortlisting.md, measured 2026-09-15).
+//
+// Reproduction: fixture platform, narrowing on, `POST /api/plan
+// {"query":"明細を1件確認したい"}`. Narrowing took 9ms + 88ms, then the chat
+// completion never returned headers at all; after exactly 120s (the
+// client's own requestTimeout) the platform answered 500 "context deadline
+// exceeded (Client.Timeout exceeded while awaiting headers)", and
+// llama-swap's own log read `POST /v1/chat/completions 499 0 ... 2m0.000s`
+// - the model was still generating when the client gave up. 4 of the
+// first 42 questions in the 100-question run hit this (a20, b07, b08,
+// b12), each costing the full 120s and an error.
+//
+// Cause: Request sent no `max_tokens` at all, so llama-server's own
+// default (`n_predict = -1`, unbounded) applied; at temperature 0
+// (defect 2) with twenty strict tool schemas offered, the model can fall
+// into a repetition loop with nothing to stop it. Every planning answer is
+// short - one tool call or one sentence - so an unbounded budget buys
+// nothing and, on a loop, costs the whole timeout for nothing in return.
+const planningMaxTokens = 1024
+
+// MaxTokens builds Request.MaxTokens's fixed value for every planning
+// call, for the same "mutable global" reason Zero returns a fresh pointer
+// rather than sharing one.
+func MaxTokens() *int {
+	maxTokens := planningMaxTokens
+
+	return &maxTokens
+}
+
+// FinishReasonLength is the OpenAI-compatible finish_reason a Response
+// carries when the endpoint stopped generating only because it hit
+// Request.MaxTokens, not because it produced a complete answer - the
+// signal a caller checks to tell a truncated (and so unusable) answer from
+// a real one, rather than trying to parse or tool-call-decode it anyway.
+const FinishReasonLength = "length"
+
+// PreviewLen bounds how much of a truncated answer's content Preview
+// keeps - enough for a log line to show what a repetition loop (see
+// planningMaxTokens) looked like, without the log line becoming the loop's
+// own output.
+const PreviewLen = 200
+
+// Preview truncates s to at most PreviewLen runes, for logging a
+// FinishReasonLength answer's content without flooding the log with it.
+func Preview(s string) string {
+	r := []rune(s)
+	if len(r) <= PreviewLen {
+		return s
+	}
+
+	return string(r[:PreviewLen])
 }
 
 // Response is the one choice this package reads back: n=1 is implicit,
@@ -131,6 +186,7 @@ type wireRequest struct {
 	Tools          []ToolDefinition `json:"tools,omitempty"`
 	ResponseFormat *ResponseFormat  `json:"response_format,omitempty"`
 	Temperature    *float64         `json:"temperature,omitempty"`
+	MaxTokens      *int             `json:"max_tokens,omitempty"`
 }
 
 // wireResponse is the JSON actually read back: only the one choice's
@@ -171,6 +227,7 @@ func (c *Client) Complete(ctx context.Context, req *Request) (Response, error) {
 		Tools:          req.Tools,
 		ResponseFormat: req.ResponseFormat,
 		Temperature:    req.Temperature,
+		MaxTokens:      req.MaxTokens,
 	})
 	if err != nil {
 		return Response{}, fmt.Errorf("encoding chat completion request: %w", err)

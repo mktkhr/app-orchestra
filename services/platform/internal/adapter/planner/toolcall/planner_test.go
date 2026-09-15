@@ -315,6 +315,39 @@ func TestPlanMapsNoToolCallOntoDecisionNone(t *testing.T) {
 	assert.Equal(t, usecase.DecisionNone, decision.Kind)
 }
 
+// lengthResponse mirrors what a repetition loop looked like when measured
+// (docs/specs/shortlisting.md, 2026-09-15): a truncated tool call whose
+// arguments never closed, and finish_reason "length" instead of
+// "tool_calls" naming why.
+const lengthResponse = `{
+  "choices": [{
+    "finish_reason": "length",
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "id": "call_1",
+        "type": "function",
+        "function": {"name": "ListInventoryItems", "arguments": "{\"status\": \"quarantined\", \"stat"}
+      }]
+    }
+  }]
+}`
+
+// TestPlanMapsATruncatedAnswerOntoDecisionNone is defect 3 (measured
+// 2026-09-15, docs/specs/shortlisting.md; see chat.MaxTokens's own doc
+// comment for the reproduction): a model that hit max_tokens without
+// finishing never produced a usable decision, whatever partial tool call
+// it managed to emit - this must never be decoded as if it were real, only
+// ever treated the same as no tool call at all.
+func TestPlanMapsATruncatedAnswerOntoDecisionNone(t *testing.T) {
+	planner := newPlanner(t, lengthResponse, fixtureCatalog())
+
+	decision, err := planner.Plan(context.Background(), "明細を1件確認したい", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionNone, decision.Kind)
+}
+
 func TestPlanOnUnknownOperationReturnsAnError(t *testing.T) {
 	response := `{
     "choices": [{
