@@ -6641,3 +6641,92 @@ truncation, not a reasoned decision. Candidate lever: `repeat_penalty` or
 (`docs/plans/wording.md`'s "Deliberately excluded" list; llama-server's
 own chat-completions contract) needs checking before anything is measured.
 Filed as a new `TODO.md` Next item.
+
+## 2026-09-16 Planner thinking: off by default, on by a 「思考」 switch
+
+The `TODO.md` item filed above ("Repetition loop") turns out to be a
+misdiagnosis, found while checking its own premise: the planner has been
+calling `qwen3.5-9b-q8` with Qwen3.5's thinking enabled by default - no
+`chat_template_kwargs` sent, `reasoning_content` never read - the whole
+time. Probed directly against llama-server build 10920 before touching any
+Go code: `chat_template_kwargs.enable_thinking=false` and
+`repeat_penalty`/`repeat_last_n` are both honoured on
+`/v1/chat/completions`. Two knobs landed to make both measurable:
+`673ccf6` adds `ORCHESTRA_PLANNER_THINKING=on|off`,
+`ORCHESTRA_PLANNER_REPEAT_PENALTY` and `ORCHESTRA_PLANNER_REPEAT_LAST_N`,
+and turns the existing truncation warning into one that also logs the
+`reasoning` preview, `completion_tokens` and whether `thinking` was on;
+`0c5d5f3` adds `make eval-shortlist THINKING= REPEAT_PENALTY=` so a variant
+can be run without editing the target.
+
+**Three variants against the same shortlist corpus** (wording
+`v6-unmatched-filter`, narrowing on, scratchpad `variant-{A,B,C}-report.txt`/
+`variant-{A,B,C}.jsonl`). The baseline below is the same `v6-unmatched-filter`
+run already recorded above, thinking on with no penalty - its correct@1/
+correct@shown/per-axis figures are unchanged; latency and the truncation
+count are new:
+
+| variant                  | correct@1 | correct@shown | A   | B   | C   | D   | E   | mean ms | p50 ms | >5s | truncated |
+| ------------------------ | --------- | ------------- | --- | --- | --- | --- | --- | ------- | ------ | --- | --------- |
+| baseline (thinking on)   | 67        | 70            | 92  | 52  | 60  | 53  | 80  | 6223    | 4713   | -   | 9         |
+| A: thinking off          | 67        | 71            | 92  | 52  | 68  | 47  | 70  | 1377    | 1193   | 0   | 0         |
+| B: thinking on + rp 1.1  | 66        | 70            | 92  | 48  | 60  | 47  | 90  | 5939    | 5106   | 51  | 4         |
+| C: thinking off + rp 1.1 | 68        | 72            | 92  | 56  | 68  | 47  | 70  | 1899    | 1511   | 2   | 0         |
+
+Baseline's nine `none` rows (`b04`, `b07`, `b11`, `b18`, `b23`, `b25`,
+`c02`, `c05`, `d08`) resolve under A to: `b04` form, `b07` none, `b11`
+result `listExpenseApprovals`, `b18` form, `b23` form, `b25` form, `c02`
+result `listInventoryReceivings`, `c05` result `listInventoryWarehouses`,
+`d08` result `searchAttendanceRecords` - eight of nine stop being `none`
+at all once the 16s truncation stops eating the answer. A's own ten
+`none` rows (`b06`, `b07`, `b08`, `b09`, `b10`, `b13`, `b14`, `b15`, `d01`,
+`d07`) all answer in 1.2-4.7s, not at the 1024-token ceiling - these read
+as genuine "no tool fits" answers on ambiguous axis-B questions, not
+budget exhaustion. Thinking is not free of value, though: rows `b05`,
+`b09`, `b10`, `b13`, `b24`, `d09`, `e02` are answered correctly with
+thinking on and missed by A - `b14` is the one exception, correct under
+both.
+
+**What the 16s answers actually are: not a repetition loop.** The item
+above (and `717820a`'s own doc comment) called the `max_tokens` truncation
+a repetition loop, reasoning from latency alone - nothing before this had
+looked at the reasoning trace itself. Variant B's truncation log
+(`completion_tokens: 1024`, `thinking: true`, empty `content`) shows
+ordinary, on-track reasoning that runs out of budget before it converts to
+a tool call. `d05` (「品物が届いたので登録したい」), from
+`variant-B-truncated.txt`:
+
+> ユーザーは「品物が届いたので登録したい」と言っています。これは在庫管理シ
+> ステムでの入庫（入库）の作成を求めているようです。
+>
+> 利用可能なツールを見ると、`createInventoryReceiving` という「入庫の作成」
+> の関数があります。この関数は `name` と `status` の 2 つのパラメータが必要
+> です。
+>
+> - `name`: 記録の名前
+> - `status`: レコードのライ
+
+It names the right tool in the first paragraph and is midway through
+narrating its parameters when the 1024-token budget ends - a slow,
+correct chain of thought, not a loop. The record is corrected: this is
+reasoning overrun, and `TODO.md` item 6 is rewritten below rather than
+closed as fixed.
+
+**Decision.** Planner thinking defaults to **off**. A per-question switch
+labelled 「思考」 in the question box turns it on for that one question
+(`PlanRequest.thinking` - the other agent is building this now, in
+progress, no commit to cite yet). `repeat_penalty` is **not** adopted as a
+default: C's +1 correct@1 over A (68 vs 67) is within what a single
+deterministic run can tell apart from noise, so the knob stays available
+(`ORCHESTRA_PLANNER_REPEAT_PENALTY`) for a later measurement with more
+samples, not wired into any default. Grounds for thinking off: equal
+correct@1 (67 vs 67), +1 correct@shown (71 vs 70), 4.5x faster (1377ms vs
+6223ms mean), and the truncation-driven `none` rows gone (0 vs 9) - while
+thinking on stays one switch away for the person who wants its D/E-axis
+edge (thinking's own D53/E80 against A's D47/E70) and is willing to pay
+6.2s and the 9% truncation rate for it.
+
+**Correction to a prior measurement.** The 2026-09-15 latency figures
+recorded for `eval-shortlist` runs ("~5.7s mean") were all measured with
+thinking on by default and are superseded by this entry's numbers; nothing
+in this repository measured thinking off before today.

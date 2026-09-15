@@ -4,7 +4,11 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-_Nothing in progress._
+- **A per-question 「思考」 switch that turns planner thinking on.**
+  `PlanRequest.thinking` - decided 2026-09-16 (`DECISIONS.md`, "Planner
+  thinking: off by default, on by a 「思考」 switch") alongside making
+  thinking off the default. Being built by another agent in this
+  repository; not yet committed.
 
 ## Next
 
@@ -50,21 +54,20 @@ _Nothing in progress._
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
-6. **Repetition loop: planner answers truncated at `max_tokens`.** 6-9 of
-   100 `make eval-shortlist` corpus answers, across the `v2-commit` and
-   `v6-unmatched-filter` runs measured 2026-09-16 (`DECISIONS.md`, "wording:
-   v6-unmatched-filter becomes the default"), degrade to `DecisionNone` at
-   latency ≈ 16s - `717820a`'s `max_tokens` 1024 guard catching a
-   repetition loop, not a reasoned refusal. Rows affected: `v6`'s `b04`,
-   `b07`, `b11`, `b18`, `b23`, `b25`, `c02`, `c05`, `d08`; `v2`'s `b10`,
-   `b18`, `b23`, `d07`, `d08`. Candidate lever: `repeat_penalty` or
-   `presence_penalty` on planning calls (`chat.Request`,
-   `internal/adapter/planner/toolcall/planner.go` and
-   `internal/adapter/planner/jsonmode`). Contract check comes first -
-   whether llama-server's chat-completions endpoint accepts either
-   parameter at all, and whether adding one counts as a mechanical change
-   `docs/plans/wording.md`'s "Deliberately excluded" list already fixed for
-   this planner - before anything is measured.
+6. **Thinking-on reasoning can still overrun `max_tokens` 1024.** Not a
+   repetition loop - corrected 2026-09-16 (`DECISIONS.md`, "Planner
+   thinking: off by default, on by a 「思考」 switch"): the truncation logs
+   show ordinary, on-track reasoning (e.g. `d05`, 「品物が届いたので登録し
+   たい」, names `createInventoryReceiving` correctly and is still
+   narrating its parameters when the budget ends) that simply runs long.
+   With thinking off by default this no longer happens (0 of 100 in that
+   measurement); with thinking on - now reachable per-question through the
+   「思考」 switch being built - it still can: 9 of 100 with no
+   `repeat_penalty`, 4 of 100 at `repeat_penalty` 1.1. Candidate: a larger
+   `max_tokens` for thinking-on requests only (thinking-off's own answers
+   are short, so raising the shared budget buys nothing there), or a
+   `reasoning_budget`-style split between the reasoning and the answer.
+   Not measured yet.
 
 7. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only

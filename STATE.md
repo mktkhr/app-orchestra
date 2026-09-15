@@ -1,9 +1,36 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-16 (`v6-unmatched-filter` is now the default
-planner wording; the enum-filter defect is closed)_
+_Last updated: 2026-09-16 (planner thinking defaults to off; a per-question
+「思考」 switch to turn it back on is in progress)_
 
 ## Summary
+
+**2026-09-16 - planner thinking defaults to off; a per-question 「思考」
+switch to turn it on is in progress.** The planner had been calling
+`qwen3.5-9b-q8` with Qwen3.5's thinking enabled by default the whole time -
+no `chat_template_kwargs` sent, `reasoning_content` never read. Measured
+against the `v6-unmatched-filter`-wording shortlist corpus (narrowing on):
+thinking off reads 67 correct@1 / 71 correct@shown (equal correct@1, +1
+correct@shown against thinking on) at a 1377ms mean latency (p50 1193ms)
+against thinking-on's 6223ms mean - about 4.5x faster - and with the
+`max_tokens`-truncation `none` rows gone entirely (0 of 100, down from 9).
+`repeat_penalty` was also measured (1.1, both with and without thinking)
+and not adopted as a default - its one-point gain is inside what a single
+deterministic run can tell from noise - but the
+`ORCHESTRA_PLANNER_REPEAT_PENALTY`/`ORCHESTRA_PLANNER_REPEAT_LAST_N` knobs
+stay for a later measurement. Current planner defaults: wording
+`v6-unmatched-filter`, thinking off, temperature 0, `max_tokens` 1024,
+narrowing on with K=20. A per-question 「思考」 switch
+(`PlanRequest.thinking`) that turns thinking back on for one question is
+being built now, by another agent in this repository - not yet committed.
+The 16s `max_tokens` truncations this closes were previously read as a
+repetition loop (`717820a`, `TODO.md` item 6); reading the truncated
+reasoning itself shows ordinary, on-track thinking that simply runs past
+budget - the record is corrected, and the open `TODO.md` item is narrowed
+to thinking-on reasoning overrun rather than closed. Full three-variant
+table, the row-level breakdown, and the quoted truncation trace are in
+`DECISIONS.md`, 2026-09-16 ("Planner thinking: off by default, on by a
+「思考」 switch").
 
 **2026-09-16 - `v6-unmatched-filter` is now the default planner wording;
 TODO.md's open enum-filter defect is closed by wording.** A question whose
