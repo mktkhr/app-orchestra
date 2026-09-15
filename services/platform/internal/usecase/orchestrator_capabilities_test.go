@@ -52,7 +52,7 @@ func TestPlanListCapabilitiesWithNoServiceListsEveryEndpoint(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(twoServiceCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "何ができるの？", nil, nil, "")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "何ができるの？", nil, nil, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindResult, result.Kind)
@@ -115,7 +115,7 @@ func TestPlanListCapabilitiesColumnsPreferDisplayNames(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "何ができるの？", nil, nil, "")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "何ができるの？", nil, nil, "", "")
 	require.NoError(t, err)
 
 	data, ok := result.Data.(map[string]any)
@@ -137,7 +137,7 @@ func TestPlanListCapabilitiesWithServiceFiltersToThatService(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(twoServiceCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫について、どういう操作ができる？", nil, nil, "")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫について、どういう操作ができる？", nil, nil, "", "")
 
 	require.NoError(t, err)
 
@@ -168,7 +168,7 @@ func TestPlanListCapabilitiesWithUnknownServiceReturnsNoRows(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(twoServiceCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "存在しないサービスについて何ができる？", nil, nil, "")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "存在しないサービスについて何ができる？", nil, nil, "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindResult, result.Kind, "an unmatched filter is still a result, just an empty one")

@@ -325,6 +325,8 @@ export type components = {
             readonly turns?: readonly components["schemas"]["Turn"][];
             /** @description The workspace this question was asked from, if any - what the browser already knows and already uses to decide whether a proposal can be drawn at all (docs/specs/proposing.md, N4). Absent for a question asked from the chat screen, which has no workspace to put a panel on: `propose_panel` is offered only when this is present (docs/specs/offering.md, O3/O4). */
             readonly workspaceId?: string;
+            /** @description The operation id to plan against exclusively, bypassing narrowing (docs/specs/shortlisting.md, section 4). Set when a person chose one of a previous `result`'s `alternatives`: the catalogue becomes exactly this one operation - permission checked the same as any other, `ErrEndpointNotFound` if the person may not call it or it does not exist - and the planner fills in its parameters. Absent for an ordinary question. */
+            readonly preferred?: string;
         };
         /**
          * @description What the planner decided to do about a question.
@@ -368,6 +370,15 @@ export type components = {
                 readonly [key: string]: unknown;
             };
         };
+        /** @description One further candidate from the narrowed shortlist, offered beside a `result` so a wrong pick costs one click instead of a round trip (docs/specs/shortlisting.md, H5). Unlike `Source`, it names no service display name and carries no arguments - it is something to choose, not something that was called. */
+        readonly Alternative: {
+            /** @description The operation id, as declared in that service's contract. */
+            readonly operationId: string;
+            /** @description The operation's own name for a person to read - see `CatalogEntry.displayName`, the same fallback rule (DECISIONS.md, 2026-09-13). */
+            readonly displayName: string;
+            /** @description The service's name, as configured in ORCHESTRA_SERVICES. */
+            readonly service: string;
+        };
         /** @description One candidate value the user can pick, with its Japanese label. */
         readonly Option: {
             /** @description The enum value. */
@@ -389,6 +400,8 @@ export type components = {
             };
             readonly view?: components["schemas"]["View"];
             readonly source?: components["schemas"]["Source"];
+            /** @description Up to two further candidates from the narrowed shortlist, when kind is "result" and narrowing is on - the shortlist positions immediately after the one the planner chose, not the top of the shortlist (docs/specs/shortlisting.md, section 4, AC-H-103). Absent when narrowing is off, when the chosen operation was not part of a shortlist at all (a built-in, or nothing ranked), or when `preferred` was set on the request. The browser re-plans with `preferred` set to one of these to choose it instead. */
+            readonly alternatives?: readonly components["schemas"]["Alternative"][];
             /** @description A human-readable explanation, when kind is "none". */
             readonly message?: string;
             /** @description The request body's JSON Schema, when kind is "form". */

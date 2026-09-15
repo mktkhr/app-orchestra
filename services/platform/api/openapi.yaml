@@ -669,6 +669,16 @@ components:
             Absent for a question asked from the chat screen, which has no
             workspace to put a panel on: `propose_panel` is offered only
             when this is present (docs/specs/offering.md, O3/O4).
+        preferred:
+          type: string
+          description: >
+            The operation id to plan against exclusively, bypassing
+            narrowing (docs/specs/shortlisting.md, section 4). Set when a
+            person chose one of a previous `result`'s `alternatives`: the
+            catalogue becomes exactly this one operation - permission
+            checked the same as any other, `ErrEndpointNotFound` if the
+            person may not call it or it does not exist - and the planner
+            fills in its parameters. Absent for an ordinary question.
     DecisionKind:
       type: string
       description: What the planner decided to do about a question.
@@ -757,6 +767,31 @@ components:
           type: object
           description: The arguments the planner (or the user) supplied.
           additionalProperties: true
+    Alternative:
+      type: object
+      description: >
+        One further candidate from the narrowed shortlist, offered beside
+        a `result` so a wrong pick costs one click instead of a round trip
+        (docs/specs/shortlisting.md, H5). Unlike `Source`, it names no
+        service display name and carries no arguments - it is something to
+        choose, not something that was called.
+      required:
+        - operationId
+        - displayName
+        - service
+      properties:
+        operationId:
+          type: string
+          description: The operation id, as declared in that service's contract.
+        displayName:
+          type: string
+          description: >
+            The operation's own name for a person to read - see
+            `CatalogEntry.displayName`, the same fallback rule
+            (DECISIONS.md, 2026-09-13).
+        service:
+          type: string
+          description: The service's name, as configured in ORCHESTRA_SERVICES.
     Option:
       type: object
       description: One candidate value the user can pick, with its Japanese label.
@@ -810,6 +845,20 @@ components:
           $ref: "#/components/schemas/View"
         source:
           $ref: "#/components/schemas/Source"
+        alternatives:
+          type: array
+          description: >
+            Up to two further candidates from the narrowed shortlist, when
+            kind is "result" and narrowing is on - the shortlist positions
+            immediately after the one the planner chose, not the top of
+            the shortlist (docs/specs/shortlisting.md, section 4, AC-H-103).
+            Absent when narrowing is off, when the chosen operation was not
+            part of a shortlist at all (a built-in, or nothing ranked), or
+            when `preferred` was set on the request. The browser re-plans
+            with `preferred` set to one of these to choose it instead.
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/Alternative"
         message:
           type: string
           description: A human-readable explanation, when kind is "none".

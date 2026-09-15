@@ -32,7 +32,7 @@ func TestPlanProposalCarriesTheModelsOwnValues(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫をステータス別に棒グラフで置いて", nil, nil, "ws-1")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫をステータス別に棒グラフで置いて", nil, nil, "ws-1", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindProposal, result.Kind)
@@ -79,7 +79,7 @@ func TestPlanProposalWithNoViewFillsInFromTheCatalogue(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalogWithDisplayNameAndChartHint(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫をステータス別に置いて", nil, nil, "ws-1")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫をステータス別に置いて", nil, nil, "ws-1", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ResultKindProposal, result.Kind)
@@ -109,7 +109,7 @@ func TestPlanProposalComponentFallsBackToRenderResultShapeWithNoChartHint(t *tes
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を置いて", nil, nil, "ws-1")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を置いて", nil, nil, "ws-1", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, domain.ComponentTable, result.Component)
@@ -139,7 +139,7 @@ func TestPlanProposalOnAnOperationTheUserMayNotCallFails(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, permissions)
 
-	_, err := orchestrator.Plan(t.Context(), regularUser(), "在庫アイテムを作るパネルを置いて", nil, nil, "ws-1")
+	_, err := orchestrator.Plan(t.Context(), regularUser(), "在庫アイテムを作るパネルを置いて", nil, nil, "ws-1", "")
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
@@ -159,7 +159,7 @@ func TestPlanProposalOnAnUnknownEndpointFails(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "存在しない操作のパネルを置いて", nil, nil, "ws-1")
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "存在しない操作のパネルを置いて", nil, nil, "ws-1", "")
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
@@ -185,7 +185,7 @@ func TestPlanRefusesAProposalWithNoWorkspaceID(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を置いて", nil, nil, "")
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を置いて", nil, nil, "", "")
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, usecase.ErrToolNotOffered)

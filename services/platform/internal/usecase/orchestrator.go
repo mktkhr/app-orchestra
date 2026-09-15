@@ -81,6 +81,25 @@ type Result struct {
 	// carries, since a proposal is a plan result with a panel attached,
 	// not a distinct shape (docs/specs/proposing.md, N2).
 	Title string
+
+	// Alternatives is populated when Kind is ResultKindResult, narrowing
+	// is on, and the chosen operation was found at a position in the
+	// narrowed shortlist: the shortlist's own next up-to-two entries,
+	// after the chosen one (docs/specs/shortlisting.md, section 4,
+	// AC-H-103). nil - not the top of the shortlist, and never populated
+	// at all with PassThroughNarrower or when the request set Preferred
+	// (see alternativesFor).
+	Alternatives []Alternative
+}
+
+// Alternative is one further candidate offered beside a ResultKindResult,
+// taken from the narrowed shortlist rather than the planner's own opinion
+// (docs/specs/shortlisting.md, H5): choosing one re-plans with Preferred
+// set to its OperationID.
+type Alternative struct {
+	OperationID string
+	DisplayName string
+	Service     string
 }
 
 // ErrEndpointNotFound is returned when a Decision names an operation the
@@ -221,24 +240,43 @@ func NewOrchestrator(
 // here, once per request - so the tool list o.planner is offered, and the
 // list a later DecisionProposal is checked against (see the ErrToolNotOffered
 // check below), can never disagree.
+//
+// preferred is PlanRequest.preferred (docs/specs/shortlisting.md, section
+// 4): "" for an ordinary question, or an operation id when the person
+// chose one of a previous result's Alternatives. When set, o.narrower is
+// never called at all - the catalogue becomes exactly that one operation,
+// looked up in the permission-filtered catalogue catalogFor already
+// returned, so an id the person may not call is ErrEndpointNotFound, the
+// same as an unknown one - and the planner is offered that tool alone
+// plus the built-ins.
 func (o *Orchestrator) Plan(
-	ctx context.Context, user *domain.User, query string, answers []Answer, turns []Turn, workspaceID string,
+	ctx context.Context, user *domain.User, query string, answers []Answer, turns []Turn, workspaceID, preferred string,
 ) (Result, error) {
 	catalog, err := o.catalogFor(ctx, user)
 	if err != nil {
 		return Result{}, err
 	}
 
-	// Narrowed to a shortlist before the planner ever sees it
-	// (docs/specs/shortlisting.md, H1/H2): o.narrower is PassThroughNarrower
-	// by default (NewOrchestrator), which returns catalog unchanged, so
-	// this is a no-op until pkg/app configures a real one. catalog is kept
-	// narrowed for the rest of Plan - call, ask, listCapabilities and
-	// propose below all read this same, already-narrowed value, the same
-	// way they always read catalogFor's single permission-narrowed value.
-	catalog, err = o.narrower.Narrow(ctx, catalog, query, o.narrowK)
-	if err != nil {
-		return Result{}, fmt.Errorf("narrowing catalogue: %w", err)
+	if preferred != "" {
+		endpoint, ok := findByOperationID(catalog, preferred)
+		if !ok {
+			return Result{}, fmt.Errorf("%w: %s", ErrEndpointNotFound, preferred)
+		}
+
+		catalog = domain.Catalog{Endpoints: []domain.Endpoint{endpoint}}
+	} else {
+		// Narrowed to a shortlist before the planner ever sees it
+		// (docs/specs/shortlisting.md, H1/H2): o.narrower is
+		// PassThroughNarrower by default (NewOrchestrator), which returns
+		// catalog unchanged, so this is a no-op until pkg/app configures
+		// a real one. catalog is kept narrowed for the rest of Plan -
+		// call, ask, listCapabilities and propose below all read this
+		// same, already-narrowed value, the same way they always read
+		// catalogFor's single permission-narrowed value.
+		catalog, err = o.narrower.Narrow(ctx, catalog, query, o.narrowK)
+		if err != nil {
+			return Result{}, fmt.Errorf("narrowing catalogue: %w", err)
+		}
 	}
 
 	planCtx := PlanContext{WorkspaceID: workspaceID}
@@ -355,6 +393,10 @@ func (o *Orchestrator) catalogFor(ctx context.Context, user *domain.User) (domai
 // bytes: golangci-lint's gocritic hugeParam check (part of the fixed
 // harness policy, see harness/quality/go/golangci.yml) rejects passing it
 // by value.
+//
+// A safe call's result carries Alternatives (see alternativesFor); an
+// unsafe one's form does not - a form is confirmed, not chosen among, and
+// AC-H-103 only ever speaks of "a result".
 func (o *Orchestrator) call(ctx context.Context, catalog domain.Catalog, decision *Decision) (Result, error) {
 	endpoint, ok := catalog.Find(decision.Service, decision.OperationID)
 	if !ok {
@@ -365,7 +407,77 @@ func (o *Orchestrator) call(ctx context.Context, catalog domain.Catalog, decisio
 		return formFor(&endpoint, decision), nil
 	}
 
-	return o.invokeAndRender(ctx, &endpoint, decision.Service, decision.OperationID, decision.Args)
+	result, err := o.invokeAndRender(ctx, &endpoint, decision.Service, decision.OperationID, decision.Args)
+	if err != nil {
+		return Result{}, err
+	}
+
+	result.Alternatives = o.alternativesFor(catalog, decision.Service, decision.OperationID)
+
+	return result, nil
+}
+
+// alternativesFor reads the shortlist positions after the one the chosen
+// operation sits at, up to two (docs/specs/shortlisting.md, section 4,
+// AC-H-103) - not the top of the shortlist, which alternativesFor never
+// even looks at.
+//
+// It returns nil in every case a shortlist position is meaningless:
+// PassThroughNarrower (H7 - the wire stays byte-identical to today, and
+// that includes carrying no alternatives key at all) short-circuits
+// before the catalogue is even searched; a built-in tool never reaches
+// call at all, so its result never reaches this function either; and
+// Preferred's one-endpoint catalogue does reach here, but the chosen
+// operation sits at its only position with nothing after it, so the loop
+// below finds none - AC-H-103's "preferred carries no alternatives"
+// without a second flag to carry that decision.
+func (o *Orchestrator) alternativesFor(catalog domain.Catalog, service, operationID string) []Alternative {
+	if _, passThrough := o.narrower.(PassThroughNarrower); passThrough {
+		return nil
+	}
+
+	idx := -1
+
+	for i := range catalog.Endpoints {
+		if catalog.Endpoints[i].Service == service && catalog.Endpoints[i].OperationID == operationID {
+			idx = i
+
+			break
+		}
+	}
+
+	if idx < 0 {
+		return nil
+	}
+
+	var alternatives []Alternative
+
+	for i := idx + 1; i < len(catalog.Endpoints) && len(alternatives) < 2; i++ {
+		e := &catalog.Endpoints[i]
+		alternatives = append(alternatives, Alternative{
+			OperationID: e.OperationID,
+			DisplayName: e.DisplayNameOr(e.Summary),
+			Service:     e.Service,
+		})
+	}
+
+	return alternatives
+}
+
+// findByOperationID looks up the endpoint with the given operation id,
+// regardless of service: operation ids are unique across a catalogue
+// offered to a planner (the same assumption toolcall.Planner's
+// resolveService makes to turn a tool call's name back into a service),
+// which is what lets PlanRequest.preferred name an operation without
+// naming its service too.
+func findByOperationID(catalog domain.Catalog, operationID string) (domain.Endpoint, bool) {
+	for i := range catalog.Endpoints {
+		if catalog.Endpoints[i].OperationID == operationID {
+			return catalog.Endpoints[i], true
+		}
+	}
+
+	return domain.Endpoint{}, false
 }
 
 // ask resolves a DecisionAsk into a ResultKindAsk, or degrades it into a

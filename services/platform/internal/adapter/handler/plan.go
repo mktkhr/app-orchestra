@@ -24,7 +24,7 @@ var errUnrenderableData = errors.New("result data is not a JSON object")
 type planner interface {
 	Plan(
 		ctx context.Context, user *domain.User, query string, answers []usecase.Answer, turns []usecase.Turn,
-		workspaceID string,
+		workspaceID, preferred string,
 	) (usecase.Result, error)
 }
 
@@ -47,7 +47,7 @@ func (h *Plan) PostPlan(
 ) (openapi.PostPlanResponseObject, error) {
 	result, err := h.orchestrator.Plan(
 		ctx, currentUser(ctx), request.Body.Query, toAnswers(request.Body.Answers), toTurns(request.Body.Turns),
-		toWorkspaceID(request.Body.WorkspaceId),
+		toWorkspaceID(request.Body.WorkspaceId), toPreferred(request.Body.Preferred),
 	)
 	if err != nil {
 		return planErrorResponse(err), nil
@@ -140,6 +140,18 @@ func toWorkspaceID(workspaceID *string) string {
 	return *workspaceID
 }
 
+// toPreferred reads PlanRequest.Preferred, "" when the browser sent none -
+// an ordinary question, as distinct from choosing one of a previous
+// result's alternatives (docs/specs/shortlisting.md, section 4). The same
+// shape as toWorkspaceID.
+func toPreferred(preferred *string) string {
+	if preferred == nil {
+		return ""
+	}
+
+	return *preferred
+}
+
 // toAPIPlanResult converts a usecase.Result into the wire PlanResult.
 //
 // result is a pointer, not the value Orchestrator.Plan returns, because
@@ -179,6 +191,11 @@ func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
 		if len(result.Fields) > 0 {
 			fields := result.Fields
 			out.Fields = &fields
+		}
+
+		if len(result.Alternatives) > 0 {
+			alternatives := toAPIAlternatives(result.Alternatives)
+			out.Alternatives = &alternatives
 		}
 
 		out.View = toAPIView(result.View)
@@ -236,6 +253,20 @@ func toAPIProposedPanel(result *usecase.Result) openapi.ProposedPanel {
 		Title:       result.Title,
 		View:        toAPIView(result.View),
 	}
+}
+
+// toAPIAlternatives converts a usecase.Result's shortlist-sourced
+// Alternatives into the wire Alternative slice - present on the wire only
+// when toAPIPlanResult finds it non-empty (see the len check above), so a
+// caller never sees an empty "alternatives": [] where the field is simply
+// absent instead.
+func toAPIAlternatives(alternatives []usecase.Alternative) []openapi.Alternative {
+	out := make([]openapi.Alternative, len(alternatives))
+	for i, a := range alternatives {
+		out[i] = openapi.Alternative{OperationId: a.OperationID, DisplayName: a.DisplayName, Service: a.Service}
+	}
+
+	return out
 }
 
 // toAPIOptions converts a usecase.Result's catalogue-sourced options into

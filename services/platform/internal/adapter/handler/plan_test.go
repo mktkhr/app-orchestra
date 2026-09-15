@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -26,6 +27,7 @@ type fakeOrchestrator struct {
 	answers     []usecase.Answer
 	turns       []usecase.Turn
 	workspaceID string
+	preferred   string
 }
 
 func (f *fakeOrchestrator) Plan(
@@ -34,13 +36,14 @@ func (f *fakeOrchestrator) Plan(
 	query string,
 	answers []usecase.Answer,
 	turns []usecase.Turn,
-	workspaceID string,
+	workspaceID, preferred string,
 ) (usecase.Result, error) {
 	f.user = user
 	f.query = query
 	f.answers = answers
 	f.turns = turns
 	f.workspaceID = workspaceID
+	f.preferred = preferred
 
 	return f.result, f.err
 }
@@ -433,6 +436,132 @@ func TestPostPlanOtherErrorIs500(t *testing.T) {
 	require.NoError(t, err)
 	_, ok := resp.(openapi.PostPlan500JSONResponse)
 	assert.True(t, ok, "expected a 500 response, got %T", resp)
+}
+
+// TestPostPlanPassesPreferredThrough is section 4 of
+// docs/specs/shortlisting.md: PostPlan reads PlanRequest's own optional
+// preferred and forwards it to Orchestrator.Plan unchanged, the same shape
+// TestPostPlanPassesWorkspaceIDThrough already proves for workspaceId.
+func TestPostPlanPassesPreferredThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	preferred := "ListInventoryItems"
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "さっき見せてくれた方じゃなくて", Preferred: &preferred},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "ListInventoryItems", orchestrator.preferred)
+}
+
+// TestPostPlanWithNoPreferredPassesEmptyStringThrough is the ordinary
+// question's own case: a PlanRequest with no preferred at all must reach
+// Orchestrator.Plan as "", not as a nil the orchestrator has to guess the
+// meaning of.
+func TestPostPlanWithNoPreferredPassesEmptyStringThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて"},
+	})
+
+	require.NoError(t, err)
+	assert.Empty(t, orchestrator.preferred)
+}
+
+// TestPostPlanRendersAlternatives is AC-H-103's wire half: a result
+// carrying usecase.Alternative entries renders them onto PlanResult's own
+// "alternatives" array, by operationId, displayName and service.
+func TestPostPlanRendersAlternatives(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:        usecase.ResultKindResult,
+		Component:   domain.ComponentTable,
+		Data:        map[string]any{"items": []any{}},
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Alternatives: []usecase.Alternative{
+			{OperationID: "ListAttendanceRecords", DisplayName: "勤怠一覧", Service: "attendance"},
+			{OperationID: "ListShipments", DisplayName: "出荷一覧", Service: "shipping"},
+		},
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	require.NotNil(t, body.Alternatives)
+	assert.Equal(t, []openapi.Alternative{
+		{OperationId: "ListAttendanceRecords", DisplayName: "勤怠一覧", Service: "attendance"},
+		{OperationId: "ListShipments", DisplayName: "出荷一覧", Service: "shipping"},
+	}, *body.Alternatives)
+}
+
+// TestPostPlanOmitsAlternativesFromTheWireWhenThereAreNone is H7's wire
+// half: a result with no Alternatives at all - what every existing
+// PassThroughNarrower result is - re-marshals with no "alternatives" key,
+// not an empty array, so the response stays byte-identical to what it was
+// before this field existed (the same proof
+// TestPlanWithPassThroughNarrowerOffersByteIdenticalTools gives the tool
+// list, one layer down).
+func TestPostPlanOmitsAlternativesFromTheWireWhenThereAreNone(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:        usecase.ResultKindResult,
+		Component:   domain.ComponentTable,
+		Data:        map[string]any{"items": []any{}},
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+	assert.Nil(t, body.Alternatives)
+
+	wire, err := json.Marshal(openapi.PlanResult(body))
+	require.NoError(t, err)
+	assert.NotContains(t, string(wire), "alternatives")
+}
+
+// TestPostPlanOmitsAlternativesForNonResultKinds proves toAPIPlanResult
+// never carries Alternatives onto any kind but "result": a form, ask or
+// none never offers a further candidate to choose instead, whatever a
+// usecase.Result happened to be built with.
+func TestPostPlanOmitsAlternativesForNonResultKinds(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:    usecase.ResultKindNone,
+		Message: "見つかりませんでした",
+		Alternatives: []usecase.Alternative{
+			{OperationID: "ListShipments", DisplayName: "出荷一覧", Service: "shipping"},
+		},
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "何か"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+	assert.Nil(t, body.Alternatives)
 }
 
 func TestPostPlanUnrenderableDataIs500(t *testing.T) {
