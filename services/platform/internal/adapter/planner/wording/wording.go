@@ -45,7 +45,9 @@ type Wording struct {
 // Default and every candidate's own doc comment is written as a delta
 // from it.
 func all() []Wording {
-	return []Wording{v1(), v2Commit(), v3AskOnCollision(), v4CommitAndAsk(), v5ExamplesInTools()}
+	return []Wording{
+		v1(), v2Commit(), v3AskOnCollision(), v4CommitAndAsk(), v5ExamplesInTools(), v6UnmatchedFilter(),
+	}
 }
 
 // Default is v2-commit (docs/plans/wording.md Task 3; DECISIONS.md,

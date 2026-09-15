@@ -94,6 +94,7 @@ func TestDefaultIsV2Commit(t *testing.T) {
 // section 4 lists them.
 var declaredNames = []string{
 	"v1", "v2-commit", "v3-ask-on-collision", "v4-commit-and-ask", "v5-examples-in-tools",
+	"v6-unmatched-filter",
 }
 
 // TestNamesIsDeclaredOrderV1First asserts Names' exact order, declared,
@@ -203,4 +204,36 @@ func TestV2ThroughV4AddSentencesRatherThanReplacingV1sWords(t *testing.T) {
 	require.True(t, ok)
 	assert.NotEqual(t, v1.AskUser, v4.AskUser)
 	assert.NotEqual(t, v1.ListCapabilities, v4.ListCapabilities)
+}
+
+// TestV6IsBuiltOnV2CommitPlusTheUnmatchedFilterRule asserts v6-unmatched-filter's
+// own shape (TODO.md item 3): SystemPrompt and ListCapabilities extend
+// v2-commit's own values unchanged (not v1's), AskUser extends v1's,
+// ProposePanel and CatalogueTool are exactly v1's, and neither addition
+// replaces what it extends.
+func TestV6IsBuiltOnV2CommitPlusTheUnmatchedFilterRule(t *testing.T) {
+	v1, foundV1 := wording.ByName("v1")
+	require.True(t, foundV1)
+
+	v2, foundV2 := wording.ByName("v2-commit")
+	require.True(t, foundV2)
+
+	v6, ok := wording.ByName("v6-unmatched-filter")
+	require.True(t, ok)
+
+	assert.Contains(t, v6.SystemPrompt, v2.SystemPrompt,
+		"v6-unmatched-filter: SystemPrompt must extend v2-commit's, not replace it")
+	assert.NotEqual(t, v2.SystemPrompt, v6.SystemPrompt, "v6-unmatched-filter: SystemPrompt must add something")
+
+	assert.Equal(t, v2.ListCapabilities, v6.ListCapabilities,
+		"v6-unmatched-filter: ListCapabilities must be v2-commit's, unchanged")
+
+	assert.Contains(t, v6.AskUser, v1.AskUser, "v6-unmatched-filter: AskUser must extend v1's, not replace it")
+	assert.NotEqual(t, v1.AskUser, v6.AskUser, "v6-unmatched-filter: AskUser must add something")
+
+	assert.Equal(t, v1.ProposePanel, v6.ProposePanel, "v6-unmatched-filter: ProposePanel must be v1's, unchanged")
+
+	require.NotNil(t, v6.CatalogueTool)
+	assert.Equal(t, "list inventory items", v6.CatalogueTool("list inventory items", nil),
+		"v6-unmatched-filter: CatalogueTool must be v1's, unchanged")
 }
