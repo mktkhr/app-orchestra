@@ -3,9 +3,11 @@ import { expect, test } from "vite-plus/test";
 import {
   RECALL_AT_20_ROW,
   STAND_IN_PICKER_ROW,
+  renderErrors,
   renderReferenceRows,
   renderReport,
   renderRun,
+  type RunReport,
 } from "./report.ts";
 import { scoreboard, type QuestionResult } from "./score.ts";
 
@@ -18,12 +20,17 @@ function fakeResult(overrides: Partial<QuestionResult> = {}): QuestionResult {
   return {
     id: "a01",
     axis: "A",
+    text: "バーコードの発行状況を見せて",
     answers: ["listInventoryBarcodes"],
     kind: "result",
     operationId: "listInventoryBarcodes",
     latencyMs: 100,
     ...overrides,
   };
+}
+
+function fakeRunReport(results: readonly QuestionResult[]): RunReport {
+  return { board: scoreboard(results), results };
 }
 
 test("renderRun's header states the run label and every axis plus overall", () => {
@@ -64,10 +71,46 @@ test("renderReferenceRows' table names both fixed rows", () => {
 });
 
 test("renderReport renders both runs and the reference rows together", () => {
-  const board = scoreboard([fakeResult()]);
-  const rendered = renderReport({ on: board, off: board });
+  const run = fakeRunReport([fakeResult()]);
+  const rendered = renderReport({ on: run, off: run });
 
   expect(rendered).toContain("## narrowing on");
   expect(rendered).toContain("## narrowing off");
   expect(rendered).toContain("## reference (DECISIONS.md, 2026-09-15)");
+});
+
+test("renderRun breaks the over-5000ms count down by axis", () => {
+  const rendered = renderRun(
+    "narrowing on",
+    scoreboard([fakeResult({ axis: "B", latencyMs: 6000 })]),
+  );
+
+  expect(rendered).toContain("over 5000ms by axis: A=0 B=1 C=0 D=0 E=0");
+});
+
+test("renderErrors lists every error row with its question, latency and message", () => {
+  const { operationId: _operationId, ...withoutOperationId } = fakeResult();
+  const rendered = renderErrors("narrowing on", [
+    {
+      ...withoutOperationId,
+      id: "b23",
+      kind: "error",
+      text: "取引先を新規登録したい",
+      latencyMs: 56000,
+      errorStatus: 500,
+      errorMessage: "endpoint not found in catalogue: employee/updateExpenseEmployee",
+    },
+  ]);
+
+  expect(rendered).toContain("## narrowing on errors (1)");
+  expect(rendered).toContain("取引先を新規登録したい");
+  expect(rendered).toContain("56000ms");
+  expect(rendered).toContain("HTTP 500");
+  expect(rendered).toContain("endpoint not found in catalogue");
+});
+
+test("renderErrors says so when a run has none", () => {
+  const rendered = renderErrors("narrowing off", [fakeResult()]);
+
+  expect(rendered).toContain("(none)");
 });

@@ -5,6 +5,7 @@ import { questions } from "../narrowing/corpus/index.ts";
 import { signIn, withSession, type Session } from "../src/helpers/auth.ts";
 import { asRecord, isRecord } from "../src/helpers/wire.ts";
 import { boot, type Booted } from "./boot.ts";
+import { safeOperationIds } from "./catalogue-safety.ts";
 import type { QuestionResult } from "./score.ts";
 
 /**
@@ -27,11 +28,23 @@ function outputPathFor(pass: "on" | "off"): string {
   return path.join(outDir, `${pass}.jsonl`);
 }
 
-/** One raw /api/plan response, read for the fields score.ts needs. */
+/**
+ * One raw /api/plan response, read for the fields score.ts needs.
+ *
+ * `operationId` reads `source.operationId` for a `result` (the operation
+ * actually run) or `target.operationId` for a `form` (the operation named
+ * without running it - either a real D8 confirm-before-write, or an
+ * `ask_user` degraded into one, see score.ts's own QuestionResult
+ * comment). `alternatives` is only ever present on a `result`
+ * (orchestrator.go's own `call`) - reading it here regardless of kind is
+ * harmless, since a `form` never carries the field on the wire.
+ */
 interface PlanResponse {
   readonly kind: string;
   readonly operationId?: string;
   readonly alternatives?: readonly string[];
+  readonly errorMessage?: string;
+  readonly errorStatus?: number;
 }
 
 /** Parses an /api/plan response body into the fields run.ts needs, by runtime check (no `as`). */
@@ -39,8 +52,10 @@ function parsePlanResponse(value: unknown): PlanResponse {
   const record = asRecord(value);
   const kind = typeof record["kind"] === "string" ? record["kind"] : "error";
   const source = isRecord(record["source"]) ? record["source"] : undefined;
+  const target = isRecord(record["target"]) ? record["target"] : undefined;
   const operationId =
-    typeof source?.["operationId"] === "string" ? source["operationId"] : undefined;
+    (typeof source?.["operationId"] === "string" ? source["operationId"] : undefined) ??
+    (typeof target?.["operationId"] === "string" ? target["operationId"] : undefined);
   const rawAlternatives = Array.isArray(record["alternatives"]) ? record["alternatives"] : [];
   const alternatives = rawAlternatives
     .filter((a) => isRecord(a))
@@ -90,7 +105,13 @@ async function postPlan(baseUrl: string, session: Session, query: string): Promi
     const body = asRecord(await response.json().catch(() => ({})));
     const message = typeof body["message"] === "string" ? body["message"] : "";
 
-    return planFromInvokeFailure(message) ?? { kind: "error" };
+    return (
+      planFromInvokeFailure(message) ?? {
+        kind: "error",
+        errorMessage: message,
+        errorStatus: response.status,
+      }
+    );
   }
 
   return parsePlanResponse(await response.json());
@@ -145,6 +166,7 @@ async function runPass(pass: "on" | "off"): Promise<void> {
 
   const options = pass === "on" ? { narrowing: NARROWING } : {};
   const booted: Booted = await boot(options);
+  const safeIds = safeOperationIds();
 
   try {
     const session = await signIn(booted.baseUrl, "admin", booted.adminPassword);
@@ -172,14 +194,29 @@ async function runPass(pass: "on" | "off"): Promise<void> {
         );
       }
 
+      const kind = kindOf(response);
+      // An ask_user over a safe operation with no enum for its parameter
+      // degrades into this same form shape (score.ts's own QuestionResult
+      // comment; orchestrator.go's `ask`) - scored as `asked`, not as a
+      // pick, by score.ts. Not a platform bug to fix here - worth a follow
+      // up item in this repository's own memory files, left for the
+      // session that owns them (this task stops short of DECISIONS.md /
+      // STATE.md / TODO.md).
+      const askDegraded =
+        kind === "form" && response.operationId !== undefined && safeIds.has(response.operationId);
+
       const result: QuestionResult = {
         id: question.id,
         axis: question.axis,
+        text: question.text,
         answers: question.answers,
-        kind: kindOf(response),
+        kind,
         ...(response.operationId !== undefined && { operationId: response.operationId }),
+        ...(askDegraded && { askDegraded }),
         ...(response.alternatives !== undefined && { alternatives: response.alternatives }),
         latencyMs,
+        ...(response.errorMessage !== undefined && { errorMessage: response.errorMessage }),
+        ...(response.errorStatus !== undefined && { errorStatus: response.errorStatus }),
       };
 
       appendResult(pass, result);

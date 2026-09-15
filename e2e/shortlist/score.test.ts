@@ -10,6 +10,7 @@ import { latencyStats, score, scoreboard, tally, type QuestionResult } from "./s
 const base: QuestionResult = {
   id: "a01",
   axis: "A",
+  text: "バーコードの発行状況を見せて",
   answers: ["listInventoryBarcodes"],
   kind: "result",
   operationId: "listInventoryBarcodes",
@@ -27,6 +28,47 @@ test.each([
   { name: "a none is not correct@1", overrides: { kind: "none" as const }, want: false },
 ])("$name", ({ overrides, want }) => {
   expect(score({ ...base, ...overrides }).correctAt1).toBe(want);
+});
+
+test.each([
+  {
+    name: "a form over an unsafe operation matching the answer key is correct@1",
+    overrides: { kind: "form" as const, operationId: "createInventoryBarcode" },
+    answers: ["createInventoryBarcode"],
+    want: true,
+  },
+  {
+    name: "a form over an unsafe operation not matching the answer key is not correct@1",
+    overrides: { kind: "form" as const, operationId: "createInventoryBarcode" },
+    answers: ["listInventoryBarcodes"],
+    want: false,
+  },
+  {
+    name: "a form degraded from an ask over a safe operation is never correct@1, even if its target matches",
+    overrides: { kind: "form" as const, operationId: "listInventoryBarcodes", askDegraded: true },
+    answers: ["listInventoryBarcodes"],
+    want: false,
+  },
+])("$name", ({ overrides, answers, want }) => {
+  expect(score({ ...base, ...overrides, answers }).correctAt1).toBe(want);
+});
+
+test.each([
+  {
+    name: "an ask-degraded form is scored as asked, not as a pick",
+    overrides: { kind: "form" as const, operationId: "listInventoryBarcodes", askDegraded: true },
+  },
+  { name: "a plain ask is scored as asked", overrides: { kind: "ask" as const } },
+])("$name", ({ overrides }) => {
+  const scored = score({ ...base, ...overrides });
+
+  expect(scored.asked).toBe(true);
+});
+
+test("a form over an unsafe operation is not scored as asked", () => {
+  const scored = score({ ...base, kind: "form", operationId: "createInventoryBarcode" });
+
+  expect(scored.asked).toBe(false);
 });
 
 test.each([

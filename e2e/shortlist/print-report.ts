@@ -35,20 +35,29 @@ function parseLine(line: string): QuestionResult {
     kindValue === "error"
       ? kindValue
       : "result";
+  const text = typeof record["text"] === "string" ? record["text"] : "";
   const operationId = typeof record["operationId"] === "string" ? record["operationId"] : undefined;
+  const askDegraded = record["askDegraded"] === true ? true : undefined;
   const alternatives = Array.isArray(record["alternatives"])
     ? record["alternatives"].filter((a): a is string => typeof a === "string")
     : undefined;
   const latencyMs = typeof record["latencyMs"] === "number" ? record["latencyMs"] : 0;
+  const errorMessage =
+    typeof record["errorMessage"] === "string" ? record["errorMessage"] : undefined;
+  const errorStatus = typeof record["errorStatus"] === "number" ? record["errorStatus"] : undefined;
 
   return {
     id,
     axis,
+    text,
     answers,
     kind,
     ...(operationId !== undefined && { operationId }),
+    ...(askDegraded !== undefined && { askDegraded }),
     ...(alternatives !== undefined && { alternatives }),
     latencyMs,
+    ...(errorMessage !== undefined && { errorMessage }),
+    ...(errorStatus !== undefined && { errorStatus }),
   };
 }
 
@@ -61,4 +70,12 @@ function readPass(pass: "on" | "off"): readonly QuestionResult[] {
     .map((line) => parseLine(line));
 }
 
-console.log(renderReport({ on: scoreboard(readPass("on")), off: scoreboard(readPass("off")) }));
+const on = readPass("on");
+const off = readPass("off");
+
+console.log(
+  renderReport({
+    on: { board: scoreboard(on), results: on },
+    off: { board: scoreboard(off), results: off },
+  }),
+);

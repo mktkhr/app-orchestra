@@ -6,7 +6,7 @@
  * shortlist puts under any picker. No I/O here: `run.ts` writes the
  * scoreboards this reads, `make eval-shortlist` prints what this returns.
  */
-import type { LatencyStats, Scoreboard } from "./score.ts";
+import { AXES, type LatencyStats, type QuestionResult, type Scoreboard } from "./score.ts";
 
 /** One run's label, as it should head its own table. */
 export type RunLabel = "narrowing on" | "narrowing off";
@@ -101,9 +101,40 @@ function latencyLines(latency: LatencyStats): string {
   );
 }
 
+/** One line breaking the run's over-5000ms count down by axis (AC-H-107 - the total alone hides which axis paid for it). */
+function over5000ByAxisLine(board: Scoreboard): string {
+  const perAxis = AXES.map(
+    (axis) => `${axis}=${String(board.latencyByAxis[axis].over5000ms)}`,
+  ).join(" ");
+
+  return `over 5000ms by axis: ${perAxis}`;
+}
+
+/** Every error row in results, with its question, latency and the platform's own message - not just counted (score.ts's Tally), listed. */
+export function renderErrors(label: RunLabel, results: readonly QuestionResult[]): string {
+  const errors = results.filter((r) => r.kind === "error");
+
+  if (errors.length === 0) return `## ${label} errors\n(none)`;
+
+  const lines = errors.map((r) => {
+    const status = r.errorStatus === undefined ? "" : ` (HTTP ${String(r.errorStatus)})`;
+    const message = r.errorMessage ?? "(no message recorded)";
+
+    return `${r.id} ${r.axis} "${r.text}" ${String(r.latencyMs)}ms${status}: ${message}`;
+  });
+
+  return [`## ${label} errors (${String(errors.length)})`, ...lines].join("\n");
+}
+
 /** Renders one run's table: correct@1 and correct@shown per axis and overall, plus latency. */
 export function renderRun(label: RunLabel, board: Scoreboard): string {
-  return [`## ${label}`, header(), scoreboardRows(board), latencyLines(board.latency)].join("\n");
+  return [
+    `## ${label}`,
+    header(),
+    scoreboardRows(board),
+    latencyLines(board.latency),
+    over5000ByAxisLine(board),
+  ].join("\n");
 }
 
 /** Renders the two fixed reference rows, from DECISIONS.md's 2026-09-15 entry. */
@@ -124,12 +155,20 @@ export function renderReferenceRows(): string {
   return lines.join("\n");
 }
 
-/** Renders both runs and the reference rows as one report. */
-export function renderReport(runs: { readonly on: Scoreboard; readonly off: Scoreboard }): string {
+/** One run's scoreboard plus the raw results it was scored from - renderReport needs the raw results for renderErrors. */
+export interface RunReport {
+  readonly board: Scoreboard;
+  readonly results: readonly QuestionResult[];
+}
+
+/** Renders both runs, their error lists, and the reference rows as one report. */
+export function renderReport(runs: { readonly on: RunReport; readonly off: RunReport }): string {
   return [
-    renderRun("narrowing on", runs.on),
+    renderRun("narrowing on", runs.on.board),
+    renderErrors("narrowing on", runs.on.results),
     "",
-    renderRun("narrowing off", runs.off),
+    renderRun("narrowing off", runs.off.board),
+    renderErrors("narrowing off", runs.off.results),
     "",
     renderReferenceRows(),
   ].join("\n");
