@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 
 import { operationsOf, services } from "./fixture/index.ts";
+import { toOpenAPI } from "./fixture/openapi.ts";
+import type { OpenAPIDocument, Operation, SchemaObject } from "./fixture/openapi.ts";
 import { start, type Serving } from "./serve.ts";
 
 /**
@@ -49,6 +51,118 @@ async function fetchOperationIds(name: string): Promise<Set<string>> {
   return collectOperationIds(body, new Set());
 }
 
+/** `/api/x/{id}/y` with every `{...}` segment filled in, for a concrete request. */
+function concretePath(template: string): string {
+  return template.replaceAll(/\{[^}]+\}/gu, "1");
+}
+
+/** Every GET operation a document declares, paired with a concrete request path for it. */
+function getInvokes(
+  doc: OpenAPIDocument,
+): readonly { readonly path: string; readonly operation: Operation }[] {
+  return Object.entries(doc.paths).flatMap(([template, item]) =>
+    item.get === undefined ? [] : [{ path: concretePath(template), operation: item.get }],
+  );
+}
+
+/** The schema a `$ref` like `#/components/schemas/Foo` names, from a document's own components. */
+function schemaNamed(doc: OpenAPIDocument, ref: string): SchemaObject {
+  const name = ref.slice(ref.lastIndexOf("/") + 1);
+  const schema = doc.components.schemas[name];
+
+  if (schema === undefined) throw new Error(`test fixture: unknown schema ${ref}`);
+
+  return schema;
+}
+
+/** Whether value validates against schema - re-derived here from toOpenAPI's own output, not hand-copied field names. */
+function validatesAgainst(doc: OpenAPIDocument, schema: SchemaObject, value: unknown): boolean {
+  if ("enum" in schema) return typeof value === "string" && schema.enum.includes(value);
+
+  return (
+    isRecord(value) && schema.required.every((key) => hasValidProperty(doc, schema, key, value))
+  );
+}
+
+function hasValidProperty(
+  doc: OpenAPIDocument,
+  schema: Extract<SchemaObject, { readonly type: "object" }>,
+  key: string,
+  value: Readonly<Record<string, unknown>>,
+): boolean {
+  const property = schema.properties[key];
+  const propertyValue = value[key];
+
+  if (!isRecord(property)) return false;
+
+  const ref = property["$ref"];
+
+  if (typeof ref === "string") return validatesAgainst(doc, schemaNamed(doc, ref), propertyValue);
+  if (property["type"] === "array") return Array.isArray(propertyValue);
+
+  return true;
+}
+
+/** The schema an operation's 200 response declares, or undefined when it declares no body. */
+function responseSchema(doc: OpenAPIDocument, operation: Operation): SchemaObject | undefined {
+  const content = operation.responses["200"]?.content;
+
+  return content === undefined
+    ? undefined
+    : schemaNamed(doc, content["application/json"].schema.$ref);
+}
+
+/** One GET invoke's outcome: the status it answered with, and whether its body validates. */
+interface GetOutcome {
+  readonly status: number;
+  readonly valid: boolean;
+}
+
+/** Fetches every GET invoke path a document declares and checks each body against its own schema. */
+function fetchGetOutcomes(origin: string, doc: OpenAPIDocument): Promise<readonly GetOutcome[]> {
+  return Promise.all(
+    getInvokes(doc).map(async ({ path, operation }) => {
+      const response = await fetch(`${origin}${path}`);
+      const body: unknown = await response.json();
+      const schema = responseSchema(doc, operation);
+      const valid = schema === undefined || validatesAgainst(doc, schema, body);
+
+      return { status: response.status, valid };
+    }),
+  );
+}
+
+/** Every outcome answered 200 with a body that validated. */
+function allValid(outcomes: readonly GetOutcome[]): boolean {
+  return outcomes.every((o) => o.status === 200 && o.valid);
+}
+
+/** Every concrete path a document exposes for creation (POST) - the unsafe half this fixture never answers. */
+function postPathsOf(doc: OpenAPIDocument): readonly string[] {
+  return Object.entries(doc.paths).flatMap(([template, item]) =>
+    item.post === undefined ? [] : [concretePath(template)],
+  );
+}
+
+/** POSTs to every one of a document's create paths and reports each response's status. */
+function fetchPostStatuses(origin: string, doc: OpenAPIDocument): Promise<readonly number[]> {
+  return Promise.all(
+    postPathsOf(doc).map(
+      async (path) => (await fetch(`${origin}${path}`, { method: "POST" })).status,
+    ),
+  );
+}
+
+/** Every one of these statuses was 404. */
+function allNotFound(statuses: readonly number[]): boolean {
+  return statuses.every((status) => status === 404);
+}
+
+/** The first fixture service's name, for a test that only needs any one known service. */
+function firstServiceName(): string {
+  return services()[0]?.name ?? "";
+}
+
 beforeAll(async () => {
   serving = await start(0);
   const address = serving.server.address();
@@ -76,10 +190,32 @@ describe.each(services())("$name", (service) => {
 
     expect(ids).toStrictEqual(expected);
   });
+
+  test("every GET invoke path answers 200 with a body matching its own declared response schema", async () => {
+    const doc = toOpenAPI(service);
+    const outcomes = await fetchGetOutcomes(baseUrl, doc);
+
+    expect(getInvokes(doc).length).toBeGreaterThan(0);
+    expect(allValid(outcomes)).toBe(true);
+  });
+
+  test("a POST invoke path still 404s - unsafe operations never reach the service", async () => {
+    const doc = toOpenAPI(service);
+    const statuses = await fetchPostStatuses(baseUrl, doc);
+
+    expect(postPathsOf(doc).length).toBeGreaterThan(0);
+    expect(allNotFound(statuses)).toBe(true);
+  });
 });
 
 test("404s for an unknown service", async () => {
   const response = await fetch(`${baseUrl}/not-a-service/openapi.yaml`);
+
+  expect(response.status).toBe(404);
+});
+
+test("404s a GET under a known service's /api path that matches no declared operation", async () => {
+  const response = await fetch(`${baseUrl}/api/${firstServiceName()}/not-a-real-endpoint`);
 
   expect(response.status).toBe(404);
 });
