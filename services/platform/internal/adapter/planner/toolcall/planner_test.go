@@ -164,6 +164,86 @@ func TestPlanMapsAskUserOntoADecisionAsk(t *testing.T) {
 	assert.Equal(t, domain.Option{Value: "allocated", Label: "引当済"}, decision.Options[0])
 }
 
+// askResponseNoService is defect 1's fix (docs/specs/shortlisting.md):
+// usecase.AskUserTool's schema no longer declares a "service" argument at
+// all, so this is what a well-behaved model call now looks like - only
+// operationId, which the planner resolves against the catalogue itself,
+// exactly as a real tool call's name is (resolveService).
+const askResponseNoService = `{
+  "choices": [{
+    "finish_reason": "tool_calls",
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "id": "call_1",
+        "type": "function",
+        "function": {
+          "name": "ask_user",
+          "arguments": "{\"question\":\"どのステータスですか？\",\"operationId\":\"ListInventoryItems\",\"param\":\"status\",\"options\":[{\"value\":\"allocated\",\"label\":\"引当済\"}]}"
+        }
+      }]
+    }
+  }]
+}`
+
+// TestPlanMapsAskUserWithNoServiceResolvesItFromOperationID is defect 1's
+// main fix: with "service" gone from ask_user's schema, the planner must
+// resolve it from operationId alone, the same way decisionFromCall already
+// does for a real tool call.
+func TestPlanMapsAskUserWithNoServiceResolvesItFromOperationID(t *testing.T) {
+	planner := newPlanner(t, askResponseNoService, fixtureCatalog())
+
+	decision, err := planner.Plan(context.Background(), "破損した在庫はある？", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionAsk, decision.Kind)
+	assert.Equal(t, "inventory", decision.Service, "service must be resolved from operationId, not read off the call")
+	assert.Equal(t, "ListInventoryItems", decision.OperationID)
+	assert.Equal(t, "status", decision.Param)
+}
+
+// askResponseUnknownOperation mirrors what was actually measured
+// 2026-09-15 (docs/specs/shortlisting.md): with five services offered, the
+// model fabricated operation ids such as "approval/createApproval" and
+// even named its own tool as the operation, "expense/ask_user".
+const askResponseUnknownOperation = `{
+  "choices": [{
+    "finish_reason": "tool_calls",
+    "message": {
+      "role": "assistant",
+      "tool_calls": [{
+        "id": "call_1",
+        "type": "function",
+        "function": {
+          "name": "ask_user",
+          "arguments": "{\"question\":\"承認は必要ですか？\",\"operationId\":\"createApproval\",\"param\":\"status\"}"
+        }
+      }]
+    }
+  }]
+}`
+
+// TestPlanMapsAskUserWithUnknownOperationCarriesOnlyTheQuestion is defect
+// 1's degrade path: an operation id the catalogue does not have - however
+// it got there - must never surface as ErrUnknownOperation the way a real
+// tool call's would (decisionFromCall); it becomes a plain question, with
+// Service, OperationID, Param and Options all left empty so
+// Orchestrator.ask (internal/usecase/orchestrator.go) degrades it the same
+// way.
+func TestPlanMapsAskUserWithUnknownOperationCarriesOnlyTheQuestion(t *testing.T) {
+	planner := newPlanner(t, askResponseUnknownOperation, fixtureCatalog())
+
+	decision, err := planner.Plan(context.Background(), "承認フローについて", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.DecisionAsk, decision.Kind)
+	assert.Equal(t, "承認は必要ですか？", decision.Question)
+	assert.Empty(t, decision.Service)
+	assert.Empty(t, decision.OperationID)
+	assert.Empty(t, decision.Param)
+	assert.Empty(t, decision.Options)
+}
+
 const listCapabilitiesResponse = `{
   "choices": [{
     "finish_reason": "tool_calls",

@@ -74,9 +74,10 @@ func New(client *chat.Client, catalog domain.Catalog) *Planner {
 func (p *Planner) Plan(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, tools []usecase.Tool,
 ) (usecase.Decision, error) {
-	resp, err := p.client.Complete(ctx, chat.Request{
-		Messages: buildMessages(query, answers, turns),
-		Tools:    shapeTools(tools),
+	resp, err := p.client.Complete(ctx, &chat.Request{
+		Messages:    buildMessages(query, answers, turns),
+		Tools:       shapeTools(tools),
+		Temperature: chat.Zero(),
 	})
 	if err != nil {
 		return usecase.Decision{}, fmt.Errorf("calling chat completion: %w", err)
@@ -94,7 +95,7 @@ func (p *Planner) Plan(
 	}
 
 	if call.Name == toolNameAskUser {
-		return decisionFromAskUser(args), nil
+		return p.decisionFromAskUser(args), nil
 	}
 
 	if call.Name == toolNameListCapabilities {
@@ -125,17 +126,42 @@ func decodeArguments(raw string) (map[string]any, error) {
 }
 
 // decisionFromAskUser builds a DecisionAsk from ask_user's arguments.
-// Options is read and carried onto Decision.Options because Decision
-// declares the field and a caller may want to see what the model proposed,
-// but Orchestrator.ask (internal/usecase/orchestrator.go) never trusts it -
+// ask_user's own schema (usecase.AskUserTool) no longer asks the model for
+// a "service" argument at all - with a catalogue of several services the
+// model has no reliable way to name one it never called (measured
+// 2026-09-15, docs/specs/shortlisting.md: fabricated service names such as
+// "approval" or "salesBundle" 500'd as ErrEndpointNotFound). The service is
+// resolved from operationId instead, exactly the way decisionFromCall
+// resolves a real tool call's.
+//
+// When operationId does not resolve to any endpoint in the catalogue - it
+// is absent, or the model invented it (measured: "expense/ask_user", the
+// model naming its own tool as the operation it was stuck on) - the
+// Decision carries only the question, with Service, OperationID, Param and
+// Options all left zero-valued. Orchestrator.ask
+// (internal/usecase/orchestrator.go) turns that into a plain question
+// rather than ErrEndpointNotFound: an ask is never a 500.
+//
+// Options is read and carried onto Decision.Options, when the operation
+// did resolve, because Decision declares the field and a caller may want
+// to see what the model proposed, but Orchestrator.ask never trusts it -
 // it rebuilds the options a person is offered from the catalogue's own
 // enum instead, since a model can list candidate values that do not exist.
-func decisionFromAskUser(args map[string]any) usecase.Decision {
+func (p *Planner) decisionFromAskUser(args map[string]any) usecase.Decision {
+	question := stringArg(args, "question")
+
+	operationID := stringArg(args, "operationId")
+
+	service, ok := resolveService(p.catalog, operationID)
+	if !ok {
+		return usecase.Decision{Kind: usecase.DecisionAsk, Question: question}
+	}
+
 	return usecase.Decision{
 		Kind:        usecase.DecisionAsk,
-		Service:     stringArg(args, "service"),
-		OperationID: stringArg(args, "operationId"),
-		Question:    stringArg(args, "question"),
+		Service:     service,
+		OperationID: operationID,
+		Question:    question,
 		Param:       stringArg(args, "param"),
 		Options:     optionsArg(args, "options"),
 	}

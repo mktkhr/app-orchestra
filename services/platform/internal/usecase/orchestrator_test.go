@@ -745,18 +745,48 @@ func TestPlanAskDecisionForAnEnumParamStillAsks(t *testing.T) {
 	assert.Zero(t, invoker.calls)
 }
 
-func TestPlanAskDecisionForAnUnknownEndpointFails(t *testing.T) {
+// TestPlanAskDecisionForAnUnknownEndpointDegradesToAPlainQuestion is
+// defect 1 (docs/specs/shortlisting.md, measured 2026-09-15): a five-service
+// catalogue tempts the model into fabricating a service/operationId ask_user
+// never had ("approval/createApproval", "expense/ask_user" naming its own
+// tool). An ask naming an operation the catalogue does not have - however it
+// got there - is never a 500: it degrades to a plain question, with no
+// param, no options and nothing invoked.
+func TestPlanAskDecisionForAnUnknownEndpointDegradesToAPlainQuestion(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{
 		Kind: usecase.DecisionAsk, Service: "inventory", OperationID: "NoSuchOperation", Param: "status",
+		Question: "どのステータス？",
 	}}
 	invoker := &fakeInvoker{}
 
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil, nil, "", "")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "検品保留の在庫を見せて", nil, nil, "", "")
 
-	require.Error(t, err)
-	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindAsk, result.Kind)
+	assert.Equal(t, "どのステータス？", result.Question)
+	assert.Empty(t, result.Param)
+	assert.Empty(t, result.Options)
+	assert.Zero(t, invoker.calls)
+}
+
+// TestPlanAskDecisionWithNoOperationAtAllDegradesToAPlainQuestion is the
+// same rule for the empty case: ask_user's schema no longer requires -
+// or even offers - a "service" argument (defect 1), and a model that
+// leaves operationId out entirely (or the JSON planner, which has no
+// tool-calling schema to fall back on) gets the same plain question.
+func TestPlanAskDecisionWithNoOperationAtAllDegradesToAPlainQuestion(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionAsk, Question: "何が知りたいですか？"}}
+	invoker := &fakeInvoker{}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "何かある？", nil, nil, "", "")
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindAsk, result.Kind)
+	assert.Equal(t, "何が知りたいですか？", result.Question)
 	assert.Zero(t, invoker.calls)
 }
 

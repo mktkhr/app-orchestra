@@ -61,17 +61,20 @@ const askUserDescription = "Call this ONLY when the question does not tell you w
 	"declared set of values - there is nothing to pick from, so this tool cannot help; leave that " +
 	"parameter out of your call instead."
 
-// askUserServiceDescription and askUserOperationIDDescription explain why
-// ask_user must name the operation it is standing in for: a parameter name
-// such as "status" or "type" is not unique across a catalogue of many
-// services, so naming the parameter alone is not enough to know which
-// endpoint's enum the person is being asked about.
-const (
-	askUserServiceDescription = "The service that owns the operation you were about to call before " +
-		"the parameter's value stopped you - the same service name that tool would have used."
-	askUserOperationIDDescription = "The operation id of the call you were about to make before the " +
-		"parameter's value stopped you - i.e. the tool you would have called instead of ask_user."
-)
+// askUserOperationIDDescription explains why ask_user must name the
+// operation it is standing in for: a parameter name such as "status" or
+// "type" is not unique across a catalogue of many services, so naming the
+// parameter alone is not enough to know which endpoint's enum the person
+// is being asked about. There is deliberately no matching "service"
+// argument: with a five-service catalogue the model has no reliable way to
+// name a service it never called (measured 2026-09-15,
+// docs/specs/shortlisting.md - fabricated service names such as
+// "approval" or "salesBundle" 500'd as ErrEndpointNotFound), so the
+// planner resolves the service from operationId itself, the same way it
+// already does for a real tool call (resolveService).
+const askUserOperationIDDescription = "The operation id of the call you were about to make before the " +
+	"parameter's value stopped you - i.e. the tool you would have called instead of ask_user. Its service " +
+	"is looked up automatically; do not name it yourself."
 
 // AskUserTool is one further tool, always present, not derived from any
 // service's spec (docs/specs/orchestration.md, section 8): it lets the
@@ -92,10 +95,6 @@ func AskUserTool() Tool {
 				"question": map[string]any{
 					keyType:        domain.SchemaTypeString,
 					keyDescription: "The question to show the person, in Japanese.",
-				},
-				paramService: map[string]any{
-					keyType:        domain.SchemaTypeString,
-					keyDescription: askUserServiceDescription,
 				},
 				paramOperationID: map[string]any{
 					keyType:        domain.SchemaTypeString,
@@ -118,7 +117,7 @@ func AskUserTool() Tool {
 					keyDescription: "The candidate values, each with its Japanese label, for the person to pick from.",
 				},
 			},
-			keyRequired: []string{"question", paramService, paramOperationID, "param", "options"},
+			keyRequired: []string{"question", paramOperationID, "param", "options"},
 		},
 		Strict: true,
 	}

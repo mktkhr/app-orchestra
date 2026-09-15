@@ -247,6 +247,36 @@ func TestPostPlanRendersAnAsk(t *testing.T) {
 	assert.Nil(t, body.Data)
 }
 
+// TestPostPlanRendersAPlainAskWithNoParamOrOptions is defect 1's wire half
+// (docs/specs/shortlisting.md): Orchestrator.ask degrades an unknown or
+// fabricated operation id to a plain question rather than
+// ErrEndpointNotFound. That plain ask carries a question and nothing else
+// - PlanResult.param and PlanResult.options must come back absent (nil),
+// not pointing at an empty string and an empty array, since both are
+// already optional on the "ask" variant of the contract.
+func TestPostPlanRendersAPlainAskWithNoParamOrOptions(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{
+		Kind:     usecase.ResultKindAsk,
+		Question: "何について知りたいですか？",
+	}}
+
+	h := handler.NewPlan(orchestrator)
+
+	resp, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "承認は必要？"},
+	})
+
+	require.NoError(t, err)
+	body, ok := resp.(openapi.PostPlan200JSONResponse)
+	require.True(t, ok)
+
+	assert.Equal(t, openapi.DecisionKind("ask"), body.Kind)
+	require.NotNil(t, body.Question)
+	assert.Equal(t, "何について知りたいですか？", *body.Question)
+	assert.Nil(t, body.Param)
+	assert.Nil(t, body.Options)
+}
+
 // TestPostPlanRendersAProposal is section 4's wire half: kind "proposal"
 // carries a panel, not a "result" with an extra field - Data and Source,
 // the fields a "result" carries, stay nil.

@@ -537,13 +537,22 @@ func TestAskUserToolShape(t *testing.T) {
 	properties, ok := tool.InputSchema["properties"].(map[string]any)
 	require.True(t, ok)
 	assert.Contains(t, properties, "question")
-	assert.Contains(t, properties, "service")
 	assert.Contains(t, properties, "operationId")
 	assert.Contains(t, properties, "param")
 	assert.Contains(t, properties, "options")
 
-	assert.ElementsMatch(t, []string{"question", "service", "operationId", "param", "options"},
-		tool.InputSchema["required"], "service and operationId must be required: a param name alone "+
+	// Defect 1 (docs/specs/shortlisting.md, measured 2026-09-15): with five
+	// services offered, a free-text "service" argument tempted the model
+	// into inventing one it never called ("approval", "salesBundle",
+	// "summarize") - every one of those calls 500'd as
+	// ErrEndpointNotFound. There is deliberately no "service" property at
+	// all any more: the planner resolves it from operationId itself,
+	// exactly as it already does for a real tool call (resolveService,
+	// internal/adapter/planner/toolcall/planner.go).
+	assert.NotContains(t, properties, "service")
+
+	assert.ElementsMatch(t, []string{"question", "operationId", "param", "options"},
+		tool.InputSchema["required"], "operationId must be required: a param name alone "+
 			"is not unique across services")
 }
 

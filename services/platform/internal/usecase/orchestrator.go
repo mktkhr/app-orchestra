@@ -524,10 +524,21 @@ func findByOperationID(catalog domain.Catalog, operationID string) (domain.Endpo
 // decision is a pointer for the same reason call's is: golangci-lint's
 // gocritic hugeParam check on Decision's 112 bytes (see
 // harness/quality/go/golangci.yml).
+//
+// When decision.Service/decision.OperationID name no endpoint in catalog
+// at all - absent, or invented (measured 2026-09-15,
+// docs/specs/shortlisting.md: a five-service catalogue tempts the model
+// into fabricating a service such as "approval" or "salesBundle", or
+// naming its own tool as the operation, "expense/ask_user") - ask degrades
+// to a plain question instead of ErrEndpointNotFound: an ask is never a
+// 500, it just has nothing left to offer beyond the question itself. This
+// is deliberately here, in the usecase, rather than in either planner
+// adapter, so both internal/adapter/planner/toolcall and
+// internal/adapter/planner/jsonmode get it for free.
 func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, error) {
 	endpoint, ok := catalog.Find(decision.Service, decision.OperationID)
 	if !ok {
-		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, decision.Service, decision.OperationID)
+		return Result{Kind: ResultKindAsk, Question: decision.Question}, nil
 	}
 
 	if !endpoint.IsSafe() {

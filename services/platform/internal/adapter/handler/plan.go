@@ -218,8 +218,20 @@ func toAPIPlanResult(result *usecase.Result) (openapi.PlanResult, error) {
 
 	if result.Kind == usecase.ResultKindAsk {
 		out.Question = &result.Question
-		out.Param = &result.Param
-		out.Options = toAPIOptions(result.Options)
+
+		// A degraded, plain ask (Orchestrator.ask, defect 1,
+		// docs/specs/shortlisting.md: an unknown or fabricated operation id
+		// is never a 500) carries no param and no options at all - Param
+		// and Options stay nil rather than pointing at an empty string and
+		// an empty array, which the contract's own PlanResult already
+		// allows (both are optional, not required, on the "ask" variant).
+		if result.Param != "" {
+			out.Param = &result.Param
+		}
+
+		if len(result.Options) > 0 {
+			out.Options = toAPIOptions(result.Options)
+		}
 	}
 
 	if result.Kind == usecase.ResultKindProposal {
