@@ -72,7 +72,7 @@ func TestPlanAgainstALiveModel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), liveTimeout)
 	defer cancel()
 
-	decision, err := planner.Plan(ctx, "検品保留の在庫を見せて", nil, nil, usecase.ToolsFor(catalog, usecase.PlanContext{WorkspaceID: "ws-1"}))
+	decision, err := planner.Plan(ctx, "検品保留の在庫を見せて", nil, nil, usecase.ToolsFor(catalog, usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
 	require.NoError(t, err)
 	require.Equal(t, usecase.DecisionCall, decision.Kind)
 	require.Equal(t, "ListInventoryItems", decision.OperationID)

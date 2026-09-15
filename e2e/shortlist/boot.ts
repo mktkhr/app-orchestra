@@ -41,7 +41,7 @@ export interface BootOptions {
   readonly narrowing?: NarrowingOptions;
   /** When set, `ORCHESTRA_PLANNER_WORDING` is set to this name on the platform (docs/plans/wording.md Task 2) - the whole contract with the `wording` package is this variable's name. */
   readonly wording?: string;
-  /** When set, `ORCHESTRA_PLANNER_THINKING` is set to this on the platform (config.go: "on" or "off"; unset leaves thinking on, today's behaviour). */
+  /** When set, `ORCHESTRA_PLANNER_THINKING` is set to this on the platform (config.go: "on" or "off"; unset leaves thinking off, the default since 2026-09-16). */
   readonly thinking?: "on" | "off";
   /** When set, `ORCHESTRA_PLANNER_REPEAT_PENALTY` is set to this on the platform; unset sends nothing. */
   readonly repeatPenalty?: number;

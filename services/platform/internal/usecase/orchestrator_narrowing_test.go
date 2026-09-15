@@ -67,7 +67,7 @@ func TestPlanOffersExactlyTheNarrowedCatalogueInItsOwnOrder(t *testing.T) {
 		inventoryCatalog(), planner, &fakeInvoker{}, &fakePermissionStore{}, usecase.WithNarrower(narrower, 20),
 	)
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil, "", "")
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil, "", "", nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ToolsFor(shortlist, usecase.PlanContext{}), planner.tools,
@@ -89,7 +89,7 @@ func TestPlanWithPassThroughNarrowerOffersByteIdenticalTools(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
 	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, &fakeInvoker{}, &fakePermissionStore{})
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil, "", "")
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil, "", "", nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, usecase.ToolsFor(inventoryCatalog(), usecase.PlanContext{}), planner.tools)
@@ -120,7 +120,7 @@ func TestPlanWrapsANarrowerError(t *testing.T) {
 		inventoryCatalog(), planner, &fakeInvoker{}, &fakePermissionStore{}, usecase.WithNarrower(narrower, 20),
 	)
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil, "", "")
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil, "", "", nil)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, boom)

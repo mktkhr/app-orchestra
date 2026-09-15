@@ -327,6 +327,8 @@ export type components = {
             readonly workspaceId?: string;
             /** @description The operation id to plan against exclusively, bypassing narrowing (docs/specs/shortlisting.md, section 4). Set when a person chose one of a previous `result`'s `alternatives`: the catalogue becomes exactly this one operation - permission checked the same as any other, `ErrEndpointNotFound` if the person may not call it or it does not exist - and the planner fills in its parameters. Absent for an ordinary question. */
             readonly preferred?: string;
+            /** @description Whether the planner may think before answering. Omitted: the platform's configured default. */
+            readonly thinking?: boolean;
         };
         /**
          * @description What the planner decided to do about a question.

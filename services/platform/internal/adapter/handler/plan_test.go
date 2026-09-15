@@ -28,6 +28,7 @@ type fakeOrchestrator struct {
 	turns       []usecase.Turn
 	workspaceID string
 	preferred   string
+	thinking    *bool
 }
 
 func (f *fakeOrchestrator) Plan(
@@ -37,6 +38,7 @@ func (f *fakeOrchestrator) Plan(
 	answers []usecase.Answer,
 	turns []usecase.Turn,
 	workspaceID, preferred string,
+	thinking *bool,
 ) (usecase.Result, error) {
 	f.user = user
 	f.query = query
@@ -44,6 +46,7 @@ func (f *fakeOrchestrator) Plan(
 	f.turns = turns
 	f.workspaceID = workspaceID
 	f.preferred = preferred
+	f.thinking = thinking
 
 	return f.result, f.err
 }
@@ -502,6 +505,62 @@ func TestPostPlanWithNoPreferredPassesEmptyStringThrough(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, orchestrator.preferred)
+}
+
+// TestPostPlanPassesThinkingThrough is the contract round-trip half of the
+// platform knobs subproject (decided 2026-09-16): a PlanRequest carrying
+// thinking: false must reach Orchestrator.Plan as that same *bool, not
+// dropped or coerced along the way.
+func TestPostPlanPassesThinkingThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	thinking := false
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて", Thinking: &thinking},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, orchestrator.thinking)
+	assert.False(t, *orchestrator.thinking)
+}
+
+// TestPostPlanPassesThinkingTrueThrough is the same round trip with the
+// switch on, proving the value passed through is the request's own, not a
+// hardcoded false.
+func TestPostPlanPassesThinkingTrueThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	thinking := true
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて", Thinking: &thinking},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, orchestrator.thinking)
+	assert.True(t, *orchestrator.thinking)
+}
+
+// TestPostPlanWithNoThinkingPassesNilThrough is the omitted case: a
+// PlanRequest with no thinking field at all must reach Orchestrator.Plan
+// as nil - "use the platform's configured default" - never coerced to
+// false.
+func TestPostPlanWithNoThinkingPassesNilThrough(t *testing.T) {
+	orchestrator := &fakeOrchestrator{result: usecase.Result{Kind: usecase.ResultKindNone}}
+
+	h := handler.NewPlan(orchestrator)
+
+	_, err := h.PostPlan(t.Context(), openapi.PostPlanRequestObject{
+		Body: &openapi.PlanRequest{Query: "在庫の一覧を見せて"},
+	})
+
+	require.NoError(t, err)
+	assert.Nil(t, orchestrator.thinking)
 }
 
 // TestPostPlanRendersAlternatives is AC-H-103's wire half: a result

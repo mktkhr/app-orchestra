@@ -24,7 +24,7 @@ var errUnrenderableData = errors.New("result data is not a JSON object")
 type planner interface {
 	Plan(
 		ctx context.Context, user *domain.User, query string, answers []usecase.Answer, turns []usecase.Turn,
-		workspaceID, preferred string,
+		workspaceID, preferred string, thinking *bool,
 	) (usecase.Result, error)
 }
 
@@ -47,7 +47,7 @@ func (h *Plan) PostPlan(
 ) (openapi.PostPlanResponseObject, error) {
 	result, err := h.orchestrator.Plan(
 		ctx, currentUser(ctx), request.Body.Query, toAnswers(request.Body.Answers), toTurns(request.Body.Turns),
-		toWorkspaceID(request.Body.WorkspaceId), toPreferred(request.Body.Preferred),
+		toWorkspaceID(request.Body.WorkspaceId), toPreferred(request.Body.Preferred), request.Body.Thinking,
 	)
 	if err != nil {
 		return planErrorResponse(err), nil

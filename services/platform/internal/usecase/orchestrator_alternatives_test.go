@@ -77,7 +77,7 @@ func TestPlanResultAlternativesAreTheShortlistPositionsAfterTheChoice(t *testing
 				usecase.WithNarrower(narrower, 20),
 			)
 
-			result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "")
+			result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "", nil)
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, result.Alternatives)
@@ -100,7 +100,7 @@ func TestPlanResultHasNoAlternativesWithPassThroughNarrower(t *testing.T) {
 		fourEndpointShortlist(), planner, &fakeInvoker{data: map[string]any{}}, &fakePermissionStore{},
 	)
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "", nil)
 
 	require.NoError(t, err)
 	assert.Empty(t, result.Alternatives)
@@ -125,7 +125,7 @@ func TestPlanWithPreferredBypassesTheNarrowerAndOffersOnlyThatOperation(t *testi
 		usecase.WithNarrower(narrower, 20),
 	)
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "Opc")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "Opc", nil)
 
 	require.NoError(t, err)
 	require.Len(t, planner.tools, 1, "only the preferred operation's tool must be offered, no built-ins")
@@ -146,7 +146,7 @@ func TestPlanWithUnknownPreferredIsErrEndpointNotFound(t *testing.T) {
 		fourEndpointShortlist(), planner, &fakeInvoker{}, &fakePermissionStore{},
 	)
 
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "nope")
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "nope", nil)
 
 	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
 	assert.Empty(t, planner.query, "the planner must never be reached when preferred does not resolve")
@@ -167,7 +167,7 @@ func TestPlanWithPreferredOutsidePermissionIsErrEndpointNotFound(t *testing.T) {
 
 	orchestrator := usecase.NewOrchestrator(fourEndpointShortlist(), planner, &fakeInvoker{}, permissions)
 
-	_, err := orchestrator.Plan(t.Context(), regularUser(), "質問", nil, nil, "", "Opb")
+	_, err := orchestrator.Plan(t.Context(), regularUser(), "質問", nil, nil, "", "Opb", nil)
 
 	require.ErrorIs(t, err, usecase.ErrEndpointNotFound)
 	assert.Empty(t, planner.query, "the planner must never be reached when preferred is not permitted")

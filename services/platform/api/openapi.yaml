@@ -679,6 +679,11 @@ components:
             checked the same as any other, `ErrEndpointNotFound` if the
             person may not call it or it does not exist - and the planner
             fills in its parameters. Absent for an ordinary question.
+        thinking:
+          type: boolean
+          description: >
+            Whether the planner may think before answering. Omitted: the
+            platform's configured default.
     DecisionKind:
       type: string
       description: What the planner decided to do about a question.

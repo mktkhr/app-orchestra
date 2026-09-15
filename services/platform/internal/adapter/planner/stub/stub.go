@@ -113,9 +113,11 @@ func New(table map[Key]usecase.Decision, notFound *usecase.Decision) *Planner {
 	return &Planner{table: copied, notFound: *notFound}
 }
 
-// Plan looks {query, answers, turns} up in the table. tools is accepted
-// only to satisfy usecase.Planner: the stub is a fixed mapping, not a model
-// that reads a catalogue. turns is folded into Key through TurnsKey rather
+// Plan looks {query, answers, turns} up in the table. tools and thinking
+// are accepted only to satisfy usecase.Planner: the stub is a fixed
+// mapping, not a model that reads a catalogue, and it never talks to an
+// LLM at all, so there is nothing for a thinking override to change.
+// turns is folded into Key through TurnsKey rather
 // than read for meaning - the stub still performs no inference over it, so
 // it stays pure and deterministic (the global constraint that `make check`
 // never calls a real LLM depends on every fixture answering the same way
@@ -125,7 +127,7 @@ func New(table map[Key]usecase.Decision, notFound *usecase.Decision) *Planner {
 // model. Whether a real model actually carries context that well is a
 // different question, answered by hand in DECISIONS.md, not by this type.
 func (p *Planner) Plan(
-	_ context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, _ []usecase.Tool,
+	_ context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, _ []usecase.Tool, _ *bool,
 ) (usecase.Decision, error) {
 	key := Key{Query: query, Answers: AnswersKey(answers), Turns: TurnsKey(turns)}
 	if decision, ok := p.table[key]; ok {

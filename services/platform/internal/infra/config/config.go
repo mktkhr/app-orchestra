@@ -226,10 +226,14 @@ type Config struct {
 	// this (pkg/app.newPlanner); the jsonmode planner is out of scope.
 	PlannerWording string
 	// PlannerThinking selects whether the toolcall planner leaves Qwen3.5's
-	// thinking on (true, the default - today's behaviour, nothing sent) or
-	// turns it off (false), read from ORCHESTRA_PLANNER_THINKING ("on" or
-	// "off"; unset means true). Only the toolcall planner reads this - see
-	// PlannerWording's own doc comment.
+	// thinking on (true) or turns it off (false, the default), read from
+	// ORCHESTRA_PLANNER_THINKING ("on" or "off"; unset means false).
+	// Measured 2026-09-16 (docs/specs/shortlisting.md): thinking off gives
+	// correct@1 67 / correct@shown 71 at a mean 1377ms and never hits
+	// max_tokens; thinking on gives 67/70 at a mean 6223ms. This is the
+	// platform's default, overridable per request by PlanRequest.thinking
+	// (docs/specs/shortlisting.md). Only the toolcall planner reads this -
+	// see PlannerWording's own doc comment.
 	PlannerThinking bool
 	// PlannerRepeatPenalty is chat.Request.RepeatPenalty for every toolcall
 	// planning request, read from ORCHESTRA_PLANNER_REPEAT_PENALTY. nil
@@ -452,16 +456,17 @@ const (
 	plannerThinkingOff = "off"
 )
 
-// parsePlannerThinking reads ORCHESTRA_PLANNER_THINKING: true (thinking
-// on, today's behaviour) when unset or "on", false when "off" - anything
-// else fails startup rather than silently falling back to the default,
-// the same reasoning parseLLMMode already applies.
+// parsePlannerThinking reads ORCHESTRA_PLANNER_THINKING: false (thinking
+// off, the default - measured 2026-09-16, docs/specs/shortlisting.md) when
+// unset or "off", true when "on" - anything else fails startup rather than
+// silently falling back to the default, the same reasoning parseLLMMode
+// already applies.
 func parsePlannerThinking(raw string) (bool, error) {
 	switch raw {
-	case "", plannerThinkingOn:
-		return true, nil
-	case plannerThinkingOff:
+	case "", plannerThinkingOff:
 		return false, nil
+	case plannerThinkingOn:
+		return true, nil
 	default:
 		return false, fmt.Errorf("%w: %q", ErrInvalidPlannerThinking, raw)
 	}

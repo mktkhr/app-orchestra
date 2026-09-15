@@ -250,8 +250,15 @@ func NewOrchestrator(
 // same as an unknown one - and the rest of the decision is delegated to
 // planPreferred, which no longer offers the built-ins alongside it (see
 // planPreferred's own doc comment for why).
+//
+// thinking is PlanRequest.thinking (docs/specs/shortlisting.md, "platform
+// knobs" subproject, decided 2026-09-16): nil for a caller that leaves the
+// platform's configured default alone, or the value the question was
+// asked with, carried unchanged to o.planner.Plan on both the ordinary
+// path below and planPreferred's.
 func (o *Orchestrator) Plan(
 	ctx context.Context, user *domain.User, query string, answers []Answer, turns []Turn, workspaceID, preferred string,
+	thinking *bool,
 ) (Result, error) {
 	catalog, err := o.catalogFor(ctx, user)
 	if err != nil {
@@ -264,7 +271,7 @@ func (o *Orchestrator) Plan(
 			return Result{}, fmt.Errorf("%w: %s", ErrEndpointNotFound, preferred)
 		}
 
-		return o.planPreferred(ctx, &endpoint, query, answers, turns)
+		return o.planPreferred(ctx, &endpoint, query, answers, turns, thinking)
 	}
 
 	// Narrowed to a shortlist before the planner ever sees it
@@ -283,7 +290,7 @@ func (o *Orchestrator) Plan(
 	planCtx := PlanContext{WorkspaceID: workspaceID}
 	tools := ToolsFor(catalog, planCtx)
 
-	decision, err := o.planner.Plan(ctx, query, answers, truncateTurns(turns, o.contextWindow), tools)
+	decision, err := o.planner.Plan(ctx, query, answers, truncateTurns(turns, o.contextWindow), tools, thinking)
 	if err != nil {
 		return Result{}, fmt.Errorf("planning: %w", err)
 	}

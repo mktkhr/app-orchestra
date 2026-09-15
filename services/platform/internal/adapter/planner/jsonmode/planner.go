@@ -186,8 +186,14 @@ func New(client *chat.Client, catalog domain.Catalog) *Planner {
 // before it or inside it: the base itself is one of the two fixed strings
 // precomputed in New, so its own bytes stay the same across every question
 // of a conversation (M3).
+// thinking is accepted only to satisfy usecase.Planner: this transport has
+// no equivalent of chat_template_kwargs's enable_thinking (D5,
+// docs/specs/orchestration.md - Task 11 is the JSON-mode half of the
+// planner port, for a model that cannot call tools at all, and a per-
+// request thinking override was only ever measured against the toolcall
+// planner and Qwen3.5, docs/specs/shortlisting.md), so it is ignored here.
 func (p *Planner) Plan(
-	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, tools []usecase.Tool,
+	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, tools []usecase.Tool, _ *bool,
 ) (usecase.Decision, error) {
 	offerProposePanel := toolOffered(tools, usecase.ProposePanelToolName)
 

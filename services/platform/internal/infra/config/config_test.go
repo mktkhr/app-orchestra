@@ -507,10 +507,13 @@ func TestLoadRejectsMalformedSeedAccounts(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestLoadPlannerThinkingDefaultsToTrue is the toolcall planner-knob half
+// TestLoadPlannerThinkingDefaultsToFalse is the toolcall planner-knob half
 // of the platform-knobs subproject: an unset ORCHESTRA_PLANNER_THINKING
-// resolves to true - thinking stays on, today's behaviour.
-func TestLoadPlannerThinkingDefaultsToTrue(t *testing.T) {
+// resolves to false - thinking off, the default decided 2026-09-16
+// (measured: correct@1 67 / correct@shown 71 at a mean 1377ms with
+// thinking off, never hitting max_tokens, against 67/70 at a mean 6223ms
+// with thinking on; docs/specs/shortlisting.md).
+func TestLoadPlannerThinkingDefaultsToFalse(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
 	t.Setenv("ORCHESTRA_PLANNER_THINKING", "")
@@ -518,7 +521,7 @@ func TestLoadPlannerThinkingDefaultsToTrue(t *testing.T) {
 	cfg, err := config.Load()
 
 	require.NoError(t, err)
-	assert.True(t, cfg.PlannerThinking)
+	assert.False(t, cfg.PlannerThinking)
 }
 
 func TestLoadPlannerThinkingOn(t *testing.T) {

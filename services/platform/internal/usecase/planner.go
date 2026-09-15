@@ -105,8 +105,19 @@ type Turn struct {
 // after the catalogue - the tool definitions and the rendered catalogue
 // text, respectively (M3, docs/specs/context.md section 4;
 // docs/plans/context.md Task 2).
+// Plan's thinking parameter is the per-request override of whether the
+// planner may think before answering (docs/specs/shortlisting.md,
+// "platform knobs" subproject, decided 2026-09-16): nil means "no
+// override, use this Planner's own configured default" - the same
+// nil-means-default convention toolcall.Planner's WithThinking option
+// already uses - a non-nil value wins over that default for this one
+// call. Only toolcall.Planner acts on it (chat_template_kwargs); stub and
+// jsonmode accept and ignore it, the same way they already accept and
+// ignore tools or turns they have no use for.
 type Planner interface {
-	Plan(ctx context.Context, query string, answers []Answer, turns []Turn, tools []Tool) (Decision, error)
+	Plan(
+		ctx context.Context, query string, answers []Answer, turns []Turn, tools []Tool, thinking *bool,
+	) (Decision, error)
 }
 
 // Invoker calls one endpoint of one service and returns its decoded JSON

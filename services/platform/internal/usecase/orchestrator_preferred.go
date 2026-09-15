@@ -31,8 +31,13 @@ import (
 // endpoint is a pointer for the same gocritic hugeParam reason as call's
 // and ask's decision parameter (domain.Endpoint is 136 bytes; see
 // harness/quality/go/golangci.yml).
+//
+// thinking is Plan's own thinking parameter, carried to o.planner.Plan
+// unchanged - the same question, so the same per-request thinking value it
+// was asked with, whether it resolves through this preferred path or the
+// ordinary one.
 func (o *Orchestrator) planPreferred(
-	ctx context.Context, endpoint *domain.Endpoint, query string, answers []Answer, turns []Turn,
+	ctx context.Context, endpoint *domain.Endpoint, query string, answers []Answer, turns []Turn, thinking *bool,
 ) (Result, error) {
 	fallback := &Decision{Service: endpoint.Service, OperationID: endpoint.OperationID, Args: argsFromAnswers(answers)}
 
@@ -44,7 +49,9 @@ func (o *Orchestrator) planPreferred(
 		return formFor(endpoint, fallback), nil
 	}
 
-	decision, err := o.planner.Plan(ctx, query, answers, truncateTurns(turns, o.contextWindow), []Tool{toolFor(endpoint)})
+	decision, err := o.planner.Plan(
+		ctx, query, answers, truncateTurns(turns, o.contextWindow), []Tool{toolFor(endpoint)}, thinking,
+	)
 	if err != nil {
 		return Result{}, fmt.Errorf("planning: %w", err)
 	}

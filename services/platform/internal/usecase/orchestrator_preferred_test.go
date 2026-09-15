@@ -41,7 +41,7 @@ func TestPlanWithPreferredOnRequiredParameterSkipsThePlannerAndFormsInstead(t *t
 		getAttendanceRecordCatalog(), planner, &fakeInvoker{}, &fakePermissionStore{},
 	)
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "勤怠記録の詳細", nil, nil, "", "GetAttendanceRecord")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "勤怠記録の詳細", nil, nil, "", "GetAttendanceRecord", nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, 0, planner.calls, "the planner must never be called when a required parameter is unanswered")
@@ -71,7 +71,7 @@ func TestPlanWithPreferredOnRequiredParameterPrefillsFromAnswers(t *testing.T) {
 
 	answers := []usecase.Answer{{Param: "id", Value: "rec-1"}}
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "勤怠記録の詳細", answers, nil, "", "GetAttendanceRecord")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "勤怠記録の詳細", answers, nil, "", "GetAttendanceRecord", nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, planner.calls, "id is already known, so the planner fills in whatever else remains")
@@ -105,7 +105,7 @@ func TestPlanWithPreferredAndPlannerEscapesDegradesToForm(t *testing.T) {
 
 			answers := []usecase.Answer{{Param: "id", Value: "rec-1"}}
 
-			result, err := orchestrator.Plan(t.Context(), adminUser(), "勤怠記録の詳細", answers, nil, "", "GetAttendanceRecord")
+			result, err := orchestrator.Plan(t.Context(), adminUser(), "勤怠記録の詳細", answers, nil, "", "GetAttendanceRecord", nil)
 
 			require.NoError(t, err)
 			assert.Equal(t, 1, planner.calls)
@@ -131,7 +131,7 @@ func TestPlanWithPreferredOnParameterlessOperationCallsThePlanner(t *testing.T) 
 		fourEndpointShortlist(), planner, &fakeInvoker{data: map[string]any{}}, &fakePermissionStore{},
 	)
 
-	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "Opc")
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "Opc", nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, planner.calls)

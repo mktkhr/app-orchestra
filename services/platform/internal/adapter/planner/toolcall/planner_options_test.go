@@ -47,7 +47,7 @@ func TestPlanWithThinkingLeftOnSendsNoChatTemplateKwargs(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	planner := toolcall.New(client, fixtureCatalog())
 
-	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
 	require.NoError(t, err)
 
 	_, ok := gotBody["chat_template_kwargs"]
@@ -76,12 +76,119 @@ func TestPlanWithThinkingDisabledSendsEnableThinkingFalse(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	planner := toolcall.New(client, fixtureCatalog(), toolcall.WithThinking(false))
 
-	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
 	require.NoError(t, err)
 
 	kwargs, ok := gotBody["chat_template_kwargs"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, false, kwargs["enable_thinking"])
+}
+
+// thinkingTrue and thinkingFalse are *bool literals a test can pass as
+// Plan's own thinking parameter - a per-request override, distinct from
+// the Planner's own configured default set by WithThinking (platform
+// knobs subproject, decided 2026-09-16).
+func thinkingTrue() *bool {
+	v := true
+
+	return &v
+}
+
+func thinkingFalse() *bool {
+	v := false
+
+	return &v
+}
+
+// TestPlanPerRequestThinkingTrueOverridesConfiguredFalse is one direction
+// of the effective-value rule Plan's own doc comment states: a Planner
+// configured with WithThinking(false) still sends no
+// "chat_template_kwargs" when the request itself asks for thinking: true.
+func TestPlanPerRequestThinkingTrueOverridesConfiguredFalse(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(callResponse)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := toolcall.New(client, fixtureCatalog(), toolcall.WithThinking(false))
+
+	_, err := planner.Plan(
+		context.Background(), "何か", nil, nil,
+		usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), thinkingTrue(),
+	)
+	require.NoError(t, err)
+
+	_, ok := gotBody["chat_template_kwargs"]
+	assert.False(t, ok, "chat_template_kwargs must be absent when the request overrides thinking to true")
+}
+
+// TestPlanPerRequestThinkingFalseOverridesConfiguredTrue is the other
+// direction: a Planner with no WithThinking option at all (thinking on by
+// default) still sends chat_template_kwargs: {"enable_thinking": false}
+// when the request itself asks for thinking: false.
+func TestPlanPerRequestThinkingFalseOverridesConfiguredTrue(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(callResponse)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := toolcall.New(client, fixtureCatalog())
+
+	_, err := planner.Plan(
+		context.Background(), "何か", nil, nil,
+		usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), thinkingFalse(),
+	)
+	require.NoError(t, err)
+
+	kwargs, ok := gotBody["chat_template_kwargs"].(map[string]any)
+	require.True(t, ok, "chat_template_kwargs must be present when the request overrides thinking to false")
+	assert.Equal(t, false, kwargs["enable_thinking"])
+}
+
+// TestPlanDebugLogReportsTheEffectiveThinkingValueNotTheConfiguredDefault
+// is the logging half of the effective-value rule: the "thinking" field on
+// the per-call debug log is the request's own override, not the Planner's
+// configured default, whenever the two disagree.
+func TestPlanDebugLogReportsTheEffectiveThinkingValueNotTheConfiguredDefault(t *testing.T) {
+	buf := &bytes.Buffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	planner := newPlanner(t, callResponse, fixtureCatalog())
+
+	_, err := planner.Plan(
+		context.Background(), "何か", nil, nil,
+		usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), thinkingFalse(),
+	)
+	require.NoError(t, err)
+
+	completed := logLineWith(t, buf, "finish_reason")
+	require.NotNil(t, completed, "expected a debug log carrying \"finish_reason\"")
+	assert.Equal(t, false, completed["thinking"],
+		"the logged thinking value must be the request's override, not the configured default (true)")
 }
 
 // TestPlanWithNoRepeatPenaltySendsNeitherField documents that an
@@ -106,7 +213,7 @@ func TestPlanWithNoRepeatPenaltySendsNeitherField(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	planner := toolcall.New(client, fixtureCatalog())
 
-	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
 	require.NoError(t, err)
 
 	_, hasPenalty := gotBody["repeat_penalty"]
@@ -136,7 +243,7 @@ func TestPlanWithRepeatPenaltySendsBothFields(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	planner := toolcall.New(client, fixtureCatalog(), toolcall.WithRepeatPenalty(1.1, 64))
 
-	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
 	require.NoError(t, err)
 
 	assert.InDelta(t, 1.1, gotBody["repeat_penalty"], 0)
@@ -209,7 +316,7 @@ func TestPlanTruncationLogCarriesReasoningCompletionTokensAndThinking(t *testing
 	buf := captureLogs(t)
 	planner := newPlanner(t, lengthResponseWithReasoning, fixtureCatalog())
 
-	_, err := planner.Plan(context.Background(), "明細を1件確認したい", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}))
+	_, err := planner.Plan(context.Background(), "明細を1件確認したい", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
 	require.NoError(t, err)
 
 	warn := logLineWith(t, buf, "reasoning")

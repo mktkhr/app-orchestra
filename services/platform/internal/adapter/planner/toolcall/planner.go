@@ -126,15 +126,28 @@ func New(client *chat.Client, catalog domain.Catalog, opts ...Option) *Planner {
 // the system message: tools is what the catalogue prompt cache is warm
 // for (M3, docs/specs/context.md section 4), and this way neither it nor
 // the system message's own bytes change when a conversation grows.
+//
+// thinking, when non-nil, overrides p.thinking (this Planner's own
+// configured default, WithThinking) for this one call: the effective
+// value - thinking's value if given, p.thinking otherwise - is what
+// decides chatTemplateKwargs and what every log line below reports, never
+// the configured default alone (docs/specs/shortlisting.md, "platform
+// knobs" subproject, decided 2026-09-16).
 func (p *Planner) Plan(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, tools []usecase.Tool,
+	thinking *bool,
 ) (usecase.Decision, error) {
+	effectiveThinking := p.thinking
+	if thinking != nil {
+		effectiveThinking = *thinking
+	}
+
 	resp, err := p.client.Complete(ctx, &chat.Request{
 		Messages:           buildMessages(query, answers, turns, p.wording.SystemPrompt),
 		Tools:              shapeTools(tools, p.wording),
 		Temperature:        chat.Zero(),
 		MaxTokens:          chat.MaxTokens(),
-		ChatTemplateKwargs: p.chatTemplateKwargs(),
+		ChatTemplateKwargs: chatTemplateKwargsFor(effectiveThinking),
 		RepeatPenalty:      p.repeatPenalty,
 		RepeatLastN:        p.repeatLastN,
 	})
@@ -145,7 +158,7 @@ func (p *Planner) Plan(
 	slog.Default().DebugContext(ctx, "planner call completed",
 		slog.Int("completion_tokens", resp.Usage.CompletionTokens),
 		slog.String("finish_reason", resp.FinishReason),
-		slog.Bool("thinking", p.thinking))
+		slog.Bool("thinking", effectiveThinking))
 
 	// Defect 3 (docs/specs/shortlisting.md, measured 2026-09-15,
 	// chat.MaxTokens's own doc comment): a model that hit MaxTokens without
@@ -167,7 +180,7 @@ func (p *Planner) Plan(
 			slog.String("content", chat.Preview(resp.Message.Content)),
 			slog.String("reasoning", chat.Preview(resp.Message.ReasoningContent)),
 			slog.Int("completion_tokens", resp.Usage.CompletionTokens),
-			slog.Bool("thinking", p.thinking))
+			slog.Bool("thinking", effectiveThinking))
 
 		return usecase.Decision{Kind: usecase.DecisionNone}, nil
 	}
@@ -198,11 +211,12 @@ func (p *Planner) Plan(
 	return p.decisionFromCall(call.Name, args)
 }
 
-// chatTemplateKwargs builds Request.ChatTemplateKwargs for one planning
-// call: nil (send nothing) when thinking is left on, {"enable_thinking":
-// false} otherwise.
-func (p *Planner) chatTemplateKwargs() map[string]any {
-	if p.thinking {
+// chatTemplateKwargsFor builds Request.ChatTemplateKwargs for one planning
+// call from its effective thinking value (Plan's own doc comment): nil
+// (send nothing) when thinking is left on, {"enable_thinking": false}
+// otherwise.
+func chatTemplateKwargsFor(effectiveThinking bool) map[string]any {
+	if effectiveThinking {
 		return nil
 	}
 
