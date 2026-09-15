@@ -36,8 +36,20 @@ import (
 // unchanged - the same question, so the same per-request thinking value it
 // was asked with, whether it resolves through this preferred path or the
 // ordinary one.
+//
+// fromPick is the staging subproject's own addition (docs/specs/staging.md,
+// S1/S5): false for a chip the person has already chosen (Plan's own
+// preferred request field), which keeps every behaviour above unchanged;
+// true when this fill follows a pick (Orchestrator.planStaged,
+// orchestrator_staging.go). Only when true does this function offer
+// AskUserTool() alongside the one operation's tool, and only then does a
+// DecisionAsk naming this same operation resolve through o.ask rather than
+// being discarded - a pick has not already let the person choose between
+// candidates the way a chip has, so an unmatched restricting word
+// (v6-unmatched-filter) must still be able to end in a question.
 func (o *Orchestrator) planPreferred(
 	ctx context.Context, endpoint *domain.Endpoint, query string, answers []Answer, turns []Turn, thinking *bool,
+	fromPick bool,
 ) (Result, error) {
 	fallback := &Decision{Service: endpoint.Service, OperationID: endpoint.OperationID, Args: argsFromAnswers(answers)}
 
@@ -49,11 +61,19 @@ func (o *Orchestrator) planPreferred(
 		return formFor(endpoint, fallback), nil
 	}
 
-	decision, err := o.planner.Plan(
-		ctx, query, answers, truncateTurns(turns, o.contextWindow), []Tool{toolFor(endpoint)}, thinking,
-	)
+	tools := []Tool{toolFor(endpoint)}
+	if fromPick && hasEnumParameter(endpoint) {
+		tools = append(tools, AskUserTool())
+	}
+
+	decision, err := o.planner.Plan(ctx, query, answers, truncateTurns(turns, o.contextWindow), tools, thinking)
 	if err != nil {
 		return Result{}, fmt.Errorf("planning: %w", err)
+	}
+
+	if fromPick && decision.Kind == DecisionAsk &&
+		decision.Service == endpoint.Service && decision.OperationID == endpoint.OperationID {
+		return o.ask(domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, &decision)
 	}
 
 	// Anything other than a call to the one tool offered - list_capabilities,

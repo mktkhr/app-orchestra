@@ -157,6 +157,12 @@ type Orchestrator struct {
 	contextWindow int
 	narrower      Narrower
 	narrowK       int
+	// picker and stages are the staging subproject's own fields
+	// (docs/specs/staging.md, S1): stages is 1 (today's single call, the
+	// default set by NewOrchestrator) or 2 (planStaged,
+	// orchestrator_staging.go); picker is consulted only when stages is 2.
+	picker Picker
+	stages int
 }
 
 // Option configures an Orchestrator built by NewOrchestrator, beyond its
@@ -186,6 +192,42 @@ func WithNarrower(n Narrower, k int) Option {
 	}
 }
 
+// WithPicker configures the usecase.Picker WithStages(2) consults
+// (docs/specs/staging.md, S1). Meaningless without WithStages(2) - a
+// picker given but stages left at 1 is simply never called, the same way
+// WithNarrower's narrowK is inert under Preferred.
+func WithPicker(p Picker) Option {
+	return func(o *Orchestrator) { o.picker = p }
+}
+
+// WithStages selects how many model calls Plan makes to resolve an
+// ordinary question (not one with Preferred set, which always bypasses
+// both the narrower and the picker): 1, NewOrchestrator's own default, is
+// today's single call over the whole (narrowed) shortlist, byte for byte
+// unchanged (AC-S-101); 2 is the pick-then-fill path (planStaged,
+// orchestrator_staging.go, S1).
+//
+// WithStages(2) given without WithPicker cannot fail at construction: the
+// plan's own text asked for a construction-time panic here, but
+// forbidigo's fixed harness policy (harness/quality/go/golangci.yml,
+// "return an error instead of panicking") forbids `panic` outright, and
+// changing NewOrchestrator's own signature to return an error would ripple
+// through every one of its ~70 existing call sites (pkg/app and every test
+// in this package) to guard a single misconfiguration. So this is checked
+// at the top of every Plan call instead (ErrStagesRequirePicker) - a
+// deliberate deviation from docs/plans/staging.md's Task 2, forced by the
+// harness rather than chosen freely; see this package's own CHANGELOG-free
+// convention (STATE.md/DECISIONS.md record it instead).
+func WithStages(n int) Option {
+	return func(o *Orchestrator) { o.stages = n }
+}
+
+// ErrStagesRequirePicker is returned by Plan when WithStages(2) was given
+// to NewOrchestrator without also giving WithPicker - see WithStages' own
+// doc comment for why this is a request-time check rather than the
+// construction-time one docs/plans/staging.md's Task 2 asked for.
+var ErrStagesRequirePicker = errors.New("usecase: WithStages(2) requires WithPicker")
+
 // NewOrchestrator builds an Orchestrator over the given catalogue, planner,
 // invoker and permission store. permissions is read once per request, by
 // catalogFor, to narrow catalog down to what the calling person may call
@@ -201,6 +243,7 @@ func NewOrchestrator(
 		permissions:   permissions,
 		contextWindow: DefaultContextWindow,
 		narrower:      PassThroughNarrower{},
+		stages:        1,
 	}
 
 	for _, opt := range opts {
@@ -260,6 +303,10 @@ func (o *Orchestrator) Plan(
 	ctx context.Context, user *domain.User, query string, answers []Answer, turns []Turn, workspaceID, preferred string,
 	thinking *bool,
 ) (Result, error) {
+	if o.stages == staged && o.picker == nil {
+		return Result{}, ErrStagesRequirePicker
+	}
+
 	catalog, err := o.catalogFor(ctx, user)
 	if err != nil {
 		return Result{}, err
@@ -271,7 +318,7 @@ func (o *Orchestrator) Plan(
 			return Result{}, fmt.Errorf("%w: %s", ErrEndpointNotFound, preferred)
 		}
 
-		return o.planPreferred(ctx, &endpoint, query, answers, turns, thinking)
+		return o.planPreferred(ctx, &endpoint, query, answers, turns, thinking, false)
 	}
 
 	// Narrowed to a shortlist before the planner ever sees it
@@ -287,32 +334,16 @@ func (o *Orchestrator) Plan(
 		return Result{}, fmt.Errorf("narrowing catalogue: %w", err)
 	}
 
-	planCtx := PlanContext{WorkspaceID: workspaceID}
-	tools := ToolsFor(catalog, planCtx)
-
-	decision, err := o.planner.Plan(ctx, query, answers, truncateTurns(turns, o.contextWindow), tools, thinking)
-	if err != nil {
-		return Result{}, fmt.Errorf("planning: %w", err)
+	// o.stages is only ever 2 with a picker also set (NewOrchestrator's
+	// own construction-time panic, WithStages), and only when no
+	// Preferred was given - the branch above already returned for that
+	// case (S1, docs/specs/staging.md: "a preferred in the request
+	// bypasses the pick, as it bypasses narrowing").
+	if o.stages == staged {
+		return o.planStaged(ctx, catalog, query, answers, turns, workspaceID, thinking)
 	}
 
-	switch decision.Kind {
-	case DecisionNone:
-		return Result{Kind: ResultKindNone, Message: messageNoEndpoint}, nil
-	case DecisionCall:
-		return o.call(ctx, catalog, &decision)
-	case DecisionAsk:
-		return o.ask(catalog, &decision)
-	case DecisionListCapabilities:
-		return o.listCapabilities(catalog, &decision), nil
-	case DecisionProposal:
-		if !toolOffered(tools, ProposePanelToolName) {
-			return Result{}, fmt.Errorf("%w: %s", ErrToolNotOffered, ProposePanelToolName)
-		}
-
-		return o.propose(catalog, &decision)
-	default:
-		return Result{}, fmt.Errorf("%w: unknown decision kind %q", ErrNotImplemented, decision.Kind)
-	}
+	return o.planOrdinary(ctx, catalog, query, answers, turns, workspaceID, thinking)
 }
 
 // toolOffered reports whether name is one of tools - the list ToolsFor
