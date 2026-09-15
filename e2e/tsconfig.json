@@ -4,5 +4,13 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["src", "browser", "eval", "narrowing", "vite.config.ts", "playwright.config.ts"]
+  "include": [
+    "src",
+    "browser",
+    "eval",
+    "narrowing",
+    "shortlist",
+    "vite.config.ts",
+    "playwright.config.ts"
+  ]
 }

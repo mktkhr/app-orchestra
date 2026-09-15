@@ -36,9 +36,21 @@ var _ usecase.Narrower = (*Narrower)(nil)
 // llama-swap the tool-calling planner talks to, docs/specs/shortlisting.md
 // section 5), embedModel and rerankModel. Load must be called once, before
 // the first Narrow, to give it something to score against.
+//
+// ORCHESTRA_LLM_BASE_URL already carries a trailing "/v1" in every real
+// deployment (internal/adapter/planner/chat's own Client appends only
+// "/chat/completions", so the operator-set value must already end in
+// "/v1" for that to reach the right endpoint - see e2e/eval/run.ts's
+// default, "http://localhost:11435/v1"). embed.go and rerank.go append
+// "/v1/embeddings" and "/v1/rerank" of their own, which would double that
+// suffix against the same value - trimming one trailing "/v1" here (a
+// no-op against the bare host this package's own tests pass) is what
+// keeps one config variable correct for both callers, found by
+// e2e/shortlist/run.ts (docs/plans/shortlisting.md Task 4 Step 8) against
+// a real llama-swap, not by any existing httptest fake.
 func New(baseURL, embedModel, rerankModel string) *Narrower {
 	return &Narrower{
-		baseURL:     baseURL,
+		baseURL:     strings.TrimSuffix(strings.TrimSuffix(baseURL, "/"), "/v1"),
 		embedModel:  embedModel,
 		rerankModel: rerankModel,
 		http:        &http.Client{Timeout: requestTimeout},

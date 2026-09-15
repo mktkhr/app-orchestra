@@ -48,7 +48,7 @@ GENERATED := $(addsuffix /internal/adapter/openapi/openapi.gen.go,$(SERVICE_DIRS
         web-fmt web-fmt-check web-lint web-typecheck web-test web-build web-dev \
         guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication guard-coverage guard-browser guard-a11y guard-layout guard-protected guard-test \
         acceptance-services acceptance-web acceptance-e2e acceptance-browser browsers \
-        eval eval-accept narrowing
+        eval eval-accept narrowing eval-shortlist
 
 ## ---------------------------------------------------------------- overview
 help: ## Show this help
@@ -185,6 +185,12 @@ DEV_ADMIN_PASSWORD = dev-only-admin-password
 # string and cannot read a Make variable, so they agree by hand.
 DEV_LLM_BASE_URL = http://localhost:11435/v1
 DEV_LLM_MODEL = qwen3.5-9b-q8
+# Narrowing (docs/specs/shortlisting.md): the measured configuration. All
+# three or none - config.ErrNarrowingIncomplete otherwise. Needs llama-swap's
+# persistent group so the three models stay resident (local-llm config).
+DEV_NARROWING_EMBED_MODEL = e5-large-q8
+DEV_NARROWING_RERANK_MODEL = bge-reranker-v2-m3-q8
+DEV_NARROWING_K = 20
 
 # ORCHESTRA_SERVICES as the platform wants it, built from DEV_SERVICE_PORTS
 # so the two cannot disagree.
@@ -226,7 +232,7 @@ dev-services: services-build ## (Re)start every dummy service on its dev port, d
 	  if ss -lptn "sport = :$(DEV_PLATFORM_PORT)" -H 2>/dev/null | grep -q pid=; then \
 	    echo "dev-services: air restarted the platform"; \
 	  else \
-	    setsid env ORCHESTRA_SERVICES=$(dev_services_env) ORCHESTRA_LLM_BASE_URL=$(DEV_LLM_BASE_URL) ORCHESTRA_LLM_MODEL=$(DEV_LLM_MODEL) ORCHESTRA_DB_PATH=$(DEV_DB_PATH) ORCHESTRA_ADMIN_PASSWORD=$(DEV_ADMIN_PASSWORD) ORCHESTRA_SECURE_COOKIE=false ./services/platform/bin/api </dev/null >/tmp/orchestra-platform.log 2>&1 & \
+	    setsid env ORCHESTRA_SERVICES=$(dev_services_env) ORCHESTRA_LLM_BASE_URL=$(DEV_LLM_BASE_URL) ORCHESTRA_LLM_MODEL=$(DEV_LLM_MODEL) ORCHESTRA_NARROWING_EMBED_MODEL=$(DEV_NARROWING_EMBED_MODEL) ORCHESTRA_NARROWING_RERANK_MODEL=$(DEV_NARROWING_RERANK_MODEL) ORCHESTRA_NARROWING_K=$(DEV_NARROWING_K) ORCHESTRA_DB_PATH=$(DEV_DB_PATH) ORCHESTRA_ADMIN_PASSWORD=$(DEV_ADMIN_PASSWORD) ORCHESTRA_SECURE_COOKIE=false ./services/platform/bin/api </dev/null >/tmp/orchestra-platform.log 2>&1 & \
 	    sleep 3; \
 	    curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$(DEV_PLATFORM_PORT)/api/health" \
 	      || { echo "dev-services: the platform did not come up - see /tmp/orchestra-platform.log"; exit 1; }; \
@@ -325,6 +331,10 @@ eval-accept: build ## Run the eval suite and rewrite eval/baseline.json from it 
 ## ---------------------------------------------------------------- narrowing (docs/specs/narrowing.md; never part of make check)
 narrowing: ## Measure the lexical baseline's recall@K over the narrowing fixture (not quiet: it prints its own report; no LLM, no build)
 	cd e2e && node narrowing/measure.ts
+
+eval-shortlist: build ## Measure the product's own planner on the narrowing corpus, narrowing on and off (docs/specs/shortlisting.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts)
+	cd e2e && node shortlist/run.ts
+	cd e2e && node shortlist/print-report.ts
 
 ## ---------------------------------------------------------------- misc
 clean: ## Remove build output
