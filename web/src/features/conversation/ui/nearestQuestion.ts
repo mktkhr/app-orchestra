@@ -20,7 +20,11 @@ import type { Turn } from "../model/turn";
  * section 4, H5) is skipped the same way an answer turn is: it carries the
  * original question's text too, but only `role: "question"` counts here,
  * so an answer that follows a choice still finds the question the choice
- * itself resent, not the choice's own label.
+ * itself resent, not the choice's own label. A `role: "alternatives"` turn
+ * (the 「違いましたか？」 turn a `result` with candidates gets, same
+ * section) is skipped the same way: it carries no question text of its
+ * own, and the answer that follows the choice made from it is still an
+ * answer to the original question.
  *
  * Split out of `TurnList.tsx` (a component file, subject to
  * `react/only-export-components`) so this pure function can be exported and

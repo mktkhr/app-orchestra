@@ -3,93 +3,70 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import type { JSX } from "react";
 
-import type { PlanResult } from "@/shared/api/client";
-
-interface Alternative {
-  readonly operationId: string;
-  readonly displayName: string;
-  readonly service: string;
-}
+import type { AlternativesTurn } from "../model/turn";
 
 interface AlternativesRowProps {
-  readonly alternatives: PlanResult["alternatives"];
+  readonly turn: AlternativesTurn;
   readonly onSelect: (operationId: string, displayName: string) => void;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 /**
- * `PlanResult.alternatives`, read defensively rather than iterated
- * directly. openapi-fetch's `MethodResponse` mapping turns a nested
- * array-of-objects schema property into a type whose own prototype methods
- * (`map`, `filter`, ...) type-check as `{}` - calling `.map` on it directly
- * is a compile error, not just an unsafe read (`ResultChoice`'s own
- * `toEnumOptions` carries the same comment for `PlanResult.options`).
- * `Array.isArray` narrows to a real `any[]`, which is what restores
- * working array methods; the shape check afterwards drops anything that
- * does not carry all three fields as strings.
- */
-function toAlternatives(alternatives: PlanResult["alternatives"]): readonly Alternative[] {
-  if (!Array.isArray(alternatives)) {
-    return [];
-  }
-
-  return alternatives.flatMap((alternative: unknown) => {
-    if (!isRecord(alternative)) {
-      return [];
-    }
-
-    const { operationId, displayName, service } = alternative;
-
-    return typeof operationId === "string" &&
-      typeof displayName === "string" &&
-      typeof service === "string"
-      ? [{ operationId, displayName, service }]
-      : [];
-  });
-}
-
-/**
- * A `result`'s further shortlist candidates, offered under it as
- * 「違いましたか？」 and one MUI `Chip` per alternative
- * (docs/specs/shortlisting.md, section 4, H5). Absent or empty
- * `alternatives` - narrowing off, or nothing left in the shortlist - draws
- * nothing at all, not an empty row: `TurnList` renders this unconditionally
- * for every `kind: "result"` answer, so this is the one place that decides
- * whether there is anything to show.
+ * A `result`'s further shortlist candidates, shown as their own assistant
+ * turn reading `turn.text` (「違いましたか？」) with one MUI `Chip` per
+ * candidate (docs/specs/shortlisting.md, section 4, H5). `TurnList` renders
+ * this only for a `role: "alternatives"` turn, and only when `turn.alternatives`
+ * is non-empty - the store never appends an empty one - so unlike the
+ * previous `kind: "result"`-attached version, this component draws
+ * unconditionally.
+ *
+ * `turn.chosen` is the operation the person picked, set by the store the
+ * instant a chip is clicked (docs/specs/shortlisting.md, section 4): while
+ * it is undefined, every chip carries an `onClick` - which is what MUI
+ * reads to draw it clickable, focusable and `role="button"` in the first
+ * place - and posts on click. Once `chosen` is set, no chip carries an
+ * `onClick` any more: the chosen chip renders `color="primary"` (still
+ * `filled`, as every chip here is) so it reads as selected rather than
+ * merely inert, and every other chip renders `disabled` besides. Neither
+ * is reachable by a click any more, which is what makes a second click on
+ * an already-answered turn impossible: there is no enabled chip left. The
+ * user's own words asked for exactly this - the chosen chip shown clearly,
+ * the other disabled - after two chips clicked one after another once
+ * stacked two operations under a single question.
  *
  * `Chip`'s own default size, not `small`: `make guard-browser` measures
- * touch target size on the built pages, and `small` falls under it.
- * `title` carries the service, the same way a native `title` attribute
- * always has - `Provenance` has no comparable secondary-text pattern for a
- * chip to follow.
+ * touch target size on the built pages, and `small` falls under it. `title`
+ * carries the service, the same way a native `title` attribute always has -
+ * `Provenance` has no comparable secondary-text pattern for a chip to
+ * follow. `disabled` (not an opacity/pointer-events hack) is what
+ * `make guard-layout`'s contrast check expects a locked chip to use.
  */
-export function AlternativesRow({
-  alternatives,
-  onSelect,
-}: AlternativesRowProps): JSX.Element | null {
-  const parsed = toAlternatives(alternatives);
-
-  if (parsed.length === 0) {
-    return null;
-  }
-
+export function AlternativesRow({ turn, onSelect }: AlternativesRowProps): JSX.Element {
   return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 1 }}>
-      <Typography variant="body2">違いましたか？</Typography>
-      {parsed.map((alternative) => (
-        <Chip
-          key={alternative.operationId}
-          label={alternative.displayName}
-          title={alternative.service}
-          clickable
-          onClick={() => {
-            onSelect(alternative.operationId, alternative.displayName);
-          }}
-        />
-      ))}
+    <Stack spacing={1.5}>
+      <Typography variant="body1">{turn.text}</Typography>
+      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+        {turn.alternatives.map((alternative) => {
+          const isChosen = alternative.operationId === turn.chosen;
+
+          return (
+            <Chip
+              key={alternative.operationId}
+              label={alternative.displayName}
+              title={alternative.service}
+              color={isChosen ? "primary" : "default"}
+              variant="filled"
+              disabled={turn.chosen !== undefined && !isChosen}
+              {...(turn.chosen === undefined
+                ? {
+                    onClick: () => {
+                      onSelect(alternative.operationId, alternative.displayName);
+                    },
+                  }
+                : {})}
+            />
+          );
+        })}
+      </Stack>
     </Stack>
   );
 }

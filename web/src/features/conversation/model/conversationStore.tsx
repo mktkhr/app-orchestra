@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 
-import { postPlan, type PlanResult } from "@/shared/api/client";
+import { postPlan, type PlanRequest, type PlanResult } from "@/shared/api/client";
 import { nextTurnId } from "@/shared/lib/turnId";
 
+import { toAlternatives } from "./alternatives";
 import {
   ConversationStoreContext,
   type ConversationState,
@@ -26,6 +27,71 @@ function newQuestionTurn(query: string, preferred?: string, label?: string): Tur
   return preferred === undefined || label === undefined
     ? { id: nextTurnId(), role: "question", text: query }
     : { id: nextTurnId(), role: "choice", text: query, label };
+}
+
+/**
+ * Marks the alternatives turn a chip click answered - `chosen` becomes the
+ * picked alternative's `operationId`, which is what makes that turn's
+ * other chips disabled and this one selected (`AlternativesRow`). Applied
+ * in the same update as adding the question/choice turn (below), before
+ * the re-plan request is even sent, so the chip a person clicked cannot be
+ * clicked a second time while that request is in flight.
+ *
+ * Ordinary questions - `alternativesTurnId` undefined - leave every turn
+ * as it is.
+ */
+function markChosen(
+  turns: readonly Turn[],
+  alternativesTurnId: string | undefined,
+  preferred: string | undefined,
+): readonly Turn[] {
+  if (alternativesTurnId === undefined || preferred === undefined) {
+    return turns;
+  }
+
+  return turns.map((turn) =>
+    turn.id === alternativesTurnId && turn.role === "alternatives"
+      ? { ...turn, chosen: preferred }
+      : turn,
+  );
+}
+
+/** `postPlan`'s body: `query` plus whichever of `turns`/`workspaceId`/`preferred` this call has. */
+function planRequestBody(
+  query: string,
+  contextTurns: readonly ContextTurn[],
+  workspaceId: string | undefined,
+  preferred: string | undefined,
+): PlanRequest {
+  return {
+    query,
+    ...(contextTurns.length === 0 ? {} : { turns: contextTurns }),
+    ...(workspaceId === undefined ? {} : { workspaceId }),
+    ...(preferred === undefined ? {} : { preferred }),
+  };
+}
+
+/**
+ * `current` plus the turn(s) a `postPlan` result appends: the answer turn
+ * always, and - only when the result carries a non-empty `alternatives` -
+ * a second turn right after it, reading 「違いましたか？」
+ * (docs/specs/shortlisting.md, section 4, H5). `chosen` starts undefined:
+ * `markChosen` (above) is what sets it, on a later call, once a chip on
+ * this very turn is clicked.
+ */
+function answeredTurns(current: readonly Turn[], result: PlanResult): readonly Turn[] {
+  const alternatives = result.kind === "result" ? toAlternatives(result.alternatives) : [];
+  const answerTurn: Turn = { id: nextTurnId(), role: "answer", result };
+
+  if (alternatives.length === 0) {
+    return [...current, answerTurn];
+  }
+
+  return [
+    ...current,
+    answerTurn,
+    { id: nextTurnId(), role: "alternatives", text: "違いましたか？", alternatives },
+  ];
 }
 
 interface ConversationProviderProps {
@@ -81,6 +147,7 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
       workspaceId?: string,
       preferred?: string,
       label?: string,
+      alternativesTurnId?: string,
     ): Promise<void> => {
       // Read before `update` adds this question as its own turn - the turns
       // this question follows, not the one it is about to add.
@@ -92,21 +159,19 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
         ...current,
         error: null,
         pending: true,
-        turns: [...current.turns, newQuestionTurn(query, preferred, label)],
+        turns: [
+          ...markChosen(current.turns, alternativesTurnId, preferred),
+          newQuestionTurn(query, preferred, label),
+        ],
       }));
 
       try {
-        const result = await postPlan({
-          query,
-          ...(contextTurns.length === 0 ? {} : { turns: contextTurns }),
-          ...(workspaceId === undefined ? {} : { workspaceId }),
-          ...(preferred === undefined ? {} : { preferred }),
-        });
+        const result = await postPlan(planRequestBody(query, contextTurns, workspaceId, preferred));
 
         update(key, (current) => ({
           ...current,
           pending: false,
-          turns: [...current.turns, { id: nextTurnId(), role: "answer", result }],
+          turns: answeredTurns(current.turns, result),
         }));
       } catch {
         update(key, (current) => ({

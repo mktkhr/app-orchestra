@@ -35,15 +35,15 @@ not tried, and this subproject tries both:
 
 ## 2. Decisions taken here
 
-|        | Decision                                                                                                                                                                                                                                                                                                                                                                                       |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **H1** | The platform narrows the catalogue to a shortlist before the planner sees it. The mechanism is the measured one: `e5-large-q8` over the operation's own text and its `x-orchestra-examples`, reranked by `bge-reranker-v2-m3` reading both, cut to 20, in reranker order. Nothing about it is chosen here; it is the row that won.                                                             |
-| **H2** | Narrowing is a stage in the usecase with one interface, and the planner is unchanged. `Orchestrator.Plan` narrows the catalogue and calls `ToolsFor` on the result; the planner receives a shorter list and does not know why.                                                                                                                                                                 |
-| **H3** | The catalogue's vectors are computed when the catalogue is loaded and held in memory. A thousand operations with two examples each is a few thousand vectors of a thousand floats: megabytes, seconds, once. The question is embedded per request. No vector store.                                                                                                                            |
-| **H4** | Narrowing needs the embedder, the reranker and the chat model resident at once. llama-swap's default swaps them per call at 7-40 seconds a swap (`retrieving.md` section 5); a `groups` block keeps all three loaded, and the measurement asserts that no request paid for a load. This is a deployment precondition and is written down as one.                                               |
-| **H5** | The answer carries alternatives. A `result` from `/api/plan` gains the next two operations of the shortlist, by id and display name, and the browser shows them under the result as "違いましたか？". Choosing one re-plans with that operation only. `ask_user` stays for the questions the planner itself flags; alternatives are for the ones it did not.                                   |
-| **H6** | The product is measured on the corpus, end to end. A runner asks the running platform - fixture services behind it - the 100 questions through `/api/plan` and reports per axis: **correct@1** (the planned operation is an answer), **correct@shown** (an answer is the planned operation or an alternative), asked-back rate, and end-to-end latency. Beside them, the stand-in picker's 83. |
-| **H7** | Narrowing is on when configured and absent when not. With no narrowing configuration the platform behaves exactly as today. This is what lets the same binary be measured both ways, and what keeps `make check` free of models.                                                                                                                                                               |
+|        | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **H1** | The platform narrows the catalogue to a shortlist before the planner sees it. The mechanism is the measured one: `e5-large-q8` over the operation's own text and its `x-orchestra-examples`, reranked by `bge-reranker-v2-m3` reading both, cut to 20, in reranker order. Nothing about it is chosen here; it is the row that won.                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **H2** | Narrowing is a stage in the usecase with one interface, and the planner is unchanged. `Orchestrator.Plan` narrows the catalogue and calls `ToolsFor` on the result; the planner receives a shorter list and does not know why.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **H3** | The catalogue's vectors are computed when the catalogue is loaded and held in memory. A thousand operations with two examples each is a few thousand vectors of a thousand floats: megabytes, seconds, once. The question is embedded per request. No vector store.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **H4** | Narrowing needs the embedder, the reranker and the chat model resident at once. llama-swap's default swaps them per call at 7-40 seconds a swap (`retrieving.md` section 5); a `groups` block keeps all three loaded, and the measurement asserts that no request paid for a load. This is a deployment precondition and is written down as one.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **H5** | The answer carries alternatives. A `result` from `/api/plan` gains the next two operations of the shortlist, by id and display name, and the browser shows them as their own assistant turn, after the result, reading "違いましたか？" - the same shape an `ask` turn already has, not a row inside the result. Choosing one re-plans with that operation only, and answers that turn: the chosen chip stays visible and marked, every other chip on it is disabled, and the turn cannot be answered a second time. `ask_user` stays for the questions the planner itself flags; alternatives are for the ones it did not. (Revised 2026-09-15: alternatives moved out of the result and into their own turn, and answering locks it - see section 4.) |
+| **H6** | The product is measured on the corpus, end to end. A runner asks the running platform - fixture services behind it - the 100 questions through `/api/plan` and reports per axis: **correct@1** (the planned operation is an answer), **correct@shown** (an answer is the planned operation or an alternative), asked-back rate, and end-to-end latency. Beside them, the stand-in picker's 83.                                                                                                                                                                                                                                                                                                                                                          |
+| **H7** | Narrowing is on when configured and absent when not. With no narrowing configuration the platform behaves exactly as today. This is what lets the same binary be measured both ways, and what keeps `make check` free of models.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ## 3. Where it goes
 
@@ -72,9 +72,23 @@ service}` taken from the shortlist positions after the chosen operation.
 Not the planner's opinion - the shortlist's. They are omitted when narrowing
 is off, and the client renders nothing when they are absent.
 
-Choosing an alternative sends `/api/plan` again with `preferred: <id>`; the
-platform narrows to that one operation and the planner fills its parameters.
-D8 is untouched: an unsafe operation still ends at a form and a button.
+## Choosing an alternative
+
+The browser shows a non-empty `alternatives` as its own turn after the
+answer - reading 「違いましたか？」, one chip per alternative - not as a
+row drawn inside the result. Revised 2026-09-15: two chips clicked one
+after another, when the chips lived inside the result, appended two
+operations under a single question with no way to tell which chip either
+belonged to; a separate turn, answered once, is what that fixed.
+
+Choosing a chip sends `/api/plan` again with `preferred: <id>`; the
+platform narrows to that one operation and the planner fills its
+parameters. D8 is untouched: an unsafe operation still ends at a form and a
+button. The click also answers the alternatives turn itself: the chosen
+chip stays visible, drawn selected, and every other chip on that turn
+becomes disabled. A turn already answered offers no chip a further click
+can reach, so a person can no longer choose twice from the same
+「違いましたか？」.
 
 ## 5. The configuration
 
@@ -127,7 +141,11 @@ the shortlist.
   tools plus the built-ins, in reranker order.
 - **AC-H-103** A `result` carries up to two alternatives from the shortlist
   when narrowing is on and none when it is off; `preferred` re-plans against
-  that operation alone.
+  that operation alone. The browser shows a non-empty `alternatives` as its
+  own turn after the answer, not inside it, and answers that turn once:
+  after a chip is chosen, the chosen chip stays visible and marked, every
+  other chip on that turn is disabled, and no further chip on it can be
+  chosen.
 - **AC-H-104** Catalogue vectors are computed once at load; a request embeds
   only the question.
 - **AC-H-105** `make check` calls no model and needs nothing running; the

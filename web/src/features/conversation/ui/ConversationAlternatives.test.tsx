@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -55,9 +55,12 @@ describe("Conversation, a result with alternatives", () => {
 
     vi.mocked(postPlan).mockResolvedValueOnce({ kind: "none", message: "結果はありません。" });
 
-    await user.click(screen.getByText("候補3"));
+    const chosenChip = screen.getByRole("button", { name: "候補3" });
+
+    await user.click(chosenChip);
 
     expect(await screen.findByText("結果はありません。")).toBeTruthy();
+    expect(postPlan).toHaveBeenCalledTimes(2);
     expect(postPlan).toHaveBeenLastCalledWith(
       expect.objectContaining({ query: QUESTION, preferred: "op-3" }),
     );
@@ -67,6 +70,27 @@ describe("Conversation, a result with alternatives", () => {
     // (docs/specs/shortlisting.md, section 4, H5).
     expect(await screen.findByText("→ 候補3")).toBeTruthy();
     expect(screen.getAllByText(QUESTION)).toHaveLength(1);
+
+    // The user's own words: the chosen chip stays clearly visible, the
+    // other becomes disabled - not both stacked as two live operations
+    // under one question.
+    expect(screen.queryByRole("button", { name: "候補3" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "候補2" })).toBeNull();
+    expect(screen.getByText("候補3").closest(".MuiChip-colorPrimary")).toBeTruthy();
+    expect(screen.getByText("候補2").closest(".Mui-disabled")).toBeTruthy();
+
+    // A click on either chip now that the turn is answered posts nothing
+    // further - the second click the user described as stacking a second
+    // operation under the same question is no longer possible. `fireEvent`,
+    // not `user.click`: both chips declare `pointer-events: none` once the
+    // turn is answered (the disabled one through MUI's own `Mui-disabled`
+    // class, the chosen one through having no `onClick` at all), and
+    // `user.click` refuses to dispatch through that - which is itself the
+    // proof neither chip is reachable by a real click any more.
+    fireEvent.click(screen.getByText("候補3"));
+    fireEvent.click(screen.getByText("候補2"));
+
+    expect(postPlan).toHaveBeenCalledTimes(2);
   });
 
   it("activates a chip on Enter, the same as a click", async () => {

@@ -159,6 +159,49 @@ describe("toContextTurns", () => {
     ]);
   });
 
+  it("skips an alternatives turn and the choice that answers it, finding the next question after them", () => {
+    const turns: Turn[] = [
+      { id: "1", role: "question", text: "在庫の一覧を見せて" },
+      {
+        id: "2",
+        role: "answer",
+        result: {
+          kind: "result",
+          component: "table",
+          data: {},
+          source: {
+            service: "inventory",
+            serviceDisplayName: "在庫管理",
+            operationId: "listInventoryItems",
+          },
+          alternatives: [{ operationId: "op-2", displayName: "候補2", service: "inventory" }],
+        },
+      },
+      {
+        id: "3",
+        role: "alternatives",
+        text: "違いましたか？",
+        alternatives: [{ operationId: "op-2", displayName: "候補2", service: "inventory" }],
+        chosen: "op-2",
+      },
+      { id: "4", role: "choice", text: "在庫の一覧を見せて", label: "候補2" },
+      {
+        id: "5",
+        role: "answer",
+        result: { kind: "none", message: "結果はありません。" },
+      },
+    ];
+
+    expect(toContextTurns(turns)).toEqual([
+      {
+        question: "在庫の一覧を見せて",
+        kind: "result",
+        service: "inventory",
+        operationId: "listInventoryItems",
+      },
+    ]);
+  });
+
   it("drops an answer that follows another answer, with no question of its own", () => {
     const turns: Turn[] = [
       { id: "1", role: "question", text: "在庫を更新して" },

@@ -99,9 +99,13 @@ describe("App", () => {
   });
 
   // docs/specs/shortlisting.md, section 4 (H5): the result's alternatives
-  // draw as chips under it, and choosing one re-asks the same question with
-  // that alternative's operationId as `preferred`.
-  it("offers alternatives under a result, and re-plans with the one chosen", async () => {
+  // draw as their own assistant turn - 「違いましたか？」 - after the
+  // result, not as a row inside it, and choosing one re-asks the same
+  // question with that alternative's operationId as `preferred`. The
+  // user's own words: clicking two different chips one after another used
+  // to stack two operations under the same question, because the chips
+  // lived inside the result itself; this is the flow that replaced it.
+  it("offers alternatives as their own turn after a result, and re-plans with the one chosen", async () => {
     const user = userEvent.setup();
 
     vi.stubGlobal("fetch", vi.fn(respond));
@@ -112,8 +116,10 @@ describe("App", () => {
     await user.click(example);
     await screen.findByText("itm-001");
 
+    // 「違いましたか？」 is its own turn, not a row under the table: it
+    // still has to appear, and it has to have an unanswered chip to click.
     expect(await screen.findByText("違いましたか？")).toBeTruthy();
-    const chip = screen.getByText("在庫を登録");
+    const chip = screen.getByRole("button", { name: "在庫を登録" });
     await user.click(chip);
 
     expect(await screen.findByText("結果はありません。")).toBeTruthy();
@@ -128,5 +134,12 @@ describe("App", () => {
     // (docs/specs/shortlisting.md, section 4, H5).
     expect(await screen.findByText("→ 在庫を登録")).toBeTruthy();
     expect(screen.getAllByText("在庫の一覧を見せて")).toHaveLength(1);
+
+    // The chosen chip stays visible and reads as selected; it - and any
+    // other chip on the same turn - is no longer a clickable button, so a
+    // second click can no longer stack a second operation under the same
+    // 「違いましたか？」 (the user's own complaint this flow fixes).
+    expect(screen.queryByRole("button", { name: "在庫を登録" })).toBeNull();
+    expect(screen.getByText("在庫を登録").closest(".MuiChip-colorPrimary")).toBeTruthy();
   });
 });

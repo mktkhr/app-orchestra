@@ -64,15 +64,23 @@ export function Conversation({
   };
 
   /**
-   * A previous `result`'s alternative, chosen instead of the operation the
-   * planner picked (docs/specs/shortlisting.md, section 4): re-asks the
-   * same question with that alternative's `operationId` as `preferred`, so
-   * `/api/plan` narrows to it alone and the planner fills in its
-   * parameters. `label` (the alternative's `displayName`) rides along so
-   * the store can add a choice turn instead of asking the question again.
+   * A previous `result`'s alternative, chosen from its own `alternatives`
+   * turn instead of the operation the planner picked
+   * (docs/specs/shortlisting.md, section 4): re-asks the same question with
+   * that alternative's `operationId` as `preferred`, so `/api/plan` narrows
+   * to it alone and the planner fills in its parameters. `label` (the
+   * alternative's `displayName`) rides along so the store can add a choice
+   * turn instead of asking the question again; `turnId` is the
+   * `alternatives` turn itself, so the store can mark it answered before
+   * this request even resolves.
    */
-  const handleAlternativeChosen = (query: string, preferred: string, label: string): void => {
-    void ask(query, { preferred, label });
+  const handleAlternativeChosen = (
+    turnId: string,
+    query: string,
+    preferred: string,
+    label: string,
+  ): void => {
+    void ask(query, { preferred, label, alternativesTurnId: turnId });
   };
 
   /**

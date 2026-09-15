@@ -1,5 +1,7 @@
 import type { PlanResult } from "@/shared/api/client";
 
+import type { Alternative } from "./alternatives";
+
 /** The person's question, shown as one turn in the conversation. */
 export interface QuestionTurn {
   readonly id: string;
@@ -36,4 +38,33 @@ export interface ChoiceTurn {
   readonly label: string;
 }
 
-export type Turn = QuestionTurn | AnswerTurn | ChoiceTurn;
+/**
+ * A `result`'s further shortlist candidates, shown as their own assistant
+ * turn after the answer - not a row inside it - reading 「違いましたか？」
+ * (docs/specs/shortlisting.md, section 4, H5). The user's own words: two
+ * chips clicked one after another used to stack two operations under one
+ * question, because each click appended a new answer under the same
+ * result; a person could tell the two operations apart from `AlternativesRow`
+ * but not which question either belonged to.
+ *
+ * `chosen` is the picked alternative's `operationId`, set by the store the
+ * moment a chip is clicked, before the re-plan request that follows even
+ * resolves. It is what makes this turn "answered": once set, the chosen
+ * chip renders selected and every other chip renders disabled, and a
+ * second click on this turn is impossible because there is no enabled chip
+ * left to click. `chosen` lives here, not in a component's own state, so
+ * it survives whatever re-renders the store's own updates cause and so a
+ * test can assert it without simulating a click twice.
+ *
+ * Skipped by `nearestQuestion` the same way `answer`/`choice` are: it
+ * carries no question text of its own to resend.
+ */
+export interface AlternativesTurn {
+  readonly id: string;
+  readonly role: "alternatives";
+  readonly text: "違いましたか？";
+  readonly alternatives: readonly Alternative[];
+  readonly chosen?: string;
+}
+
+export type Turn = QuestionTurn | AnswerTurn | ChoiceTurn | AlternativesTurn;

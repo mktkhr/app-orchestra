@@ -19,11 +19,15 @@ export interface ConversationState {
  * parameters, in place of an ordinary question. `label` is that
  * alternative's own `displayName` - present exactly when `preferred` is,
  * and what lets the store add a choice turn instead of a second question
- * turn for the same text.
+ * turn for the same text. `alternativesTurnId` is the `alternatives` turn
+ * (docs/specs/shortlisting.md, section 4, H5) the chip belongs to, so the
+ * store can mark it answered before the re-plan request it starts even
+ * resolves - absent for an ordinary question, which answers no turn.
  */
 export interface AskOptions {
   readonly preferred?: string;
   readonly label?: string;
+  readonly alternativesTurnId?: string;
 }
 
 /** What a screen can do with the conversation it asks: read it, add to it, end it. */
@@ -47,6 +51,7 @@ export interface ConversationStoreValue {
     workspaceId?: string,
     preferred?: string,
     label?: string,
+    alternativesTurnId?: string,
   ) => Promise<void>;
   submitForm: (key: string, result: PlanResult) => void;
   newConversation: (key: string) => void;
@@ -77,7 +82,14 @@ export function useConversation(key: string, workspaceId?: string): Conversation
         throw new Error(NOT_WRAPPED);
       }
 
-      return store.ask(key, query, workspaceId, options?.preferred, options?.label);
+      return store.ask(
+        key,
+        query,
+        workspaceId,
+        options?.preferred,
+        options?.label,
+        options?.alternativesTurnId,
+      );
     },
     [store, key, workspaceId],
   );
