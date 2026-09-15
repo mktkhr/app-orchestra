@@ -22,3 +22,31 @@ import (
 type SpecSource interface {
 	Fetch(ctx context.Context) (domain.Catalog, error)
 }
+
+// Narrower cuts a catalogue down to a shortlist before Orchestrator.Plan
+// offers it to the planner (docs/specs/shortlisting.md, H1/H2): the
+// planner receives a shorter list and never knows why. Implemented by
+// internal/adapter/narrowing/llamaswap, which embeds and reranks over
+// llama-swap's HTTP endpoints - kept as a port here so the usecase layer
+// depends on the shape of the cut, not on a vector or an HTTP call.
+type Narrower interface {
+	// Narrow returns at most k endpoints of catalog, best first, for
+	// query. A Narrower may return catalog unchanged; the orchestrator
+	// does not care.
+	Narrow(ctx context.Context, catalog domain.Catalog, query string, k int) (domain.Catalog, error)
+}
+
+// PassThroughNarrower implements Narrower by returning catalog unchanged,
+// ignoring query and k entirely. It is what NewOrchestrator defaults to
+// (docs/specs/shortlisting.md, H7): with no narrowing configured, the
+// platform behaves exactly as it did before this port existed, and every
+// test that predates it keeps exercising this same Narrower without
+// knowing it exists.
+type PassThroughNarrower struct{}
+
+var _ Narrower = PassThroughNarrower{}
+
+// Narrow returns catalog unchanged.
+func (PassThroughNarrower) Narrow(_ context.Context, catalog domain.Catalog, _ string, _ int) (domain.Catalog, error) {
+	return catalog, nil
+}

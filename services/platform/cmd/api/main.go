@@ -36,6 +36,11 @@ func main() {
 		AdminPassword: cfg.AdminPassword,
 		SeedAccounts:  toAppSeedAccounts(cfg.SeedAccounts),
 		ContextTurns:  cfg.ContextTurns,
+		Narrowing: app.Narrowing{
+			EmbedModel:  cfg.NarrowingEmbedModel,
+			RerankModel: cfg.NarrowingRerankModel,
+			K:           cfg.NarrowingK,
+		},
 	})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))

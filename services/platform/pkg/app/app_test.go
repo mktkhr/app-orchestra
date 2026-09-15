@@ -163,6 +163,82 @@ func fixtureService(t *testing.T) *httptest.Server {
 	return server
 }
 
+// TestNewWithNarrowingUnconfiguredNeverCallsLlamaSwap is AC-H-101/H7 at
+// pkg/app's own composition root: with Config.Narrowing left at its zero
+// value - what every test in this file above this one already builds -
+// New must never reach out to the LLM endpoint at build time at all; the
+// pass-through usecase.Narrower newNarrowerOption falls back to needs
+// nothing loaded (docs/plans/shortlisting.md, Task 1 Step 6).
+func TestNewWithNarrowingUnconfiguredNeverCallsLlamaSwap(t *testing.T) {
+	fixture := fixtureService(t)
+
+	var calls int
+
+	narrowingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(narrowingServer.Close)
+
+	_, err := app.New(&app.Config{
+		Services:      []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:           app.LLM{BaseURL: narrowingServer.URL},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+
+	require.NoError(t, err)
+	assert.Zero(t, calls, "narrowing unconfigured must never call the LLM endpoint at build time")
+}
+
+// TestNewWithNarrowingConfiguredLoadsBeforeListening is AC-H-104 and Task
+// 1 Step 6: with Config.Narrowing fully set, New calls Load against the
+// catalogue - here, fixtureService's one ListWidgets endpoint - before it
+// ever returns a handler for anything to serve a request through.
+func TestNewWithNarrowingConfiguredLoadsBeforeListening(t *testing.T) {
+	fixture := fixtureService(t)
+
+	var embedCalls int
+
+	narrowingServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !assert.Equal(t, "/v1/embeddings", r.URL.Path, "Load must not call /v1/rerank at all") {
+			return
+		}
+		embedCalls++
+
+		var req struct {
+			Input []string `json:"input"`
+		}
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&req)) {
+			return
+		}
+
+		data := make([]map[string]any, len(req.Input))
+		for i := range req.Input {
+			data[i] = map[string]any{"index": i, "embedding": []float32{1, 0}}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"data": data}))
+	}))
+	t.Cleanup(narrowingServer.Close)
+
+	_, err := app.New(&app.Config{
+		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:      app.LLM{BaseURL: narrowingServer.URL},
+		Narrowing: app.Narrowing{
+			EmbedModel:  "e5-large-q8",
+			RerankModel: "bge-reranker-v2-m3-q8",
+			K:           20,
+		},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, embedCalls, "New must call Load exactly once, before returning a handler to serve")
+}
+
 func TestNewWiresThePlanFixtureThroughToAResult(t *testing.T) {
 	fixture := fixtureService(t)
 

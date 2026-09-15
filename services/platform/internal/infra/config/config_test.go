@@ -64,6 +64,98 @@ func TestLoadRejectsAnUnparseableContextTurns(t *testing.T) {
 	require.ErrorIs(t, err, config.ErrInvalidContextTurns)
 }
 
+// TestLoadNarrowingDefaultsToOff is docs/specs/shortlisting.md H7: with
+// none of the three ORCHESTRA_NARROWING_* variables set, narrowing is off
+// and Load does not fail startup over it.
+func TestLoadNarrowingDefaultsToOff(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_NARROWING_EMBED_MODEL", "")
+	t.Setenv("ORCHESTRA_NARROWING_RERANK_MODEL", "")
+	t.Setenv("ORCHESTRA_NARROWING_K", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Empty(t, cfg.NarrowingEmbedModel)
+	assert.Empty(t, cfg.NarrowingRerankModel)
+	assert.Zero(t, cfg.NarrowingK)
+}
+
+// TestLoadReadsNarrowingWhenAllThreeAreSet is the "all" half of the
+// section 5 rule: with every variable set, Load parses each of them.
+func TestLoadReadsNarrowingWhenAllThreeAreSet(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_NARROWING_EMBED_MODEL", "e5-large-q8")
+	t.Setenv("ORCHESTRA_NARROWING_RERANK_MODEL", "bge-reranker-v2-m3-q8")
+	t.Setenv("ORCHESTRA_NARROWING_K", "20")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "e5-large-q8", cfg.NarrowingEmbedModel)
+	assert.Equal(t, "bge-reranker-v2-m3-q8", cfg.NarrowingRerankModel)
+	assert.Equal(t, 20, cfg.NarrowingK)
+}
+
+// TestLoadRejectsNarrowingWithOnlyEmbedModelSet is the "one of three" half
+// of the "all or none" rule (ErrNarrowingIncomplete).
+func TestLoadRejectsNarrowingWithOnlyEmbedModelSet(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_NARROWING_EMBED_MODEL", "e5-large-q8")
+	t.Setenv("ORCHESTRA_NARROWING_RERANK_MODEL", "")
+	t.Setenv("ORCHESTRA_NARROWING_K", "")
+
+	_, err := config.Load()
+
+	require.ErrorIs(t, err, config.ErrNarrowingIncomplete)
+}
+
+// TestLoadRejectsNarrowingWithOnlyTwoOfThreeSet is the "two of three" half
+// of the same rule - a startup error the same shape as one of three, not a
+// special case of its own.
+func TestLoadRejectsNarrowingWithOnlyTwoOfThreeSet(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_NARROWING_EMBED_MODEL", "e5-large-q8")
+	t.Setenv("ORCHESTRA_NARROWING_RERANK_MODEL", "bge-reranker-v2-m3-q8")
+	t.Setenv("ORCHESTRA_NARROWING_K", "")
+
+	_, err := config.Load()
+
+	require.ErrorIs(t, err, config.ErrNarrowingIncomplete)
+}
+
+// TestLoadRejectsANonPositiveNarrowingK mirrors
+// TestLoadRejectsANonPositiveContextTurns for ORCHESTRA_NARROWING_K.
+func TestLoadRejectsANonPositiveNarrowingK(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_NARROWING_EMBED_MODEL", "e5-large-q8")
+	t.Setenv("ORCHESTRA_NARROWING_RERANK_MODEL", "bge-reranker-v2-m3-q8")
+	t.Setenv("ORCHESTRA_NARROWING_K", "0")
+
+	_, err := config.Load()
+
+	require.ErrorIs(t, err, config.ErrInvalidNarrowingK)
+}
+
+// TestLoadRejectsAnUnparseableNarrowingK mirrors
+// TestLoadRejectsAnUnparseableContextTurns for ORCHESTRA_NARROWING_K.
+func TestLoadRejectsAnUnparseableNarrowingK(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_NARROWING_EMBED_MODEL", "e5-large-q8")
+	t.Setenv("ORCHESTRA_NARROWING_RERANK_MODEL", "bge-reranker-v2-m3-q8")
+	t.Setenv("ORCHESTRA_NARROWING_K", "not-a-number")
+
+	_, err := config.Load()
+
+	require.ErrorIs(t, err, config.ErrInvalidNarrowingK)
+}
+
 func TestLoadReadsPortAndStaticDir(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")

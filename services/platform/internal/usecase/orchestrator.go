@@ -136,6 +136,8 @@ type Orchestrator struct {
 	invoker       Invoker
 	permissions   PermissionStore
 	contextWindow int
+	narrower      Narrower
+	narrowK       int
 }
 
 // Option configures an Orchestrator built by NewOrchestrator, beyond its
@@ -152,6 +154,19 @@ func WithContextWindow(n int) Option {
 	return func(o *Orchestrator) { o.contextWindow = n }
 }
 
+// WithNarrower overrides the default PassThroughNarrower: Plan calls
+// n.Narrow(ctx, catalog, query, k) after catalogFor and before ToolsFor
+// (docs/specs/shortlisting.md, H2). pkg/app passes this only when
+// ORCHESTRA_NARROWING_* is fully configured (H7); every other caller,
+// including every test that predates this option, keeps the pass-through
+// and so keeps offering the planner exactly what it always has (AC-H-101).
+func WithNarrower(n Narrower, k int) Option {
+	return func(o *Orchestrator) {
+		o.narrower = n
+		o.narrowK = k
+	}
+}
+
 // NewOrchestrator builds an Orchestrator over the given catalogue, planner,
 // invoker and permission store. permissions is read once per request, by
 // catalogFor, to narrow catalog down to what the calling person may call
@@ -166,6 +181,7 @@ func NewOrchestrator(
 		invoker:       invoker,
 		permissions:   permissions,
 		contextWindow: DefaultContextWindow,
+		narrower:      PassThroughNarrower{},
 	}
 
 	for _, opt := range opts {
@@ -211,6 +227,18 @@ func (o *Orchestrator) Plan(
 	catalog, err := o.catalogFor(ctx, user)
 	if err != nil {
 		return Result{}, err
+	}
+
+	// Narrowed to a shortlist before the planner ever sees it
+	// (docs/specs/shortlisting.md, H1/H2): o.narrower is PassThroughNarrower
+	// by default (NewOrchestrator), which returns catalog unchanged, so
+	// this is a no-op until pkg/app configures a real one. catalog is kept
+	// narrowed for the rest of Plan - call, ask, listCapabilities and
+	// propose below all read this same, already-narrowed value, the same
+	// way they always read catalogFor's single permission-narrowed value.
+	catalog, err = o.narrower.Narrow(ctx, catalog, query, o.narrowK)
+	if err != nil {
+		return Result{}, fmt.Errorf("narrowing catalogue: %w", err)
 	}
 
 	planCtx := PlanContext{WorkspaceID: workspaceID}

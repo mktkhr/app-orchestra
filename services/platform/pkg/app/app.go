@@ -7,11 +7,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/auth/local"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/handler"
 	invokerhttp "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/invoker/http"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/narrowing/llamaswap"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jsonmode"
@@ -136,6 +139,27 @@ type LLM struct {
 	Mode string
 }
 
+// Narrowing configures the llama-swap-backed usecase.Narrower
+// (internal/adapter/narrowing/llamaswap) that cuts the catalogue to a
+// shortlist before the planner ever sees it (docs/specs/shortlisting.md,
+// H1/H2). Empty EmbedModel means narrowing is off (H7) - see newNarrower -
+// which is the zero value, so every test and caller that predates this
+// subproject builds a Config that behaves exactly as it always has.
+// internal/infra/config.Load enforces the "all three or none" rule this
+// mirrors (config.ErrNarrowingIncomplete) before cmd/api ever populates
+// this struct.
+type Narrowing struct {
+	// EmbedModel names the embedding model llama-swap serves at
+	// /v1/embeddings (ORCHESTRA_NARROWING_EMBED_MODEL).
+	EmbedModel string
+	// RerankModel names the reranking model llama-swap serves at
+	// /v1/rerank (ORCHESTRA_NARROWING_RERANK_MODEL).
+	RerankModel string
+	// K is how many endpoints the shortlist is cut to
+	// (ORCHESTRA_NARROWING_K).
+	K int
+}
+
 // The two non-empty values LLM.Mode accepts, mirroring
 // internal/infra/config.LLMModeToolCall and LLMModeJSON.
 const (
@@ -222,6 +246,9 @@ type Config struct {
 	// not itself a valid window (usecase.WithContextWindow(0) would keep
 	// nothing), so New must never pass a bare zero through unquestioned.
 	ContextTurns int
+	// Narrowing configures the shortlist stage. Its zero value
+	// (EmbedModel == "") is narrowing off - see newNarrower.
+	Narrowing Narrowing
 }
 
 // SeedAccount is one account for New to put in place via SeedAccounts,
@@ -300,8 +327,15 @@ func build(
 		return nil, err
 	}
 
+	narrowerOption, err := newNarrowerOption(cfg, catalog)
+	if err != nil {
+		return nil, err
+	}
+
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
-	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions, contextWindowOption(cfg.ContextTurns))
+	orchestrator := usecase.NewOrchestrator(
+		catalog, planner, invoker, permissions, contextWindowOption(cfg.ContextTurns), narrowerOption,
+	)
 	adminUsecase := usecase.NewAdmin(users, permissions, catalog)
 	catalogUsecase := usecase.NewCatalog(catalog, permissions)
 
@@ -533,6 +567,39 @@ func contextWindowOption(turns int) usecase.Option {
 	}
 
 	return usecase.WithContextWindow(turns)
+}
+
+// newNarrowerOption builds the usecase.Option newPlanner's own caller
+// (build) passes to usecase.NewOrchestrator: a no-op when cfg.Narrowing is
+// unconfigured (H7 - the zero value, which is what every test and every
+// caller that predates this subproject leaves it at), or
+// usecase.WithNarrower over an internal/adapter/narrowing/llamaswap.Narrower
+// whose Load has already run against catalog, once, before this ever
+// returns (AC-H-104: "a request embeds only the question").
+//
+// One line is logged with the vector count and how long Load took
+// (docs/plans/shortlisting.md, Task 1 Step 6) - the same evidence H4's
+// "the measurement asserts that no request paid for a load" is read from:
+// a load that took tens of seconds here, at startup, is fine; the same
+// delay inside a request would not be.
+func newNarrowerOption(cfg *Config, catalog domain.Catalog) (usecase.Option, error) {
+	if cfg.Narrowing.EmbedModel == "" {
+		return func(*usecase.Orchestrator) {}, nil
+	}
+
+	narrower := llamaswap.New(cfg.LLM.BaseURL, cfg.Narrowing.EmbedModel, cfg.Narrowing.RerankModel)
+
+	ctx := context.Background()
+	start := time.Now()
+
+	if err := narrower.Load(ctx, catalog); err != nil {
+		return nil, fmt.Errorf("loading the narrowing index: %w", err)
+	}
+
+	slog.Default().InfoContext(ctx, "narrowing loaded",
+		slog.Int("vectors", narrower.VectorCount()), slog.Duration("took", time.Since(start)))
+
+	return usecase.WithNarrower(narrower, cfg.Narrowing.K), nil
 }
 
 // newPlanner selects the platform's usecase.Planner from cfg: the

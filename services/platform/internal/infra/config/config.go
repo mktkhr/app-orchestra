@@ -50,6 +50,23 @@ var ErrMissingDBPath = errors.New("ORCHESTRA_DB_PATH is required")
 // (docs/plans/auth.md, Task 0, Step 3).
 var ErrMissingAdminPassword = errors.New("ORCHESTRA_ADMIN_PASSWORD is required")
 
+// ErrNarrowingIncomplete is returned when exactly one or two of
+// ORCHESTRA_NARROWING_EMBED_MODEL, ORCHESTRA_NARROWING_RERANK_MODEL and
+// ORCHESTRA_NARROWING_K are set. Narrowing is configured as a group of
+// three - the embedder and the reranker must agree with the K the
+// catalogue was cut to - and a platform that started on two of the three
+// would run a narrower with a name or a size it never actually asked for.
+// This is the same reasoning ErrMissingDBPath already applies to a single
+// required variable (docs/specs/shortlisting.md, section 5).
+var ErrNarrowingIncomplete = errors.New(
+	"ORCHESTRA_NARROWING_EMBED_MODEL, ORCHESTRA_NARROWING_RERANK_MODEL and ORCHESTRA_NARROWING_K must be set together, or not at all",
+)
+
+// ErrInvalidNarrowingK is returned when ORCHESTRA_NARROWING_K is set to
+// something other than a positive integer, mirroring
+// ErrInvalidContextTurns's own refusal to accept a non-positive window.
+var ErrInvalidNarrowingK = errors.New("ORCHESTRA_NARROWING_K must be a positive integer")
+
 // ErrInvalidContextTurns is returned when ORCHESTRA_CONTEXT_TURNS is set to
 // something other than a positive integer. A window of zero or fewer turns
 // is not a valid configuration to ask for explicitly - Orchestrator itself
@@ -222,6 +239,17 @@ type Config struct {
 	// (docs/specs/context.md, section 6). Defaults to defaultContextTurns
 	// when unset.
 	ContextTurns int
+	// NarrowingEmbedModel names the embedding model llama-swap serves at
+	// /v1/embeddings, read from ORCHESTRA_NARROWING_EMBED_MODEL. Empty
+	// means narrowing is off (docs/specs/shortlisting.md, H7) - see
+	// ErrNarrowingIncomplete for what a partial setting means.
+	NarrowingEmbedModel string
+	// NarrowingRerankModel names the reranking model llama-swap serves at
+	// /v1/rerank, read from ORCHESTRA_NARROWING_RERANK_MODEL.
+	NarrowingRerankModel string
+	// NarrowingK is how many endpoints the shortlist is cut to, read from
+	// ORCHESTRA_NARROWING_K.
+	NarrowingK int
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
@@ -272,6 +300,10 @@ func Load() (Config, error) {
 	}
 
 	cfg.ContextTurns = contextTurns
+
+	if narrowingErr := loadNarrowing(&cfg); narrowingErr != nil {
+		return Config{}, narrowingErr
+	}
 
 	dbPath, ok := os.LookupEnv("ORCHESTRA_DB_PATH")
 	if !ok || dbPath == "" {
@@ -363,6 +395,71 @@ func parseContextTurns(raw string) (int, error) {
 	}
 
 	return n, nil
+}
+
+// requiredNarrowingVars is how many of the three ORCHESTRA_NARROWING_*
+// variables must be set together, named so parseNarrowing's "all or none"
+// check isn't a bare magic number (mnd, harness/quality/go/golangci.yml).
+const requiredNarrowingVars = 3
+
+// narrowingConfig is parseNarrowing's own parsed result: either the zero
+// value (narrowing off, H7) or every field filled in together - never a
+// partial mix, which parseNarrowing itself refuses with
+// ErrNarrowingIncomplete before this type is ever built with one.
+type narrowingConfig struct {
+	embedModel  string
+	rerankModel string
+	k           int
+}
+
+// loadNarrowing reads the three ORCHESTRA_NARROWING_* variables and
+// applies them to cfg, isolating Load itself from both the os.Getenv
+// calls and parseNarrowing's own validation (funlen,
+// harness/quality/go/golangci.yml).
+func loadNarrowing(cfg *Config) error {
+	narrowing, err := parseNarrowing(
+		os.Getenv("ORCHESTRA_NARROWING_EMBED_MODEL"), os.Getenv("ORCHESTRA_NARROWING_RERANK_MODEL"), os.Getenv("ORCHESTRA_NARROWING_K"),
+	)
+	if err != nil {
+		return err
+	}
+
+	cfg.NarrowingEmbedModel = narrowing.embedModel
+	cfg.NarrowingRerankModel = narrowing.rerankModel
+	cfg.NarrowingK = narrowing.k
+
+	return nil
+}
+
+// parseNarrowing reads the three ORCHESTRA_NARROWING_* variables: all
+// three empty returns the zero narrowingConfig and no error (narrowing
+// off, H7); all three set returns them parsed; one or two set is
+// ErrNarrowingIncomplete (docs/specs/shortlisting.md, section 5) - the
+// same "all or none" rule ErrMissingDBPath's own doc comment describes
+// for a single variable, extended to a group of three that must agree
+// with each other.
+func parseNarrowing(embedModel, rerankModel, rawK string) (narrowingConfig, error) {
+	set := 0
+	for _, v := range []string{embedModel, rerankModel, rawK} {
+		if v != "" {
+			set++
+		}
+	}
+
+	if set == 0 {
+		return narrowingConfig{}, nil
+	}
+
+	if set != requiredNarrowingVars {
+		return narrowingConfig{}, ErrNarrowingIncomplete
+	}
+
+	k, err := strconv.Atoi(rawK)
+	if err != nil || k <= 0 {
+		return narrowingConfig{}, fmt.Errorf("%w: %q", ErrInvalidNarrowingK, rawK)
+	}
+
+	return narrowingConfig{embedModel: embedModel, rerankModel: rerankModel, k: k}, nil
 }
 
 // parsePlanFixtures reads ORCHESTRA_PLAN_FIXTURES: a JSON array of
