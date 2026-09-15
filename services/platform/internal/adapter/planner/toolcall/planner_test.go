@@ -912,8 +912,9 @@ const proposePanelDescriptionAsOf5bf5cf8 = "Call this when the question asks to 
 // TestPlanWithV1WordingSendsTheSystemMessageAndBuiltinToolDescriptionsByteIdenticalToBefore5bf5cf8
 // is AC-Q-101: with wording.ByName("v1") selected explicitly via
 // toolcall.WithWording - the default changed to v2-commit in
-// docs/plans/wording.md Task 3 (DECISIONS.md, 2026-09-15), so this is no
-// longer what an option-less toolcall.New sends, but v1 must still be
+// docs/plans/wording.md Task 3 (DECISIONS.md, 2026-09-15) and then to
+// v6-unmatched-filter (DECISIONS.md, 2026-09-16), so this is no longer
+// what an option-less toolcall.New sends, but v1 must still be
 // selectable and still byte-identical when it is - the system message and
 // the three built-in tools' descriptions this Planner sends over the wire
 // are byte-identical to the literals copied above - and, for a catalogue

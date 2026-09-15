@@ -374,12 +374,13 @@ func TestLoadRejectsAnUnknownLLMMode(t *testing.T) {
 	assert.ErrorIs(t, err, config.ErrInvalidLLMMode)
 }
 
-// TestLoadPlannerWordingDefaultsToV2Commit is docs/plans/wording.md Task
-// 3's switch: an unset ORCHESTRA_PLANNER_WORDING now resolves to
-// wording.Default().Name, "v2-commit" as of DECISIONS.md, 2026-09-15
-// ("wording: v2-commit becomes the default") - v1 stays reachable by name
-// (see TestLoadReadsAKnownPlannerWording below).
-func TestLoadPlannerWordingDefaultsToV2Commit(t *testing.T) {
+// TestLoadPlannerWordingDefaultsToV6UnmatchedFilter is the second default
+// switch: an unset ORCHESTRA_PLANNER_WORDING now resolves to
+// wording.Default().Name, "v6-unmatched-filter" as of DECISIONS.md,
+// 2026-09-16 ("wording: v6-unmatched-filter becomes the default") - v1 and
+// v2-commit both stay reachable by name (see TestLoadReadsAKnownPlannerWording
+// below).
+func TestLoadPlannerWordingDefaultsToV6UnmatchedFilter(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
 	t.Setenv("ORCHESTRA_PLANNER_WORDING", "")
@@ -387,7 +388,7 @@ func TestLoadPlannerWordingDefaultsToV2Commit(t *testing.T) {
 	cfg, err := config.Load()
 
 	require.NoError(t, err)
-	assert.Equal(t, "v2-commit", cfg.PlannerWording)
+	assert.Equal(t, "v6-unmatched-filter", cfg.PlannerWording)
 }
 
 func TestLoadReadsAKnownPlannerWording(t *testing.T) {
@@ -418,6 +419,7 @@ func TestLoadRejectsAnUnknownPlannerWording(t *testing.T) {
 	assert.Contains(t, err.Error(), "v3-ask-on-collision")
 	assert.Contains(t, err.Error(), "v4-commit-and-ask")
 	assert.Contains(t, err.Error(), "v5-examples-in-tools")
+	assert.Contains(t, err.Error(), "v6-unmatched-filter")
 }
 
 func TestLoadReadsDBPath(t *testing.T) {
@@ -503,4 +505,124 @@ func TestLoadRejectsMalformedSeedAccounts(t *testing.T) {
 	_, err := config.Load()
 
 	require.Error(t, err)
+}
+
+// TestLoadPlannerThinkingDefaultsToTrue is the toolcall planner-knob half
+// of the platform-knobs subproject: an unset ORCHESTRA_PLANNER_THINKING
+// resolves to true - thinking stays on, today's behaviour.
+func TestLoadPlannerThinkingDefaultsToTrue(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_THINKING", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.True(t, cfg.PlannerThinking)
+}
+
+func TestLoadPlannerThinkingOn(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_THINKING", "on")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.True(t, cfg.PlannerThinking)
+}
+
+func TestLoadPlannerThinkingOff(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_THINKING", "off")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.False(t, cfg.PlannerThinking)
+}
+
+func TestLoadRejectsAnUnknownPlannerThinking(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_THINKING", "maybe")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidPlannerThinking)
+}
+
+// TestLoadPlannerRepeatPenaltyDefaultsToUnset documents that an unset
+// ORCHESTRA_PLANNER_REPEAT_PENALTY sends nothing - today's behaviour.
+func TestLoadPlannerRepeatPenaltyDefaultsToUnset(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_REPEAT_PENALTY", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Nil(t, cfg.PlannerRepeatPenalty)
+}
+
+func TestLoadPlannerRepeatPenaltyParsesAFloat(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_REPEAT_PENALTY", "1.1")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	require.NotNil(t, cfg.PlannerRepeatPenalty)
+	assert.InDelta(t, 1.1, *cfg.PlannerRepeatPenalty, 0)
+}
+
+func TestLoadRejectsAnInvalidPlannerRepeatPenalty(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_REPEAT_PENALTY", "not-a-number")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidPlannerRepeatPenalty)
+}
+
+// TestLoadPlannerRepeatLastNDefaultsTo64 documents
+// Config.PlannerRepeatLastN's default (Config.PlannerRepeatLastN's own doc
+// comment) - it is set even when ORCHESTRA_PLANNER_REPEAT_PENALTY is
+// unset, since it has no effect on its own.
+func TestLoadPlannerRepeatLastNDefaultsTo64(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_REPEAT_LAST_N", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, 64, cfg.PlannerRepeatLastN)
+}
+
+func TestLoadPlannerRepeatLastNParsesAnInt(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_REPEAT_LAST_N", "128")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, 128, cfg.PlannerRepeatLastN)
+}
+
+func TestLoadRejectsAnInvalidPlannerRepeatLastN(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_REPEAT_LAST_N", "0")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidPlannerRepeatLastN)
 }

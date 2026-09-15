@@ -78,14 +78,18 @@ func TestByNameV1IsByteIdenticalToTheLiteralsAt5bf5cf8(t *testing.T) {
 			"usecase.Tool.Examples exists")
 }
 
-// TestDefaultIsV2Commit is docs/plans/wording.md Task 3's switch: the
-// default changed from v1 to v2-commit by recorded decision (DECISIONS.md,
-// 2026-09-15, "wording: v2-commit becomes the default") - v2-commit clears
-// v1 on correct@1/correct@shown, none and list_capabilities without
-// costing axis A or E, while v3/v4's ask-on-collision sentence and v5's
-// in-tool examples are both negative results (same entry).
-func TestDefaultIsV2Commit(t *testing.T) {
-	assert.Equal(t, "v2-commit", wording.Default().Name)
+// TestDefaultIsV6UnmatchedFilter is the second default switch: v2-commit
+// (docs/plans/wording.md Task 3; DECISIONS.md, 2026-09-15, "wording:
+// v2-commit becomes the default") was replaced by v6-unmatched-filter
+// (DECISIONS.md, 2026-09-16, "wording: v6-unmatched-filter becomes the
+// default"), which closes TODO.md item 3 (an unmatched restricting word
+// against an enum parameter silently dropped the filter): make eval's two
+// no-enum-value cases go from 30/30 and 10/10 reject to 0/30 and 0/10
+// reject, at a cost of three correct@1 points on the eval-shortlist corpus
+// that traces mostly to a pre-existing repetition-loop truncation, not the
+// new rule.
+func TestDefaultIsV6UnmatchedFilter(t *testing.T) {
+	assert.Equal(t, "v6-unmatched-filter", wording.Default().Name)
 }
 
 // declaredNames is Names' expected declared order - not sorted: v1 first,

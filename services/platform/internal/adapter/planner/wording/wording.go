@@ -50,17 +50,26 @@ func all() []Wording {
 	}
 }
 
-// Default is v2-commit (docs/plans/wording.md Task 3; DECISIONS.md,
-// 2026-09-15, "wording: v2-commit becomes the default"): measured beside
-// v1 and the other three candidates over one run of make eval-shortlist
-// and, for the two wordings that could become the default, over make
-// eval's eighteen real-service cases (docs/specs/wording.md Q3/Q4). v1
-// stays in this package as the baseline every candidate - and this
-// decision itself - is measured against; it is still what
+// Default is v6-unmatched-filter (DECISIONS.md, 2026-09-16, "wording:
+// v6-unmatched-filter becomes the default"), which replaced v2-commit
+// (docs/plans/wording.md Task 3; DECISIONS.md, 2026-09-15, "wording:
+// v2-commit becomes the default"). v6-unmatched-filter closes TODO.md
+// item 3 (an unmatched restricting word against an enum parameter
+// silently dropped the filter instead of asking): make eval's two
+// no-enum-value cases move from 30/30 and 10/10 reject to 0/30 and 0/10
+// reject, every accepted outcome an ask_user call on the parameter, no
+// other make eval case moved. It costs three points of correct@1 on the
+// eval-shortlist corpus (67 vs v2-commit's 68) - accepted because most of
+// that loss traces to a pre-existing repetition-loop truncation
+// (TODO.md's new "Repetition loop" item), not to the new rule. v1 stays
+// in this package as the baseline every candidate - and both decisions -
+// is measured against; it is still what
 // TestDefaultIsV1ByteIdenticalToTheLiteralsAt5bf5cf8 asserts, by name
-// (AC-Q-101), and remains selectable via ORCHESTRA_PLANNER_WORDING=v1.
+// (AC-Q-101), and remains selectable via ORCHESTRA_PLANNER_WORDING=v1;
+// v2-commit remains selectable the same way via
+// ORCHESTRA_PLANNER_WORDING=v2-commit.
 func Default() Wording {
-	return v2Commit()
+	return v6UnmatchedFilter()
 }
 
 // ByName looks a set up by Wording.Name, reporting false when name is not
