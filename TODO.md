@@ -21,34 +21,7 @@ _Nothing in progress._
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-3. **Open defect: a question whose filter word matches no enum value gets
-   every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
-   在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
-   variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
-   D15's attempt (see below) and none of it closed the gap. D15
-   (`docs/specs/orchestration.md`, an optional enum parameter on a safe
-   endpoint offered to the model as required, with a synthetic `__all__`
-   value) is tried and withdrawn (`DECISIONS.md`, 2026-09-12, final entry):
-   the reject rate never moved outside its noise band in three
-   measurements; only the accept rate moved, because `__all__` competes
-   with `ask_user` as an easier tool to reach for, not because it closes
-   the silent-omission path. A future attempt has to change that
-   competition - through the operation's own tool description,
-   `ask_user`'s own description, or the decision procedure itself - not add
-   another value to the enum. `100d61d` (pinning `temperature: 0` for
-   deterministic planning, 2026-09-15) is the likely reason `make eval`
-   now reads this case as pure regression rather than noise: both
-   `no-enum-value` (18/30 reject baseline → 30/30 reject) and
-   `no-enum-value-attendance` (7/10 → 10/10) moved to the _worse_ extreme
-   of their old range, identically under `v1` and `v2-commit`
-   (`docs/plans/wording.md` Task 3; `DECISIONS.md`, 2026-09-15, "wording:
-   v2-commit becomes the default") - a case whose baseline sat at 18/30
-   was very likely getting some of its rejects from llama-server's
-   unpinned-temperature variance, and pinning removed that variance in the
-   wrong direction, onto the one path this defect already had. Not
-   accepted as a new baseline (`make eval-accept` was not run); still open,
-   now with this cause noted rather than re-measured away.
-4. **Open defect: `ask_user` about a safe operation degrades to an empty
+3. **Open defect: `ask_user` about a safe operation degrades to an empty
    form, not a question.** Found while fixing `make eval-shortlist`'s
    scorer (`2dcb2e0`, 2026-09-15) - a real platform behaviour, not a test
    defect. `Orchestrator.ask` (`internal/usecase/orchestrator.go`, `ask()`)
@@ -61,7 +34,7 @@ _Nothing in progress._
    stand - but the shape a person actually sees is still wrong. Not yet
    reproduced against a running screen; the shortlist measurement is what
    surfaced it.
-5. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+4. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -72,11 +45,26 @@ _Nothing in progress._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-6. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+5. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
+6. **Repetition loop: planner answers truncated at `max_tokens`.** 6-9 of
+   100 `make eval-shortlist` corpus answers, across the `v2-commit` and
+   `v6-unmatched-filter` runs measured 2026-09-16 (`DECISIONS.md`, "wording:
+   v6-unmatched-filter becomes the default"), degrade to `DecisionNone` at
+   latency ≈ 16s - `717820a`'s `max_tokens` 1024 guard catching a
+   repetition loop, not a reasoned refusal. Rows affected: `v6`'s `b04`,
+   `b07`, `b11`, `b18`, `b23`, `b25`, `c02`, `c05`, `d08`; `v2`'s `b10`,
+   `b18`, `b23`, `d07`, `d08`. Candidate lever: `repeat_penalty` or
+   `presence_penalty` on planning calls (`chat.Request`,
+   `internal/adapter/planner/toolcall/planner.go` and
+   `internal/adapter/planner/jsonmode`). Contract check comes first -
+   whether llama-server's chat-completions endpoint accepts either
+   parameter at all, and whether adding one counts as a mechanical change
+   `docs/plans/wording.md`'s "Deliberately excluded" list already fixed for
+   this planner - before anything is measured.
 
 7. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
@@ -100,6 +88,23 @@ _Nothing in progress._
 
 ## Done
 
+- **`v6-unmatched-filter` becomes the default wording, closing the
+  no-enum-value defect above.** An unmatched restricting word against an
+  enum parameter (`no-enum-value`, 破損した在庫はある？;
+  `no-enum-value-attendance`, 有給の勤怠はある？) silently dropped the
+  filter and returned every row instead of asking. `v6-unmatched-filter`
+  (built on `v2-commit`, one sentence added to the system prompt and to
+  `ask_user`'s own description) closes it: `make eval`'s two cases move
+  from 30/30 and 10/10 reject to 0/30 and 0/10 reject, every accepted
+  outcome an `ask_user` call on the parameter, no other `make eval` case
+  moved. Costs three correct@1 points on the `make eval-shortlist` corpus
+  against `v2-commit` (67 vs 68) - accepted, since most of that loss
+  traces to a pre-existing `max_tokens` repetition-loop truncation, not
+  the new rule (see the new "Repetition loop" item below). `wording.Default()`
+  now returns `v6UnmatchedFilter()`; `v1` and `v2-commit` both stay
+  selectable by name. Full numbers, the row-level breakdown, and the
+  truncation evidence are in `DECISIONS.md`, 2026-09-16 ("wording:
+  v6-unmatched-filter becomes the default").
 - **`docs/plans/wording.md` closes: the planner's words are a named,
   versioned set, and `v2-commit` is now the default** - this closes the
   item directly above, "the planner's prompt and tool descriptions - the

@@ -6554,3 +6554,90 @@ two idle readings taken minutes apart with no `make` target running at
 all (104245→104248), so it is the standing `make dev-services` platform
 on `:8080` (running since 11:55, started before and independent of this
 task) taking its own traffic, not `make check`.
+
+## 2026-09-16 wording: v6-unmatched-filter becomes the default
+
+TODO.md item 3's open defect: a question whose restricting word matches no
+enum value gets every row back, silently. On `qwen3.5-9b-q8` at
+`temperature: 0`, `no-enum-value` (破損した在庫はある？) sat at 30/30
+reject and `no-enum-value-attendance` (有給の勤怠はある？) at 10/10 reject
+
+- the model drops the unmatched filter and calls the operation with `{}`
+  rather than asking. D15 (`docs/specs/orchestration.md`, an optional enum
+  parameter offered as required with a synthetic `__all__` value) was tried
+  and withdrawn (`DECISIONS.md`, 2026-09-12): it moved the accept rate, not
+  the reject rate, because the synthetic value competed with `ask_user` as
+  an easier tool to reach for rather than closing the silent-omission path.
+
+`v6-unmatched-filter` (`services/platform/internal/adapter/planner/wording/v6_unmatched_filter.go`)
+is built on `v2-commit`, not `v1` - `v2-commit` is `wording.Default()` and
+the base every further candidate extends. It adds one sentence to the
+system prompt and one to `ask_user`'s own description: when the question
+restricts by a state, kind or category and the operation's matching
+parameter is an enum, but the word matches none of the enum's values or
+Japanese labels, call `ask_user` for that parameter rather than dropping
+the filter - explicitly not for a question that does not restrict at all,
+and not for a free-text parameter with no fixed set of values. The
+sentence also states directly that dropping a restricting filter is not
+"committing", so `v2-commit`'s own "call it when any offered tool
+plausibly fits" sentence cannot be read as license to drop the one
+parameter the question was actually restricting on.
+
+**`make eval`, the two enum cases, ask-not-guess.** Under `v6-unmatched-filter`:
+`no-enum-value` 0/30 reject (was 30/30 under `v2-commit`),
+`no-enum-value-attendance` 0/10 reject (was 10/10) - every accepted
+outcome across both cases is an `ask` on the enum parameter (30 ×
+`ask(status)`, 10 × `ask(kind)`), not a guessed value. No other `make eval`
+case moved. The same-day `v2-commit` re-run (for comparison, same corpus)
+still reads 30/30 and 10/10 reject, confirming the close is the wording's,
+not noise.
+
+**`make eval-shortlist WORDING=v6-unmatched-filter` (narrowing on, K=20),
+beside `v2-commit`** (scratchpad `wording-v6-report.txt`/`wording-v6.jsonl`):
+
+| wording             | correct@1 | correct@shown | A   | B   | C   | D   | E   |
+| ------------------- | --------- | ------------- | --- | --- | --- | --- | --- |
+| v2-commit           | 68        | 73            | 92  | 52  | 68  | 53  | 70  |
+| v6-unmatched-filter | 67        | 70            | 92  | 52  | 60  | 53  | 80  |
+
+Rows that flip at correct@1: gains `b02`, `b10`, `b24`, `a02`, `e04` (five);
+losses `a20`, `b01`, `b15`, `b19`, `c02`, `c05` (six) - net -1.
+
+**Why the loss is accepted.** Every `none` row under either wording - `v6`:
+`b04`, `b07`, `b11`, `b18`, `b23`, `b25`, `c02`, `c05`, `d08`; `v2`: `b10`,
+`b18`, `b23`, `d07`, `d08` - all but `b24` run at latency ≈ 16s, which is
+`max_tokens` 1024 reached: a repetition loop truncated by `717820a`'s
+guard ("planner truncated by max_tokens"), degrading to `DecisionNone`,
+not a reasoned refusal. This is a separate, pre-existing defect
+(`717820a`, 2026-09-15) that `v6-unmatched-filter` merely re-rolls onto a
+different subset of rows - it does not make the model more cautious, it
+changes which rows happen to hit the loop. The genuine rule-driven flips
+are the `b`/`a` rows (e.g. `b01`, result → form on `listSalesOrders`,
+where the added sentence changes what the model reaches for). Decision: a
+real service defect closed 100% (30/30 → 0/30 and 10/10 → 0/10 reject on
+the two enum cases) outweighs a -1 correct@1 move on the shortlist corpus,
+most of which is not even attributable to the new rule.
+
+**Decision.** `wording.Default()` now returns `v6UnmatchedFilter()`.
+`v1` and `v2-commit` both stay in the package, selectable by name;
+`v1`'s byte-identity test is unaffected. `internal/infra/config.parsePlannerWording`
+and `pkg/app.resolveWording` both already read `wording.Default()` for an
+unset `ORCHESTRA_PLANNER_WORDING`, so no change was needed there beyond
+the switch itself. `make eval-accept` was run to rewrite
+`e2e/eval/baseline.json` under the new default, and `make eval` was run
+once more against the new baseline with no REGRESSION marker - all 18
+cases read `accept`/`reject` identical to the freshly written baseline.
+One case besides the two targeted moved in `baseline.json`'s own diff:
+`unanswerable` (今日の天気は？) reads 10/10 accept, up from the previously
+recorded 9/10 - unrelated to the enum-filter rule (the case carries no
+restricting word or enum parameter at all) and not a regression either
+way, so it is accepted along with the two intended moves rather than
+investigated separately.
+
+**Next work item, approved.** The repetition loop itself: 6-9 of 100
+corpus answers across the two runs above lost to a 16s `max_tokens`
+truncation, not a reasoned decision. Candidate lever: `repeat_penalty` or
+`presence_penalty` on planning calls - the planner's mechanics contract
+(`docs/plans/wording.md`'s "Deliberately excluded" list; llama-server's
+own chat-completions contract) needs checking before anything is measured.
+Filed as a new `TODO.md` Next item.

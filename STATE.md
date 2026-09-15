@@ -1,9 +1,29 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-15 (`docs/plans/wording.md` closes: `v2-commit` is
-now the default planner wording)_
+_Last updated: 2026-09-16 (`v6-unmatched-filter` is now the default
+planner wording; the enum-filter defect is closed)_
 
 ## Summary
+
+**2026-09-16 - `v6-unmatched-filter` is now the default planner wording;
+TODO.md's open enum-filter defect is closed by wording.** A question whose
+restricting word matched no enum value used to drop the filter silently
+and return every row (`no-enum-value`, 破損した在庫はある？, 30/30 reject
+under `v2-commit`; `no-enum-value-attendance`, 有給の勤怠はある？, 10/10
+reject). `v6-unmatched-filter` (`wording` package, built on `v2-commit`)
+adds one sentence each to the system prompt and `ask_user`'s own
+description: an unmatched restricting word against an enum parameter means
+`ask_user` for that parameter, never a call with the filter dropped.
+`make eval` now reads both cases 0/30 and 0/10 reject, every accepted
+outcome an `ask_user` call on the parameter; no other `make eval` case
+moved. Costs three correct@1 points against `v2-commit` on the
+`make eval-shortlist` corpus (67 vs 68) - accepted, since most of the loss
+traces to a pre-existing `max_tokens` repetition-loop truncation
+(`717820a`), not the new rule; that loop is now its own open `TODO.md`
+item. `wording.Default()` returns `v6UnmatchedFilter()`; `v1` and
+`v2-commit` both stay selectable by `ORCHESTRA_PLANNER_WORDING`. Full
+numbers and the row-level breakdown are in `DECISIONS.md`, 2026-09-16
+("wording: v6-unmatched-filter becomes the default").
 
 **2026-09-15 - `docs/plans/wording.md` closes: the planner's words are a
 named, versioned set, and `v2-commit` is now the default.** A new

@@ -7,8 +7,8 @@
     },
     "no-enum-value": {
       "total": 30,
-      "accept": 8,
-      "reject": 18
+      "accept": 30,
+      "reject": 0
     },
     "list-everything": {
       "total": 10,
@@ -22,7 +22,7 @@
     },
     "unanswerable": {
       "total": 10,
-      "accept": 9,
+      "accept": 10,
       "reject": 0
     },
     "capability": {
@@ -87,8 +87,8 @@
     },
     "no-enum-value-attendance": {
       "total": 10,
-      "accept": 0,
-      "reject": 7
+      "accept": 10,
+      "reject": 0
     }
   }
 }
