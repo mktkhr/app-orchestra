@@ -1,12 +1,12 @@
 # STATE.md — current implementation state
 
 _Last updated: 2026-09-16 (planner thinking defaults to off; a per-question
-「思考」 switch to turn it back on is in progress)_
+「思考」 switch turns it back on)_
 
 ## Summary
 
 **2026-09-16 - planner thinking defaults to off; a per-question 「思考」
-switch to turn it on is in progress.** The planner had been calling
+switch turns it on.** The planner had been calling
 `qwen3.5-9b-q8` with Qwen3.5's thinking enabled by default the whole time -
 no `chat_template_kwargs` sent, `reasoning_content` never read. Measured
 against the `v6-unmatched-filter`-wording shortlist corpus (narrowing on):
@@ -21,8 +21,11 @@ deterministic run can tell from noise - but the
 stay for a later measurement. Current planner defaults: wording
 `v6-unmatched-filter`, thinking off, temperature 0, `max_tokens` 1024,
 narrowing on with K=20. A per-question 「思考」 switch
-(`PlanRequest.thinking`) that turns thinking back on for one question is
-being built now, by another agent in this repository - not yet committed.
+(`PlanRequest.thinking`, off by default, persisted per browser) turns
+thinking back on for one question: `9ea5772` (contract, platform),
+`cc3d6ea` (web), `2f2fe88` (spec), `52ecd32` (the `ask` answer path also
+carries it). Verified on the dev stack: the request body carries
+`thinking: false`/`true` with the switch, and the platform logs the same.
 The 16s `max_tokens` truncations this closes were previously read as a
 repetition loop (`717820a`, `TODO.md` item 6); reading the truncated
 reasoning itself shows ordinary, on-track thinking that simply runs past

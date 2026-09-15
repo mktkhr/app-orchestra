@@ -4,11 +4,7 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-- **A per-question 「思考」 switch that turns planner thinking on.**
-  `PlanRequest.thinking` - decided 2026-09-16 (`DECISIONS.md`, "Planner
-  thinking: off by default, on by a 「思考」 switch") alongside making
-  thinking off the default. Being built by another agent in this
-  repository; not yet committed.
+_Nothing in progress._
 
 ## Next
 
@@ -62,7 +58,7 @@ _Keep three lists. Move items, do not duplicate them._
    narrating its parameters when the budget ends) that simply runs long.
    With thinking off by default this no longer happens (0 of 100 in that
    measurement); with thinking on - now reachable per-question through the
-   「思考」 switch being built - it still can: 9 of 100 with no
+   「思考」 switch (`cc3d6ea`) - it still can: 9 of 100 with no
    `repeat_penalty`, 4 of 100 at `repeat_penalty` 1.1. Candidate: a larger
    `max_tokens` for thinking-on requests only (thinking-off's own answers
    are short, so raising the shared budget buys nothing there), or a
