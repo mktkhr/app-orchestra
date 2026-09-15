@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import { Provenance, RenderedResult, ResultChart, rowsFromData } from "@/entities/rendering";
 import type { PlanResult } from "@/shared/api/client";
 
+import { AlternativesRow } from "./AlternativesRow";
 import type { SaveControlSlot } from "./answerSlots";
 
 // Re-exported so `TurnList.tsx` can pull both slot types from this module
@@ -17,10 +18,13 @@ export type { ProposalSlot, SaveControlSlot } from "./answerSlots";
  * The `kind: "result"` branches of `AnswerResult` - `table`, `detail` and
  * `chart` - split into their own file (and function) so `TurnList.tsx`
  * stays under eslint's `max-lines` and `AnswerResult` under
- * `max-lines-per-function`. Returns null for a `component`/`data`
- * combination this deployment's contract allows but that carries none of
- * what any of the three widgets needs, so the caller falls through to
- * `AnswerResult`'s own generic fallback instead of this one duplicating it.
+ * `max-lines-per-function`. Wraps a matched branch with `AlternativesRow`
+ * (docs/specs/shortlisting.md, section 4, H5) - which draws nothing when
+ * `result.alternatives` is absent or empty - and returns null, matched or
+ * not, for a `component`/`data` combination this deployment's contract
+ * allows but that carries none of what any of the three widgets needs, so
+ * the caller falls through to `AnswerResult`'s own generic fallback instead
+ * of this one duplicating it.
  *
  * `chart` only reaches here when the contract declares `x-ui-hint.chart`
  * (`domain.Render`); the result then carries `view.chart` - axes only,
@@ -30,6 +34,31 @@ export type { ProposalSlot, SaveControlSlot } from "./answerSlots";
  * contract's axes onto the new panel (AC-P-105's second half).
  */
 export function renderResultAnswer(
+  result: PlanResult,
+  originalQuery: string,
+  onAlternativeChosen: (question: string, preferred: string) => void,
+  renderSaveControl?: SaveControlSlot,
+): JSX.Element | null {
+  const matched = renderMatchedResult(result, originalQuery, renderSaveControl);
+
+  if (matched === null) {
+    return null;
+  }
+
+  return (
+    <>
+      {matched}
+      <AlternativesRow
+        alternatives={result.alternatives}
+        onSelect={(preferred) => {
+          onAlternativeChosen(originalQuery, preferred);
+        }}
+      />
+    </>
+  );
+}
+
+function renderMatchedResult(
   result: PlanResult,
   originalQuery: string,
   renderSaveControl?: SaveControlSlot,

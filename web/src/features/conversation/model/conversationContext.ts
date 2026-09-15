@@ -11,9 +11,20 @@ export interface ConversationState {
   readonly error: string | null;
 }
 
+/**
+ * `ask`'s extra knobs, beyond the question text itself. `preferred` carries
+ * an alternative's `operationId` when the person chose one of a previous
+ * `result`'s `alternatives` (docs/specs/shortlisting.md, section 4):
+ * `/api/plan` narrows to that one operation and the planner fills in its
+ * parameters, in place of an ordinary question.
+ */
+export interface AskOptions {
+  readonly preferred?: string;
+}
+
 /** What a screen can do with the conversation it asks: read it, add to it, end it. */
 export interface ConversationHandle extends ConversationState {
-  readonly ask: (query: string) => Promise<void>;
+  readonly ask: (query: string, options?: AskOptions) => Promise<void>;
   /**
    * Turns a `ResultForm`'s successful `/api/invoke` result into an answer
    * turn - see `Conversation`'s previous `handleFormSubmitted` doc for why
@@ -26,7 +37,7 @@ export interface ConversationHandle extends ConversationState {
 
 export interface ConversationStoreValue {
   getConversation: (key: string) => ConversationState;
-  ask: (key: string, query: string, workspaceId?: string) => Promise<void>;
+  ask: (key: string, query: string, workspaceId?: string, preferred?: string) => Promise<void>;
   submitForm: (key: string, result: PlanResult) => void;
   newConversation: (key: string) => void;
 }
@@ -51,12 +62,12 @@ export function useConversation(key: string, workspaceId?: string): Conversation
   const store = useContext(ConversationStoreContext);
 
   const ask = useCallback(
-    (query: string) => {
+    (query: string, options?: AskOptions) => {
       if (store === null) {
         throw new Error(NOT_WRAPPED);
       }
 
-      return store.ask(key, query, workspaceId);
+      return store.ask(key, query, workspaceId, options?.preferred);
     },
     [store, key, workspaceId],
   );

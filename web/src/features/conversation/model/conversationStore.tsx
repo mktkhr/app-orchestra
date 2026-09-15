@@ -59,7 +59,7 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
   );
 
   const ask = useCallback(
-    async (key: string, query: string, workspaceId?: string): Promise<void> => {
+    async (key: string, query: string, workspaceId?: string, preferred?: string): Promise<void> => {
       // Read before `update` adds this question as its own turn - the turns
       // this question follows, not the one it is about to add.
       const contextTurns: readonly ContextTurn[] = toContextTurns(
@@ -78,6 +78,7 @@ export function ConversationProvider({ children }: ConversationProviderProps): J
           query,
           ...(contextTurns.length === 0 ? {} : { turns: contextTurns }),
           ...(workspaceId === undefined ? {} : { workspaceId }),
+          ...(preferred === undefined ? {} : { preferred }),
         });
 
         update(key, (current) => ({

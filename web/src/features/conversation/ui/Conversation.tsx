@@ -64,6 +64,17 @@ export function Conversation({
   };
 
   /**
+   * A previous `result`'s alternative, chosen instead of the operation the
+   * planner picked (docs/specs/shortlisting.md, section 4): re-asks the
+   * same question with that alternative's `operationId` as `preferred`, so
+   * `/api/plan` narrows to it alone and the planner fills in its
+   * parameters.
+   */
+  const handleAlternativeChosen = (query: string, preferred: string): void => {
+    void ask(query, { preferred });
+  };
+
+  /**
    * `ResultForm`'s successful `/api/invoke` result, already shaped as the
    * `PlanResult` a `kind: "result"` answer would carry (see
    * `ResultForm`'s `onSubmitted` doc). Turned into a turn by the store, the
@@ -83,6 +94,7 @@ export function Conversation({
             turns={turns}
             pending={pending}
             onFormSubmitted={handleFormSubmitted}
+            onAlternativeChosen={handleAlternativeChosen}
             renderSaveControl={renderSaveControl}
             renderProposal={renderProposal}
           />

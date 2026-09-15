@@ -52,6 +52,14 @@ interface TurnListProps {
    * into `features/conversation` for the `Turn` type or `setTurns` itself.
    */
   readonly onFormSubmitted: (result: PlanResult) => void;
+  /**
+   * Chosen when a person clicks one of a `result`'s `AlternativesRow`
+   * chips - the question that produced it (see `nearestQuestion` below),
+   * and the alternative's own `operationId` as `preferred`
+   * (docs/specs/shortlisting.md, section 4). `Conversation` re-asks with
+   * both, the same way `QuestionForm`'s own submit does.
+   */
+  readonly onAlternativeChosen: (question: string, preferred: string) => void;
   readonly renderSaveControl?: SaveControlSlot | undefined;
   readonly renderProposal?: ProposalSlot | undefined;
 }
@@ -61,6 +69,7 @@ export function TurnList({
   turns,
   pending,
   onFormSubmitted,
+  onAlternativeChosen,
   renderSaveControl,
   renderProposal,
 }: TurnListProps): JSX.Element {
@@ -72,6 +81,7 @@ export function TurnList({
           turn={turn}
           nearestQuestion={nearestQuestion(turns, index)}
           onFormSubmitted={onFormSubmitted}
+          onAlternativeChosen={onAlternativeChosen}
           renderSaveControl={renderSaveControl}
           renderProposal={renderProposal}
         />
@@ -139,6 +149,7 @@ interface TurnItemProps {
   readonly turn: Turn;
   readonly nearestQuestion: string;
   readonly onFormSubmitted: (result: PlanResult) => void;
+  readonly onAlternativeChosen: (question: string, preferred: string) => void;
   readonly renderSaveControl?: SaveControlSlot | undefined;
   readonly renderProposal?: ProposalSlot | undefined;
 }
@@ -147,6 +158,7 @@ function TurnItem({
   turn,
   nearestQuestion: question,
   onFormSubmitted,
+  onAlternativeChosen,
   renderSaveControl,
   renderProposal,
 }: TurnItemProps): JSX.Element {
@@ -166,6 +178,7 @@ function TurnItem({
       result={turn.result}
       originalQuery={question}
       onFormSubmitted={onFormSubmitted}
+      onAlternativeChosen={onAlternativeChosen}
       renderSaveControl={renderSaveControl}
       renderProposal={renderProposal}
     />
@@ -176,6 +189,7 @@ interface AnswerResultProps {
   readonly result: PlanResult;
   readonly originalQuery: string;
   readonly onFormSubmitted: (result: PlanResult) => void;
+  readonly onAlternativeChosen: (question: string, preferred: string) => void;
   readonly renderSaveControl?: SaveControlSlot | undefined;
   readonly renderProposal?: ProposalSlot | undefined;
 }
@@ -190,6 +204,7 @@ function AnswerResult({
   result,
   originalQuery,
   onFormSubmitted,
+  onAlternativeChosen,
   renderSaveControl,
   renderProposal,
 }: AnswerResultProps): JSX.Element | null {
@@ -224,7 +239,12 @@ function AnswerResult({
   }
 
   if (result.kind === "result") {
-    const rendered = renderResultAnswer(result, originalQuery, renderSaveControl);
+    const rendered = renderResultAnswer(
+      result,
+      originalQuery,
+      onAlternativeChosen,
+      renderSaveControl,
+    );
 
     if (rendered !== null) {
       return rendered;
