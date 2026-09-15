@@ -1,9 +1,44 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-15 (`docs/plans/shortlisting.md` closes: the
-product's own planner measured end to end, 65 against the picker's 83)_
+_Last updated: 2026-09-15 (`docs/plans/wording.md` closes: `v2-commit` is
+now the default planner wording)_
 
 ## Summary
+
+**2026-09-15 - `docs/plans/wording.md` closes: the planner's words are a
+named, versioned set, and `v2-commit` is now the default.** A new
+`services/platform/internal/adapter/planner/wording` package holds the
+system prompt, the three built-in tools' descriptions and a catalogue
+tool's own description-builder as `Wording` values, selected by
+`ORCHESTRA_PLANNER_WORDING` (unset → `wording.Default()`, unknown → a
+startup error naming every known set); `toolcall.Planner` takes one via
+`toolcall.WithWording`. Four candidates were measured against `v1` in one
+`make eval-shortlist WORDING=...` run each (narrowing on, K=20) plus, for
+the two that could become the default, `make eval`'s eighteen real-service
+cases: `v2-commit` (tell the model to commit when any offered tool
+plausibly fits, rather than retreat to `list_capabilities` or nothing)
+clears `v1` on both correct@1 (65→68) and correct@shown (68→73), roughly
+halves `none` (10→6) and `list_capabilities` (7→3), and does not move the
+two already-open `no-enum-value` regressions `make eval` shows under
+either wording - both are byte-identical case lines between `v1` and
+`v2-commit`, and trace to `100d61d`'s temperature pin, not the wording.
+`v3-ask-on-collision` and `v4-commit-and-ask` (telling the model to ask,
+naming both operations, when two tools differ only by which service owns
+them) are both negative results - `none` nearly triples under `v3`
+(10→24) and the model's one genuine `ask_user` call under `v1` disappears
+under `v4` - read as the sentence granting permission to refuse rather
+than an instruction to ask. `v5-examples-in-tools` (the endpoint's own
+written examples appended to each catalogue tool's description) costs
+axis C alone, 56→36, the same effect written examples already had on the
+stand-in picker (`DECISIONS.md`, 2026-09-15, "Letting the reranker read
+the written examples"). `wording.Default()` now returns `v2-commit`; `v1`
+stays in the package, still asserted byte-identical to the `5bf5cf8`
+literals, now selected by name rather than via `Default()` - `config`'s
+and `pkg/app`'s own defaults follow `wording.Default()` with no further
+change. Full tables, three quoted misses per candidate, and the
+decision's own reasoning are in `DECISIONS.md`, 2026-09-15 ("wording:
+v2-commit becomes the default"). `TODO.md`'s "the planner's prompt and
+tool descriptions" item closes.
 
 **2026-09-15 - `docs/plans/shortlisting.md` closes: narrowing runs behind
 config, a result carries alternatives, and the product's own planner is

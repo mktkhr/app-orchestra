@@ -8,26 +8,7 @@ _Nothing in progress._
 
 ## Next
 
-1. **The planner's prompt and tool descriptions - the measured bottleneck,
-   not retrieval.** `docs/plans/shortlisting.md` closed with narrowing and
-   alternatives wired behind config and the product's own planner measured
-   end to end, for the first time, against the same shortlist the
-   stand-in picker was already measured on: the planner scores 65
-   correct@1 / 68 correct@shown, the picker scores 83 on the identical
-   input, and the shortlist itself holds the right answer 93% of the time
-   - an 18-point gap between the picker and the product's own planner,
-     with retrieval already ruled out as the cause. See `DECISIONS.md`,
-     2026-09-15 ("The product's planner, measured end to end") for the full
-     tables and the miss characterisation: `none` in place of a commit
-     (mostly axes B and D), `list_capabilities` returned as the answer to a
-     vague question (7 of 100), the wrong operation among near-neighbours
-     (axis C), asking back only once in 100 against the picker flagging half
-     of axis B ambiguous on the same shortlists, and axis D reaching for a
-     form on a write it has misidentified. `make eval-shortlist` is the
-     harness this can now be measured against directly, the same way
-     `make narrowing` measures retrieval - no fix is proposed there, only
-     named as where the next work is.
-2. A genre/domain layer above individual services - grouping services by
+1. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
    exposed operation in `services/inventory` carries the single tag `items`
@@ -35,12 +16,12 @@ _Nothing in progress._
    group nothing beyond what `OperationPicker`'s own `groupBy` (off
    `serviceDisplayName`) already does. Worth building once a service
    carries more than one tag over its own exposed operations.
-3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+2. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-4. **Open defect: a question whose filter word matches no enum value gets
+3. **Open defect: a question whose filter word matches no enum value gets
    every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
    在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
    variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
@@ -54,8 +35,20 @@ _Nothing in progress._
    the silent-omission path. A future attempt has to change that
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
-   another value to the enum.
-5. **Open defect: `ask_user` about a safe operation degrades to an empty
+   another value to the enum. `100d61d` (pinning `temperature: 0` for
+   deterministic planning, 2026-09-15) is the likely reason `make eval`
+   now reads this case as pure regression rather than noise: both
+   `no-enum-value` (18/30 reject baseline → 30/30 reject) and
+   `no-enum-value-attendance` (7/10 → 10/10) moved to the _worse_ extreme
+   of their old range, identically under `v1` and `v2-commit`
+   (`docs/plans/wording.md` Task 3; `DECISIONS.md`, 2026-09-15, "wording:
+   v2-commit becomes the default") - a case whose baseline sat at 18/30
+   was very likely getting some of its rejects from llama-server's
+   unpinned-temperature variance, and pinning removed that variance in the
+   wrong direction, onto the one path this defect already had. Not
+   accepted as a new baseline (`make eval-accept` was not run); still open,
+   now with this cause noted rather than re-measured away.
+4. **Open defect: `ask_user` about a safe operation degrades to an empty
    form, not a question.** Found while fixing `make eval-shortlist`'s
    scorer (`2dcb2e0`, 2026-09-15) - a real platform behaviour, not a test
    defect. `Orchestrator.ask` (`internal/usecase/orchestrator.go`, `ask()`)
@@ -68,7 +61,7 @@ _Nothing in progress._
    stand - but the shape a person actually sees is still wrong. Not yet
    reproduced against a running screen; the shortlist measurement is what
    surfaced it.
-6. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+5. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -79,13 +72,13 @@ _Nothing in progress._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-7. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+6. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
 
-8. **`<Typography color="text.secondary">` is a silent no-op almost
+7. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
@@ -107,6 +100,26 @@ _Nothing in progress._
 
 ## Done
 
+- **`docs/plans/wording.md` closes: the planner's words are a named,
+  versioned set, and `v2-commit` is now the default** - this closes the
+  item directly above, "the planner's prompt and tool descriptions - the
+  measured bottleneck, not retrieval". `wording.Default()` now returns
+  `v2-commit` (tell the model to commit when any offered tool plausibly
+  fits, rather than retreat to `list_capabilities` or nothing): +3
+  correct@1 (65→68), +5 correct@shown (68→73), `none` 10→6,
+  `list_capabilities` 7→3, no axis or latency cost beyond the expected
+  token overhead, and `make eval`'s eighteen real-service cases read
+  byte-identical between `v1` and `v2-commit` (the two already-open
+  `no-enum-value` regressions trace to `100d61d`'s temperature pin, not
+  the wording - see item 3 above). `v3-ask-on-collision`/
+  `v4-commit-and-ask` (ask when two tools differ only by which service
+  owns them) and `v5-examples-in-tools` (the endpoint's own written
+  examples in each tool's description) are both negative results and not
+  adopted - see `STATE.md` and `DECISIONS.md`, 2026-09-15 ("wording:
+  v2-commit becomes the default") for the full tables, three quoted
+  misses per candidate, and the decision's reasoning. `v1` stays in
+  `services/platform/internal/adapter/planner/wording`, still asserted
+  byte-identical to the `5bf5cf8` literals, now selected by name.
 - **Chose what the product uses, and wired it in - `docs/plans/shortlisting.md`
   closes.** The plain `e5-large-q8+reranker(w)+written` shortlist (H1) now
   runs behind `ORCHESTRA_NARROWING_EMBED_MODEL`/`ORCHESTRA_NARROWING_RERANK_MODEL`/`ORCHESTRA_NARROWING_K`,
@@ -119,8 +132,8 @@ _Nothing in progress._
   the decisions table; `DECISIONS.md`, 2026-09-15, "The product's planner,
   measured end to end" - AC-H-108). What is not wired: the planner's own prompt and
   tool descriptions, which the measurement found to be the actual
-  bottleneck (18 points below the picker on identical input) - see `##
-Next` item 1.
+  bottleneck (18 points below the picker on identical input) - see the
+  wording entry below, which closes this.
 - **Fixed two defects the five-service, 1000-operation shortlisting fixture
   exposed (`docs/specs/shortlisting.md`, measured 2026-09-15).** (1) 7 of
   100 `ask_user` answers 500'd as `endpoint not found in catalogue` because

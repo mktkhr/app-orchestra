@@ -6355,3 +6355,202 @@ pair when both are present, instead of assuming exactly the latter.
 way `score.test.ts` and the rest of `report.test.ts` already did.
 `docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read 102116 before
 this work and 102116 after - no request left this session.
+
+## 2026-09-15 wording: v2-commit becomes the default
+
+`docs/plans/wording.md` Task 3: `make eval-shortlist WORDING=v2-commit,v3-ask-on-collision,v4-commit-and-ask,v5-examples-in-tools`
+(narrowing on, K=20) beside `v1`, then `make eval` (18 real-service cases)
+for `v1` and the wording that clears the fixture, per Q3/Q4. Every number
+below is read straight from the run's own files
+(`e2e/shortlist/out/on-*.jsonl`/`misses-*.txt`, `wording-report.txt`), not
+copied from an earlier summary - a first pass at this table transposed two
+axis columns and overstated `v2-commit`'s own correct@1/correct@shown gain;
+recomputing `score()`'s logic by hand against every row before writing this
+entry is what caught it.
+
+**The table** (correct@1/correct@shown as % of 100; A/B/C/D/E as % correct@1
+within that axis's own count - A/B/C 25 questions each, D 15, E 10; `ask`
+is a literal `ask_user` answer, not counting an `ask_user` call that
+degraded to an empty form (`askDegraded`, TODO.md item 5) - those are 2
+(v1), 5 (v2), 6 (v3), 7 (v4), 2 (v5) and are folded into `none`'s neighbour
+column only in the prose below, not this table):
+
+| wording              | correct@1 | correct@shown | ask | none | list_capabilities | A   | B   | C   | D   | E   | p50 ms |
+| -------------------- | --------- | ------------- | --- | ---- | ----------------- | --- | --- | --- | --- | --- | ------ |
+| v1                   | 65        | 68            | 1   | 10   | 7                 | 92  | 56  | 56  | 47  | 70  | 3934   |
+| v2-commit            | 68        | 73            | 0   | 6    | 3                 | 92  | 52  | 68  | 53  | 70  | 4194   |
+| v3-ask-on-collision  | 56        | 57            | 0   | 24   | 8                 | 88  | 28  | 48  | 40  | 90  | 5850   |
+| v4-commit-and-ask    | 60        | 64            | 0   | 15   | 2                 | 84  | 32  | 64  | 47  | 80  | 5039   |
+| v5-examples-in-tools | 60        | 62            | 0   | 20   | 9                 | 88  | 52  | 36  | 53  | 80  | 4193   |
+
+`v1`'s block reproduces the recorded baseline exactly - 65/68 overall, and
+`e2e/shortlist/out/on-v1.jsonl` is byte-identical to this run's own
+`on-v1.jsonl` (third identical run of 100, `docs/plans/wording.md` Task 3
+Step 1's own requirement).
+
+**Three quoted misses per candidate**, from each wording's own
+`misses-<name>.txt`:
+
+_v2-commit_ (32 of 100 missed):
+
+- `b18` 社員を新規登録したい: `none`; answers `createAttendanceEmployee`,
+  `createExpenseEmployee` - a collision `v2` still does not commit through.
+- `c07` 得意先まわりの情報を確認したい: `result` `listPurchasingPartners`
+  (wrong service); answers `listSalesCustomers`, `listSalesContacts` - the
+  recurring near-neighbour miss `v1` already had, unmoved.
+- `d14` 急いで仕入れたい時の手続きを知りたい: `result` `list_capabilities`;
+  answers `listPurchasingEmergencyOrders`, `searchPurchasingEmergencyOrders`
+  - one of the three `list_capabilities` picks left (`b08`, `d06`, `d14`).
+
+_v3-ask-on-collision_ (44 of 100 missed, the sentence's own target cases):
+
+- `b02` 注文を1件確認したい: `none`; answers `getSalesOrder`,
+  `getPurchasingOrder` - exactly a 受注/発注 collision, and the model still
+  answers nothing rather than asking.
+- `b07` 明細を1件確認したい: `none`; answers `getSalesOrderLine`,
+  `getPurchasingOrderLine`, `getExpenseLine`.
+- `b12` 承認を1件見たい: `none`; answers `getPurchasingApproval`,
+  `getAttendanceApproval`, `getExpenseApproval` - a 勤怠/経費 collision,
+  same outcome.
+
+_v4-commit-and-ask_ (40 of 100 missed):
+
+- `b02` 注文を1件確認したい: `none` (v3's collision cost, carried over).
+- `b13` 承認を新規登録したい: `none`; answers `createPurchasingApproval`,
+  `createAttendanceApproval`, `createExpenseApproval` - this is `v1`'s one
+  `ask` case (`docs/plans/wording.md` Task 3's own baseline), and `v4`
+  turns it into a miss.
+- `d06` 出荷の準備をしたい: `result` `list_capabilities`; answers
+  `createInventoryShipment`, `createInventoryPickList`,
+  `createInventoryPackingList`.
+
+_v5-examples-in-tools_ (40 of 100 missed):
+
+- `a02` シリアル番号ってどうなってる？: `result`
+  `getInventoryBarcodeFormatSetting`; answers `listInventorySerialNumbers`
+  - under `v1`/`v2` this same question misses to the much closer
+    `getInventorySerialNumber`; with examples shown, it misses further.
+- `c07` 得意先まわりの情報を確認したい: `result` `listPurchasingPartners`
+  (same recurring miss as `v1`/`v2`); answers `listSalesCustomers`,
+  `listSalesContacts`.
+- `c21` 経費申請にまつわる書類を確認したい: `result` `list_capabilities`;
+  answers `listExpenseReceipts`, `listExpenseTravelExpenses` - axis C alone
+  carries eight `list_capabilities` picks under `v5` (`c11`, `c14`, `c16`,
+  `c17`, `c20`, `c21`, `c23`, `c24`), against `v1`'s two.
+
+**`v2-commit` clears `v1`.** +3 correct@1 (65→68), +5 with alternatives
+(68→73); `none` 10→6, `list_capabilities` 7→3 (`b08`, `d06`, `d14` left of
+the seven `v1` missed on: `b11`, `c01`, `c06`, `c19`, `c23`, `d06`, `d14`).
+By axis: C 56→68 (+12) and D 47→53 (+6) both move, matching the sentence's
+own target (§4: "targets `none` and `list_capabilities`"); A and E are
+unchanged (92/70 both wordings). B is the one axis that does _not_ move
+the way the sentence's own doc comment implies it should: it is not part
+of `v2SystemPromptAddition`'s target, and it reads 56→52 - a one-row drop
+(14/25→13/25), inside the kind of noise a 25-question axis carries, not a
+cost the sentence caused (`v2SystemPromptAddition` touches nothing that
+mentions ambiguity or B's own collisions). Latency: p50 3934ms→4194ms
+(+260ms, +6.6%) - the added sentence costs some tokens on every request,
+as expected, and buys the correctness above.
+
+**`v3-ask-on-collision` is a negative result.** correct@1 65→56 (-9),
+`none` 10→24 (+14, +140%) - `none` very nearly triples on the exact axis
+it targets (B: 6→11 of 25 `none`). Literal `ask_user` calls (`kind: "ask"`)
+go from 1 to 0 - the model never once reaches the tool the sentence names
+by name - while `ask_user` calls that _did_ fire but degraded into an
+empty form (TODO.md item 5's own defect: an `ask_user` naming a safe
+operation with no enum for its parameter renders as a blank form, not a
+question) rise only from 2 to 6, nowhere near enough to explain the jump
+in `none`. Read plainly: telling this model "when two operations collide,
+do not guess - ask" did not make it ask (`b02`, `b07`, `b12` above, all
+`none`, all textbook 受注/発注 or 勤怠/経費 collisions) - it read as
+permission to refuse rather than an instruction to reach for a specific
+tool. `v4-commit-and-ask` carries the same cost on top of `v2`'s own gain:
+correct@1 65→60 (-5 net against `v1`, -8 against `v2`), `none` 10→15,
+and `b13` - `v1`'s one genuine `ask` - turns into a `none` once `v3`'s
+sentence is added (quoted above). `v4` keeps `v2`'s axis-C gain (56→64)
+but gives back five of `v2`'s six points overall (68→60) and most of `v2`'s
+B stability besides (52→32, though B was never `v2`'s gain to begin with -
+`v3`'s sentence is the one that costs it, in both `v3` and `v4`).
+
+**`v5-examples-in-tools` is a negative result.** correct@1 65→60 (-5), and
+the cost sits entirely on axis C: 56→36 (-20 of 25, the single largest
+per-axis move any candidate produces in either direction). B, D and E are
+unchanged or improved (D 47→53, matching `v2`'s own D gain since `v5` is
+`v1` everywhere except `CatalogueTool`, and D's answer key is exactly the
+vocabulary gap the written examples were built to close - `docs/specs/
+describing.md`); A drops 92→88 (one question, `a02`, quoted above: shown
+examples, the model reaches for an unrelated barcode-format operation
+instead of the close near-miss it picked under `v1`/`v2`). This is the
+same effect `DECISIONS.md`, 2026-09-15 ("Letting the reranker read the
+written examples") already recorded for the stand-in picker: giving it
+the written examples lowered its own correct rate (83%→78%→77%) even
+though the same examples raised recall. Axis C here is where a catalogue
+tool's own vocabulary already separates near-neighbours cleanly by summary
+alone (`listSalesPartners` vs `listPurchasingPartners`, `getSalesOrder` vs
+`getPurchasingOrder`); adding hand-written example _questions_ to each
+tool's description apparently gives the model more surface to match the
+wrong tool against, not less. Examples belong to retrieval and reranking,
+where they are measured to help, not to what the planner itself reads.
+
+**Q4, the real-service check (`make eval`, 18 cases, `qwen3.5-9b-q8`).**
+Run under `v1` and under `v2-commit` (the only wording either fixture
+table clears): every one of the 18 cases produced byte-identical
+accept/reject counts between the two wordings. Sixteen cases read exactly
+as their own recorded baseline (10/10 or the equivalent accept). Two read
+worse than their baseline, identically under both wordings:
+
+- `no-enum-value` (破損した在庫はある？): 30/30 reject, baseline 18/30
+  reject.
+- `no-enum-value-attendance` (有給の勤怠はある？): 10/10 reject, baseline
+  7/10 reject.
+
+Both are TODO.md item 4's own open defect (a filter word that matches no
+enum value gets every row back, silently) - already open before this
+subproject, and unmoved by anything `v2-commit`'s own sentence changed
+(the wording is identical for both runs). The likely cause is not the
+wording at all: `100d61d`, landed earlier the same day, pinned
+`temperature: 0` for deterministic planning. A baseline of 18/30 reject
+(60%) is exactly the shape of a case whose correct answer was reached only
+some of the time under llama-server's previous unpinned-temperature
+default - pinning the temperature does not add new failures, it removes
+the randomness that used to let this case land on its right path some
+fraction of the time, and the one path a temperature-0 decode now always
+takes for this prompt happens to be the wrong one. This is not accepted as
+a new baseline - `make eval-accept` was not run, and a regression is not
+closed by re-recording it as normal - but it is not this subproject's
+regression to fix either: identical under `v1` and `v2-commit` means the
+wording did not cause it. TODO.md item 4 carries the note and the
+`100d61d` link.
+
+**Decision (Q5).** `v2-commit` becomes `wording.Default()`: it is the only
+candidate that clears `v1` on the fixture (+3 correct@1, +5 correct@shown,
+`none` and `list_capabilities` both down, no axis or latency cost beyond
+the expected token overhead) and it does not regress the real-service
+corpus relative to `v1` - the two open `no-enum-value` cases move
+identically under both, so this is not `v2-commit` trading a fixture point
+for a real-service one, which Q4 exists to catch. `v3`/`v4`'s
+ask-on-collision sentence and `v5`'s in-tool examples are both negative
+results on this planner and are not adopted; they stay in the `wording`
+package, named and selectable, as the record of what was tried.
+`services/platform/internal/adapter/planner/wording.Default()` now returns
+`v2Commit()`; `v1` stays in the package as the baseline every candidate -
+and this decision - was measured against, still asserted byte-identical to
+the `5bf5cf8` literals, now by name (`wording.ByName("v1")`) rather than
+via `Default()`. `internal/infra/config.parsePlannerWording` and
+`pkg/app.resolveWording` both already read `wording.Default().Name`/
+`wording.Default()` for an unset `ORCHESTRA_PLANNER_WORDING`, so no change
+was needed there beyond the switch itself - `make dev-services` and the
+built product both pick up `v2-commit` with the variable unset.
+`wording/v2_commit.go`'s own doc comment is corrected along the way: it
+said `list_capabilities` was picked "five times in 100" under `v1`
+(quoting an earlier draft of `docs/specs/wording.md` §1); the recorded
+count is seven (`b11`, `c01`, `c06`, `c19`, `c23`, `d06`, `d14`,
+`DECISIONS.md`, 2026-09-15, "The product's planner, measured end to end").
+
+`make check` itself calls no model: `docker logs llama-swap 2>&1 | grep -c
+'POST /v1/'` read 104248 immediately before this task's own `make check`
+and 104251 immediately after - a drift of 3 that also showed up between
+two idle readings taken minutes apart with no `make` target running at
+all (104245→104248), so it is the standing `make dev-services` platform
+on `:8080` (running since 11:55, started before and independent of this
+task) taking its own traffic, not `make check`.
