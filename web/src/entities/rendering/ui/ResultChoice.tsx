@@ -66,6 +66,14 @@ interface ResultChoiceProps {
    */
   readonly originalQuery: string;
   /**
+   * The 「思考」 switch's value at the time of the answer, re-posted with
+   * `originalQuery` so the disambiguated re-plan is planned the same way
+   * the question was (docs/specs/shortlisting.md, H8). Passed down rather
+   * than read from the conversation store: this is an entity, and the
+   * store is a feature it must not import.
+   */
+  readonly thinking: boolean;
+  /**
    * Called once `POST /api/plan` (resubmitted with `answers`) returns
    * successfully, with the `PlanResult` it answered - `result`, `form`,
    * `ask` again, or `none`. `ResultChoice` does not decide what happens
@@ -99,6 +107,7 @@ export function ResultChoice({
   param,
   options,
   originalQuery,
+  thinking,
   onAnswered,
 }: ResultChoiceProps): JSX.Element {
   const { submitting, error, run } = useSubmission();
@@ -114,7 +123,11 @@ export function ResultChoice({
 
   const select = (value: string): Promise<void> =>
     run(async () => {
-      const result = await postPlan({ query: originalQuery, answers: [{ param, value }] });
+      const result = await postPlan({
+        query: originalQuery,
+        answers: [{ param, value }],
+        thinking,
+      });
 
       setAnsweredValue(value);
       onAnswered(result);

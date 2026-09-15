@@ -223,11 +223,16 @@ describe("Conversation", () => {
       },
     });
 
+    // The 「思考」 switch is turned on between the ask and its answer: the
+    // re-plan must carry the switch's value at answer time, like any other
+    // POST the conversation makes (docs/specs/shortlisting.md, H8).
+    await user.click(screen.getByRole("switch", { name: "思考" }));
     await user.click(screen.getByRole("button", { name: "検品保留" }));
 
     expect(postPlan).toHaveBeenLastCalledWith({
       query: "破損した在庫はある？",
       answers: [{ param: "status", value: "quarantined" }],
+      thinking: true,
     });
     expect(await screen.findByText("itm-001")).toBeTruthy();
   });

@@ -26,6 +26,7 @@ describe("ResultChoice", () => {
         param="status"
         options={options}
         originalQuery="破損した在庫はある？"
+        thinking={false}
         onAnswered={() => {}}
       />,
     );
@@ -59,6 +60,7 @@ describe("ResultChoice", () => {
         param="status"
         options={options}
         originalQuery="破損した在庫はある？"
+        thinking={false}
         onAnswered={onAnswered}
       />,
     );
@@ -68,6 +70,7 @@ describe("ResultChoice", () => {
     expect(postPlan).toHaveBeenCalledWith({
       query: "破損した在庫はある？",
       answers: [{ param: "status", value: "quarantined" }],
+      thinking: false,
     });
 
     expect(onAnswered).toHaveBeenCalledWith(
@@ -97,6 +100,7 @@ describe("ResultChoice", () => {
         param="status"
         options={options}
         originalQuery="破損した在庫はある？"
+        thinking={false}
         onAnswered={() => {}}
       />,
     );
@@ -121,6 +125,7 @@ describe("ResultChoice", () => {
         param="status"
         options={options}
         originalQuery="破損した在庫はある？"
+        thinking={false}
         onAnswered={() => {}}
       />,
     );

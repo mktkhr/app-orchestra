@@ -1,11 +1,12 @@
 import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
-import type { JSX } from "react";
+import { type JSX, useContext } from "react";
 
 import { ResultChoice, ResultForm } from "@/entities/rendering";
 import type { PlanResult } from "@/shared/api/client";
 
+import { ConversationStoreContext } from "../model/conversationContext";
 import type { ProposalSlot, SaveControlSlot } from "./answerSlots";
 import { BUBBLE_SX } from "./bubbleStyles";
 import { renderResultAnswer } from "./renderResultAnswer";
@@ -47,6 +48,12 @@ export function AnswerResult({
   renderSaveControl,
   renderProposal,
 }: AnswerResultProps): JSX.Element | null {
+  // The 「思考」 switch lives in the conversation store; an `ask` answered
+  // here re-plans through `ResultChoice`, which must post the same value
+  // the question was asked with. Outside a provider (a unit test rendering
+  // this component alone) the switch reads as off, the platform's default.
+  const thinking = useContext(ConversationStoreContext)?.thinking ?? false;
+
   if (result.kind === "proposal") {
     // No `renderProposal` (the chat screen, N4/AC-N-104) or no `panel`
     // (a deployment whose contract allows a `proposal` with none - not a
@@ -111,6 +118,7 @@ export function AnswerResult({
           param={result.param}
           options={result.options}
           originalQuery={originalQuery}
+          thinking={thinking}
           onAnswered={onFormSubmitted}
         />
       </Paper>
