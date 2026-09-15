@@ -24,6 +24,7 @@ type fakePlanner struct {
 	answers []usecase.Answer
 	turns   []usecase.Turn
 	tools   []usecase.Tool
+	calls   int
 }
 
 func (f *fakePlanner) Plan(
@@ -33,6 +34,7 @@ func (f *fakePlanner) Plan(
 	f.answers = answers
 	f.turns = turns
 	f.tools = tools
+	f.calls++
 
 	return f.decision, f.err
 }

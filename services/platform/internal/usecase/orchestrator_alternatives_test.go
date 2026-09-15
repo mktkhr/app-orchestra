@@ -109,8 +109,10 @@ func TestPlanResultHasNoAlternativesWithPassThroughNarrower(t *testing.T) {
 // TestPlanWithPreferredBypassesTheNarrowerAndOffersOnlyThatOperation is
 // section 4's preferred behaviour: with Preferred set, the narrower (which
 // would otherwise return the shortlist below) is never consulted at all,
-// and the planner is offered exactly the one preferred operation plus the
-// built-ins.
+// and - since Opc declares no required parameter - the planner is offered
+// that operation's tool alone, with none of the built-ins beside it
+// (docs/specs/shortlisting.md, H5; the 2026-09-15 reproduction in
+// planPreferred's own doc comment in orchestrator.go).
 func TestPlanWithPreferredBypassesTheNarrowerAndOffersOnlyThatOperation(t *testing.T) {
 	shortlist := fourEndpointShortlist()
 	planner := &fakePlanner{decision: usecase.Decision{
@@ -126,18 +128,8 @@ func TestPlanWithPreferredBypassesTheNarrowerAndOffersOnlyThatOperation(t *testi
 	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "Opc")
 
 	require.NoError(t, err)
-	assert.Equal(
-		t,
-		usecase.ToolsFor(
-			domain.Catalog{Endpoints: []domain.Endpoint{{
-				Service: "svc-c", OperationID: "Opc", Method: domain.MethodGet, Path: "/c",
-				Summary: "operation c", DisplayName: "操作c", Response: &domain.Schema{Type: domain.SchemaTypeObject},
-			}}},
-			usecase.PlanContext{},
-		),
-		planner.tools,
-		"the planner must be offered exactly the preferred operation, plus the built-ins",
-	)
+	require.Len(t, planner.tools, 1, "only the preferred operation's tool must be offered, no built-ins")
+	assert.Equal(t, "Opc", planner.tools[0].Name)
 	assert.Empty(t, narrower.query, "Narrow must never be called when preferred is set")
 	assert.Empty(t, result.Alternatives, "a preferred result carries no alternatives")
 }

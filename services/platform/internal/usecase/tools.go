@@ -365,15 +365,7 @@ func ToolsFor(c domain.Catalog, planCtx PlanContext) []Tool {
 	tools := make([]Tool, 0, len(c.Endpoints)+builtinToolCount)
 
 	for i := range c.Endpoints {
-		e := &c.Endpoints[i]
-
-		tools = append(tools, Tool{
-			Name:        e.OperationID,
-			Description: e.Summary,
-			InputSchema: inputSchemaFor(e),
-			Strict:      true,
-			Examples:    e.Examples,
-		})
+		tools = append(tools, toolFor(&c.Endpoints[i]))
 	}
 
 	for _, bt := range builtinTools() {
@@ -383,6 +375,20 @@ func ToolsFor(c domain.Catalog, planCtx PlanContext) []Tool {
 	}
 
 	return tools
+}
+
+// toolFor builds the one Tool a single catalogue endpoint converts to:
+// ToolsFor's own per-endpoint step, factored out so Orchestrator.planPreferred
+// (orchestrator.go) can offer a lone operation's tool without also pulling in
+// ToolsFor's built-ins - see planPreferred's own doc comment for why.
+func toolFor(e *domain.Endpoint) Tool {
+	return Tool{
+		Name:        e.OperationID,
+		Description: e.Summary,
+		InputSchema: inputSchemaFor(e),
+		Strict:      true,
+		Examples:    e.Examples,
+	}
 }
 
 // inputSchemaFor builds the JSON Schema object describing an endpoint's

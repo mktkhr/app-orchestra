@@ -247,8 +247,9 @@ func NewOrchestrator(
 // never called at all - the catalogue becomes exactly that one operation,
 // looked up in the permission-filtered catalogue catalogFor already
 // returned, so an id the person may not call is ErrEndpointNotFound, the
-// same as an unknown one - and the planner is offered that tool alone
-// plus the built-ins.
+// same as an unknown one - and the rest of the decision is delegated to
+// planPreferred, which no longer offers the built-ins alongside it (see
+// planPreferred's own doc comment for why).
 func (o *Orchestrator) Plan(
 	ctx context.Context, user *domain.User, query string, answers []Answer, turns []Turn, workspaceID, preferred string,
 ) (Result, error) {
@@ -263,20 +264,20 @@ func (o *Orchestrator) Plan(
 			return Result{}, fmt.Errorf("%w: %s", ErrEndpointNotFound, preferred)
 		}
 
-		catalog = domain.Catalog{Endpoints: []domain.Endpoint{endpoint}}
-	} else {
-		// Narrowed to a shortlist before the planner ever sees it
-		// (docs/specs/shortlisting.md, H1/H2): o.narrower is
-		// PassThroughNarrower by default (NewOrchestrator), which returns
-		// catalog unchanged, so this is a no-op until pkg/app configures
-		// a real one. catalog is kept narrowed for the rest of Plan -
-		// call, ask, listCapabilities and propose below all read this
-		// same, already-narrowed value, the same way they always read
-		// catalogFor's single permission-narrowed value.
-		catalog, err = o.narrower.Narrow(ctx, catalog, query, o.narrowK)
-		if err != nil {
-			return Result{}, fmt.Errorf("narrowing catalogue: %w", err)
-		}
+		return o.planPreferred(ctx, &endpoint, query, answers, turns)
+	}
+
+	// Narrowed to a shortlist before the planner ever sees it
+	// (docs/specs/shortlisting.md, H1/H2): o.narrower is
+	// PassThroughNarrower by default (NewOrchestrator), which returns
+	// catalog unchanged, so this is a no-op until pkg/app configures
+	// a real one. catalog is kept narrowed for the rest of Plan -
+	// call, ask, listCapabilities and propose below all read this
+	// same, already-narrowed value, the same way they always read
+	// catalogFor's single permission-narrowed value.
+	catalog, err = o.narrower.Narrow(ctx, catalog, query, o.narrowK)
+	if err != nil {
+		return Result{}, fmt.Errorf("narrowing catalogue: %w", err)
 	}
 
 	planCtx := PlanContext{WorkspaceID: workspaceID}
