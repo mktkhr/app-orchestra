@@ -43,6 +43,21 @@ var ErrInvalidLLMMode = errors.New("invalid ORCHESTRA_LLM_MODE, want toolcall or
 // applies to ORCHESTRA_LLM_MODE (docs/specs/wording.md, AC-Q-102).
 var ErrInvalidPlannerWording = errors.New("invalid ORCHESTRA_PLANNER_WORDING")
 
+// ErrInvalidPlannerThinking is wrapped into the error returned when
+// ORCHESTRA_PLANNER_THINKING names anything other than "on" or "off" -
+// the same reasoning ErrInvalidLLMMode already applies to ORCHESTRA_LLM_MODE.
+var ErrInvalidPlannerThinking = errors.New("invalid ORCHESTRA_PLANNER_THINKING, want on or off")
+
+// ErrInvalidPlannerRepeatPenalty is wrapped into the error returned when
+// ORCHESTRA_PLANNER_REPEAT_PENALTY is set to something that does not parse
+// as a float.
+var ErrInvalidPlannerRepeatPenalty = errors.New("ORCHESTRA_PLANNER_REPEAT_PENALTY must be a number")
+
+// ErrInvalidPlannerRepeatLastN is wrapped into the error returned when
+// ORCHESTRA_PLANNER_REPEAT_LAST_N is set to something other than a
+// positive integer.
+var ErrInvalidPlannerRepeatLastN = errors.New("ORCHESTRA_PLANNER_REPEAT_LAST_N must be a positive integer")
+
 // ErrMissingDBPath is returned when ORCHESTRA_DB_PATH is unset. Workspaces
 // live in the SQLite file it names (docs/specs/workspaces.md, W3); a
 // platform that started anyway would keep every workspace in a file
@@ -210,6 +225,21 @@ type Config struct {
 	// model is byte-identical to today's. Only the toolcall planner reads
 	// this (pkg/app.newPlanner); the jsonmode planner is out of scope.
 	PlannerWording string
+	// PlannerThinking selects whether the toolcall planner leaves Qwen3.5's
+	// thinking on (true, the default - today's behaviour, nothing sent) or
+	// turns it off (false), read from ORCHESTRA_PLANNER_THINKING ("on" or
+	// "off"; unset means true). Only the toolcall planner reads this - see
+	// PlannerWording's own doc comment.
+	PlannerThinking bool
+	// PlannerRepeatPenalty is chat.Request.RepeatPenalty for every toolcall
+	// planning request, read from ORCHESTRA_PLANNER_REPEAT_PENALTY. nil
+	// (unset) sends nothing - today's behaviour.
+	PlannerRepeatPenalty *float64
+	// PlannerRepeatLastN is chat.Request.RepeatLastN, read from
+	// ORCHESTRA_PLANNER_REPEAT_LAST_N. Defaults to 64 when unset,
+	// regardless of PlannerRepeatPenalty - it has no effect unless
+	// PlannerRepeatPenalty is also set.
+	PlannerRepeatLastN int
 	// PlanFixtures configures the stub planner's table when LLMBaseURL is
 	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
 	// never sets this - an operator sets ORCHESTRA_LLM_BASE_URL instead,
@@ -411,6 +441,77 @@ func parsePlannerWording(raw string) (string, error) {
 	return raw, nil
 }
 
+// defaultPlannerRepeatLastN is used for ORCHESTRA_PLANNER_REPEAT_LAST_N
+// when unset - see Config.PlannerRepeatLastN's own doc comment.
+const defaultPlannerRepeatLastN = 64
+
+// plannerThinkingOn and plannerThinkingOff are the two values
+// ORCHESTRA_PLANNER_THINKING accepts.
+const (
+	plannerThinkingOn  = "on"
+	plannerThinkingOff = "off"
+)
+
+// parsePlannerThinking reads ORCHESTRA_PLANNER_THINKING: true (thinking
+// on, today's behaviour) when unset or "on", false when "off" - anything
+// else fails startup rather than silently falling back to the default,
+// the same reasoning parseLLMMode already applies.
+func parsePlannerThinking(raw string) (bool, error) {
+	switch raw {
+	case "", plannerThinkingOn:
+		return true, nil
+	case plannerThinkingOff:
+		return false, nil
+	default:
+		return false, fmt.Errorf("%w: %q", ErrInvalidPlannerThinking, raw)
+	}
+}
+
+// plannerRepeatPenalty is parsePlannerRepeatPenalty's result: value is
+// only meaningful when set is true. A struct, not a nilable *float64 or a
+// (float64, bool, error) triple: the former trips linting's nilnil rule
+// (a function that can return (nil, nil) is ambiguous between "not found"
+// and "found nil"), the latter its unnamedResult rule (two adjacent plain
+// scalar results, float64 and bool, are easy to swap by position) -
+// harness/quality/go/golangci.yml enables both, and this is the shape
+// that satisfies each without silencing either.
+type plannerRepeatPenalty struct {
+	value float64
+	set   bool
+}
+
+// parsePlannerRepeatPenalty reads ORCHESTRA_PLANNER_REPEAT_PENALTY: the
+// zero plannerRepeatPenalty (send nothing) when unset, set with the
+// parsed float otherwise.
+func parsePlannerRepeatPenalty(raw string) (plannerRepeatPenalty, error) {
+	if raw == "" {
+		return plannerRepeatPenalty{}, nil
+	}
+
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return plannerRepeatPenalty{}, fmt.Errorf("%w: %q", ErrInvalidPlannerRepeatPenalty, raw)
+	}
+
+	return plannerRepeatPenalty{value: value, set: true}, nil
+}
+
+// parsePlannerRepeatLastN reads ORCHESTRA_PLANNER_REPEAT_LAST_N:
+// defaultPlannerRepeatLastN when unset, or the positive integer it names
+// otherwise.
+func parsePlannerRepeatLastN(raw string) (int, error) {
+	if raw == "" {
+		return defaultPlannerRepeatLastN, nil
+	}
+
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%w: %q", ErrInvalidPlannerRepeatLastN, raw)
+	}
+
+	return n, nil
+}
+
 // parseContextTurns reads ORCHESTRA_CONTEXT_TURNS: defaultContextTurns when
 // unset or empty, or the positive integer it names otherwise. See
 // ErrInvalidContextTurns for why anything else fails startup instead of
@@ -465,6 +566,29 @@ func loadLLM(cfg *Config) error {
 	}
 
 	cfg.PlannerWording = plannerWording
+
+	thinking, err := parsePlannerThinking(os.Getenv("ORCHESTRA_PLANNER_THINKING"))
+	if err != nil {
+		return err
+	}
+
+	cfg.PlannerThinking = thinking
+
+	repeatPenalty, err := parsePlannerRepeatPenalty(os.Getenv("ORCHESTRA_PLANNER_REPEAT_PENALTY"))
+	if err != nil {
+		return err
+	}
+
+	if repeatPenalty.set {
+		cfg.PlannerRepeatPenalty = &repeatPenalty.value
+	}
+
+	repeatLastN, err := parsePlannerRepeatLastN(os.Getenv("ORCHESTRA_PLANNER_REPEAT_LAST_N"))
+	if err != nil {
+		return err
+	}
+
+	cfg.PlannerRepeatLastN = repeatLastN
 
 	return nil
 }

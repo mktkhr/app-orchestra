@@ -42,6 +42,12 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	Name       string     `json:"name,omitempty"`
+	// ReasoningContent is a "thinking" model's (e.g. Qwen3.5, DECISIONS.md)
+	// chain-of-thought, returned alongside - or, when MaxTokens is spent
+	// entirely on it, instead of - Content. This adapter never sends it
+	// (only ever reads it back), so the wire tag matters more than the Go
+	// field name: llama-server names it "reasoning_content".
+	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
 
 // ToolCall is one function call an assistant message made.
@@ -102,6 +108,21 @@ type Request struct {
 	ResponseFormat *ResponseFormat
 	Temperature    *float64
 	MaxTokens      *int
+	// ChatTemplateKwargs is passed through to the endpoint's chat template
+	// verbatim, e.g. {"enable_thinking": false} to turn off Qwen3.5's
+	// thinking (on by default - DECISIONS.md; probed against llama-server
+	// build 10920, "chat_template_kwargs" is honoured on
+	// /v1/chat/completions). nil (the zero value) sends nothing, which is
+	// today's behaviour for every existing caller.
+	ChatTemplateKwargs map[string]any
+	// RepeatPenalty and RepeatLastN are llama-server's repetition-penalty
+	// controls (probed 2026-09-16: honoured on /v1/chat/completions, not
+	// just /completion). RepeatPenalty nil sends neither field - today's
+	// behaviour. RepeatLastN is only meaningful alongside RepeatPenalty;
+	// callers that set one but not the other get exactly what they asked
+	// for, nothing filled in here.
+	RepeatPenalty *float64
+	RepeatLastN   *int
 }
 
 // Zero builds Request.Temperature's fixed value for every planning call
@@ -175,27 +196,46 @@ func Preview(s string) string {
 type Response struct {
 	Message      Message
 	FinishReason string
+	Usage        Usage
+}
+
+// Usage is the token accounting an OpenAI-compatible endpoint returns
+// alongside its answer. CompletionTokens is the only field this adapter
+// reads today: it turns a truncated answer's "16 seconds happened" into a
+// number a log line can carry (toolcall.Planner's truncation warn),
+// distinguishing a loop that filled MaxTokens fast from thinking that
+// legitimately ran long, neither of which the content preview alone can
+// tell apart.
+type Usage struct {
+	CompletionTokens int
 }
 
 // wireRequest is the JSON actually sent: a Request with Model resolved and
 // its zero-value fields (Tools, ResponseFormat) omitted rather than sent
 // as null, which some OpenAI-compatible endpoints reject.
 type wireRequest struct {
-	Model          string           `json:"model"`
-	Messages       []Message        `json:"messages"`
-	Tools          []ToolDefinition `json:"tools,omitempty"`
-	ResponseFormat *ResponseFormat  `json:"response_format,omitempty"`
-	Temperature    *float64         `json:"temperature,omitempty"`
-	MaxTokens      *int             `json:"max_tokens,omitempty"`
+	Model              string           `json:"model"`
+	Messages           []Message        `json:"messages"`
+	Tools              []ToolDefinition `json:"tools,omitempty"`
+	ResponseFormat     *ResponseFormat  `json:"response_format,omitempty"`
+	Temperature        *float64         `json:"temperature,omitempty"`
+	MaxTokens          *int             `json:"max_tokens,omitempty"`
+	ChatTemplateKwargs map[string]any   `json:"chat_template_kwargs,omitempty"`
+	RepeatPenalty      *float64         `json:"repeat_penalty,omitempty"`
+	RepeatLastN        *int             `json:"repeat_last_n,omitempty"`
 }
 
 // wireResponse is the JSON actually read back: only the one choice's
-// message and finish reason matter here.
+// message and finish reason matter here, plus the usage block a truncated
+// answer's log line needs (see Response.Usage).
 type wireResponse struct {
 	Choices []struct {
 		Message      Message `json:"message"`
 		FinishReason string  `json:"finish_reason"`
 	} `json:"choices"`
+	Usage struct {
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 }
 
 // Client sends chat-completions requests to one OpenAI-compatible
@@ -222,12 +262,15 @@ func (c *Client) Complete(ctx context.Context, req *Request) (Response, error) {
 	}
 
 	body, err := json.Marshal(wireRequest{
-		Model:          model,
-		Messages:       req.Messages,
-		Tools:          req.Tools,
-		ResponseFormat: req.ResponseFormat,
-		Temperature:    req.Temperature,
-		MaxTokens:      req.MaxTokens,
+		Model:              model,
+		Messages:           req.Messages,
+		Tools:              req.Tools,
+		ResponseFormat:     req.ResponseFormat,
+		Temperature:        req.Temperature,
+		MaxTokens:          req.MaxTokens,
+		ChatTemplateKwargs: req.ChatTemplateKwargs,
+		RepeatPenalty:      req.RepeatPenalty,
+		RepeatLastN:        req.RepeatLastN,
 	})
 	if err != nil {
 		return Response{}, fmt.Errorf("encoding chat completion request: %w", err)
@@ -272,7 +315,11 @@ func (c *Client) do(req *http.Request) (Response, error) {
 
 	choice := wire.Choices[0]
 
-	return Response{Message: choice.Message, FinishReason: choice.FinishReason}, nil
+	return Response{
+		Message:      choice.Message,
+		FinishReason: choice.FinishReason,
+		Usage:        Usage{CompletionTokens: wire.Usage.CompletionTokens},
+	}, nil
 }
 
 // requestError builds the error for a non-2xx response, folding in as

@@ -280,3 +280,141 @@ func TestPreviewTruncatesALongStringToPreviewLen(t *testing.T) {
 	assert.Len(t, []rune(preview), chat.PreviewLen)
 	assert.Equal(t, strings.Repeat("あ", chat.PreviewLen), preview)
 }
+
+// TestCompleteWithNoChatTemplateKwargsOmitsItFromTheWireBody documents
+// that a Request leaving ChatTemplateKwargs nil (every existing caller)
+// sends no "chat_template_kwargs" field at all - Qwen3.5's thinking stays
+// on by default (DECISIONS.md; probed 2026-09-16).
+func TestCompleteWithNoChatTemplateKwargsOmitsItFromTheWireBody(t *testing.T) {
+	gotBody := decodedRequestBody(t)
+
+	_, err := gotBody.client.Complete(t.Context(), &chat.Request{
+		Messages: []chat.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+
+	_, ok := (*gotBody.body)["chat_template_kwargs"]
+	assert.False(t, ok, "chat_template_kwargs must be absent from the wire body when Request leaves it nil")
+}
+
+// TestCompleteSendsChatTemplateKwargsWhenSet documents the other half:
+// {"enable_thinking": false} reaches the wire body untouched.
+func TestCompleteSendsChatTemplateKwargsWhenSet(t *testing.T) {
+	gotBody := decodedRequestBody(t)
+
+	_, err := gotBody.client.Complete(t.Context(), &chat.Request{
+		Messages:           []chat.Message{{Role: "user", Content: "hi"}},
+		ChatTemplateKwargs: map[string]any{"enable_thinking": false},
+	})
+	require.NoError(t, err)
+
+	kwargs, ok := (*gotBody.body)["chat_template_kwargs"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, kwargs["enable_thinking"])
+}
+
+// TestCompleteWithNoRepeatPenaltyOmitsItFromTheWireBody documents that a
+// Request leaving RepeatPenalty nil (every existing caller) sends no
+// "repeat_penalty" field at all - Client sends each of RepeatPenalty and
+// RepeatLastN independently by its own nil-ness; it is toolcall.Planner
+// (WithRepeatPenalty) that always sets both together.
+func TestCompleteWithNoRepeatPenaltyOmitsItFromTheWireBody(t *testing.T) {
+	gotBody := decodedRequestBody(t)
+
+	_, err := gotBody.client.Complete(t.Context(), &chat.Request{
+		Messages: []chat.Message{{Role: "user", Content: "hi"}},
+	})
+	require.NoError(t, err)
+
+	_, hasPenalty := (*gotBody.body)["repeat_penalty"]
+	assert.False(t, hasPenalty, "repeat_penalty must be absent when Request leaves it nil")
+}
+
+// TestCompleteSendsRepeatPenaltyAndLastNWhenSet documents the other half:
+// both reach the wire body untouched (probed 2026-09-16: llama-server
+// honours both on /v1/chat/completions).
+func TestCompleteSendsRepeatPenaltyAndLastNWhenSet(t *testing.T) {
+	gotBody := decodedRequestBody(t)
+
+	penalty := 1.1
+	lastN := 64
+
+	_, err := gotBody.client.Complete(t.Context(), &chat.Request{
+		Messages:      []chat.Message{{Role: "user", Content: "hi"}},
+		RepeatPenalty: &penalty,
+		RepeatLastN:   &lastN,
+	})
+	require.NoError(t, err)
+
+	assert.InDelta(t, 1.1, (*gotBody.body)["repeat_penalty"], 0)
+	assert.InDelta(t, 64.0, (*gotBody.body)["repeat_last_n"], 0)
+}
+
+// TestCompleteReadsReasoningContentAndCompletionTokens documents the
+// response-decoding half: a message's "reasoning_content" lands on
+// Response.Message.ReasoningContent, and "usage.completion_tokens" on
+// Response.Usage.CompletionTokens - both needed to tell a truncated
+// answer's reasoning-that-ran-long from a repetition loop
+// (toolcall.Planner's truncation warn; facts, 2026-09-16).
+func TestCompleteReadsReasoningContentAndCompletionTokens(t *testing.T) {
+	const withReasoning = `{
+  "choices": [
+    {
+      "finish_reason": "length",
+      "message": {
+        "role": "assistant",
+        "reasoning_content": "Thinking Process: ..."
+      }
+    }
+  ],
+  "usage": {"completion_tokens": 1024}
+}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(withReasoning)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "m"})
+
+	resp, err := client.Complete(t.Context(), &chat.Request{Messages: []chat.Message{{Role: "user", Content: "hi"}}})
+	require.NoError(t, err)
+
+	assert.Equal(t, "Thinking Process: ...", resp.Message.ReasoningContent)
+	assert.Equal(t, 1024, resp.Usage.CompletionTokens)
+}
+
+// decodedBody is a chat.Client wired to a fixture server that decodes the
+// request body it received into *body, plus that body itself - a small
+// helper so every "what did Complete put on the wire" test above does not
+// repeat the same httptest.NewServer boilerplate the tests above it (e.g.
+// TestCompleteSendsModelMessagesAndTools) already show in full once.
+type decodedBody struct {
+	client *chat.Client
+	body   *map[string]any
+}
+
+func decodedRequestBody(t *testing.T) decodedBody {
+	t.Helper()
+
+	body := map[string]any{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(canned)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	return decodedBody{client: chat.New(chat.Config{BaseURL: server.URL, Model: "m"}), body: &body}
+}

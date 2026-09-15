@@ -145,6 +145,19 @@ type LLM struct {
 	// AC-Q-101). Only the toolcall planner reads this - the jsonmode
 	// planner is out of scope (docs/plans/wording.md, Task 1, Step 5).
 	Wording string
+	// Thinking selects whether the toolcall planner leaves Qwen3.5's
+	// thinking on or turns it off (toolcall.WithThinking), mirroring
+	// config.Config.PlannerThinking. A pointer, not a bare bool: nil (the
+	// zero value - every test in this package that predates this option)
+	// must mean "thinking on", the same default toolcall.New itself
+	// applies, and a bare bool's zero value (false) cannot say that.
+	Thinking *bool
+	// RepeatPenalty and RepeatLastN are toolcall.WithRepeatPenalty's
+	// arguments, mirroring config.Config.PlannerRepeatPenalty/
+	// PlannerRepeatLastN. RepeatPenalty nil (the zero value) means the
+	// option is not applied at all - today's behaviour.
+	RepeatPenalty *float64
+	RepeatLastN   int
 }
 
 // Narrowing configures the llama-swap-backed usecase.Narrower
@@ -643,12 +656,32 @@ func newPlanner(cfg *Config, catalog domain.Catalog) (usecase.Planner, error) {
 			return nil, fmt.Errorf("%w: %q", ErrInvalidPlannerWording, cfg.LLM.Wording)
 		}
 
-		return toolcall.New(client, catalog, toolcall.WithWording(&w)), nil
+		return toolcall.New(client, catalog, toolcallOptions(cfg, &w)...), nil
 	case ModeJSON:
 		return jsonmode.New(client, catalog), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidLLMMode, cfg.LLM.Mode)
 	}
+}
+
+// toolcallOptions builds the toolcall.Option list newPlanner passes to
+// toolcall.New: w always (WithWording), plus WithThinking when
+// cfg.LLM.Thinking is set and WithRepeatPenalty when cfg.LLM.RepeatPenalty
+// is set - both left off entirely when unset, so New's own defaults
+// (thinking on, no repeat penalty) apply exactly as they did before either
+// option existed.
+func toolcallOptions(cfg *Config, w *wording.Wording) []toolcall.Option {
+	opts := []toolcall.Option{toolcall.WithWording(w)}
+
+	if cfg.LLM.Thinking != nil {
+		opts = append(opts, toolcall.WithThinking(*cfg.LLM.Thinking))
+	}
+
+	if cfg.LLM.RepeatPenalty != nil {
+		opts = append(opts, toolcall.WithRepeatPenalty(*cfg.LLM.RepeatPenalty, cfg.LLM.RepeatLastN))
+	}
+
+	return opts
 }
 
 // resolveWording looks name up via wording.ByName, treating "" as

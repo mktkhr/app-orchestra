@@ -31,6 +31,7 @@ func main() {
 		Services:  toAppServices(cfg.Services),
 		LLM: app.LLM{
 			BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, Mode: cfg.LLMMode, Wording: cfg.PlannerWording,
+			Thinking: &cfg.PlannerThinking, RepeatPenalty: cfg.PlannerRepeatPenalty, RepeatLastN: cfg.PlannerRepeatLastN,
 		},
 		PlanFixtures:  toAppPlanFixtures(cfg.PlanFixtures),
 		DBPath:        cfg.DBPath,

@@ -48,6 +48,16 @@ type Planner struct {
 	// policy, see harness/quality/go/golangci.yml) rejects copying it,
 	// here and on every function below that reads it.
 	wording *wording.Wording
+	// thinking is whether Qwen3.5's thinking is left on (the zero value,
+	// true - today's behaviour, nothing sent) or turned off via
+	// chat.Request.ChatTemplateKwargs (WithThinking(false); DECISIONS.md,
+	// probed 2026-09-16).
+	thinking bool
+	// repeatPenalty and repeatLastN are chat.Request.RepeatPenalty/
+	// RepeatLastN, set together by WithRepeatPenalty. repeatPenalty nil
+	// means neither is sent - today's behaviour.
+	repeatPenalty *float64
+	repeatLastN   *int
 }
 
 var _ usecase.Planner = (*Planner)(nil)
@@ -69,13 +79,37 @@ func WithWording(w *wording.Wording) Option {
 	}
 }
 
+// WithThinking selects whether Qwen3.5's thinking is left on (enabled,
+// New's default - today's behaviour, nothing sent) or turned off (Plan
+// sends chat_template_kwargs: {"enable_thinking": false} on every
+// planning request). Probed 2026-09-16 against llama-server build 10920:
+// the model answers with reasoning_content and empty content, at
+// max_tokens 1024, when thinking is left on and unaddressed.
+func WithThinking(enabled bool) Option {
+	return func(p *Planner) {
+		p.thinking = enabled
+	}
+}
+
+// WithRepeatPenalty sets chat.Request.RepeatPenalty and RepeatLastN on
+// every planning request (probed 2026-09-16: llama-server honours both on
+// /v1/chat/completions, not just /completion). Omitted, New sends
+// neither - today's behaviour.
+func WithRepeatPenalty(penalty float64, lastN int) Option {
+	return func(p *Planner) {
+		p.repeatPenalty = &penalty
+		p.repeatLastN = &lastN
+	}
+}
+
 // New builds a Planner. catalog is needed to resolve the service an
 // operation id belongs to (see resolveService) - a tool call names only
 // the operation, never the service, so the tool-calling wire format alone
-// cannot answer that question.
+// cannot answer that question. Thinking defaults to enabled (today's
+// behaviour) unless WithThinking(false) is given.
 func New(client *chat.Client, catalog domain.Catalog, opts ...Option) *Planner {
 	defaultWording := wording.Default()
-	p := &Planner{client: client, catalog: catalog, wording: &defaultWording}
+	p := &Planner{client: client, catalog: catalog, wording: &defaultWording, thinking: true}
 
 	for _, opt := range opts {
 		opt(p)
@@ -96,14 +130,22 @@ func (p *Planner) Plan(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, tools []usecase.Tool,
 ) (usecase.Decision, error) {
 	resp, err := p.client.Complete(ctx, &chat.Request{
-		Messages:    buildMessages(query, answers, turns, p.wording.SystemPrompt),
-		Tools:       shapeTools(tools, p.wording),
-		Temperature: chat.Zero(),
-		MaxTokens:   chat.MaxTokens(),
+		Messages:           buildMessages(query, answers, turns, p.wording.SystemPrompt),
+		Tools:              shapeTools(tools, p.wording),
+		Temperature:        chat.Zero(),
+		MaxTokens:          chat.MaxTokens(),
+		ChatTemplateKwargs: p.chatTemplateKwargs(),
+		RepeatPenalty:      p.repeatPenalty,
+		RepeatLastN:        p.repeatLastN,
 	})
 	if err != nil {
 		return usecase.Decision{}, fmt.Errorf("calling chat completion: %w", err)
 	}
+
+	slog.Default().DebugContext(ctx, "planner call completed",
+		slog.Int("completion_tokens", resp.Usage.CompletionTokens),
+		slog.String("finish_reason", resp.FinishReason),
+		slog.Bool("thinking", p.thinking))
 
 	// Defect 3 (docs/specs/shortlisting.md, measured 2026-09-15,
 	// chat.MaxTokens's own doc comment): a model that hit MaxTokens without
@@ -114,9 +156,18 @@ func (p *Planner) Plan(
 	// not error: no request failed, an answer was simply unusable, but the
 	// next person debugging a slow or wrong plan needs to see the loop
 	// without reproducing the 120s timeout to find it.
+	//
+	// content alone used to be all this logged - and was empty every time
+	// thinking consumed the whole MaxTokens budget (facts, 2026-09-16):
+	// reasoning, completion_tokens and thinking are what tell that case
+	// (thinking that never finished) apart from a plain repetition loop,
+	// without reproducing the run to find out.
 	if resp.FinishReason == chat.FinishReasonLength {
 		slog.Default().WarnContext(ctx, "planner truncated by max_tokens",
-			slog.String("content", chat.Preview(resp.Message.Content)))
+			slog.String("content", chat.Preview(resp.Message.Content)),
+			slog.String("reasoning", chat.Preview(resp.Message.ReasoningContent)),
+			slog.Int("completion_tokens", resp.Usage.CompletionTokens),
+			slog.Bool("thinking", p.thinking))
 
 		return usecase.Decision{Kind: usecase.DecisionNone}, nil
 	}
@@ -145,6 +196,17 @@ func (p *Planner) Plan(
 	}
 
 	return p.decisionFromCall(call.Name, args)
+}
+
+// chatTemplateKwargs builds Request.ChatTemplateKwargs for one planning
+// call: nil (send nothing) when thinking is left on, {"enable_thinking":
+// false} otherwise.
+func (p *Planner) chatTemplateKwargs() map[string]any {
+	if p.thinking {
+		return nil
+	}
+
+	return map[string]any{"enable_thinking": false}
 }
 
 // decodeArguments parses a tool call's Arguments string as a JSON object.
