@@ -15,6 +15,7 @@ import (
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/toolcall"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/wording"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
@@ -908,21 +909,25 @@ const proposePanelDescriptionAsOf5bf5cf8 = "Call this when the question asks to 
 	"platform fills it in from the same rule it would have drawn the answer with. Never call this for a " +
 	"question that only asks to look something up - call that operation's own tool instead."
 
-// TestPlanWithDefaultWordingSendsTheSystemMessageAndBuiltinToolDescriptionsByteIdenticalToBefore5bf5cf8
-// is AC-Q-101: with ORCHESTRA_PLANNER_WORDING unset (toolcall.New given
-// no toolcall.WithWording option, exactly as every call site before this
-// subproject and every other test in this file calls it), the system
-// message and the three built-in tools' descriptions this Planner sends
-// over the wire are byte-identical to the literals copied above - and,
-// for a catalogue tool, the description sent is exactly the endpoint's
-// own summary (t.Description), unchanged, regardless of
-// domain.Endpoint.Examples / usecase.Tool.Examples: v1.CatalogueTool
-// ignores them (wording/v1.go).
-func TestPlanWithDefaultWordingSendsTheSystemMessageAndBuiltinToolDescriptionsByteIdenticalToBefore5bf5cf8(t *testing.T) {
+// TestPlanWithV1WordingSendsTheSystemMessageAndBuiltinToolDescriptionsByteIdenticalToBefore5bf5cf8
+// is AC-Q-101: with wording.ByName("v1") selected explicitly via
+// toolcall.WithWording - the default changed to v2-commit in
+// docs/plans/wording.md Task 3 (DECISIONS.md, 2026-09-15), so this is no
+// longer what an option-less toolcall.New sends, but v1 must still be
+// selectable and still byte-identical when it is - the system message and
+// the three built-in tools' descriptions this Planner sends over the wire
+// are byte-identical to the literals copied above - and, for a catalogue
+// tool, the description sent is exactly the endpoint's own summary
+// (t.Description), unchanged, regardless of domain.Endpoint.Examples /
+// usecase.Tool.Examples: v1.CatalogueTool ignores them (wording/v1.go).
+func TestPlanWithV1WordingSendsTheSystemMessageAndBuiltinToolDescriptionsByteIdenticalToBefore5bf5cf8(t *testing.T) {
 	server, requests := captureBody(t)
 
+	v1, ok := wording.ByName("v1")
+	require.True(t, ok)
+
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
-	planner := toolcall.New(client, fixtureCatalog())
+	planner := toolcall.New(client, fixtureCatalog(), toolcall.WithWording(&v1))
 
 	tools := usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	for i := range tools {

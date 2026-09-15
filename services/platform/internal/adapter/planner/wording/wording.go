@@ -48,11 +48,17 @@ func all() []Wording {
 	return []Wording{v1(), v2Commit(), v3AskOnCollision(), v4CommitAndAsk(), v5ExamplesInTools()}
 }
 
-// Default is v1: the text in the product today, byte for byte
-// (docs/specs/wording.md, Q1; AC-Q-101), and stays the default until a
-// recorded decision changes it (docs/specs/wording.md, section 5).
+// Default is v2-commit (docs/plans/wording.md Task 3; DECISIONS.md,
+// 2026-09-15, "wording: v2-commit becomes the default"): measured beside
+// v1 and the other three candidates over one run of make eval-shortlist
+// and, for the two wordings that could become the default, over make
+// eval's eighteen real-service cases (docs/specs/wording.md Q3/Q4). v1
+// stays in this package as the baseline every candidate - and this
+// decision itself - is measured against; it is still what
+// TestDefaultIsV1ByteIdenticalToTheLiteralsAt5bf5cf8 asserts, by name
+// (AC-Q-101), and remains selectable via ORCHESTRA_PLANNER_WORDING=v1.
 func Default() Wording {
-	return v1()
+	return v2Commit()
 }
 
 // ByName looks a set up by Wording.Name, reporting false when name is not

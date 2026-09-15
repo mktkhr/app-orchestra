@@ -374,7 +374,12 @@ func TestLoadRejectsAnUnknownLLMMode(t *testing.T) {
 	assert.ErrorIs(t, err, config.ErrInvalidLLMMode)
 }
 
-func TestLoadPlannerWordingDefaultsToV1(t *testing.T) {
+// TestLoadPlannerWordingDefaultsToV2Commit is docs/plans/wording.md Task
+// 3's switch: an unset ORCHESTRA_PLANNER_WORDING now resolves to
+// wording.Default().Name, "v2-commit" as of DECISIONS.md, 2026-09-15
+// ("wording: v2-commit becomes the default") - v1 stays reachable by name
+// (see TestLoadReadsAKnownPlannerWording below).
+func TestLoadPlannerWordingDefaultsToV2Commit(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
 	t.Setenv("ORCHESTRA_PLANNER_WORDING", "")
@@ -382,7 +387,7 @@ func TestLoadPlannerWordingDefaultsToV1(t *testing.T) {
 	cfg, err := config.Load()
 
 	require.NoError(t, err)
-	assert.Equal(t, "v1", cfg.PlannerWording)
+	assert.Equal(t, "v2-commit", cfg.PlannerWording)
 }
 
 func TestLoadReadsAKnownPlannerWording(t *testing.T) {

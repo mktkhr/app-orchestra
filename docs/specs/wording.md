@@ -32,13 +32,13 @@ current one on the same run before any of them becomes the default.
 
 ## 2. Decisions taken here
 
-|        | Decision                                                                                                                                                                                                                                                                                                     |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Q1** | The planner's words are a named set - system prompt, `ask_user`, `list_capabilities` and `propose_panel` descriptions, and how a catalogue tool's description is built - selected by name. `v1` is the text in the product today, byte for byte, and stays the default until a recorded decision changes it. |
-| **Q2** | Candidates are written against the measured misses, not against taste. Each names the miss it targets, and the measurement says whether it moved that axis and what it cost elsewhere.                                                                                                                       |
-| **Q3** | Every candidate is measured in one run of the product measurement (`make eval-shortlist`, narrowing on, K=20), one pass per wording, beside `v1`. Planning is deterministic at temperature 0 (two runs, 100 of 100 identical), so one pass per wording is a measurement, not a sample.                       |
-| **Q4** | The other planner corpus (`make eval`, 18 cases against the real services) is run for the wording that would become the default. A wording that helps the fixture and hurts the real services is not adopted.                                                                                                |
-| **Q5** | The default changes by decision, recorded with both tables. The environment variable that selects a wording exists for measurement; the product ships one default.                                                                                                                                           |
+|        | Decision                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Q1** | The planner's words are a named set - system prompt, `ask_user`, `list_capabilities` and `propose_panel` descriptions, and how a catalogue tool's description is built - selected by name. `v1` was the text in the product at launch, byte for byte, and stayed the default until a recorded decision changed it: it did, 2026-09-15 - see Q5 below.                                                                            |
+| **Q2** | Candidates are written against the measured misses, not against taste. Each names the miss it targets, and the measurement says whether it moved that axis and what it cost elsewhere.                                                                                                                                                                                                                                           |
+| **Q3** | Every candidate is measured in one run of the product measurement (`make eval-shortlist`, narrowing on, K=20), one pass per wording, beside `v1`. Planning is deterministic at temperature 0 (two runs, 100 of 100 identical), so one pass per wording is a measurement, not a sample.                                                                                                                                           |
+| **Q4** | The other planner corpus (`make eval`, 18 cases against the real services) is run for the wording that would become the default. A wording that helps the fixture and hurts the real services is not adopted.                                                                                                                                                                                                                    |
+| **Q5** | The default changes by decision, recorded with both tables. The environment variable that selects a wording exists for measurement; the product ships one default. Decided 2026-09-15 (`DECISIONS.md`, "wording: v2-commit becomes the default"): `v2-commit` is now `wording.Default()` and what `ORCHESTRA_PLANNER_WORDING` unset resolves to; `v1` stays selectable by name and is what its byte-identity test still asserts. |
 
 ## 3. What a wording is
 
@@ -53,9 +53,11 @@ wording
                        from the endpoint (today: its summary)
 ```
 
-Selected by `ORCHESTRA_PLANNER_WORDING`; unset means `v1`. Unknown is a
-startup error. `v1`'s text is asserted equal to the literals as of `5bf5cf8`
-so that the baseline cannot drift under a refactor.
+Selected by `ORCHESTRA_PLANNER_WORDING`; unset means `v2-commit` (decided
+2026-09-15 - Q5). Unknown is a startup error. `v1`'s text is asserted equal
+to the literals as of `5bf5cf8` so that the baseline cannot drift under a
+refactor - by name (`wording.ByName("v1")`), not via `wording.Default()`,
+now that `v1` is no longer the default.
 
 `catalogueTool` is in the set because it is a lever nobody has measured on
 this planner: today a tool's description is the operation's summary. The

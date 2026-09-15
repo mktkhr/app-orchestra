@@ -14,11 +14,12 @@ import (
 // internal/usecase/tools.go's askUserDescription, listCapabilitiesDescription
 // and proposePanelDescription, as they stood at commit 5bf5cf8 - the last
 // commit before this subproject moved them into this package. AC-Q-101:
-// TestDefaultIsV1ByteIdenticalToTheLiteralsAt5bf5cf8 below asserts
-// wording.Default() equals these, not v1.go's own constants, so a
+// TestByNameV1IsByteIdenticalToTheLiteralsAt5bf5cf8 below asserts
+// wording.ByName("v1") equals these, not v1.go's own constants, so a
 // refactor that quietly edits v1.go cannot pass by comparing itself to
 // itself - if this test ever fails, the baseline every wording is
-// measured against is void.
+// measured against, and that Default() (v2-commit) was chosen over, is
+// void.
 
 // systemPromptAsOf5bf5cf8 as of 5bf5cf8.
 const systemPromptAsOf5bf5cf8 = "You are given a set of tools, one per operation of a catalogue of " +
@@ -52,12 +53,16 @@ const proposePanelDescriptionAsOf5bf5cf8 = "Call this when the question asks to 
 	"platform fills it in from the same rule it would have drawn the answer with. Never call this for a " +
 	"question that only asks to look something up - call that operation's own tool instead."
 
-// TestDefaultIsV1ByteIdenticalToTheLiteralsAt5bf5cf8 is AC-Q-101: v1 is
-// the text in the product today, byte for byte, and a catalogue tool's
+// TestByNameV1IsByteIdenticalToTheLiteralsAt5bf5cf8 is AC-Q-101: v1 is the
+// text in the product today, byte for byte, and a catalogue tool's
 // description under v1 is exactly its summary - examples given to
-// CatalogueTool change nothing.
-func TestDefaultIsV1ByteIdenticalToTheLiteralsAt5bf5cf8(t *testing.T) {
-	d := wording.Default()
+// CatalogueTool change nothing. Asserted against wording.ByName("v1"), not
+// wording.Default() - the default is v2-commit as of docs/plans/wording.md
+// Task 3 (DECISIONS.md, 2026-09-15), so the baseline byte-identity check
+// has to name v1 explicitly to keep meaning what it always meant.
+func TestByNameV1IsByteIdenticalToTheLiteralsAt5bf5cf8(t *testing.T) {
+	d, ok := wording.ByName("v1")
+	require.True(t, ok)
 
 	assert.Equal(t, "v1", d.Name)
 	assert.Equal(t, systemPromptAsOf5bf5cf8, d.SystemPrompt)
@@ -71,6 +76,16 @@ func TestDefaultIsV1ByteIdenticalToTheLiteralsAt5bf5cf8(t *testing.T) {
 		d.CatalogueTool("list inventory items", []string{"在庫を見せて", "在庫の状況を教えて"}),
 		"v1.CatalogueTool must ignore examples - AC-Q-101 requires the wire unchanged once "+
 			"usecase.Tool.Examples exists")
+}
+
+// TestDefaultIsV2Commit is docs/plans/wording.md Task 3's switch: the
+// default changed from v1 to v2-commit by recorded decision (DECISIONS.md,
+// 2026-09-15, "wording: v2-commit becomes the default") - v2-commit clears
+// v1 on correct@1/correct@shown, none and list_capabilities without
+// costing axis A or E, while v3/v4's ask-on-collision sentence and v5's
+// in-tool examples are both negative results (same entry).
+func TestDefaultIsV2Commit(t *testing.T) {
+	assert.Equal(t, "v2-commit", wording.Default().Name)
 }
 
 // declaredNames is Names' expected declared order - not sorted: v1 first,
@@ -163,7 +178,8 @@ func TestV5CatalogueToolWithNoExamplesReturnsTheSummaryUnchanged(t *testing.T) {
 // v2-commit/v4-commit-and-ask change ListCapabilities while only
 // v3-ask-on-collision/v4-commit-and-ask change AskUser.
 func TestV2ThroughV4AddSentencesRatherThanReplacingV1sWords(t *testing.T) {
-	v1 := wording.Default()
+	v1, foundV1 := wording.ByName("v1")
+	require.True(t, foundV1)
 
 	for _, name := range []string{"v2-commit", "v3-ask-on-collision", "v4-commit-and-ask"} {
 		w, ok := wording.ByName(name)

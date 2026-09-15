@@ -7,10 +7,10 @@ const v2Name = "v2-commit"
 // DECISIONS.md, 2026-09-15 "The product's planner, measured end to end":
 // 10 of 35 misses are "none" where the picker committed to a real
 // operation, and list_capabilities was returned as the answer to a vague,
-// answerable question (docs/specs/wording.md, section 1, 4: five times in
-// 100). The sentence tells the model to commit when any offered tool
-// plausibly fits, rather than retreating to list_capabilities or nothing
-// out of caution.
+// answerable question (DECISIONS.md, 2026-09-15: seven times in 100 -
+// b11, c01, c06, c19, c23, d06, d14). The sentence tells the model to
+// commit when any offered tool plausibly fits, rather than retreating to
+// list_capabilities or nothing out of caution.
 const v2SystemPromptAddition = " When any of the offered tools plausibly serves the question, call it - " +
 	"do not answer with list_capabilities, or with no tool at all, merely because you are unsure which " +
 	"one fits best. list_capabilities is for a person asking what the system can do, in general or for " +
