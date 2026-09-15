@@ -7,7 +7,7 @@ import { matchesAny } from "./match.ts";
 import { postPlan } from "./plan-client.ts";
 import { report } from "./report.ts";
 import { startEvalPlatform, stopEvalPlatform } from "./services.ts";
-import type { CaseTally } from "./types.ts";
+import type { CaseTally, PlanOutcome } from "./types.ts";
 
 /**
  * The evaluation suite's runner (docs/specs/eval.md; AC-E-201, AC-E-204).
@@ -52,6 +52,33 @@ const tolerance = Number(process.env["ORCHESTRA_EVAL_TOLERANCE"] ?? "0.3");
 
 const acceptMode = process.argv.includes("--accept");
 
+/**
+ * A short label for a run that matched neither `accept` nor `reject`, so
+ * the report can say what the model did instead of leaving a gap between
+ * two numbers (`CaseTally.others`).
+ *
+ * Enough to tell apart the answers that mean different things: asking a
+ * question is a model being careful, naming another operation is a model
+ * being wrong, and an error is a model producing something the platform
+ * refused. A `result` carries the operation and its arguments because
+ * "some other filter" and "no filter at all" are the two this corpus
+ * exists to distinguish.
+ */
+function describeOutcome(outcome: PlanOutcome): string {
+  if (outcome.kind !== "result") {
+    return outcome.kind + (outcome.param === undefined ? "" : `(${outcome.param})`);
+  }
+
+  const operationID = outcome.source?.operationId ?? "?";
+  const args = outcome.source?.args ?? {};
+  const named = Object.entries(args)
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .toSorted()
+    .join(",");
+
+  return `result:${operationID}(${named})`;
+}
+
 async function runCase(
   baseUrl: string,
   session: Session,
@@ -59,6 +86,7 @@ async function runCase(
 ): Promise<CaseTally> {
   let accept = 0;
   let reject = 0;
+  const others: Record<string, number> = {};
   const total = evalCase.runs ?? defaultRuns;
 
   for (let i = 0; i < total; i++) {
@@ -67,11 +95,20 @@ async function runCase(
     // one request at a time, not a load test.
     const outcome = await postPlan(baseUrl, session, evalCase.question, evalCase.turns ?? []);
 
-    if (matchesAny(outcome, evalCase.accept)) accept++;
-    if (evalCase.reject !== undefined && matchesAny(outcome, evalCase.reject)) reject++;
+    const isAccept = matchesAny(outcome, evalCase.accept);
+    const isReject = evalCase.reject !== undefined && matchesAny(outcome, evalCase.reject);
+
+    if (isAccept) accept++;
+    if (isReject) reject++;
+
+    if (!isAccept && !isReject) {
+      const what = describeOutcome(outcome);
+
+      others[what] = (others[what] ?? 0) + 1;
+    }
   }
 
-  return { id: evalCase.id, total, accept, reject, metric: evalCase.metric ?? "accept" };
+  return { id: evalCase.id, total, accept, reject, metric: evalCase.metric ?? "accept", others };
 }
 
 async function main(): Promise<void> {

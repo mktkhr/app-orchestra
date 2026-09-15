@@ -83,4 +83,19 @@ export interface CaseTally {
   readonly reject: number;
   /** Which of accept/reject this case is judged on (Case.metric, defaulted). */
   readonly metric: CaseMetric;
+  /**
+   * The runs that matched neither `accept` nor `reject`, counted by what
+   * they were - `"ask"`, `"none"`, `"error"`, a `result` naming a different
+   * operation, and so on.
+   *
+   * `docs/specs/eval.md` section 3 says such a run "is the model doing
+   * something new, and that is worth seeing on its own", and until now
+   * there was no way to see it: the report printed accept and reject, and
+   * everything else was a gap between two numbers. A case reading 6/10
+   * accept and 0/10 reject said nothing about whether the other four runs
+   * asked a question, answered a different operation, or failed outright -
+   * which is the difference between a model being careful and a model
+   * being wrong.
+   */
+  readonly others: Readonly<Record<string, number>>;
 }

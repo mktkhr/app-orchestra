@@ -63,6 +63,17 @@ export function report(
       `${tally.id.padEnd(20)} ${fraction(tally.accept, tally.total).padEnd(8)} accept   ` +
         `${fraction(tally.reject, tally.total).padEnd(8)} reject${metricNote}${trailer}`,
     );
+
+    // What the runs that matched neither actually did. Section 3 calls
+    // these "the model doing something new, and that is worth seeing on
+    // its own"; printing only accept and reject left them as a gap between
+    // two numbers, and a case at 6/10 accept and 0/10 reject could not be
+    // read as careful or as wrong.
+    const others = Object.entries(tally.others).toSorted(([, a], [, b]) => b - a);
+
+    for (const [what, count] of others) {
+      console.log(`${" ".repeat(22)}${String(count).padStart(2)}x  ${what}`);
+    }
   }
 
   return regressions;

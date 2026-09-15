@@ -38,13 +38,36 @@ function asSource(value: unknown): PlanOutcome["source"] {
   };
 }
 
-/** Parses an /api/plan response body into the fields a case's expected outcomes can name. */
+/**
+ * Parses an /api/plan response body into the fields a case's expected
+ * outcomes can name.
+ *
+ * A body with no `kind` is a body the platform refused to answer with: an
+ * error, because the model named an operation the catalogue does not have,
+ * or an argument outside a parameter's enum, or anything else the request
+ * never got past. That is a run, and `docs/specs/eval.md` section 3 already
+ * says what to do with one: "a run that matches neither is counted apart -
+ * it is the model doing something new, and that is worth seeing on its
+ * own."
+ *
+ * It used to throw, which ended the whole suite on the first such run. Two
+ * models were scored "could not be measured" that way, each after one bad
+ * answer inside case two of eighteen - lfm25-8b-a1b-q8 invented an
+ * operation, spark-x25-4b-q8 invented an enum value - and sixteen cases
+ * that would have said what else those models can and cannot do were never
+ * run (`DECISIONS.md`, 2026-09-14). A comparison that stops at the first
+ * mistake compares nothing.
+ *
+ * `kind: "error"` matches no case's `accept` or `reject`, since no case
+ * names it, so such a run lands in the counted-apart column by
+ * construction rather than by a second rule.
+ */
 function parsePlanOutcome(value: unknown): PlanOutcome {
   const record = asRecord(value);
   const kind = record["kind"];
 
   if (typeof kind !== "string") {
-    throw new TypeError(`unexpected /api/plan response shape: ${JSON.stringify(value)}`);
+    return { kind: "error" };
   }
 
   const source = asSource(record["source"]);
