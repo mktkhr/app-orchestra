@@ -48,9 +48,12 @@ export const RECALL_AT_20_ROW: Readonly<Record<Column, number>> = {
 
 export const RECALL_AT_20_FALLBACK_USED = false;
 
+/** Every cell's width: wide enough for "overall", the longest column header. */
+const CELL_WIDTH = "overall".length + 1;
+
 /** One line per metric, columns A-E then overall, formatted as a fixed-width table row. */
 function row(label: string, values: Readonly<Record<Column, number>>): string {
-  const cells = COLUMNS.map((k) => String(values[k]).padStart(5));
+  const cells = COLUMNS.map((k) => String(values[k]).padStart(CELL_WIDTH));
 
   return `${label.padEnd(28)}${cells.join("")}`;
 }
@@ -61,7 +64,7 @@ function pct(rate: number): number {
 }
 
 function header(): string {
-  const cols = COLUMNS.map((c) => c.padStart(5)).join("");
+  const cols = COLUMNS.map((c) => c.padStart(CELL_WIDTH)).join("");
 
   return `${"".padEnd(28)}${cols}`;
 }
