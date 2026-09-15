@@ -20,6 +20,7 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jsonmode"
 	stubplanner "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/stub"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/toolcall"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/wording"
 	sqlitestore "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/repository/sqlite"
 	specsourcehttp "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/specsource/http"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
@@ -137,6 +138,13 @@ type LLM struct {
 	// (ErrInvalidLLMMode) rather than trusting every caller to have gone
 	// through config.Load's own validation first.
 	Mode string
+	// Wording selects the toolcall planner's named set of words
+	// (internal/adapter/planner/wording.ByName), mirroring
+	// config.Config.PlannerWording the way Mode mirrors LLMMode. Empty
+	// means wording.Default() ("v1": today's text, byte for byte,
+	// AC-Q-101). Only the toolcall planner reads this - the jsonmode
+	// planner is out of scope (docs/plans/wording.md, Task 1, Step 5).
+	Wording string
 }
 
 // Narrowing configures the llama-swap-backed usecase.Narrower
@@ -172,6 +180,16 @@ const (
 // mirroring internal/infra/config.ErrInvalidLLMMode's own refusal to fall
 // back to the default silently.
 var ErrInvalidLLMMode = errors.New("invalid LLM.Mode, want \"\", \"toolcall\" or \"json\"")
+
+// ErrInvalidPlannerWording is returned by New when Config.LLM.Wording
+// names anything other than "" (wording.Default()) or one of
+// wording.Names() - mirroring ErrInvalidLLMMode's own refusal to fall
+// back to the default silently. cmd/api never reaches this: it always
+// goes through config.Load's own validation first
+// (config.ErrInvalidPlannerWording) - this is the same defence-in-depth
+// ErrInvalidLLMMode already provides for a caller that builds a Config
+// directly.
+var ErrInvalidPlannerWording = errors.New("invalid LLM.Wording")
 
 // ErrMissingDBPath is returned by New when Config.DBPath is empty. There
 // is no legitimate use of this platform without a database - workspaces
@@ -620,10 +638,26 @@ func newPlanner(cfg *Config, catalog domain.Catalog) (usecase.Planner, error) {
 
 	switch cfg.LLM.Mode {
 	case "", ModeToolCall:
-		return toolcall.New(client, catalog), nil
+		w, ok := resolveWording(cfg.LLM.Wording)
+		if !ok {
+			return nil, fmt.Errorf("%w: %q", ErrInvalidPlannerWording, cfg.LLM.Wording)
+		}
+
+		return toolcall.New(client, catalog, toolcall.WithWording(&w)), nil
 	case ModeJSON:
 		return jsonmode.New(client, catalog), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidLLMMode, cfg.LLM.Mode)
 	}
+}
+
+// resolveWording looks name up via wording.ByName, treating "" as
+// wording.Default() - the same "empty means the default, anything else
+// must be known" shape newPlanner's own Mode switch already has.
+func resolveWording(name string) (wording.Wording, bool) {
+	if name == "" {
+		return wording.Default(), true
+	}
+
+	return wording.ByName(name)
 }

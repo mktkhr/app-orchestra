@@ -501,6 +501,23 @@ func TestNewRejectsAnUnknownLLMMode(t *testing.T) {
 	assert.ErrorIs(t, err, app.ErrInvalidLLMMode)
 }
 
+// TestNewRejectsAnUnknownPlannerWording mirrors
+// TestNewRejectsAnUnknownLLMMode: Config.LLM.Wording is the same
+// defence-in-depth as Config.LLM.Mode - cmd/api never reaches this path
+// because internal/infra/config.Load already validates
+// ORCHESTRA_PLANNER_WORDING, but a caller that builds a Config directly
+// (as every test in this file does) gets the same refusal.
+func TestNewRejectsAnUnknownPlannerWording(t *testing.T) {
+	_, err := app.New(&app.Config{
+		LLM:           app.LLM{BaseURL: "http://127.0.0.1:0", Wording: "not-a-real-wording"},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, app.ErrInvalidPlannerWording)
+}
+
 func TestNewFailsWhenAConfiguredServiceIsUnreachable(t *testing.T) {
 	_, err := app.New(&app.Config{
 		Services:      []app.Service{{Name: "gone", URL: "http://127.0.0.1:0"}},

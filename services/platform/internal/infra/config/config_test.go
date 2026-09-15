@@ -374,6 +374,47 @@ func TestLoadRejectsAnUnknownLLMMode(t *testing.T) {
 	assert.ErrorIs(t, err, config.ErrInvalidLLMMode)
 }
 
+func TestLoadPlannerWordingDefaultsToV1(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_WORDING", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "v1", cfg.PlannerWording)
+}
+
+func TestLoadReadsAKnownPlannerWording(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_WORDING", "v3-ask-on-collision")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "v3-ask-on-collision", cfg.PlannerWording)
+}
+
+// TestLoadRejectsAnUnknownPlannerWording is AC-Q-102: an unrecognised
+// ORCHESTRA_PLANNER_WORDING fails startup, naming every known wording in
+// its message rather than silently falling back to the default.
+func TestLoadRejectsAnUnknownPlannerWording(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_WORDING", "not-a-real-wording")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, config.ErrInvalidPlannerWording)
+	assert.Contains(t, err.Error(), "v1")
+	assert.Contains(t, err.Error(), "v2-commit")
+	assert.Contains(t, err.Error(), "v3-ask-on-collision")
+	assert.Contains(t, err.Error(), "v4-commit-and-ask")
+	assert.Contains(t, err.Error(), "v5-examples-in-tools")
+}
+
 func TestLoadReadsDBPath(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/var/lib/orchestra/workspaces.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")

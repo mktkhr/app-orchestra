@@ -51,6 +51,17 @@ type Tool struct {
 	InputSchema map[string]any
 	// Strict is always true: see D10 in docs/specs/orchestration.md.
 	Strict bool
+	// Examples is the operation's own x-orchestra-examples
+	// (domain.Endpoint.Examples), carried here as plain data - the
+	// usecase layer renders no prompt text itself (docs/specs/wording.md,
+	// section 3). nil for a tool that is not a catalogue operation
+	// (ask_user, list_capabilities, propose_panel) or whose endpoint
+	// declared none. A planner adapter decides what, if anything, to do
+	// with it: internal/adapter/planner/toolcall's wording.CatalogueTool
+	// is the only reader today, and under wording.Default() (v1) it
+	// ignores this field entirely, so its presence changes nothing on the
+	// wire until a different wording is selected.
+	Examples []string
 }
 
 // askUserDescription explains, to the model, when to reach for ask_user
@@ -361,6 +372,7 @@ func ToolsFor(c domain.Catalog, planCtx PlanContext) []Tool {
 			Description: e.Summary,
 			InputSchema: inputSchemaFor(e),
 			Strict:      true,
+			Examples:    e.Examples,
 		})
 	}
 

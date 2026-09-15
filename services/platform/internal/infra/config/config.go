@@ -11,6 +11,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/wording"
 )
 
 // defaultPort is used when ORCHESTRA_PORT is unset.
@@ -33,6 +35,13 @@ var ErrInvalidServiceEntry = errors.New("invalid ORCHESTRA_SERVICES entry, want 
 // (docs/plans/orchestration.md, Task 11) - a typo'd mode should not quietly
 // run the wrong planner.
 var ErrInvalidLLMMode = errors.New("invalid ORCHESTRA_LLM_MODE, want toolcall or json")
+
+// ErrInvalidPlannerWording is wrapped into the error returned when
+// ORCHESTRA_PLANNER_WORDING names anything other than wording.Names(). An
+// unrecognised name fails startup rather than silently falling back to
+// wording.Default() - the same reasoning ErrInvalidLLMMode already
+// applies to ORCHESTRA_LLM_MODE (docs/specs/wording.md, AC-Q-102).
+var ErrInvalidPlannerWording = errors.New("invalid ORCHESTRA_PLANNER_WORDING")
 
 // ErrMissingDBPath is returned when ORCHESTRA_DB_PATH is unset. Workspaces
 // live in the SQLite file it names (docs/specs/workspaces.md, W3); a
@@ -194,6 +203,13 @@ type Config struct {
 	// when ORCHESTRA_LLM_MODE is unset) or LLMModeJSON, for a model that
 	// cannot call tools (docs/plans/orchestration.md, Task 11).
 	LLMMode string
+	// PlannerWording selects the toolcall planner's named set of words
+	// (internal/adapter/planner/wording.ByName), read from
+	// ORCHESTRA_PLANNER_WORDING. Defaults to wording.Default().Name
+	// ("v1") when unset - AC-Q-101: with it unset, every request to the
+	// model is byte-identical to today's. Only the toolcall planner reads
+	// this (pkg/app.newPlanner); the jsonmode planner is out of scope.
+	PlannerWording string
 	// PlanFixtures configures the stub planner's table when LLMBaseURL is
 	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
 	// never sets this - an operator sets ORCHESTRA_LLM_BASE_URL instead,
@@ -266,12 +282,9 @@ func Load() (Config, error) {
 		LLMModel:     os.Getenv("ORCHESTRA_LLM_MODEL"),
 	}
 
-	mode, err := parseLLMMode(os.Getenv("ORCHESTRA_LLM_MODE"))
-	if err != nil {
+	if err := loadLLM(&cfg); err != nil {
 		return Config{}, err
 	}
-
-	cfg.LLMMode = mode
 
 	services, err := parseServices(os.Getenv("ORCHESTRA_SERVICES"))
 	if err != nil {
@@ -380,6 +393,24 @@ func parseLLMMode(raw string) (string, error) {
 	return raw, nil
 }
 
+// parsePlannerWording reads ORCHESTRA_PLANNER_WORDING: wording.Default().Name
+// ("v1") when unset, or exactly one of wording.Names() otherwise - see
+// ErrInvalidPlannerWording for why anything else fails startup instead of
+// falling back to the default. The error names every known wording, so an
+// operator who mistypes one sees the full list rather than having to go
+// read the source (AC-Q-102).
+func parsePlannerWording(raw string) (string, error) {
+	if raw == "" {
+		return wording.Default().Name, nil
+	}
+
+	if _, ok := wording.ByName(raw); !ok {
+		return "", fmt.Errorf("%w: %q, want one of %s", ErrInvalidPlannerWording, raw, strings.Join(wording.Names(), ", "))
+	}
+
+	return raw, nil
+}
+
 // parseContextTurns reads ORCHESTRA_CONTEXT_TURNS: defaultContextTurns when
 // unset or empty, or the positive integer it names otherwise. See
 // ErrInvalidContextTurns for why anything else fails startup instead of
@@ -416,6 +447,28 @@ type narrowingConfig struct {
 // applies them to cfg, isolating Load itself from both the os.Getenv
 // calls and parseNarrowing's own validation (funlen,
 // harness/quality/go/golangci.yml).
+// loadLLM reads ORCHESTRA_LLM_MODE and ORCHESTRA_PLANNER_WORDING and
+// applies them to cfg, isolating Load itself from both os.Getenv calls
+// and their own validation (funlen, harness/quality/go/golangci.yml) -
+// the same reason loadNarrowing exists.
+func loadLLM(cfg *Config) error {
+	mode, err := parseLLMMode(os.Getenv("ORCHESTRA_LLM_MODE"))
+	if err != nil {
+		return err
+	}
+
+	cfg.LLMMode = mode
+
+	plannerWording, err := parsePlannerWording(os.Getenv("ORCHESTRA_PLANNER_WORDING"))
+	if err != nil {
+		return err
+	}
+
+	cfg.PlannerWording = plannerWording
+
+	return nil
+}
+
 func loadNarrowing(cfg *Config) error {
 	narrowing, err := parseNarrowing(
 		os.Getenv("ORCHESTRA_NARROWING_EMBED_MODEL"), os.Getenv("ORCHESTRA_NARROWING_RERANK_MODEL"), os.Getenv("ORCHESTRA_NARROWING_K"),

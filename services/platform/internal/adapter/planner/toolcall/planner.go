@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/wording"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
@@ -27,19 +28,6 @@ const toolNameListCapabilities = "list_capabilities"
 // toolNameProposePanel mirrors usecase.ProposePanelTool's Name.
 const toolNameProposePanel = "propose_panel"
 
-// systemPrompt tells the model how to use the catalogue's tools: call one,
-// call list_capabilities when the question is about what can be done at
-// all, call ask_user when an enum value is ambiguous, or answer nothing
-// when nothing fits.
-const systemPrompt = "You are given a set of tools, one per operation of a catalogue of " +
-	"internal services, plus ask_user, list_capabilities and propose_panel. Read the user's " +
-	"question, in Japanese, and either call exactly one tool that answers it, call " +
-	"list_capabilities when the question asks what can be done rather than asking to do " +
-	"something, call ask_user when a parameter's value cannot be told from the question, call " +
-	"propose_panel when the question asks to put something on the workspace's screen rather than " +
-	"asking to look something up, or call no tool at all when nothing in the catalogue answers " +
-	"the question."
-
 // ErrUnknownOperation is returned when the model calls a tool whose name
 // is not any endpoint in the catalogue this Planner was built with - a
 // hallucinated operation id, which resolveService cannot resolve to any
@@ -52,16 +40,48 @@ var ErrUnknownOperation = errors.New("planner named an operation not in the cata
 type Planner struct {
 	client  *chat.Client
 	catalog domain.Catalog
+	// wording is the named set of words (docs/specs/wording.md) this
+	// Planner builds its system message and tool descriptions from -
+	// wording.Default() (v1: today's text, byte for byte, AC-Q-101)
+	// unless WithWording says otherwise. A pointer, not the 88-byte value:
+	// golangci-lint's gocritic hugeParam check (part of the fixed harness
+	// policy, see harness/quality/go/golangci.yml) rejects copying it,
+	// here and on every function below that reads it.
+	wording *wording.Wording
 }
 
 var _ usecase.Planner = (*Planner)(nil)
+
+// Option configures a Planner beyond client and catalog. WithWording is
+// the only one today.
+type Option func(*Planner)
+
+// WithWording selects the words this Planner uses for its system message,
+// its three built-in tools' descriptions and each catalogue tool's own
+// description. Omitted, New uses wording.Default() - so every existing
+// call site (pkg/app, and every test in this package that predates this
+// option) keeps behaving exactly as it did before this option existed
+// (AC-Q-101). w is a pointer for the same hugeParam reason Planner.wording
+// is.
+func WithWording(w *wording.Wording) Option {
+	return func(p *Planner) {
+		p.wording = w
+	}
+}
 
 // New builds a Planner. catalog is needed to resolve the service an
 // operation id belongs to (see resolveService) - a tool call names only
 // the operation, never the service, so the tool-calling wire format alone
 // cannot answer that question.
-func New(client *chat.Client, catalog domain.Catalog) *Planner {
-	return &Planner{client: client, catalog: catalog}
+func New(client *chat.Client, catalog domain.Catalog, opts ...Option) *Planner {
+	defaultWording := wording.Default()
+	p := &Planner{client: client, catalog: catalog, wording: &defaultWording}
+
+	for _, opt := range opts {
+		opt(p)
+	}
+
+	return p
 }
 
 // Plan sends query (with answers folded in, see buildMessages), turns and
@@ -69,15 +89,15 @@ func New(client *chat.Client, catalog domain.Catalog) *Planner {
 // onto a Decision. turns is rendered into the user message, ahead of the
 // current question (see buildMessages) - never into tools itself, which
 // shapeTools builds the same way regardless of turns (AC-M-102), nor into
-// systemPrompt: tools is what the catalogue prompt cache is warm for (M3,
-// docs/specs/context.md section 4), and this way neither it nor
-// systemPrompt's own bytes change when a conversation grows.
+// the system message: tools is what the catalogue prompt cache is warm
+// for (M3, docs/specs/context.md section 4), and this way neither it nor
+// the system message's own bytes change when a conversation grows.
 func (p *Planner) Plan(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, tools []usecase.Tool,
 ) (usecase.Decision, error) {
 	resp, err := p.client.Complete(ctx, &chat.Request{
-		Messages:    buildMessages(query, answers, turns),
-		Tools:       shapeTools(tools),
+		Messages:    buildMessages(query, answers, turns, p.wording.SystemPrompt),
+		Tools:       shapeTools(tools, p.wording),
 		Temperature: chat.Zero(),
 		MaxTokens:   chat.MaxTokens(),
 	})
@@ -365,9 +385,10 @@ const turnsIntro = "Here is the conversation so far, oldest first. Each line is 
 	"never the data the operation returned. Use it only to understand what \"it\", \"the same thing\" " +
 	"or an unnamed service in the new question below refers to."
 
-// buildMessages renders exactly one system message (systemPrompt) and one
-// user message: the conversation so far (renderTurns), when turns is
-// non-empty, followed by the current question (with answers folded in).
+// buildMessages renders exactly one system message (systemPrompt, the
+// selected wording.Wording.SystemPrompt) and one user message: the
+// conversation so far (renderTurns), when turns is non-empty, followed by
+// the current question (with answers folded in).
 //
 // turns is folded into the one user message rather than sent as a message
 // of its own: a second "system"-role message partway through the
@@ -388,7 +409,7 @@ const turnsIntro = "Here is the conversation so far, oldest first. Each line is 
 // docs/specs/orchestration.md - one LLM call per request), not a
 // continuation of a stored conversation, so the only way either reaches
 // the model at all is rendered as plain text.
-func buildMessages(query string, answers []usecase.Answer, turns []usecase.Turn) []chat.Message {
+func buildMessages(query string, answers []usecase.Answer, turns []usecase.Turn, systemPrompt string) []chat.Message {
 	return []chat.Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: buildUserContent(query, answers, turns)},
@@ -459,11 +480,12 @@ func renderTurns(turns []usecase.Turn) string {
 	return b.String()
 }
 
-// shapeTools converts every usecase.Tool into a chat.ToolDefinition.
-func shapeTools(tools []usecase.Tool) []chat.ToolDefinition {
+// shapeTools converts every usecase.Tool into a chat.ToolDefinition, with
+// w applied to each one's description (see shapeTool).
+func shapeTools(tools []usecase.Tool, w *wording.Wording) []chat.ToolDefinition {
 	out := make([]chat.ToolDefinition, len(tools))
 	for i, t := range tools {
-		out[i] = shapeTool(&t)
+		out[i] = shapeTool(&t, w)
 	}
 
 	return out
@@ -491,7 +513,13 @@ func shapeTools(tools []usecase.Tool) []chat.ToolDefinition {
 // is the harmless half of strict mode - it forbids an invented extra
 // argument, not a real optional one - on a backend that enforces it. See
 // DECISIONS.md for the writeup of this tradeoff.
-func shapeTool(t *usecase.Tool) chat.ToolDefinition {
+//
+// Description comes from descriptionFor, not t.Description directly: the
+// selected wording overrides the three built-in tools' text by name, and
+// renders a catalogue tool's own description from its summary (still
+// t.Description - usecase.ToolsFor names it that) and its examples
+// (t.Examples) via w.CatalogueTool (docs/specs/wording.md, section 3).
+func shapeTool(t *usecase.Tool, w *wording.Wording) chat.ToolDefinition {
 	schema := shapeSchema(t.InputSchema)
 	strict := t.Strict && everyPropertyRequired(schema)
 
@@ -499,10 +527,29 @@ func shapeTool(t *usecase.Tool) chat.ToolDefinition {
 		Type: "function",
 		Function: chat.FunctionDefinition{
 			Name:        t.Name,
-			Description: t.Description,
+			Description: descriptionFor(t, w),
 			Parameters:  schema,
 			Strict:      &strict,
 		},
+	}
+}
+
+// descriptionFor returns the wording-selected description for one of the
+// three built-in tools - matched by name against toolNameAskUser,
+// toolNameListCapabilities and toolNameProposePanel, which mirror
+// usecase.AskUserTool/ListCapabilitiesTool/ProposePanelTool's own Names -
+// or, for any other tool (a catalogue operation), w.CatalogueTool applied
+// to the endpoint's own summary and examples.
+func descriptionFor(t *usecase.Tool, w *wording.Wording) string {
+	switch t.Name {
+	case toolNameAskUser:
+		return w.AskUser
+	case toolNameListCapabilities:
+		return w.ListCapabilities
+	case toolNameProposePanel:
+		return w.ProposePanel
+	default:
+		return w.CatalogueTool(t.Description, t.Examples)
 	}
 }
 

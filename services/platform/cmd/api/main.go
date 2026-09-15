@@ -27,9 +27,11 @@ func main() {
 	}
 
 	handler, err := app.New(&app.Config{
-		StaticDir:     cfg.StaticDir,
-		Services:      toAppServices(cfg.Services),
-		LLM:           app.LLM{BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, Mode: cfg.LLMMode},
+		StaticDir: cfg.StaticDir,
+		Services:  toAppServices(cfg.Services),
+		LLM: app.LLM{
+			BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, Mode: cfg.LLMMode, Wording: cfg.PlannerWording,
+		},
 		PlanFixtures:  toAppPlanFixtures(cfg.PlanFixtures),
 		DBPath:        cfg.DBPath,
 		SecureCookie:  cfg.SecureCookie,

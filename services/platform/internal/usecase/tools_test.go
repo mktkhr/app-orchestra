@@ -241,6 +241,54 @@ func TestToolsForUsesOperationSummaryAsDescription(t *testing.T) {
 	assert.True(t, found)
 }
 
+// TestToolsForCopiesEndpointExamplesOntoTheTool is
+// docs/plans/wording.md, Task 1, Step 3: ToolsFor carries a catalogue
+// endpoint's own x-orchestra-examples (domain.Endpoint.Examples) onto
+// usecase.Tool.Examples as plain data - the usecase layer renders no
+// prompt text itself (docs/specs/wording.md, section 3); only a planner
+// adapter's selected wording decides what, if anything, to do with it.
+func TestToolsForCopiesEndpointExamplesOntoTheTool(t *testing.T) {
+	c := catalogWithEnumParameter()
+	c.Endpoints[0].Examples = []string{"在庫を見せて", "在庫の状況を教えて"}
+
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
+
+	found := false
+
+	for _, tool := range tools {
+		if tool.Name == "ListInventoryItems" {
+			found = true
+
+			assert.Equal(t, []string{"在庫を見せて", "在庫の状況を教えて"}, tool.Examples)
+		}
+	}
+
+	assert.True(t, found)
+}
+
+// TestToolsForWithNoEndpointExamplesLeavesToolExamplesNil is the other
+// half of TestToolsForCopiesEndpointExamplesOntoTheTool's contract: an
+// endpoint with no x-orchestra-examples (catalogWithEnumParameter's own,
+// unmodified) produces a nil Examples, not an empty-but-non-nil slice a
+// caller would have to tell apart from "one example, empty string".
+func TestToolsForWithNoEndpointExamplesLeavesToolExamplesNil(t *testing.T) {
+	c := catalogWithEnumParameter()
+
+	tools := usecase.ToolsFor(c, usecase.PlanContext{WorkspaceID: "ws-1"})
+
+	found := false
+
+	for _, tool := range tools {
+		if tool.Name == "ListInventoryItems" {
+			found = true
+
+			assert.Nil(t, tool.Examples)
+		}
+	}
+
+	assert.True(t, found)
+}
+
 func TestToolsForEnumParameterCarriesEnumAndJapaneseLabelsInDescription(t *testing.T) {
 	c := catalogWithEnumParameter()
 

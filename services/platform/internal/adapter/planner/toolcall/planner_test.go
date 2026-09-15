@@ -863,3 +863,112 @@ func decodeToolsRaw(t *testing.T, raw []byte) []json.RawMessage {
 
 	return wire.Tools
 }
+
+// The four constants below are copied, byte for byte, from this package's
+// own systemPrompt and internal/usecase/tools.go's askUserDescription,
+// listCapabilitiesDescription and proposePanelDescription, as they stood
+// at commit 5bf5cf8 - the last commit before docs/plans/wording.md, Task
+// 1 moved them into internal/adapter/planner/wording.Default() (v1) and
+// toolcall.New started taking a toolcall.WithWording option.
+// wording_test.go asserts wording.Default() against the same literals
+// from the wording package's own side; this is the toolcall package's own
+// side of AC-Q-101 - the wire this Planner actually sends, byte for byte,
+// with no wording.WithWording option given (the untouched call site every
+// test in this file already uses).
+
+// systemPromptAsOf5bf5cf8 as of 5bf5cf8.
+const systemPromptAsOf5bf5cf8 = "You are given a set of tools, one per operation of a catalogue of " +
+	"internal services, plus ask_user, list_capabilities and propose_panel. Read the user's " +
+	"question, in Japanese, and either call exactly one tool that answers it, call " +
+	"list_capabilities when the question asks what can be done rather than asking to do " +
+	"something, call ask_user when a parameter's value cannot be told from the question, call " +
+	"propose_panel when the question asks to put something on the workspace's screen rather than " +
+	"asking to look something up, or call no tool at all when nothing in the catalogue answers " +
+	"the question."
+
+// askUserDescriptionAsOf5bf5cf8 as of 5bf5cf8.
+const askUserDescriptionAsOf5bf5cf8 = "Call this ONLY when the question does not tell you which value to use for " +
+	"a parameter that declares a fixed set of allowed values (an enum), and you need the person to pick " +
+	"one from that set. Do NOT call this for a free-text parameter (for example a name) that has no " +
+	"declared set of values - there is nothing to pick from, so this tool cannot help; leave that " +
+	"parameter out of your call instead."
+
+// listCapabilitiesDescriptionAsOf5bf5cf8 as of 5bf5cf8.
+const listCapabilitiesDescriptionAsOf5bf5cf8 = "Call this when the question asks what operations are " +
+	"available - in general (\"何ができるの？\") or for one named service (\"在庫について、どういう" +
+	"操作ができる？\") - rather than asking to actually look something up or change something. " +
+	"Returns the catalogue's own list of operations, so it never risks naming a capability that " +
+	"does not exist."
+
+// proposePanelDescriptionAsOf5bf5cf8 as of 5bf5cf8.
+const proposePanelDescriptionAsOf5bf5cf8 = "Call this when the question asks to put something on the workspace's " +
+	"screen - a panel, a chart, a table - rather than asking a question you should just answer. Name the " +
+	"operation and arguments the panel's data should come from, exactly as you would for that operation's " +
+	"own tool. component, chart, transform and title are all optional: leave any of them out and the " +
+	"platform fills it in from the same rule it would have drawn the answer with. Never call this for a " +
+	"question that only asks to look something up - call that operation's own tool instead."
+
+// TestPlanWithDefaultWordingSendsTheSystemMessageAndBuiltinToolDescriptionsByteIdenticalToBefore5bf5cf8
+// is AC-Q-101: with ORCHESTRA_PLANNER_WORDING unset (toolcall.New given
+// no toolcall.WithWording option, exactly as every call site before this
+// subproject and every other test in this file calls it), the system
+// message and the three built-in tools' descriptions this Planner sends
+// over the wire are byte-identical to the literals copied above - and,
+// for a catalogue tool, the description sent is exactly the endpoint's
+// own summary (t.Description), unchanged, regardless of
+// domain.Endpoint.Examples / usecase.Tool.Examples: v1.CatalogueTool
+// ignores them (wording/v1.go).
+func TestPlanWithDefaultWordingSendsTheSystemMessageAndBuiltinToolDescriptionsByteIdenticalToBefore5bf5cf8(t *testing.T) {
+	server, requests := captureBody(t)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := toolcall.New(client, fixtureCatalog())
+
+	tools := usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
+	for i := range tools {
+		tools[i].Examples = []string{"an example that must not appear on the wire under v1"}
+	}
+
+	_, err := planner.Plan(context.Background(), "在庫を見せて", nil, nil, tools)
+	require.NoError(t, err)
+
+	require.Len(t, *requests, 1)
+
+	var wire struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+		Tools []struct {
+			Function struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			} `json:"function"`
+		} `json:"tools"`
+	}
+
+	require.NoError(t, json.Unmarshal((*requests)[0].raw, &wire))
+
+	require.NotEmpty(t, wire.Messages)
+	assert.Equal(t, "system", wire.Messages[0].Role)
+	assert.Equal(t, systemPromptAsOf5bf5cf8, wire.Messages[0].Content)
+
+	descriptionByName := make(map[string]string, len(wire.Tools))
+	for _, tool := range wire.Tools {
+		descriptionByName[tool.Function.Name] = tool.Function.Description
+	}
+
+	assert.Equal(t, askUserDescriptionAsOf5bf5cf8, descriptionByName["ask_user"])
+	assert.Equal(t, listCapabilitiesDescriptionAsOf5bf5cf8, descriptionByName["list_capabilities"])
+	assert.Equal(t, proposePanelDescriptionAsOf5bf5cf8, descriptionByName["propose_panel"])
+
+	for _, tool := range tools {
+		if tool.Name == "ask_user" || tool.Name == "list_capabilities" || tool.Name == "propose_panel" {
+			continue
+		}
+
+		assert.Equal(t, tool.Description, descriptionByName[tool.Name],
+			"%s: a catalogue tool's description must still be exactly its endpoint's summary under v1, "+
+				"regardless of Examples", tool.Name)
+	}
+}
