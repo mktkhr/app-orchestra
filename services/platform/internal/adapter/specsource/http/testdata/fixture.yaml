@@ -55,6 +55,7 @@ paths:
     post:
       operationId: createWidget
       summary: Create a widget.
+      description: "関連語: 品番、品名"
       tags:
         - widgets
       x-orchestra-expose: true

@@ -74,6 +74,12 @@ type Endpoint struct {
 	Method      string // GET, POST, PUT, PATCH, DELETE, HEAD, QUERY
 	Path        string
 	Summary     string
+	// Description is the operation's own OpenAPI description - distinct
+	// from Summary, and the one place a real service's `also` terms live
+	// (docs/specs/shortlisting.md, H1; e2e/narrowing/lexical.ts's own
+	// combinedTextOf joins it beside summary, display name and service
+	// display name). Empty when the contract declares none.
+	Description string
 	Parameters  []Parameter
 	RequestBody *Schema
 	Response    *Schema

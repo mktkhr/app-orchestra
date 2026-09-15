@@ -101,6 +101,7 @@ func parseSpec(service string, data []byte) ([]domain.Endpoint, error) {
 				Method:             method,
 				Path:               path,
 				Summary:            op.Summary,
+				Description:        op.Description,
 				Parameters:         convertParameters(op.Parameters),
 				RequestBody:        convertRequestBody(op.RequestBody),
 				Response:           convertResponse(op.Responses),

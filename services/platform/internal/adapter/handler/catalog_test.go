@@ -40,6 +40,7 @@ func TestGetCatalogConvertsEveryEntryOntoTheWire(t *testing.T) {
 			ServiceDisplayName: "在庫管理",
 			OperationID:        "ListInventoryItems",
 			Summary:            "List stock items.",
+			Description:        "関連語: 品番、品名",
 			Component:          domain.ComponentTable,
 			Schema:             map[string]any{"type": "object"},
 			Fields:             map[string]any{"status": map[string]any{"type": "string"}},
@@ -74,12 +75,15 @@ func TestGetCatalogConvertsEveryEntryOntoTheWire(t *testing.T) {
 	assert.Nil(t, out[0].View)
 	require.NotNil(t, out[0].Examples)
 	assert.Equal(t, []string{"在庫を見せて"}, *out[0].Examples)
+	require.NotNil(t, out[0].Description)
+	assert.Equal(t, "関連語: 品番、品名", *out[0].Description)
 
 	require.NotNil(t, out[1].View)
 	require.NotNil(t, out[1].View.Chart)
 	assert.Equal(t, "status", out[1].View.Chart.Category)
 	assert.Nil(t, out[1].Fields, "no fields given: absent, not an empty object")
 	assert.Nil(t, out[1].Examples, "no examples given: absent, not an empty array")
+	assert.Nil(t, out[1].Description, "no description given: absent, not an empty string")
 
 	assert.Same(t, testAdminUser, c.user, "the signed-in user reaches the usecase")
 }

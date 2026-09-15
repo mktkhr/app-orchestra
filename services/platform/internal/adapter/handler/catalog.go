@@ -60,6 +60,11 @@ func toAPICatalogEntry(e *usecase.CatalogEntry) openapi.CatalogEntry {
 		Schema:             e.Schema,
 	}
 
+	if e.Description != "" {
+		description := e.Description
+		out.Description = &description
+	}
+
 	if len(e.Fields) > 0 {
 		fields := e.Fields
 		out.Fields = &fields

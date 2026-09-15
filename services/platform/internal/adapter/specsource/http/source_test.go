@@ -60,6 +60,7 @@ func TestFetchBuildsCatalogueFromFixtureSpec(t *testing.T) {
 	assert.Equal(t, "/widgets", list.Path)
 	assert.Equal(t, "fixture", list.Service)
 	assert.Equal(t, "List widgets, optionally filtered by status.", list.Summary)
+	assert.Empty(t, list.Description, "listWidgets declares no operation-level description in the fixture")
 
 	require.Len(t, list.Parameters, 1)
 	status := list.Parameters[0]
@@ -106,6 +107,29 @@ func TestFetchConvertsRequestBody(t *testing.T) {
 	assert.True(t, hasStatus)
 	assert.Equal(t, []string{"name", "status"}, create.RequestBody.Required,
 		"the request body's required properties must be carried, in spec order")
+}
+
+// TestFetchConvertsDescription is the "present" half of Endpoint.Description's
+// own test (TestFetchBuildsCatalogueFromFixtureSpec above covers "absent"
+// with listWidgets): createWidget's fixture description carries a real
+// service's `also` terms (docs/specs/shortlisting.md, H1), and the
+// converter must read it into Description, distinct from Summary.
+func TestFetchConvertsDescription(t *testing.T) {
+	server := fixtureServer(t)
+	defer server.Close()
+
+	source := specsourcehttp.New(
+		[]specsourcehttp.Service{{Name: "fixture", URL: server.URL}},
+		nil,
+	)
+
+	catalog, err := source.Fetch(context.Background())
+	require.NoError(t, err)
+
+	create, ok := catalog.Find("fixture", "createWidget")
+	require.True(t, ok)
+	assert.Equal(t, "Create a widget.", create.Summary)
+	assert.Equal(t, "関連語: 品番、品名", create.Description)
 }
 
 func TestFetchConvertsUIHint(t *testing.T) {

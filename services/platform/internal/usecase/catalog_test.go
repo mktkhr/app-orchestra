@@ -257,3 +257,29 @@ func TestCatalogEntryOmitsExamplesWhenTheContractDeclaresNone(t *testing.T) {
 
 	assert.Nil(t, entry.Examples)
 }
+
+// TestCatalogEntryCarriesTheEndpointsDescription is Description's own
+// test, mirroring TestCatalogEntryCarriesTheEndpointsExamples: a real
+// service's own "also" terms (docs/specs/shortlisting.md, H1) live in an
+// operation's OpenAPI description, distinct from Summary, and a catalogue
+// entry must carry it through.
+func TestCatalogEntryCarriesTheEndpointsDescription(t *testing.T) {
+	catalog := domain.Catalog{Endpoints: []domain.Endpoint{
+		{
+			Service:     "inventory",
+			OperationID: "ListInventoryItems",
+			Summary:     "List stock items, optionally filtered by status.",
+			Description: "関連語: 品番、品名",
+			Response:    &domain.Schema{Type: domain.SchemaTypeObject},
+		},
+	}}
+
+	c := usecase.NewCatalog(catalog, &fakePermissionStore{})
+
+	entries, err := c.For(t.Context(), adminUser())
+	require.NoError(t, err)
+
+	entry := findCatalogEntry(t, entries, "ListInventoryItems")
+
+	assert.Equal(t, "関連語: 品番、品名", entry.Description)
+}

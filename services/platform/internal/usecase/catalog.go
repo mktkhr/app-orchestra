@@ -19,6 +19,10 @@ type CatalogEntry struct {
 	ServiceDisplayName string
 	OperationID        string
 	Summary            string
+	// Description is the operation's own OpenAPI description
+	// (domain.Endpoint.Description) - distinct from Summary. Empty when
+	// the contract declares none.
+	Description string
 	// DisplayName is what a person should read for this operation:
 	// e.DisplayName when the contract declares one, otherwise Summary -
 	// the same fallback OperationPicker and the default panel title
@@ -99,6 +103,7 @@ func toCatalogEntry(e *domain.Endpoint) CatalogEntry {
 		ServiceDisplayName: e.ServiceDisplayNameOr(e.Service),
 		OperationID:        e.OperationID,
 		Summary:            e.Summary,
+		Description:        e.Description,
 		DisplayName:        e.DisplayNameOr(e.Summary),
 		Component:          domain.Render(e),
 		Schema:             inputSchemaFor(e),

@@ -58,16 +58,15 @@ type entry struct {
 }
 
 // combinedTextOf is the document text an endpoint is embedded and
-// reranked against: summary, display name and service display name,
-// joined by newlines - the same fields e2e/narrowing/lexical.ts's
-// combinedTextOf joins, with one exception: that function also joins the
-// OpenAPI operation's own "description", which domain.Endpoint does not
-// carry as a field distinct from Summary
-// (internal/adapter/specsource/http/parse.go reads only op.Summary into
-// it, see that package's parseSpec). Everything else here is the measured
-// text (docs/plans/shortlisting.md, Task 1 Step 4).
+// reranked against: summary, description, display name and service
+// display name, joined by newlines, in that order - identical to
+// e2e/narrowing/lexical.ts's own combinedTextOf, field for field and join
+// for join (docs/plans/shortlisting.md, Task 1 Step 4), so the product
+// retrieves against exactly what was measured. A real service's own
+// `also` terms (docs/specs/shortlisting.md, H1) live in description, not
+// summary - dropping it would silently change what retrieval reads.
 func combinedTextOf(e *domain.Endpoint) string {
-	return e.Summary + "\n" + e.DisplayName + "\n" + e.ServiceDisplayName
+	return e.Summary + "\n" + e.Description + "\n" + e.DisplayName + "\n" + e.ServiceDisplayName
 }
 
 // idOf is endpointID's constructor from an *domain.Endpoint, named once so

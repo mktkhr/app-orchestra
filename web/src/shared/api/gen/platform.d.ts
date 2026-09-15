@@ -570,6 +570,8 @@ export type components = {
             readonly operationId: string;
             /** @description The operation's summary, from its contract. This is the model-facing tool description (`usecase.ToolsFor`), in whatever language the contract happens to use - never translated for display (DECISIONS.md, 2026-09-13) - so a screen meant to read in Japanese shows `displayName`, not this. */
             readonly summary: string;
+            /** @description The operation's own OpenAPI description, from its contract - distinct from `summary`. Absent when the contract declares none. */
+            readonly description?: string;
             /** @description The operation's name for a person to read, from its contract's `x-ui-hint.displayName` when it declares one, falling back to whatever that screen already showed before this field existed (`summary` here, the operation id in `list_capabilities`' table) when it does not - never blank (DECISIONS.md, 2026-09-13). */
             readonly displayName: string;
             readonly component: components["schemas"]["Component"];

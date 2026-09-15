@@ -1221,6 +1221,12 @@ components:
             language the contract happens to use - never translated for
             display (DECISIONS.md, 2026-09-13) - so a screen meant to read
             in Japanese shows `displayName`, not this.
+        description:
+          type: string
+          description: >
+            The operation's own OpenAPI description, from its contract -
+            distinct from `summary`. Absent when the contract declares
+            none.
         displayName:
           type: string
           description: >

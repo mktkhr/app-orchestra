@@ -19,7 +19,7 @@ import (
 // external test package can predict the exact document text Load and
 // Narrow send, without depending on the package's internals.
 func combinedText(e *domain.Endpoint) string {
-	return e.Summary + "\n" + e.DisplayName + "\n" + e.ServiceDisplayName
+	return e.Summary + "\n" + e.Description + "\n" + e.DisplayName + "\n" + e.ServiceDisplayName
 }
 
 // endpoint builds a minimal, exposed domain.Endpoint for these tests: a
@@ -82,8 +82,13 @@ func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
 // e5-large-q8 measures against (e2e/narrowing/embedding/configs.ts).
 func TestLoadPostsEveryEndpointsTextAndEachExampleOnceWithPassagePrefix(t *testing.T) {
 	alpha := endpoint("Alpha", "アルファ")
+	alpha.Description = "関連語: 品番、品名"
 	bravo := endpoint("Bravo", "", "例1", "例2")
 	catalog := domain.Catalog{Endpoints: []domain.Endpoint{alpha, bravo}}
+
+	require.Equal(t, "Alpha summary\n関連語: 品番、品名\nアルファ\n", combinedText(&alpha),
+		"the document text is summary, description, display name and service display name, newline-joined, in that "+
+			"order - identical to e2e/narrowing/lexical.ts's own combinedTextOf")
 
 	textAlpha := combinedText(&alpha)
 	textBravo := combinedText(&bravo)
