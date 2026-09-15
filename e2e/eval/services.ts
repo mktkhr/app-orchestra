@@ -73,6 +73,12 @@ export async function startEvalPlatform(
       // Plain HTTP (127.0.0.1, no TLS): see e2e/src/orchestration.test.ts's
       // own comment on this variable.
       ORCHESTRA_SECURE_COOKIE: "false",
+      // docs/specs/wording.md Q4: the wording that would become the default
+      // is checked against these eighteen cases too. Passed through only
+      // when set, so the default run is byte-identical to before.
+      ...(process.env["ORCHESTRA_PLANNER_WORDING"] === undefined
+        ? {}
+        : { ORCHESTRA_PLANNER_WORDING: process.env["ORCHESTRA_PLANNER_WORDING"] }),
     }),
     port: platformPort,
   };
