@@ -113,10 +113,11 @@ _Nothing in progress._
   byte-identical to today when unset (H7); a `result` carries up to two
   alternatives from the shortlist (H5); `make eval-shortlist` measures the
   product's own planner, not a stand-in, end to end against the 100
-  question corpus. Wired behind config; the choice of whether to turn it
-  on in production is D2's owner's, with the measured numbers in front of
-  them (`DECISIONS.md`, 2026-09-15, "The product's planner, measured end
-  to end" - AC-H-108). What is not wired: the planner's own prompt and
+  question corpus. Wired behind config. Decided 2026-09-15: D2 stands - the
+  catalogue is sent whole by default, and narrowing is turned on where the
+  alternatives and the written examples are wanted (`PRODUCT.md`, under
+  the decisions table; `DECISIONS.md`, 2026-09-15, "The product's planner,
+  measured end to end" - AC-H-108). What is not wired: the planner's own prompt and
   tool descriptions, which the measurement found to be the actual
   bottleneck (18 points below the picker on identical input) - see `##
 Next` item 1.

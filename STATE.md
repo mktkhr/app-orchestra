@@ -28,8 +28,9 @@ something to show. Full tables, the determinism check, the miss
 characterisation against the picker, and the alternatives/latency findings
 are in `DECISIONS.md`, 2026-09-15 ("The product's planner, measured end to
 end"). `docs/specs/shortlisting.md` records what was built (H1-H7,
-AC-H-101 through AC-H-107); AC-H-108's `PRODUCT.md` D2 revision is left to
-its owner, with these numbers in front of them. `TODO.md`'s own "choose
+AC-H-101 through AC-H-107); AC-H-108 is closed: D2 stands, by decision on
+2026-09-15 - whole catalogue by default, narrowing behind configuration
+(`PRODUCT.md`, under the decisions table). `TODO.md`'s own "choose
 what the product uses" item closes as wired; what remains open is the
 planner's prompt and tool descriptions, now measurable directly by the
 same target.

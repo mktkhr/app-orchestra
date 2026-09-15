@@ -35,12 +35,19 @@ ordinary code.
 
 D2's two grounds have since been measured against a thousand-operation
 catalogue (`DECISIONS.md`, 2026-09-14 and 2026-09-15). The cost ground holds
-where a prompt cache is available: a question against the whole catalogue
-costs about what a question against fifty candidates costs. The precision
-ground does not: given all thousand, a frontier model scores 64 where the
-same model given fifty scores 73, and its misses keep the verb, lose the
-noun, and take the first service in the list. Revising D2 is a product
-decision still to be taken; the evidence for it is recorded there.
+where a prompt cache is available, and on the local model the whole catalogue
+is not slower than a shortlist either - the tool prompt is identical every
+request and llama-server's prefix cache serves it. The precision ground is
+narrower than D2 states: a frontier model given all thousand scores 64 where
+fifty gives it 73, but the product's own planner scores 62 whole against 65
+narrowed - three points, six with alternatives.
+
+**Decided 2026-09-15: D2 stands.** The catalogue is sent whole by default.
+Narrowing exists behind `ORCHESTRA_NARROWING_*` (`docs/specs/shortlisting.md`)
+because two things need a shortlist - the alternatives offered with an
+answer, and the written examples that close the vocabulary gap - and a
+deployment that wants those turns it on. The default binary, unconfigured,
+behaves exactly as D2 says.
 
 ## 3. Scope of the first vertical slice
 
