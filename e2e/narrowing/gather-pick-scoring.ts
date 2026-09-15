@@ -11,7 +11,13 @@ import type { CatalogSize } from "./recall.ts";
 import type { FetchLike } from "./embedding/client.ts";
 import type { Axis, Question } from "./corpus/index.ts";
 import type { PickAxisResult, PickConfigurationResult, PickSizeResult } from "./report-types.ts";
-import { newPickGuardState, pick, type PickGuardState } from "./pick/index.ts";
+import {
+  PICK_SYSTEM_PROMPT,
+  PICK_SYSTEM_PROMPT_WITH_EXAMPLES,
+  newPickGuardState,
+  pick,
+  type PickGuardState,
+} from "./pick/index.ts";
 import type { ShortlistedQuestion, VariantShortlists } from "./gather-pick-shortlists.ts";
 
 const AXES: readonly Axis[] = ["A", "B", "C", "D", "E"];
@@ -27,19 +33,31 @@ function isEligible(question: Question, catalogIds: ReadonlySet<string>): boolea
   return question.answers.some((answerId) => catalogIds.has(answerId));
 }
 
-/** Picks every row in order, timing each call — the picker's own per-question wall-clock. */
+/**
+ * Picks every row in order, timing each call — the picker's own
+ * per-question wall-clock. `systemPrompt` is the same for every row in
+ * `rows` (one per variant, chosen by the caller from `VariantShortlists.showExamples`).
+ */
 async function pickAllFor(
   rows: readonly ShortlistedQuestion[],
   guardState: PickGuardState,
   fetchImpl: FetchLike | undefined,
   baseUrl: string | undefined,
+  systemPrompt: string,
 ): Promise<{ readonly outcomes: readonly PickOutcome[]; readonly averageQueryMillis: number }> {
   const outcomes: PickOutcome[] = [];
   const queryMillis: number[] = [];
 
   for (const row of rows) {
     const start = performance.now();
-    const result = await pick(row.question.text, row.candidates, guardState, fetchImpl, baseUrl);
+    const result = await pick(
+      row.question.text,
+      row.candidates,
+      guardState,
+      fetchImpl,
+      baseUrl,
+      systemPrompt,
+    );
 
     queryMillis.push(performance.now() - start);
     outcomes.push({
@@ -102,6 +120,9 @@ export async function scorePickRows(
 
   for (const variant of shortlists) {
     const sizes: PickSizeResult[] = [];
+    const systemPrompt = variant.showExamples
+      ? PICK_SYSTEM_PROMPT_WITH_EXAMPLES
+      : PICK_SYSTEM_PROMPT;
 
     for (const [size, rows] of variant.bySize) {
       const { outcomes, averageQueryMillis } = await pickAllFor(
@@ -109,6 +130,7 @@ export async function scorePickRows(
         guardState,
         fetchImpl,
         baseUrl,
+        systemPrompt,
       );
 
       sizes.push(sizeResultOf(size, outcomes, averageQueryMillis));

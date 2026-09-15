@@ -1,12 +1,43 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-15 (pick-rate measurement wired into `make narrowing`,
-beside recall@K)_
+_Last updated: 2026-09-15 (the reranker reads the written examples; the
+picker does not)_
 
 ## Summary
 
-**2026-09-15 - `make narrowing` measures the pick, not only the recall
-(TODO.md item 1).** Three new rows - `pick:e5-large-q8+reranker`,
+**2026-09-15 - the reranker reads the written examples; showing them to the
+picker does not help (TODO.md item 1, closed).** A new recall row,
+`e5-large-q8+reranker(w)+written`
+(`e2e/narrowing/utterances/reranker-written.ts`), reranks on
+`combinedTextOf(operation)` plus that operation's own written examples
+instead of `combinedTextOf` alone - the fix for the gap "The catalogue says
+it" found: a blind reranker pushed axis D back down from 80% to 73% at
+K=10 because it never saw the example that got an operation into the
+fifty. Reading the examples recovers axis D exactly, to the written
+layer's own blind number, at every K (80%/93%/93% at K=10/20/50) and at
+zero measured cost to A, B, C or E, for about 8% more reranker latency.
+Two new pick rows tried the same fix on the picker - `e.g.` columns added
+to the candidate lines it reads (`pick/client.ts`), one on the
+examples-reranked shortlist and one on the plain `+written` shortlist - and
+both read _worse_ than the plain `+written` pick row, not better: overall
+correct falls further (78% → 69%/70%) and the axis-B flagged rate (desired
+high, on the genuinely ambiguous questions) falls too. A mistake was caught
+before being recorded: editing the shared system prompt in place to add
+the one sentence the picker needs to understand the `e.g.` column silently
+moved the three pre-existing pick rows' own numbers (`pick:e5-large-q8+reranker`
+83%→77% correct on that sentence alone) - fixed with a second,
+opt-in prompt constant (`PICK_SYSTEM_PROMPT_WITH_EXAMPLES`) so the original
+three rows keep the exact prompt that produced their recorded numbers,
+verified by re-running the full report and diffing every pre-existing row
+byte-identical against the pre-change baseline. Full tables, the
+per-axis verdict, and the prompt-fragility finding are in `DECISIONS.md`,
+2026-09-15 ("Letting the reranker read the written examples: it fixes
+retrieval, it does not fix the pick"). `docs/specs/describing.md` sections
+4 and 10 carry the measured answer. `make check` still calls no model.
+Next: `TODO.md` item 1 (renumbered from item 2, choose what the product
+uses and wire it into `services/platform`).
+
+**2026-09-15 - `make narrowing` measures the pick, not only the recall.** Three new rows - `pick:e5-large-q8+reranker`,
 `pick:e5-large-q8+reranker+written` and `pick:e5-large-q8+reranker+both` -
 feed the local `qwen3.5-9b-q8` (thinking off, temperature 0) the top 20
 candidates of each row's own already-reranked shortlist and score two

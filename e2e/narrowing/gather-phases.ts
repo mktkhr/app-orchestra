@@ -1,7 +1,7 @@
 /**
  * `gatherReport`'s phases (`measure.ts`), pulled out only for eslint's
  * `max-lines`/`max-lines-per-function`: generation, the base embedding
- * configurations, the four utterance rows, and the two reranked rows - one
+ * configurations, the three utterance rows, and the reranked rows - one
  * function per phase, each appending to the same `configurations`/`skipped`
  * arrays and threading "is the transport still reachable" through to the
  * next. `measure.ts`'s `gatherReport` is a plain sequence of calls into
@@ -28,6 +28,7 @@ import {
   type GatherOptions,
   type SkippedConfiguration,
 } from "./gather-helpers.ts";
+import { runWrittenRerankerRow } from "./gather-written-reranker-row.ts";
 import {
   TWO_STAGE_CONFIG_ID,
   measureEmbeddingConfiguration,
@@ -181,13 +182,13 @@ interface RerankedUtteranceRow {
 }
 
 /**
- * The three reranked rows: the plain two-stage, then the two scored with
+ * The four reranked rows: the plain two-stage, then the two scored with
  * an utterance layer before reranking — `+both` and `+written`, the row
  * the coordinator's follow-up asks for because the written layer alone
- * beats "both" on axis D (the generated layer's noise drags "both" down).
- * `+written` carries its own contract rates; `+both` does not, matching
- * how it already printed before this row existed. Returns whether the
- * transport is still reachable, the same way every earlier phase does - so
+ * beats "both" on axis D (the generated layer's noise drags "both" down) —
+ * and finally `+reranker(w)+written` (`gather-written-reranker-row.ts`'s
+ * `runWrittenRerankerRow`, TODO.md item 1). Returns whether the transport
+ * is still reachable, the same way every earlier phase does - so
  * `gather-pick.ts`'s pick rows, which read these same reranked shortlists,
  * know whether to run at all.
  */
@@ -258,5 +259,13 @@ export async function runRerankedRows(
     }
   }
 
-  return stillReachable;
+  return runWrittenRerankerRow(
+    phase,
+    testQuestions,
+    kValues,
+    options,
+    configurations,
+    skipped,
+    stillReachable,
+  );
 }

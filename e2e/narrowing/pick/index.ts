@@ -7,6 +7,7 @@
 export {
   PICK_MODEL,
   PICK_SYSTEM_PROMPT,
+  PICK_SYSTEM_PROMPT_WITH_EXAMPLES,
   newPickGuardState,
   pick,
   type PickCandidate,

@@ -5728,3 +5728,184 @@ count after every manual `make narrowing` run and the two thinking-guard
 verification calls in this entry is 73541 - the difference is real model
 traffic from `make narrowing` runs and the two throwaway verification
 calls, never from `make check`.
+
+## 2026-09-15 Letting the reranker read the written examples: it fixes retrieval, it does not fix the pick
+
+**Context.** TODO.md item 1, the caveat left open in "The catalogue says it"
+(d): `+written` alone reads axis D 80% at K=10, but `+reranker+written`
+reads 73% - the cross-encoder rescores on `combinedTextOf` alone
+(`docs/specs/describing.md` section 4), so an operation retrieved into the
+fifty by its written example is pushed back down by a reranker that never
+read the example that put it there. This entry measures the fix on both
+sides the finding named: the reranker (a new recall row) and the pick (two
+new pick rows), because "Measuring the pick" (above, same date) found the
+pick blind to the written layer in the same way, for a different reason -
+the picker sees `operationId / service / summary` per candidate, not the
+example that got the operation into its shortlist.
+
+**A mistake caught before it was recorded.** The first version of this
+change edited `PICK_SYSTEM_PROMPT` in place to add the one sentence the
+picker needs to know what an `e.g.` column is. That constant is shared by
+every pick call, so it silently changed the prompt for the three
+pre-existing pick rows too - `pick:e5-large-q8+reranker` moved from
+83%/51% correct/flagged (A100/56 B100/52 C72/52 D53/27 E70/70, K=20, 1000
+ops) to 77%/47% (A96/36 B96/52 C64/60 D47/27 E60/60) on that one added
+sentence alone, nothing else changed. The fix: `PICK_SYSTEM_PROMPT` is
+untouched, byte-for-byte identical to the version at `867e889`; a second
+constant, `PICK_SYSTEM_PROMPT_WITH_EXAMPLES`, carries the added sentence,
+and `pick/client.ts`'s `pick()` takes it as an explicit, opt-in parameter
+that only the two new rows below pass. Verified by re-running the whole
+report and diffing against the pre-change baseline with `ms/query` and the
+one-time loading-cost benchmark stripped: byte-identical on every
+pre-existing row, recall and pick alike. Worth its own line rather than a
+footnote: a 9B picker moved eleven points overall on one added sentence it
+was never meant to see, on a shortlist and K that did not change at all -
+whatever this picker is asked to read next, that prompt is a new baseline,
+not a small edit.
+
+**The reranker half held, cleanly.** `e5-large-q8+reranker(w)+written`
+reranks on `combinedTextOf(operation)` plus the operation's own written
+examples, one per line (`e2e/narrowing/utterances/reranker-written.ts`) -
+retrieval is scored with the written layer exactly as `+reranker+written`
+already does it; only the reranked document text changes. Generated
+utterances are kept out of this document on purpose (the previous entry's
+(b) already shows them as noise; feeding that noise to the reranker's
+document text would not be a new experiment).
+
+K=10/20/50, 1000 operations:
+
+| configuration                     | K   | A   | B   | C   | D   | E   | overall |
+| --------------------------------- | --- | --- | --- | --- | --- | --- | ------- |
+| `e5-large-q8+written`             | 10  | 92  | 96  | 68  | 80  | 80  | 84      |
+|                                   | 20  | 96  | 96  | 84  | 93  | 80  | 91      |
+|                                   | 50  | 96  | 96  | 88  | 93  | 100 | 94      |
+| `e5-large-q8+reranker+written`    | 10  | 96  | 96  | 80  | 73  | 100 | 89      |
+|                                   | 20  | 96  | 96  | 84  | 87  | 100 | 92      |
+|                                   | 50  | 96  | 96  | 88  | 93  | 100 | 94      |
+| `e5-large-q8+reranker(w)+written` | 10  | 96  | 96  | 80  | 80  | 100 | 90      |
+|                                   | 20  | 96  | 96  | 84  | 93  | 100 | 93      |
+|                                   | 50  | 96  | 96  | 88  | 93  | 100 | 94      |
+
+Axis D is exactly what the hypothesis predicted: `+reranker(w)+written`
+reads 80/93/93 at K=10/20/50 - not close to `+written`'s own blind D, equal
+to it at every K. Reading the examples gives back exactly what the blind
+reranker took away. Overall moves with it, 89→90 at K=10 and 92→93 at
+K=20 (both from D alone; E was already 100 both ways at K=10, and 100
+again matches at K=20 - the earlier record's 90 vs 100 gap at K=20 was
+`+reranker+written`'s only other soft spot and this variant does not touch
+it). A, B, C and E are unchanged at every K, 1000 operations - not
+"close", identical to the pips. Contract rate is the same 25%/15%
+retrieval/novelty, expected: it is the same written layer, same catalogue,
+same sample; only the reranked document text differs. Cost: 101.8ms/query
+against `+reranker+written`'s 94.0ms/query - about 8% slower, from sending
+a longer document to the reranker.
+
+One honest exception, at smaller catalogue sizes only: at 200 operations,
+axis C reads 80% at K=10 for `+reranker(w)+written` against 100% for
+`+reranker+written`, converging to 100% by K=50; at 600 operations, C reads
+67% at K=10/20 against 73%, again converging to 80% by K=50. Both gaps
+close before K=50 and neither appears at the full 1000-operation catalogue,
+where C is identical at every K - recorded here because the instructions
+this entry answers to say to look for a moved axis and say so either way,
+not because it changes the verdict at the size this subproject reports.
+
+**The pick half did not hold - showing the examples makes the picker's
+raw choice worse, not better.** Two new rows, both against the written
+shortlist, to tell the two effects apart:
+
+- `pick:e5-large-q8+reranker(w)+written` - the reranker reads the
+  examples (the row above's shortlist), and the picker is shown them too.
+- `pick:e5-large-q8+reranker+written(shown)` - the plain `+written`
+  shortlist, byte-unchanged, with the examples shown to the picker only.
+
+Both use `PICK_SYSTEM_PROMPT_WITH_EXAMPLES`; the three rows below keep the
+untouched `PICK_SYSTEM_PROMPT` and are confirmed byte-identical to their
+own prior numbers (above).
+
+K=20, 1000 operations, correct%/flagged%:
+
+| row                                        | A      | B      | C     | D     | E     | overall |
+| ------------------------------------------ | ------ | ------ | ----- | ----- | ----- | ------- |
+| `pick:e5-large-q8+reranker`                | 100/56 | 100/52 | 72/52 | 53/27 | 70/70 | 83/51   |
+| `pick:e5-large-q8+reranker+written`        | 84/48  | 96/36  | 68/64 | 60/20 | 70/70 | 78/47   |
+| `pick:e5-large-q8+reranker(w)+written`     | 68/40  | 84/12  | 60/80 | 60/20 | 70/50 | 69/41   |
+| `pick:e5-large-q8+reranker+written(shown)` | 72/52  | 84/20  | 60/52 | 60/27 | 70/50 | 70/40   |
+
+Against `+written`'s own pick row (the closest comparison, same
+shortlist), both examples-shown variants read _worse_ on overall correct
+(78 → 69 and 70), on axis A (84 → 68 and 72 - the unambiguous questions,
+where a wrong pick or a false flag is a straightforward loss), and on axis
+B correct (96 → 84 both) - D and E are unchanged (60/20 and 70/~50 in all
+three written-shortlist rows), the one place the direction matches what
+the reranker's own gain would predict, and it is a wash rather than a
+gain: showing the picker the very thing that recovered axis D at the
+reranker did not carry that recovery to the pick.
+
+Flagged rates move the wrong way for what a flagged rate is supposed to
+mean. Axis B (genuinely ambiguous, where a high flagged% is desired) falls
+36% (`+written`) → 12% (`+reranker(w)+written`) → 20%
+(`+written(shown)`) - showing the examples makes the picker _less_ likely
+to flag the questions it should be flagging, not more. Axis A (unambiguous,
+where a high flagged% is a false alarm) moves in both directions across
+the two new rows - 48 → 40 for `+reranker(w)+written` (fewer false alarms,
+alongside fewer correct picks - not a trade worth taking) and 48 → 52 for
+`+written(shown)` (more false alarms, with no accuracy gain to show for
+it). Axis C, the closest thing to a genuine improvement in this pair,
+reads 64 → 80 correct for `+reranker(w)+written` alone - but that row's own
+overall is still down 9 points from `+written`, so this one axis's gain
+does not rescue the row.
+
+**Wall-clock.** The two new pick rows read ~416ms/question (`
++reranker(w)+written` 415.9, `+written(shown)` 418.0) against the three
+untouched rows' ~305-309ms/question - `+reranker(w)+written`'s shortlist
+itself costs more (101.8ms vs 94.0ms for the reranker call, per the recall
+table above), and both new rows' user message is longer (every candidate's
+summary line now carries an `e.g.` column), which is more tokens for the
+9B model to read before it answers - consistent with, not simply equal to,
+the shortlist's own added cost.
+
+**Verdict, stated plainly and per axis.** The hypothesis held for the
+reranker and failed for the picker, and the two verdicts do not cancel out
+into a net recommendation to wire this up as one mechanism:
+
+- Does written-in-reranker recover axis D recall? Yes, completely, at
+  every K measured, at zero measured cost to A, B or E and (at the full
+  1000-op catalogue) to C, for about 8% more reranker latency.
+- Does showing examples to the picker recover the picker's own score?
+  No. Overall correct falls further below `+written`'s own pick row in
+  both new variants (69 and 70, against 78), not just short of the
+  reranker's own gain.
+- Does it raise false alarms on axis A or lower recall on axis B? Recall
+  (the retrieval-side measurement) does not move on either axis, at any K,
+  at 1000 operations - the "does it cost something elsewhere" question the
+  reranker half was measured against comes back clean. The pick's own
+  axis-B _flagged_ rate (not recall) falls, the wrong direction for what a
+  flagged rate on the genuinely-ambiguous axis is supposed to do, and
+  axis-A's flagged rate moves in opposite directions across the two new
+  rows depending on which side gained the examples - neither reads as a
+  false-alarm improvement.
+
+`docs/specs/describing.md` section 4 is corrected to record the reranker
+answer; section 10 loses the now-answered open question, with a note that
+the picker side reopens a narrower one (whether a different presentation
+of the examples, not just showing the same list, would read differently to
+a 9B model) rather than settling it.
+
+**Aside: `make check` inside a git worktree.** Found 2026-09-15 while
+pushing, unrelated to the measurement above but recorded here per the
+housekeeping note that asked for it: running `make check` inside a `git
+worktree` (rather than a plain clone) produces a false `services-lint`
+failure from `harness/guard/archcheck` - `golangci.yml`'s
+`relative-path-mode: gitroot` cannot resolve the git root when `.git` is a
+file (a worktree's `.git` is a pointer file, not a directory), so the
+`^harness/` forbidigo exclusion stops matching anything and every
+`harness/`-rooted file trips the rule meant to exempt it. A real clone
+(this session's own working directory included) is unaffected.
+
+**Verification.** `docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read
+90224 immediately before the corrected-prompt `make narrowing` run in this
+entry and 99567 after - all of that difference is the live report itself
+(one recall row plus five pick rows, `PICK_SHORTLIST_K` candidates each,
+over 500 questions x 4 catalogue sizes), never from `make check`, which
+made no live call either side of it. `make fmt && make check` green, zero
+suppressions.

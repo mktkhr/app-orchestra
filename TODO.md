@@ -8,14 +8,7 @@ _Nothing in progress._
 
 ## Next
 
-1. **Let the reranker read the written examples.** The cross-encoder
-   rescores on `combinedTextOf` alone (`docs/specs/describing.md` section 4) and never sees an utterance. Measured, this costs the written
-   layer's own axis D seven points at K=10 once the two-stage
-   configuration runs (80% to 73%, `DECISIONS.md`, 2026-09-15, "The
-   catalogue says it"): the layer that closes the vocabulary gap is
-   partially undone by the stage that runs after it. `docs/specs/describing.md`
-   section 10 names this as open and not measured here.
-2. **Choose what the product uses, and wire it into `services/platform`.**
+1. **Choose what the product uses, and wire it into `services/platform`.**
    The pick reads the reranker's order and the top 20 candidates, now
    measured as a report row rather than by hand - see `DECISIONS.md`,
    2026-09-15 ("Measuring the pick: three report rows, and whether the
@@ -33,13 +26,19 @@ _Nothing in progress._
    vocabulary gap: `docs/specs/describing.md`'s written-utterance layer,
    `x-orchestra-examples` on a contract operation, blind per AC-G-105,
    which moves axis D to 80%/93% (K=10/K=50) alone and reaches 89% overall,
-   73% axis D at K=10 in the headline two-stage row
-   `e5-large-q8+reranker+written`. See `DECISIONS.md`, 2026-09-15 ("the
-   corpus answer key is fixed, and every recall figure moves" for the base
-   table, "The catalogue says it" for the utterance layers) for the
-   contract-check cross-check and the alternation cost; item 1 above is
-   this mechanism's own open caveat.
-3. A genre/domain layer above individual services - grouping services by
+   and (once the reranker was taught to read the written examples too,
+   `DECISIONS.md` 2026-09-15 "Letting the reranker read the written
+   examples") 80% axis D at K=10 in the headline two-stage row
+   `e5-large-q8+reranker(w)+written`, at zero cost to the axes that already
+   worked. See `DECISIONS.md`, 2026-09-15 ("the corpus answer key is fixed,
+   and every recall figure moves" for the base table, "The catalogue says
+   it" for the utterance layers, "Letting the reranker read the written
+   examples" for the reranker fix) for the contract-check cross-check and
+   the alternation cost. The pick side of that same fix did not carry over
+   - showing the picker the written examples made its raw pick worse, not
+     better (same entry) - so the pick this item wires in should read the
+     plain `+reranker+written` shortlist, not the examples-shown variant.
+2. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
    exposed operation in `services/inventory` carries the single tag `items`
@@ -47,12 +46,12 @@ _Nothing in progress._
    group nothing beyond what `OperationPicker`'s own `groupBy` (off
    `serviceDisplayName`) already does. Worth building once a service
    carries more than one tag over its own exposed operations.
-4. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+3. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-5. **Open defect: a question whose filter word matches no enum value gets
+4. **Open defect: a question whose filter word matches no enum value gets
    every row back, silently.** On `qwen3.5-9b-q8`, `no-enum-value` (破損した
    在庫はある？) reaches this outcome 16-20 of 30 runs, the attendance
    variant (有給の勤怠はある？) 5-9 of 10 - both measured three times across
@@ -67,7 +66,7 @@ _Nothing in progress._
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
-6. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+5. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -78,13 +77,13 @@ _Nothing in progress._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-7. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+6. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
 
-8. **`<Typography color="text.secondary">` is a silent no-op almost
+7. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
@@ -106,6 +105,35 @@ _Nothing in progress._
 
 ## Done
 
+- **Let the reranker read the written examples.** A new recall row,
+  `e5-large-q8+reranker(w)+written` (`e2e/narrowing/utterances/reranker-written.ts`),
+  reranks on `combinedTextOf(operation)` plus that operation's own written
+  examples instead of `combinedTextOf` alone - the fix for what "Measuring
+  the pick" (below) and "The catalogue says it" found: a blind reranker
+  pushed the written layer's own axis D back down from 80% to 73% at K=10.
+  Reading the examples recovers axis D exactly, to the written layer's own
+  blind number, at every K (80%/93%/93% at K=10/20/50), at zero measured
+  cost to A, B, C or E, for about 8% more reranker latency. Two new pick
+  rows tried the same fix on the picker (`e.g.` columns added to the
+  candidate lines `pick/client.ts` sends, on both the examples-reranked
+  shortlist and the plain `+written` one) and both read worse than the
+  plain `+written` pick row, not better - overall correct falls further
+  (78% → 69%/70%) and the axis-B flagged rate falls too. A mistake was
+  caught before being recorded: editing the shared system prompt in place
+  moved the three pre-existing pick rows' own numbers by up to eleven
+  points on one added sentence alone; fixed with a second, opt-in prompt
+  constant so the original three rows keep the exact prompt that produced
+  their recorded numbers - verified by re-running the full report and
+  diffing every pre-existing row byte-identical against the pre-change
+  baseline. `docs/specs/describing.md` sections 4 and 10 carry the measured
+  answer; `make check` still calls no model (`docker logs llama-swap`'s
+  `POST /v1/` count: 90224 before the corrected-prompt `make narrowing` run
+  that produced the numbers above, 99567 after). See `STATE.md` and
+  `DECISIONS.md`, 2026-09-15 ("Letting the reranker read the written
+  examples: it fixes retrieval, it does not fix the pick") for the full
+  per-axis tables and the prompt-fragility finding. Next: item 1 above
+  (choose what the product uses) should wire in the plain
+  `+reranker+written` shortlist, not an examples-shown variant.
 - **Measure the pick, not only the recall.** `make narrowing` gained three
   rows - `pick:e5-large-q8+reranker`, `pick:e5-large-q8+reranker+written`
   and `pick:e5-large-q8+reranker+both` - each feeding the local
@@ -130,8 +158,8 @@ _Nothing in progress._
   pick: three report rows, and whether the written layer's recall gain
   survives to the pick") for the full per-axis tables, the flagged-rate
   read against axis B/axis A, and the thinking-budget guard's real-transport
-  verification. Next: item 1 above (let the reranker read the written
-  examples) and item 2 (choose what the product uses).
+  verification. Next: let the reranker read the written examples (done,
+  see the entry above) and choose what the product uses (`## Next` item 1).
 - **The catalogue's own vocabulary - the residual gap - is closed by a
   written examples layer, measured against a generated one that is a
   negative result.** `docs/plans/describing.md` (five tasks): an operation

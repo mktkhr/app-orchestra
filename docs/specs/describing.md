@@ -76,9 +76,32 @@ question, its score is the maximum over all of them. Retrieval, reranking and
 everything after are unchanged; they see a better-scored operation and
 nothing else.
 
-The reranker sees the operation's own text, not its utterances. It is a
-cross-encoder that reads the actual description; the utterances have done
-their work by getting the operation into the fifty.
+The reranker sees the operation's own text, not its utterances - except for
+the written layer's own examples, which it should read too. Measured
+(`DECISIONS.md`, 2026-09-15, "Letting the reranker read the written
+examples"): a reranker that scores on `combinedTextOf(operation)` alone
+loses seven points of the written layer's own axis D gain at K=10 (80% →
+73%) once the two-stage configuration runs, because an operation retrieved
+into the fifty by its written example is pushed back down by a reranker
+that never read the example that put it there. Appending the operation's
+written examples to the reranked document text
+(`e2e/narrowing/utterances/reranker-written.ts`) recovers axis D exactly -
+80%/93%/93% at K=10/20/50, identical to the written layer's own blind
+recall at every K - at zero measured cost to any other axis and about 8%
+more reranker latency. Generated utterances stay out of this document: the
+generated layer is a source of noise on retrieval (section 3's negative
+result), and feeding that same noise to the reranker's document text would
+not be a different experiment.
+
+This does not extend to the picker. The same examples shown to the local
+9B picker as an extra column, on the same shortlist, make its raw pick
+_worse_, not better - overall correct falls further below the plain
+`+written` shortlist's own pick score than the reranker's blind spot ever
+cost it, and the axis-B flagged rate (desired high, on the genuinely
+ambiguous questions) falls rather than rises. The reranker and the picker
+read the same information differently; what closes the gap for one does
+not close it for the other, and this document does not recommend showing
+the examples to the picker.
 
 ## 5. Generating them
 
@@ -211,14 +234,15 @@ their users talk. The fixture's examples, written blind, are a stand-in for
 that; a real service's examples will be better or worse than a stand-in, and
 the measurement cannot say which.
 
-The reranker never sees an utterance, written or generated - it rescores on
-`combinedTextOf` alone (section 4). Measured (`DECISIONS.md`, 2026-09-15),
-this costs the written layer's own axis D seven points at K=10 once the
-two-stage configuration runs (80% → 73%): the layer that closes the
-vocabulary gap is partially undone by the stage that runs after it.
-Whether the reranker should read the written examples, and what that would
-cost the axes it currently helps (it lifts every other axis measured), is
-not settled here.
+Whether the reranker should read the written examples is answered
+(section 4, `DECISIONS.md` 2026-09-15 "Letting the reranker read the
+written examples"): it should, and doing so costs nothing measured on the
+axes it already helps. What is not settled is the narrower question that
+measurement opened: the same examples shown to the local picker make its
+own raw pick worse, and a different presentation of them - not the same
+tab-separated column, just relocated - might read differently to a 9B
+model. This document does not attempt that; it records only that showing
+the picker exactly what fixed the reranker did not fix the picker.
 
 And the generated layer's failure was not a matter of prompting it once and
 stopping. Two prompts were tried: the first asked for short paraphrases and

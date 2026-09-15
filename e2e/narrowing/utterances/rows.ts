@@ -8,6 +8,12 @@
  * Kept out of `measure.ts` so that file stays under the line budget;
  * `gatherReport` there calls the functions below exactly as it calls its
  * own `measureEmbeddingConfiguration`/`measureTwoStageConfiguration`.
+ *
+ * A sixth row, `+reranker(w)+written` (TODO.md item 1), lives in its own
+ * sibling file, `reranker-written-row.ts`, rather than here — this file's
+ * import count is already at the harness's per-file dependency cap, and
+ * that row's `measureTwoStageWithWrittenRerankerConfiguration` needs one
+ * more import (`reranker-written.ts`) than fits under it.
  */
 import { embedCatalogue, embedUtteranceVectors } from "../embedding/index.ts";
 import { catalogOf } from "../fixture/index.ts";

@@ -23,6 +23,10 @@ export {
 } from "./contract.ts";
 export { narrow, utteranceNarrowerOf } from "./narrower.ts";
 export { twoStageWithUtterancesNarrowerOf } from "./two-stage.ts";
+export {
+  TWO_STAGE_WRITTEN_RERANKER_CONFIG_ID,
+  twoStageWithWrittenRerankerNarrowerOf,
+} from "./reranker-written.ts";
 export { mergeUtterances, writtenUtterancesOf } from "./layers.ts";
 export {
   TWO_STAGE_BOTH_CONFIG_ID,
@@ -30,3 +34,4 @@ export {
   measureTwoStageWithUtterancesConfiguration,
   measureUtteranceConfiguration,
 } from "./rows.ts";
+export { measureTwoStageWithWrittenRerankerConfiguration } from "./reranker-written-row.ts";

@@ -62,6 +62,40 @@ function fakeTransport(choice: FakeChoice): FetchLike {
     );
 }
 
+/** A stand-in reply that satisfies the thinking-budget guard, plus a `body()` reading back the last request captured. */
+function capturingFetch(): { readonly fetchImpl: FetchLike; readonly body: () => unknown } {
+  let captured: unknown = {};
+  const fetchImpl: FetchLike = (_url, init) => {
+    captured = bodyOf(init);
+
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: "" } }] }),
+      ),
+    );
+  };
+
+  return { fetchImpl, body: () => captured };
+}
+
+/** The `/v1/chat/completions` request body `pick` should send for `question` and `candidates`, given a formatted user message's content. */
+function expectedRequestBody(
+  question: string,
+  userContent: string,
+  systemPrompt: string = PICK_SYSTEM_PROMPT,
+): unknown {
+  return {
+    model: PICK_MODEL,
+    temperature: 0,
+    max_tokens: 200,
+    chat_template_kwargs: { enable_thinking: false },
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: `質問: ${question}\n\n候補:\n${userContent}` },
+    ],
+  };
+}
+
 test("pick finds the longest candidate id when one is a substring of another", async () => {
   const result = await pick(
     "在庫を見せて",
@@ -111,35 +145,77 @@ test("pick does not flag ambiguous when the word is absent", async () => {
 });
 
 test("pick sends the model, temperature 0, max_tokens 200, thinking disabled, the verbatim system prompt and a formatted user message", async () => {
-  let capturedBody: unknown = {};
-  const fetchImpl: FetchLike = (_url, init) => {
-    capturedBody = bodyOf(init);
-
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: "" } }] }),
-      ),
-    );
-  };
+  const { fetchImpl, body } = capturingFetch();
 
   await pick("在庫を見せて", CANDIDATES, newPickGuardState(), fetchImpl, "http://fake");
 
-  expect(capturedBody).toEqual({
-    model: PICK_MODEL,
-    temperature: 0,
-    max_tokens: 200,
-    chat_template_kwargs: { enable_thinking: false },
-    messages: [
-      { role: "system", content: PICK_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content:
-          "質問: 在庫を見せて\n\n候補:\n" +
-          "listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
-          "listInventoryLots\t在庫管理\tロットの一覧を返す",
-      },
-    ],
-  });
+  expect(body()).toEqual(
+    expectedRequestBody(
+      "在庫を見せて",
+      "listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
+        "listInventoryLots\t在庫管理\tロットの一覧を返す",
+    ),
+  );
+});
+
+test("pick appends an e.g. column for a candidate whose examples are non-empty (TODO.md item 1)", async () => {
+  const { fetchImpl, body } = capturingFetch();
+  const candidatesWithExamples: readonly PickCandidate[] = [
+    {
+      operationId: "listInventoryItems",
+      serviceDisplayName: "在庫管理",
+      summary: "在庫の一覧を返す",
+      examples: ["在庫を見せて", "在庫の一覧が見たい"],
+    },
+    {
+      operationId: "listInventoryLots",
+      serviceDisplayName: "在庫管理",
+      summary: "ロットの一覧を返す",
+    },
+  ];
+
+  await pick("在庫を見せて", candidatesWithExamples, newPickGuardState(), fetchImpl, "http://fake");
+
+  expect(body()).toEqual(
+    expectedRequestBody(
+      "在庫を見せて",
+      "listInventoryItems\t在庫管理\t在庫の一覧を返す\te.g. 在庫を見せて / 在庫の一覧が見たい\n" +
+        "listInventoryLots\t在庫管理\tロットの一覧を返す",
+    ),
+  );
+});
+
+test("pick omits the e.g. column entirely when a candidate's examples are absent or empty", async () => {
+  const { fetchImpl, body } = capturingFetch();
+  const candidatesWithEmptyExamples: readonly PickCandidate[] = [
+    {
+      operationId: "listInventoryItems",
+      serviceDisplayName: "在庫管理",
+      summary: "在庫の一覧を返す",
+      examples: [],
+    },
+    {
+      operationId: "listInventoryLots",
+      serviceDisplayName: "在庫管理",
+      summary: "ロットの一覧を返す",
+    },
+  ];
+
+  await pick(
+    "在庫を見せて",
+    candidatesWithEmptyExamples,
+    newPickGuardState(),
+    fetchImpl,
+    "http://fake",
+  );
+
+  expect(body()).toEqual(
+    expectedRequestBody(
+      "在庫を見せて",
+      "listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
+        "listInventoryLots\t在庫管理\tロットの一覧を返す",
+    ),
+  );
 });
 
 test("pick rejects on the first response when finish_reason is not stop", async () => {

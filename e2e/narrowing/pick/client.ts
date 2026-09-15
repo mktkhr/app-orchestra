@@ -19,7 +19,7 @@ import { DEFAULT_BASE_URL, type FetchLike } from "../embedding/client.ts";
 /** The chat model behind the picker (DECISIONS.md 2026-09-15). */
 export const PICK_MODEL = "qwen3.5-9b-q8";
 
-/** Copied verbatim from the hand-run script that produced the 83 in DECISIONS.md 2026-09-15. */
+/** Copied verbatim from the hand-run script that produced the 83 in DECISIONS.md 2026-09-15. Left byte-for-byte unchanged (TODO.md item 1): the three pre-existing pick rows (`pick:e5-large-q8+reranker`, `+written`, `+both`) must keep using exactly this text, since a measurement taken under a different prompt is not comparable to the one already recorded for them. */
 export const PICK_SYSTEM_PROMPT = `あなたは社内APIの振り分け役。質問に対して、候補一覧の中から呼ぶべきAPIを1つ選ぶ。
 
 出力は次の形式の1行だけ。説明もタグも書かない。
@@ -29,11 +29,36 @@ listInventoryItems certain
 ambiguous は「質問文だけでは候補を1つに決められない」場合。自信の有無ではなく、質問が足りていない場合。
 ambiguous のときも、最も可能性の高い operationId を必ず1つ挙げること。`;
 
-/** One candidate the picker is offered, in the same order the reranker returned it. */
+/**
+ * `PICK_SYSTEM_PROMPT` plus one added sentence (TODO.md item 1): the
+ * pick-side half of "let the reranker read the written examples" - a
+ * candidate line can now carry an `e.g.` column of an operation's written
+ * examples (`candidateLine` below), and without being told what that
+ * column is, the picker has no reason to weigh it.
+ *
+ * Deliberately a *separate* constant from `PICK_SYSTEM_PROMPT` rather than
+ * an edit to it: an earlier version of this change edited
+ * `PICK_SYSTEM_PROMPT` in place, which silently changed the prompt every
+ * pick row uses, including the three pre-existing ones that show no `e.g.`
+ * column at all - re-running the full report moved
+ * `pick:e5-large-q8+reranker` from 83%/51% correct/flagged to 77%/47% correct/flagged
+ * on that one added sentence alone, overall and per axis, with the
+ * underlying shortlist unchanged (its own recall row is byte-identical
+ * before and after). `pick/index.ts`'s `pick` takes this prompt as an
+ * explicit parameter, defaulting to `PICK_SYSTEM_PROMPT`, so a caller has
+ * to opt in to the extended one rather than get it by accident - only
+ * `pick:e5-large-q8+reranker(w)+written` and
+ * `pick:e5-large-q8+reranker+written(shown)` do (`gather-pick.ts`).
+ */
+export const PICK_SYSTEM_PROMPT_WITH_EXAMPLES = `${PICK_SYSTEM_PROMPT}
+候補に e.g. 列がある場合、それはそのAPIに対して人がよく尋ねる質問の例。`;
+
+/** One candidate the picker is offered, in the same order the reranker returned it. `examples`, when present and non-empty, is shown as an extra `e.g.` column (`candidateLine` below) — TODO.md item 1. */
 export interface PickCandidate {
   readonly operationId: string;
   readonly serviceDisplayName: string;
   readonly summary: string;
+  readonly examples?: readonly string[];
 }
 
 /** The picker's outcome for one question. */
@@ -113,9 +138,20 @@ function assertNoThinkingLeak(parsed: ParsedChatResponse): void {
   );
 }
 
-/** One candidate line: `operationId\tservice display name\tsummary`, as the model sees it. */
+/**
+ * One candidate line: `operationId\tservice display name\tsummary`, plus a
+ * trailing `\te.g. 例文1 / 例文2` when `candidate.examples` is present and
+ * non-empty (TODO.md item 1) - omitted entirely otherwise, so the three
+ * pre-existing pick rows' candidate lines are unchanged.
+ */
 function candidateLine(candidate: PickCandidate): string {
-  return `${candidate.operationId}\t${candidate.serviceDisplayName}\t${candidate.summary}`;
+  const base = `${candidate.operationId}\t${candidate.serviceDisplayName}\t${candidate.summary}`;
+  const examplesColumn =
+    candidate.examples === undefined || candidate.examples.length === 0
+      ? ""
+      : `\te.g. ${candidate.examples.join(" / ")}`;
+
+  return base + examplesColumn;
 }
 
 function userMessageFor(question: string, candidates: readonly PickCandidate[]): string {
@@ -142,6 +178,9 @@ function parsePick(content: string, candidateIds: readonly string[]): PickResult
  * leak assertion above runs on the first real response only - a test's fake
  * transport is checked the same way its own `guardState` says it should be,
  * so a test that wants to see the guard fire uses a fresh `newPickGuardState()`.
+ * `systemPrompt` defaults to `PICK_SYSTEM_PROMPT` - pass
+ * `PICK_SYSTEM_PROMPT_WITH_EXAMPLES` only for a variant whose candidates
+ * carry the `e.g.` column (TODO.md item 1's byte-identity note above).
  */
 export async function pick(
   question: string,
@@ -149,6 +188,7 @@ export async function pick(
   guardState: PickGuardState,
   fetchImpl: FetchLike = fetch,
   baseUrl: string = DEFAULT_BASE_URL,
+  systemPrompt: string = PICK_SYSTEM_PROMPT,
 ): Promise<PickResult> {
   const response = await fetchImpl(`${baseUrl}/v1/chat/completions`, {
     method: "POST",
@@ -159,7 +199,7 @@ export async function pick(
       max_tokens: 200,
       chat_template_kwargs: { enable_thinking: false },
       messages: [
-        { role: "system", content: PICK_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userMessageFor(question, candidates) },
       ],
     }),

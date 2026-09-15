@@ -1,5 +1,5 @@
 /**
- * The three pick rows (TODO.md "Measure the pick, not only the recall";
+ * The five pick rows (TODO.md "Measure the pick, not only the recall";
  * DECISIONS.md 2026-09-15, "The local picker reads the shortlist in
  * reranker order: 78 → 83, for nothing"): `qwen3.5-9b-q8`, thinking off,
  * picks one operationId out of the top `PICK_SHORTLIST_K` reranked
@@ -20,6 +20,14 @@
  * row: the plain, `+written` and `+both` two-stage shortlists it reranks
  * read the same `e5-large-q8` catalogue vectors those rows already embedded,
  * so nothing here re-embeds the catalogue.
+ *
+ * TODO.md item 1 adds two rows, both against the written shortlist so the
+ * two effects can be told apart: `PICK_WRITTEN_RERANKER_CONFIG_ID` (the
+ * reranker reads the written examples, `utterances/reranker-written.ts`'s
+ * shortlist, and the picker is shown them too) and
+ * `PICK_WRITTEN_SHOWN_CONFIG_ID` (the plain `+written` shortlist,
+ * unchanged, with the examples shown to the picker only). The three
+ * pre-existing rows above are otherwise untouched.
  */
 import { embedCatalogue, embedUtteranceVectors } from "./embedding/index.ts";
 import type { FetchLike } from "./embedding/client.ts";
@@ -43,18 +51,24 @@ export const PICK_PLAIN_CONFIG_ID = "pick:e5-large-q8+reranker";
 export const PICK_WRITTEN_CONFIG_ID = "pick:e5-large-q8+reranker+written";
 /** The same shortlist, built from both utterance layers (`utterances/rows.ts`'s `TWO_STAGE_BOTH_CONFIG_ID` shortlist). */
 export const PICK_BOTH_CONFIG_ID = "pick:e5-large-q8+reranker+both";
+/** The written-layer shortlist reranked on the written examples (`utterances/reranker-written.ts`), with those same examples shown to the picker — TODO.md item 1's combined variant. */
+export const PICK_WRITTEN_RERANKER_CONFIG_ID = "pick:e5-large-q8+reranker(w)+written";
+/** The plain `+written` shortlist, unchanged, with the written examples shown to the picker only — TODO.md item 1's picker-only variant, to separate the two effects. */
+export const PICK_WRITTEN_SHOWN_CONFIG_ID = "pick:e5-large-q8+reranker+written(shown)";
 
 const PICK_CONFIG_IDS = [
   PICK_PLAIN_CONFIG_ID,
   PICK_WRITTEN_CONFIG_ID,
   PICK_BOTH_CONFIG_ID,
+  PICK_WRITTEN_RERANKER_CONFIG_ID,
+  PICK_WRITTEN_SHOWN_CONFIG_ID,
 ] as const;
 
 function skipAllPickRows(skipped: SkippedConfiguration[], reason: string): void {
   for (const configId of PICK_CONFIG_IDS) skipped.push({ configId, reason });
 }
 
-/** Every pick row's inputs: the plain shortlist and the two utterance-scored ones, all against the same cached catalogue vectors and question vectors. */
+/** Every pick row's inputs: the plain shortlist and the four utterance-scored ones, all against the same cached catalogue vectors and question vectors. */
 async function pickVariantsOf(
   phase: GenerationPhaseResult,
   fullCatalog: readonly FixtureOperation[],
@@ -84,12 +98,23 @@ async function pickVariantsOf(
     { configId: PICK_PLAIN_CONFIG_ID, utterances: undefined },
     { configId: PICK_WRITTEN_CONFIG_ID, utterances: writtenUtteranceVectors },
     { configId: PICK_BOTH_CONFIG_ID, utterances: bothUtteranceVectors },
+    {
+      configId: PICK_WRITTEN_RERANKER_CONFIG_ID,
+      utterances: writtenUtteranceVectors,
+      useWrittenReranker: true,
+      showExamples: true,
+    },
+    {
+      configId: PICK_WRITTEN_SHOWN_CONFIG_ID,
+      utterances: writtenUtteranceVectors,
+      showExamples: true,
+    },
   ];
 }
 
 /**
  * Gathers and scores every pick row, appending to `pickConfigurations` when
- * the transport is reachable and recording all three as skipped, with the
+ * the transport is reachable and recording all five as skipped, with the
  * same reason, otherwise — exactly like the other phases in
  * `gather-phases.ts`.
  */
