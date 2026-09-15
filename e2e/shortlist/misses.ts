@@ -2,6 +2,7 @@ import { writeFileSync } from "node:fs";
 
 import type { Axis } from "../narrowing/corpus/index.ts";
 import { outputPathFor } from "./pass-io.ts";
+import { readResults } from "./parse-result.ts";
 import { score, type Kind, type QuestionResult } from "./score.ts";
 
 /**
@@ -79,4 +80,15 @@ export function writeMisses(wording: string, results: readonly QuestionResult[])
     outputPathFor(`misses-${wording}`).replace(/\.jsonl$/u, ".txt"),
     renderMisses(wording, results),
   );
+}
+
+/**
+ * writeMisses, reading the whole pass's own output file first - not just
+ * one run's freshly appended rows, so a resumed pass's miss list still
+ * covers every row (pass-io.ts's alreadyDone). Split out so run.ts (its
+ * own eslint import/max-dependencies cap) does not have to import
+ * parse-result.ts itself just to call readResults before writeMisses.
+ */
+export function writeMissesFromOutput(variant: string, outputName: string): void {
+  writeMisses(variant, readResults(outputPathFor(outputName)));
 }

@@ -4,9 +4,9 @@ import { questions } from "../narrowing/corpus/index.ts";
 import { signIn, type Session } from "../src/helpers/auth.ts";
 import { boot, type Booted } from "./boot.ts";
 import { safeOperationIds } from "./catalogue-safety.ts";
-import { writeMisses } from "./misses.ts";
-import { readResults } from "./parse-result.ts";
-import { alreadyDone, appendResult, outDir, outputPathFor } from "./pass-io.ts";
+import { repeatPenaltyArg, stagesArg, thinkingArg, wordingNames } from "./flags.ts";
+import { writeMissesFromOutput } from "./misses.ts";
+import { alreadyDone, appendResult, outDir } from "./pass-io.ts";
 import { kindOf, postPlan } from "./plan-request.ts";
 import type { QuestionResult } from "./score.ts";
 
@@ -152,23 +152,27 @@ async function runPass(pass: "on" | "off"): Promise<void> {
   }
 }
 
-/** The `-nothink` / `-rp<value>` suffix a thinking/repeat-penalty variant's output files carry (see this file's own doc comment) - "" for a plain wording pass, unchanged from before either flag existed. */
+/** The `-nothink` / `-rp<value>` / `-stages2` suffix a variant's output files carry (see this file's own doc comment) - "" for a plain wording pass, unchanged from before any of the three flags existed. `stages` of `1` or `undefined` carries no suffix - `STAGES=1` reproduces the plain pass byte for byte (docs/plans/staging.md, AC-S-101). */
 function variantSuffix(
   thinking: "on" | "off" | undefined,
   repeatPenalty: number | undefined,
+  stages: 1 | 2 | undefined,
 ): string {
   const nothink = thinking === "off" ? "-nothink" : "";
   const rp = repeatPenalty === undefined ? "" : `-rp${String(repeatPenalty)}`;
+  const st = stages === undefined || stages === 1 ? "" : `-stages${String(stages)}`;
 
-  return `${nothink}${rp}`;
+  return `${nothink}${rp}${st}`;
 }
 
 /**
- * One pass for one named wording, optionally overriding thinking and/or
- * the repeat penalty: narrowing on, K=20, `ORCHESTRA_PLANNER_WORDING=<name>`
+ * One pass for one named wording, optionally overriding thinking, the
+ * repeat penalty and/or the staging (docs/plans/staging.md, Task 3):
+ * narrowing on, K=20, `ORCHESTRA_PLANNER_WORDING=<name>`
  * (docs/plans/wording.md Task 2, Step 1) plus, when given,
- * `ORCHESTRA_PLANNER_THINKING` / `ORCHESTRA_PLANNER_REPEAT_PENALTY`
- * (platform knobs subproject, 2026-09-16). Rows go to
+ * `ORCHESTRA_PLANNER_THINKING` / `ORCHESTRA_PLANNER_REPEAT_PENALTY` /
+ * `ORCHESTRA_PLANNER_STAGES` (platform knobs subproject, 2026-09-16;
+ * staging, docs/plans/staging.md). Rows go to
  * `out/on-<name><suffix>.jsonl`; the miss list to
  * `out/misses-<name><suffix>.txt`; the platform's own stdout/stderr -
  * including the `planner truncated by max_tokens` warn line - to
@@ -178,8 +182,9 @@ async function runWordingPass(
   name: string,
   thinking?: "on" | "off",
   repeatPenalty?: number,
+  stages?: 1 | 2,
 ): Promise<void> {
-  const variant = `${name}${variantSuffix(thinking, repeatPenalty)}`;
+  const variant = `${name}${variantSuffix(thinking, repeatPenalty, stages)}`;
   const outputName = `on-${variant}`;
   const booted: Booted = await boot({
     narrowing: NARROWING,
@@ -187,83 +192,33 @@ async function runWordingPass(
     logFile: path.join(outDir, `${outputName}.log`),
     ...(thinking === undefined ? {} : { thinking }),
     ...(repeatPenalty === undefined ? {} : { repeatPenalty }),
+    ...(stages === undefined ? {} : { stages }),
   });
 
   try {
     const session = await signIn(booted.baseUrl, "admin", booted.adminPassword);
 
     await runQuestions(outputName, outputName, booted.baseUrl, session);
-    // Read the whole pass's file back - not just this run's freshly
+    // Reads the whole pass's file back - not just this run's freshly
     // appended rows - so a resumed pass's miss list still covers every
     // row, including ones a previous run already wrote (pass-io.ts's
     // alreadyDone).
-    writeMisses(variant, readResults(outputPathFor(outputName)));
+    writeMissesFromOutput(variant, outputName);
   } finally {
     await booted.stop();
   }
-}
-
-/** `--wording a,b,c`'s names, deduplicated in first-seen order - `undefined` when `--wording` was not given at all. */
-function wordingNames(): readonly string[] | undefined {
-  const flagIndex = process.argv.indexOf("--wording");
-
-  if (flagIndex === -1) return undefined;
-
-  const raw = process.argv[flagIndex + 1] ?? "";
-  const named = raw
-    .split(",")
-    .map((n) => n.trim())
-    .filter((n) => n.length > 0);
-
-  return [...new Set(named)];
-}
-
-/** One flag's value, e.g. `flagValue("--thinking")` for `--thinking off`. `undefined` when the flag was not given. */
-function flagValue(flag: string): string | undefined {
-  const flagIndex = process.argv.indexOf(flag);
-
-  if (flagIndex === -1) return undefined;
-
-  return process.argv[flagIndex + 1];
-}
-
-/** `--thinking on|off`, validated - anything else is a usage error, not a silent no-op. */
-function thinkingArg(): "on" | "off" | undefined {
-  const raw = flagValue("--thinking");
-
-  if (raw === undefined) return undefined;
-
-  if (raw !== "on" && raw !== "off") {
-    throw new Error(`--thinking must be "on" or "off", got ${JSON.stringify(raw)}`);
-  }
-
-  return raw;
-}
-
-/** `--repeat-penalty <float>`, validated - anything that does not parse as a finite number is a usage error. */
-function repeatPenaltyArg(): number | undefined {
-  const raw = flagValue("--repeat-penalty");
-
-  if (raw === undefined) return undefined;
-
-  const parsed = Number(raw);
-
-  if (!Number.isFinite(parsed)) {
-    throw new TypeError(`--repeat-penalty must be a number, got ${JSON.stringify(raw)}`);
-  }
-
-  return parsed;
 }
 
 async function main(): Promise<void> {
   const names = wordingNames();
   const thinking = thinkingArg();
   const repeatPenalty = repeatPenaltyArg();
-  const isVariant = thinking !== undefined || repeatPenalty !== undefined;
+  const stages = stagesArg();
+  const isVariant = thinking !== undefined || repeatPenalty !== undefined || stages !== undefined;
 
   if (names !== undefined) {
     // `v1` is always included first as a baseline, unless a thinking/
-    // repeat-penalty variant was asked for - that is a different
+    // repeat-penalty/stages variant was asked for - that is a different
     // experiment with its own recorded baseline (see this file's own doc
     // comment), and forcing an extra `v1` pass through it would only cost
     // GPU time nobody asked to spend.
@@ -272,14 +227,14 @@ async function main(): Promise<void> {
     for (const name of targets) {
       // Sequential and deliberate: one platform boot per wording, one at
       // a time (docs/plans/wording.md Task 2, Step 1).
-      await runWordingPass(name, thinking, repeatPenalty);
+      await runWordingPass(name, thinking, repeatPenalty, stages);
     }
 
     return;
   }
 
   if (isVariant) {
-    await runWordingPass("default", thinking, repeatPenalty);
+    await runWordingPass("default", thinking, repeatPenalty, stages);
 
     return;
   }

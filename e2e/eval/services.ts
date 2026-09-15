@@ -79,6 +79,13 @@ export async function startEvalPlatform(
       ...(process.env["ORCHESTRA_PLANNER_WORDING"] === undefined
         ? {}
         : { ORCHESTRA_PLANNER_WORDING: process.env["ORCHESTRA_PLANNER_WORDING"] }),
+      // docs/plans/staging.md, Task 4: `ORCHESTRA_PLANNER_STAGES=2 make
+      // eval` must be able to check capability/unanswerable/enum cases
+      // under staging too. Passed through only when set, so the default
+      // run is byte-identical to before (AC-S-101).
+      ...(process.env["ORCHESTRA_PLANNER_STAGES"] === undefined
+        ? {}
+        : { ORCHESTRA_PLANNER_STAGES: process.env["ORCHESTRA_PLANNER_STAGES"] }),
     }),
     port: platformPort,
   };
