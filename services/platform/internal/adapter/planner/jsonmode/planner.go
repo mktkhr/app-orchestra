@@ -226,7 +226,9 @@ func (p *Planner) complete(ctx context.Context, messages []chat.Message, offerPr
 		responseFormat = p.responseFormatWithProposePanel
 	}
 
-	resp, err := p.client.Complete(ctx, chat.Request{Messages: messages, ResponseFormat: responseFormat})
+	resp, err := p.client.Complete(ctx, &chat.Request{
+		Messages: messages, ResponseFormat: responseFormat, Temperature: chat.Zero(),
+	})
 	if err == nil {
 		return resp, nil
 	}
@@ -235,7 +237,7 @@ func (p *Planner) complete(ctx context.Context, messages []chat.Message, offerPr
 		return chat.Response{}, fmt.Errorf("calling chat completion: %w", err)
 	}
 
-	resp, err = p.client.Complete(ctx, chat.Request{Messages: messages})
+	resp, err = p.client.Complete(ctx, &chat.Request{Messages: messages, Temperature: chat.Zero()})
 	if err != nil {
 		return chat.Response{}, fmt.Errorf("calling chat completion without response_format: %w", err)
 	}

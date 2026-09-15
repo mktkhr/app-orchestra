@@ -86,12 +86,32 @@ type ResponseFormat struct {
 }
 
 // Request is one chat-completions call. Model, when empty, uses the
-// Client's configured default (see Config.Model).
+// Client's configured default (see Config.Model). Temperature is a
+// pointer so "unset" (let the endpoint decide) is distinct from "0" - both
+// planners (internal/adapter/planner/toolcall,
+// internal/adapter/planner/jsonmode) always set it explicitly, to 0, for
+// every planning call: sent as nothing, llama-server's own default
+// applies, and the same 100-question fixture scored 32 and then 16 on one
+// axis across two runs with nothing else changed (measured 2026-09-15,
+// docs/specs/shortlisting.md) - planning has to be deterministic, or a
+// measurement of it means nothing.
 type Request struct {
 	Model          string
 	Messages       []Message
 	Tools          []ToolDefinition
 	ResponseFormat *ResponseFormat
+	Temperature    *float64
+}
+
+// Zero builds Request.Temperature's fixed value for every planning call
+// (defect 2, docs/specs/shortlisting.md - see Request's own doc comment):
+// a package-level *float64 would be a mutable global every caller shares
+// (gochecknoglobals, harness/quality/go/golangci.yml), so this returns a
+// fresh pointer instead - callers write `Temperature: chat.Zero()`.
+func Zero() *float64 {
+	temperature := 0.0
+
+	return &temperature
 }
 
 // Response is the one choice this package reads back: n=1 is implicit,
@@ -110,6 +130,7 @@ type wireRequest struct {
 	Messages       []Message        `json:"messages"`
 	Tools          []ToolDefinition `json:"tools,omitempty"`
 	ResponseFormat *ResponseFormat  `json:"response_format,omitempty"`
+	Temperature    *float64         `json:"temperature,omitempty"`
 }
 
 // wireResponse is the JSON actually read back: only the one choice's
@@ -133,8 +154,12 @@ func New(cfg Config) *Client {
 	return &Client{cfg: cfg, http: &http.Client{Timeout: requestTimeout}}
 }
 
-// Complete sends req and returns the endpoint's one choice.
-func (c *Client) Complete(ctx context.Context, req Request) (Response, error) {
+// Complete sends req and returns the endpoint's one choice. req is a
+// pointer, not the value every caller used to pass directly, because
+// adding Temperature (defect 2, docs/specs/shortlisting.md) grew Request
+// past golangci-lint's gocritic hugeParam threshold (80 bytes; see
+// harness/quality/go/golangci.yml).
+func (c *Client) Complete(ctx context.Context, req *Request) (Response, error) {
 	model := req.Model
 	if model == "" {
 		model = c.cfg.Model
@@ -145,6 +170,7 @@ func (c *Client) Complete(ctx context.Context, req Request) (Response, error) {
 		Messages:       req.Messages,
 		Tools:          req.Tools,
 		ResponseFormat: req.ResponseFormat,
+		Temperature:    req.Temperature,
 	})
 	if err != nil {
 		return Response{}, fmt.Errorf("encoding chat completion request: %w", err)

@@ -5909,3 +5909,89 @@ entry and 99567 after - all of that difference is the live report itself
 over 500 questions x 4 catalogue sizes), never from `make check`, which
 made no live call either side of it. `make fmt && make check` green, zero
 suppressions.
+
+## 2026-09-15 Two defects the shortlisting fixture measured, fixed
+
+Measuring the real planner against the five-service, 1000-operation
+fixture (`docs/specs/shortlisting.md`, 100 questions, narrowing on) turned
+up two defects, both in `services/platform/`, neither visible on the
+product's earlier two-service catalogue.
+
+**Defect 1: `ask_user` asked the model to invent a service name.** 7 of
+100 answers were HTTP 500 `endpoint not found in catalogue:
+<service>/<operationId>`, every one an `ask_user` call whose arguments were
+fabricated - `approval/createApproval`, `salesBundle/createSalesBundle`,
+`summarize/summarizeSalesInvoices`, `expense/ask_user` (the model naming
+its own tool as the operation it was stuck on). `AskUserTool`'s schema
+(`internal/usecase/tools.go`) declared `service` as a required free string,
+alongside `operationId`; with two services the model never had to guess
+right, with five it does, and nothing checked the guess against what the
+catalogue actually offered.
+
+Decision: remove `service` from `AskUserTool` entirely rather than
+validate it after the fact. `toolcall.Planner.decisionFromAskUser`
+(`internal/adapter/planner/toolcall/planner.go`) is now a method with
+access to `p.catalog`, and resolves the service from `operationId` via the
+same `resolveService` a real tool call already uses - the model is simply
+never asked a question it cannot reliably answer. When `operationId` does
+not resolve (absent, or invented) the Decision carries only `Question`,
+with `Service`, `OperationID`, `Param` and `Options` all left zero-valued;
+`Orchestrator.ask` (`internal/usecase/orchestrator.go`) turns that into a
+plain `Result{Kind: ResultKindAsk, Question: ...}` instead of
+`ErrEndpointNotFound` - an ask is never a 500, it just has less to offer
+than the model tried to hand back. This is deliberately placed in
+`usecase`, not either planner adapter: `jsonmode.Planner` never had an
+`ask_user` tool schema to begin with (its "ask" shape is free JSON, still
+naming its own `service`/`operationId`), but it gets the same graceful
+degrade for free because the fix lives where both planners' decisions
+converge.
+
+The wire contract needed no change: `PlanResult`'s `ask` variant already
+declares `param` and `options` as optional, not required (only `kind` is
+required at the top level), so a plain ask with neither is already legal
+JSON under `api/openapi.yaml`. What did need fixing was
+`internal/adapter/handler/plan.go`, which unconditionally set
+`out.Param = &result.Param` and always called `toAPIOptions` - for the new
+plain-ask case that sent a pointer to `""` and a pointer to `[]`, not the
+absent fields the contract allows. Both are now only set when non-empty.
+
+**Defect 2: planning was not deterministic.** `chat.Request` sent no
+`temperature` field at all, so llama-server's own default applied; the
+same 100-question fixture scored 32 and then 16 on one axis across two
+runs, with nothing else about the fixture, the catalogue or the model
+changed. A planner that cannot be measured reliably cannot be improved
+reliably either - variance this large swamps any real effect a future fix
+would have.
+
+Decision: `chat.Request` gained `Temperature *float64` - a pointer, not a
+bare `float64`, because the zero value has to mean something different
+from "not set" (an endpoint's own default is a real, if never-used-today,
+option). `chat.Zero()` builds the fixed value (`0.0`) every planning call
+now passes: `toolcall.Planner.Plan`'s one request, and both of
+`jsonmode.Planner.complete`'s attempts (the `response_format` call and its
+retry-without-it fallback). Adding the field pushed `Request` to exactly
+golangci-lint's gocritic `hugeParam` threshold (80 bytes), so
+`chat.Client.Complete` moved from taking `Request` by value to `*Request`
+
+- every call site (both planners, every table test in
+  `internal/adapter/planner/chat/client_test.go`) updated to pass a pointer.
+  `internal/adapter/planner/chat/client_test.go` now asserts
+  `"temperature":0` lands on the actual wire body for a Request that sets
+  `chat.Zero()`, and a separate test asserts the field is absent - not
+  `0` - when Temperature is left nil, so "unset" and "explicitly zero" stay
+  distinguishable at the transport boundary, not just in the Go type.
+
+**Verification.** `docker logs llama-swap 2>&1 | grep -c 'POST /v1/'` read
+101249 both before this work and after `make check` (`services-fmt-check`,
+`services-lint`, `services-test`, `services-build`, `guard-suppressions`,
+`guard-arch`, `guard-fsd`, `guard-coverage` all green) - no model call was
+made anywhere in the loop. `web-lint` was left red at the time of this
+work, but for reasons entirely outside this defect fix's scope: another
+agent's concurrent, in-progress edits under `e2e/**`
+(`git status` showed only `e2e/narrowing/serve.test.ts`,
+`e2e/shortlist/*.ts` modified, none of them touched here). Not re-measured
+against a live model - `make check` runs no model by design, and this fix
+was made and verified against the two defects' own root cause (the
+schema/prompt shape and the wire request), not by re-running the
+100-question fixture, which stays a manual, opt-in exercise
+(`ORCHESTRA_LIVE_LLM=1`).

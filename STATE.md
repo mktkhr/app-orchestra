@@ -1,9 +1,48 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-15 (the reranker reads the written examples; the
-picker does not)_
+_Last updated: 2026-09-15 (two defects the shortlisting fixture measured,
+fixed: `ask_user`'s free-text `service` and no `temperature`)_
 
 ## Summary
+
+**2026-09-15 - `ask_user` no longer asks the model to invent a service
+name; every planning call is now deterministic.** Two defects the
+five-service, 1000-operation fixture (`docs/specs/shortlisting.md`)
+exposed, both in `services/platform/`. (1) 7 of 100 measured `ask_user`
+answers 500'd as `endpoint not found in catalogue: <service>/<operationId>`
+
+- `AskUserTool`'s schema (`internal/usecase/tools.go`) required a free-text
+  `service` alongside `operationId`, and with five services to guess from,
+  the model fabricated `approval/createApproval`, `salesBundle/createSalesBundle`,
+  `summarize/summarizeSalesInvoices`, and even named its own tool as the
+  operation, `expense/ask_user`. `service` is gone from the schema;
+  `toolcall.Planner.decisionFromAskUser` resolves it from `operationId` via
+  `resolveService`, exactly as a real tool call already does
+  (`internal/adapter/planner/toolcall/planner.go`); and `Orchestrator.ask`
+  (`internal/usecase/orchestrator.go`) now degrades an operation id the
+  catalogue does not have - absent or invented, either way - to a plain
+  `ResultKindAsk{Question: ...}` with no param, no options, no target,
+  instead of `ErrEndpointNotFound`: an ask is never a 500. The degrade lives
+  in `usecase`, not either planner adapter, so `jsonmode.Planner` (which
+  never had a "service" schema to fix, since its wire shape is free JSON)
+  gets it too. The handler (`internal/adapter/handler/plan.go`) now leaves
+  `PlanResult.param`/`.options` genuinely absent (nil) for that plain case
+  rather than pointing at an empty string/array - already legal on the
+  existing contract (`param`/`options` were never required on `PlanResult`'s
+  `ask` variant), so no contract change was needed. (2) Planning was not
+  deterministic: `chat.Request` sent no `temperature` at all, so
+  llama-server's own default applied, and the same 100-question fixture
+  scored 32 then 16 on one axis across two runs with nothing else changed.
+  `chat.Request.Temperature *float64` (nil is "unset", distinct from an
+  explicit 0 - `chat.Zero()` builds the pointer) is now sent as `0` on every
+  planning call, in both `toolcall.Planner.Plan` and
+  `jsonmode.Planner.complete` (both its `response_format` attempt and its
+  retry-without attempt). `chat.Client.Complete` moved from `Request` to
+  `*Request`: adding `Temperature` pushed the struct over golangci-lint's
+  gocritic `hugeParam` threshold (80 bytes). `make check` calls no model
+  throughout this work - `docker logs llama-swap 2>&1 | grep -c 'POST
+/v1/'` read 101249 before and 101249 after. See `DECISIONS.md`, 2026-09-15
+  ("Two defects the shortlisting fixture measured, fixed").
 
 **2026-09-15 - the reranker reads the written examples; showing them to the
 picker does not help (TODO.md item 1, closed).** A new recall row,

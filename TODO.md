@@ -105,6 +105,33 @@ _Nothing in progress._
 
 ## Done
 
+- **Fixed two defects the five-service, 1000-operation shortlisting fixture
+  exposed (`docs/specs/shortlisting.md`, measured 2026-09-15).** (1) 7 of
+  100 `ask_user` answers 500'd as `endpoint not found in catalogue` because
+  `ask_user`'s schema asked the model to invent a free-text `service`
+  alongside `operationId` - with five services to guess from it fabricated
+  `approval/createApproval`, `salesBundle/createSalesBundle`,
+  `summarize/summarizeSalesInvoices` and even named its own tool as the
+  operation, `expense/ask_user`. `AskUserTool` (`services/platform/internal/usecase/tools.go`)
+  no longer declares `service` at all; `toolcall.Planner.decisionFromAskUser`
+  (`internal/adapter/planner/toolcall/planner.go`) resolves it from
+  `operationId` via `resolveService`, the same way a real tool call already
+  does, and `Orchestrator.ask` (`internal/usecase/orchestrator.go`) degrades
+  an unresolved/absent operation to a plain `ResultKindAsk` question - no
+  param, no options, no target - instead of `ErrEndpointNotFound`: an ask is
+  never a 500. Fixed in `usecase`, not either planner adapter, so
+  `jsonmode.Planner` gets the same degrade for free. (2) Planning was not
+  deterministic: `chat.Request` sent no `temperature`, so llama-server's own
+  default applied and the same 100-question fixture scored 32 then 16 on one
+  axis across two runs with nothing else changed. `chat.Request.Temperature
+*float64` (nil is genuinely "unset", distinct from 0) is now set to
+  `chat.Zero()` on every planning call in both `toolcall` and `jsonmode`
+  (including jsonmode's no-`response_format` retry). `chat.Client.Complete`
+  moved to a `*Request` parameter along the way - `Temperature` pushed
+  `Request` over golangci-lint's gocritic `hugeParam` threshold (80 bytes).
+  `make check` calls no model throughout (`docker logs llama-swap 2>&1 | grep
+-c 'POST /v1/'`: 101249 before and after). See `DECISIONS.md`, 2026-09-15
+  ("Two defects the shortlisting fixture measured, fixed").
 - **Let the reranker read the written examples.** A new recall row,
   `e5-large-q8+reranker(w)+written` (`e2e/narrowing/utterances/reranker-written.ts`),
   reranks on `combinedTextOf(operation)` plus that operation's own written
