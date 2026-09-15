@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { expect, test } from "vite-plus/test";
 
 import {
@@ -9,6 +12,24 @@ import {
   type PickCandidate,
 } from "./client.ts";
 import type { FetchLike } from "../embedding/client.ts";
+
+const thisDir = import.meta.dirname;
+
+/**
+ * AC-S-103's TypeScript half (docs/specs/staging.md): the Go picker's own
+ * `SystemPrompt` (`services/platform/internal/adapter/planner/pick/prompt.go`)
+ * must be byte-identical to `PICK_SYSTEM_PROMPT` above - checked here by
+ * reading the Go source directly, never by hand-copying its text into this
+ * file. `prompt_test.go` is this test's own mirror, reading this file.
+ */
+test("the Go picker's SystemPrompt is byte-identical to PICK_SYSTEM_PROMPT", () => {
+  const goSource = readFileSync(
+    path.join(thisDir, "../../../services/platform/internal/adapter/planner/pick/prompt.go"),
+    "utf8",
+  );
+
+  expect(goSource).toContain(PICK_SYSTEM_PROMPT);
+});
 
 /**
  * `PICK_SYSTEM_PROMPT_WITH_EXAMPLES`'s own tests (TODO.md item 1), split
