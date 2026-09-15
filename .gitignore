@@ -89,3 +89,9 @@
 # one JSON file per operation, rebuilt from the fixture and llama-swap on
 # demand. Same rule as .vectors/ above - generated things stay out of git.
 /e2e/narrowing/.utterances/
+
+# make eval-shortlist's raw per-question results (docs/plans/shortlisting.md
+# Task 4): written incrementally by e2e/shortlist/run.ts, read back by
+# print-report.ts. Rebuilt from a live platform and a live model each run -
+# generated, same rule as .vectors/ and .utterances/ above.
+/e2e/shortlist/out/
