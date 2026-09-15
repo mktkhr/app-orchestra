@@ -58,6 +58,12 @@ var ErrInvalidPlannerRepeatPenalty = errors.New("ORCHESTRA_PLANNER_REPEAT_PENALT
 // positive integer.
 var ErrInvalidPlannerRepeatLastN = errors.New("ORCHESTRA_PLANNER_REPEAT_LAST_N must be a positive integer")
 
+// ErrInvalidPlannerStages is wrapped into the error returned when
+// ORCHESTRA_PLANNER_STAGES is set to something other than "1" or "2" - the
+// same reasoning ErrInvalidPlannerThinking already applies to
+// ORCHESTRA_PLANNER_THINKING (docs/specs/staging.md, section 6).
+var ErrInvalidPlannerStages = errors.New("ORCHESTRA_PLANNER_STAGES must be 1 or 2")
+
 // ErrMissingDBPath is returned when ORCHESTRA_DB_PATH is unset. Workspaces
 // live in the SQLite file it names (docs/specs/workspaces.md, W3); a
 // platform that started anyway would keep every workspace in a file
@@ -244,6 +250,17 @@ type Config struct {
 	// regardless of PlannerRepeatPenalty - it has no effect unless
 	// PlannerRepeatPenalty is also set.
 	PlannerRepeatLastN int
+	// PlannerStages selects how many model calls the toolcall planner
+	// makes to resolve an ordinary question, read from
+	// ORCHESTRA_PLANNER_STAGES ("1" or "2"; unset means 1) - documented
+	// beside ORCHESTRA_PLANNER_THINKING (docs/specs/staging.md, section
+	// 6): 1 is today's single call, byte-identical whether this is unset
+	// or "1" (AC-S-101); 2 is the pick-then-fill path
+	// (usecase.WithStages(2), internal/usecase/orchestrator_staging.go,
+	// S1). Only pkg/app.build reads this, to decide whether to also build
+	// a usecase.Picker (pick.New) and pass usecase.WithPicker alongside
+	// usecase.WithStages.
+	PlannerStages int
 	// PlanFixtures configures the stub planner's table when LLMBaseURL is
 	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
 	// never sets this - an operator sets ORCHESTRA_LLM_BASE_URL instead,
@@ -517,6 +534,34 @@ func parsePlannerRepeatLastN(raw string) (int, error) {
 	return n, nil
 }
 
+// plannerStagesOneValue/plannerStagesTwoValue are ORCHESTRA_PLANNER_STAGES'
+// own two accepted values, and plannerStagesOne/plannerStagesTwo their
+// parsed int form - named once so neither the string comparison nor the
+// magic number (mnd, harness/quality/go/golangci.yml) is repeated
+// unnamed.
+const (
+	plannerStagesOneValue = "1"
+	plannerStagesTwoValue = "2"
+	plannerStagesOne      = 1
+	plannerStagesTwo      = 2
+)
+
+// parsePlannerStages reads ORCHESTRA_PLANNER_STAGES: plannerStagesOne (1,
+// the default, AC-S-101) when unset or "1", plannerStagesTwo (2,
+// docs/specs/staging.md section 6) when "2" - anything else fails startup
+// rather than silently falling back to the default, the same reasoning
+// parsePlannerThinking already applies to ORCHESTRA_PLANNER_THINKING.
+func parsePlannerStages(raw string) (int, error) {
+	switch raw {
+	case "", plannerStagesOneValue:
+		return plannerStagesOne, nil
+	case plannerStagesTwoValue:
+		return plannerStagesTwo, nil
+	default:
+		return 0, fmt.Errorf("%w: %q", ErrInvalidPlannerStages, raw)
+	}
+}
+
 // parseContextTurns reads ORCHESTRA_CONTEXT_TURNS: defaultContextTurns when
 // unset or empty, or the positive integer it names otherwise. See
 // ErrInvalidContextTurns for why anything else fails startup instead of
@@ -594,6 +639,13 @@ func loadLLM(cfg *Config) error {
 	}
 
 	cfg.PlannerRepeatLastN = repeatLastN
+
+	stages, err := parsePlannerStages(os.Getenv("ORCHESTRA_PLANNER_STAGES"))
+	if err != nil {
+		return err
+	}
+
+	cfg.PlannerStages = stages
 
 	return nil
 }

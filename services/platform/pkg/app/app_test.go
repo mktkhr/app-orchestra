@@ -422,6 +422,45 @@ func TestNewWithLLMBaseURLConfiguredUsesTheToolCallingPlanner(t *testing.T) {
 	assert.Equal(t, "table", body.Component)
 }
 
+// TestNewWithLLMStagesTwoBuildsAndServesAQuestion is Task 3's own app-
+// wiring test (docs/plans/staging.md): a Config with LLM.Stages: 2 builds
+// without error - the picker (pick.New) is wired alongside the toolcall
+// planner - and answers a question over /api/plan. fixtureChatServer
+// answers every request (both the pick's and the fill's) with the same
+// canned tool_calls response, which the pick's own parser reads as no
+// recognisable operation id (its message carries no content at all) and
+// so resolves to PickNone - proving the wiring holds end to end, not
+// what a real pick would answer.
+func TestNewWithLLMStagesTwoBuildsAndServesAQuestion(t *testing.T) {
+	fixture := fixtureService(t)
+	chatServer := fixtureChatServer(t)
+
+	handler, err := app.New(&app.Config{
+		Services:      []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:           app.LLM{BaseURL: chatServer.URL, Model: "test-model", Stages: 2},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
 // fixtureJSONChatServer answers every chat-completions request with a
 // message whose content is the JSON object internal/adapter/planner/jsonmode
 // reads a Decision from - just enough to prove app.New wires that planner

@@ -32,6 +32,7 @@ func main() {
 		LLM: app.LLM{
 			BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, Mode: cfg.LLMMode, Wording: cfg.PlannerWording,
 			Thinking: &cfg.PlannerThinking, RepeatPenalty: cfg.PlannerRepeatPenalty, RepeatLastN: cfg.PlannerRepeatLastN,
+			Stages: cfg.PlannerStages,
 		},
 		PlanFixtures:  toAppPlanFixtures(cfg.PlanFixtures),
 		DBPath:        cfg.DBPath,

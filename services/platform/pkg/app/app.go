@@ -18,6 +18,7 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jsonmode"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/pick"
 	stubplanner "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/stub"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/toolcall"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/wording"
@@ -158,6 +159,12 @@ type LLM struct {
 	// option is not applied at all - today's behaviour.
 	RepeatPenalty *float64
 	RepeatLastN   int
+	// Stages mirrors config.Config.PlannerStages: 0 or 1 (every test and
+	// caller that predates this subproject) is today's single call; 2
+	// makes build also construct a pick.Picker over this same LLM and
+	// pass usecase.WithPicker/WithStages(2) to NewOrchestrator
+	// (docs/specs/staging.md, S1, S6).
+	Stages int
 }
 
 // Narrowing configures the llama-swap-backed usecase.Narrower
@@ -364,9 +371,10 @@ func build(
 	}
 
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
-	orchestrator := usecase.NewOrchestrator(
-		catalog, planner, invoker, permissions, contextWindowOption(cfg.ContextTurns), narrowerOption,
+	orchestratorOptions := append(
+		[]usecase.Option{contextWindowOption(cfg.ContextTurns), narrowerOption}, stagingOptions(cfg)...,
 	)
+	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions, orchestratorOptions...)
 	adminUsecase := usecase.NewAdmin(users, permissions, catalog)
 	catalogUsecase := usecase.NewCatalog(catalog, permissions)
 
@@ -662,6 +670,33 @@ func newPlanner(cfg *Config, catalog domain.Catalog) (usecase.Planner, error) {
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidLLMMode, cfg.LLM.Mode)
 	}
+}
+
+// stagesTwo is the one value of Config.LLM.Stages that turns staging on
+// (docs/specs/staging.md, S6) - named so the comparison below isn't a bare
+// magic number (mnd, harness/quality/go/golangci.yml).
+const stagesTwo = 2
+
+// stagingOptions builds the usecase.Option list build passes to
+// NewOrchestrator for the staging subproject: nil when cfg.LLM.Stages is
+// not 2 (every test and caller that predates this subproject, and the
+// platform's own default, AC-S-101), otherwise a pick.Picker built over
+// this same LLM (S6: "the pick's model is the planner's model, its base
+// URL the planner's") plus usecase.WithStages(2).
+//
+// The picker gets its own chat.Client rather than sharing newPlanner's -
+// newPlanner returns only a usecase.Planner, not the client it built, and
+// a second *http.Client here costs nothing a request-scoped call would
+// notice.
+func stagingOptions(cfg *Config) []usecase.Option {
+	if cfg.LLM.Stages != stagesTwo {
+		return nil
+	}
+
+	client := chat.New(chat.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model})
+	picker := pick.New(client, cfg.LLM.Model)
+
+	return []usecase.Option{usecase.WithPicker(picker), usecase.WithStages(stagesTwo)}
 }
 
 // toolcallOptions builds the toolcall.Option list newPlanner passes to
