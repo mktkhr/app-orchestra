@@ -1,9 +1,38 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-15 (three defects the shortlisting fixture measured,
-fixed: `ask_user`'s free-text `service`, no `temperature`, no `max_tokens`)_
+_Last updated: 2026-09-15 (`docs/plans/shortlisting.md` closes: the
+product's own planner measured end to end, 65 against the picker's 83)_
 
 ## Summary
+
+**2026-09-15 - `docs/plans/shortlisting.md` closes: narrowing runs behind
+config, a result carries alternatives, and the product's own planner is
+now measured end to end.** Narrowing (H1-H4) sits in `Orchestrator.Plan`
+as a `Narrower` usecase port, on only when
+`ORCHESTRA_NARROWING_EMBED_MODEL`/`ORCHESTRA_NARROWING_RERANK_MODEL`/`ORCHESTRA_NARROWING_K`
+are all set, and byte-identical to today when they are not (H7). A `result`
+gains up to two `alternatives` from the shortlist (H5), drawn on the wire
+and rendered in the browser as "違いましたか？"; choosing one re-plans
+against that operation alone. `make eval-shortlist` (`e2e/shortlist/`)
+boots the fixture and the platform, narrowing on and off, and runs the
+product's real planner - not a stand-in - through the same 100-question
+corpus `docs/plans/narrowing.md` built, reporting correct@1, correct@shown,
+asked/none/error and latency per axis. Measured: narrowing on scores 65
+correct@1 / 68 correct@shown, off scores 62/62, against the stand-in
+picker's 83 on the identical shortlist and the shortlist's own 93% recall
+ceiling - the planner, not retrieval, is the bottleneck. Three product
+defects the measurement found are fixed (`ask_user`'s invented service,
+no `temperature`, no `max_tokens` - all below); the dev stack on `:8080`
+now launches with narrowing on (`71f747c`) so the alternatives screen has
+something to show. Full tables, the determinism check, the miss
+characterisation against the picker, and the alternatives/latency findings
+are in `DECISIONS.md`, 2026-09-15 ("The product's planner, measured end to
+end"). `docs/specs/shortlisting.md` records what was built (H1-H7,
+AC-H-101 through AC-H-107); AC-H-108's `PRODUCT.md` D2 revision is left to
+its owner, with these numbers in front of them. `TODO.md`'s own "choose
+what the product uses" item closes as wired; what remains open is the
+planner's prompt and tool descriptions, now measurable directly by the
+same target.
 
 **2026-09-15 - a repetition loop with no `max_tokens` cost the whole 120s
 client timeout; it now costs 1024 tokens and degrades to `DecisionNone`.**

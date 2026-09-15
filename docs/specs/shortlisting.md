@@ -23,7 +23,10 @@ not tried, and this subproject tries both:
 
 1. **The product's own planner.** The 83 is a text-prompt picker built for
    measurement. The product plans with tool calling (`toolcall.Planner`) and
-   has never been measured on this corpus. Its number is unknown.
+   has never been measured on this corpus. Its number is now known: **65
+   correct@1 / 68 correct@shown** with narrowing on, **62 / 62** off
+   (`DECISIONS.md`, 2026-09-15, "The product's planner, measured end to
+   end") - below the picker, not above it.
 2. **Not asking, offering.** `ask_user` asks before answering. If the
    answer carries the next two candidates, a wrong pick costs the person one
    click and a right one costs nothing. The metric for that is not "did it

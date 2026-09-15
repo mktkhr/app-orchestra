@@ -6075,3 +6075,255 @@ answer, one clean one, succeeds after the retry) and
 a row still resolves to `DecisionNone`, not the pre-existing
 "gave up" error `TestPlanGivesUpAfterASecondBadAnswer` still asserts for a
 genuinely invalid answer twice).
+
+## 2026-09-15 The product's planner, measured end to end: 65 against the picker's 83, and what the measurement found and fixed on both sides
+
+**Context.** `docs/plans/shortlisting.md` Task 4, Step 6 - the record. Steps
+1-5 wired narrowing behind config (H1-H4), alternatives onto the answer
+(H5), the config switch (H7), and `make eval-shortlist`, which asks the
+built platform - fixture services behind it, real llama-swap, the
+five-service/1000-operation corpus - the 100 corpus questions through
+`/api/plan`, narrowing on and off, and scores correct@1, correct@shown,
+asked-back, none, error and latency per axis (H6, AC-H-106). This entry is
+the numbers AC-H-108 asks for, beside the stand-in picker's 83 and the
+92-96% recall@20 ceiling already on record (2026-09-15, "Measuring the
+pick" and "the corpus answer key is fixed"). `PRODUCT.md` D2 is left to
+its owner, per AC-H-108 - not revised here.
+
+**The headline.** The product's own planner, narrowing on, scores **65
+correct@1 / 68 correct@shown** of 100; narrowing off, **62 / 62**. Beside
+them: the stand-in picker scores 83 on the identical K=20 shortlist, and
+the shortlist itself holds the right answer 93% of the time. Every result
+row's `via` is `"plan"` - a genuine `/api/plan` response, never the
+`invoke-500` fallback (`af5aeea`) - 67 of 67 result rows on, 79 of 79 off.
+No error in either pass, at any axis.
+
+**Narrowing on (correct@1 / correct@shown / asked / none / error, out of
+25/25/25/15/10 per axis):**
+
+| axis    | correct@1 | correct@shown | asked | none | error |
+| ------- | --------- | ------------- | ----- | ---- | ----- |
+| A       | 23 (92%)  | 23 (92%)      | 0     | 1    | 0     |
+| B       | 14 (56%)  | 14 (56%)      | 1     | 6    | 0     |
+| C       | 14 (56%)  | 15 (60%)      | 0     | 1    | 0     |
+| D       | 7 (47%)   | 7 (47%)       | 0     | 2    | 0     |
+| E       | 7 (70%)   | 9 (90%)       | 0     | 0    | 0     |
+| overall | 65 (65%)  | 68 (68%)      | 1     | 10   | 0     |
+
+Latency (ms): mean 5742, p50 3917, max 16382, 41 of 100 over 5000ms. Per
+axis (mean / p50 / max / over-5000ms count): A 3488/2782/15940/2, B
+8618/7771/16382/19, C 4943/3953/15914/9, D 7560/6951/16372/11, E
+3455/3518/4167/0.
+
+**Narrowing off (correct@1 / correct@shown - identical, no alternatives to
+carry a wrong pick - / asked / none / error, same axis sizes):**
+
+| axis    | correct@1 = correct@shown | asked | none | error |
+| ------- | ------------------------- | ----- | ---- | ----- |
+| A       | 25 (100%)                 | 0     | 0    | 0     |
+| B       | 7 (28%)                   | 0     | 7    | 0     |
+| C       | 19 (76%)                  | 0     | 0    | 0     |
+| D       | 5 (33%)                   | 0     | 5    | 0     |
+| E       | 6 (60%)                   | 0     | 0    | 0     |
+| overall | 62 (62%)                  | 0     | 12   | 0     |
+
+Latency (ms): mean 5577, p50 4250, max 27187, 39 of 100 over 5000ms. Per
+axis: A 3937/2499/27187/3, B 7068/6183/19741/18, C 4380/3662/11782/6, D
+8729/6961/19715/10, E 4209/4500/6742/2.
+
+**Determinism.** Two on-pass runs at temperature 0 (`shortlist-on-run1.jsonl`,
+`shortlist-on-run2.jsonl`): 100 of 100 rows identical in both `kind` and
+`operationId`, zero diffs. Latency mean 5742 ms (run1) vs 5761 ms (run2) -
+the two runs differ only in wall-clock, never in outcome. Correct@1 reads
+**66** by a naive count (any `form`/`result` row whose `operationId` is
+one of the question's answers) in both runs, but **65** by the report's
+own rule, `score.ts` - the citable one. The one row the two rules
+disagree on is `b01` (`注文を見たい`): `Orchestrator.ask` degrades this
+`ask_user`-over-a-safe-operation call to a form (`askDegraded: true`)
+whose `operationId`, `listSalesOrders`, happens to already be one of the
+question's own answers. `score.ts` correctly counts an `askDegraded` form
+as `asked`, never as a pick (`2dcb2e0`'s own rule 1) - a naive rule that
+does not know about the degrade double-counts it as a correct guess it
+never made. Two such rows exist in the corpus (`b01`, `b06`); only `b01`'s
+`operationId` happens to land inside its own answer set, which is why the
+naive/citable gap is exactly one row, not two. The earlier runs without a
+pinned `temperature` had swung one axis from 32 to 16 correct across two
+runs with nothing else changed (`100d61d`) - this pair, at 100/100
+identical rows, is the fix confirmed at the scale that matters.
+
+**What the measurement found in the product, and fixed.**
+
+`a97f71e` - `ask_user` required the model to invent a service name, and a
+fabricated one became a 500. `AskUserTool`'s schema asked for a free-text
+`service` alongside `operationId`; with five services to guess from, the
+model fabricated pairs like `approval/createApproval` and even named its
+own tool as the operation, `expense/ask_user` - 7 of the first 100
+answers 500'd as `endpoint not found in catalogue`, all on the ambiguous
+axis (B). `AskUserTool` no longer declares `service` at all;
+`toolcall.Planner.decisionFromAskUser` resolves it from `operationId` the
+same way a real tool call already does, and `Orchestrator.ask` degrades an
+operation id the catalogue does not have to a plain question instead of
+an error - an `ask` is never a 500 again.
+
+`100d61d` - no `temperature` meant no determinism. `chat.Request` sent no
+`temperature` field at all, so llama-server's own default applied on every
+call; the same 100-question fixture scored 32 then 16 on one axis across
+two runs with nothing else - not the fixture, not the catalogue, not the
+model - changed. `chat.Request.Temperature *float64` is now sent as `0`
+(`chat.Zero()`) on every planning call, in both `toolcall.Planner.Plan`
+and both of `jsonmode.Planner.complete`'s attempts.
+
+`717820a` - no `max_tokens` meant a repetition loop ran into the client's
+own 120s timeout. Reproduced deterministically on `明細を1件確認したい`
+(b07): narrowing took 9ms + 88ms, then the chat completion never returned
+headers at all - after exactly 120s the platform answered 500 "context
+deadline exceeded", and llama-swap's own log read `POST
+/v1/chat/completions 499 0 ... 2m0.000s` - the model was still generating
+when the client gave up. `chat.Request` sent no `max_tokens`, so
+llama-server's unbounded default (`n_predict = -1`) applied; at
+temperature 0 with twenty strict tool schemas offered, nothing stopped a
+loop, and every planning answer is short enough that an unbounded budget
+buys nothing. `chat.Request.MaxTokens *int` is now sent as 1024 on every
+planning call; a `finish_reason` of `"length"` is never decoded as a real
+answer - it resolves to `DecisionNone`, not an error and not a 500.
+
+**What the measurement found in itself, and fixed.** The numbers reported
+before these fixes - 49/60, 62/63, 63/57 - are void and must not be
+cited; they were produced by a scorer that could not see most of what the
+planner actually did.
+
+`2dcb2e0` - the old scorer only ever counted correct@1 for `kind:
+"result"` and dropped everything else as wrong or silent, understating the
+planner badly: axis D alone carries 7/15 `form` rows, axis B 8/25, and a
+`form` over an unsafe operation is D8's own confirm-before-write working
+as designed, not a miss. `run.ts` now records `target.operationId` for a
+`form` row and `score.ts` counts it as a real pick, correct@1 when its
+target is in the answer key. The same commit found a second undercounting
+source at the platform level: `Orchestrator.ask` degrades an `ask_user`
+over a _safe_ operation with no enum for its parameter into that same form
+shape (e.g. 「注文を見たい」 correctly asking whether 受注 or 発注 was
+meant) - a form the scorer needs to count as `asked`, never as a pick.
+
+`8ccece4` - the `catalogue-safety.ts` lookup `2dcb2e0`'s own fix needed
+(telling a real D8 form from an ask degraded into the same shape) was
+itself dropped from that commit - `git commit -- e2e/shortlist` does not
+stage an untracked file, and the pathspec left the new module out. Added
+back here, with its own test.
+
+`eafd875` and `0ea7ab8` - the fixture 404'd every invoke, so no `result`
+row ever carried a genuine render and no alternatives were ever seen; the
+first fix served a real 200 off the operation's own response schema for a
+safe `GET`, the second found that the fixture was still matching the
+wrong path shape (`/api/<service>/...` where the platform, whose base URL
+already embeds the service, actually sends
+`/<service>/api/<service>/...`) - every result in the first corrected run
+had still come through the `invoke-500` fallback for this reason alone.
+
+`af5aeea` - added `QuestionResult.via` (`"plan"` for a genuine `/api/plan`
+200, `"invoke-500"` for the honest fallback) so a run where every result
+is `invoke-500` is visibly not measuring the render path instead of
+silently passing - this entry's headline cites it directly (67/79 result
+rows, both passes, all `via: plan`).
+
+**How the planner misses, against the picker on the same twenty
+candidates.** `shortlist-misses.txt` (the on-pass run's 35 misses,
+run1) beside what the picker did on the identical K=20 shortlist:
+
+1. **`none` where the picker commits** - 10 of the 35 misses, concentrated
+   on axis B (6) and axis D (2), with one each on A and C. Three examples:
+   - `b07` 明細を1件確認したい: planner `none`; picker `getExpenseLine`
+     (ambiguous); answers `getSalesOrderLine`, `getPurchasingOrderLine`,
+     `getExpenseLine`.
+   - `b18` 社員を新規登録したい: planner `none`; picker
+     `createExpenseEmployee` (certain); answers `createAttendanceEmployee`,
+     `createExpenseEmployee`.
+   - `d09` お金を返してもらいたい: planner `none`; picker
+     `submitSalesReturnOrder` (certain); answers
+     `createExpenseReimbursement`, `createExpenseClaim`,
+     `createExpenseAdvance`.
+
+2. **`list_capabilities` returned as the answer to a vague question** - 7
+   of 100 answers overall: `b11`, `c01`, `c06`, `c19`, `c23`, `d06`,
+   `d14`. Three examples:
+   - `c01` 在庫を見たい: planner `list_capabilities`; picker
+     `listInventoryItems` (certain); answers `listInventoryItems`,
+     `listInventoryLots`, `listInventoryAllocations`,
+     `listInventoryStockCounts`, `listInventoryAdjustments`.
+   - `c06` 受注に関わる書類を確認したい: planner `list_capabilities`;
+     picker `getSalesOrder` (certain); answers `listSalesQuotations`,
+     `listSalesDeliveryNotes`.
+   - `d14` 急いで仕入れたい時の手続きを知りたい: planner
+     `list_capabilities`; picker `submitPurchasingOrder` (certain);
+     answers `listPurchasingEmergencyOrders`,
+     `searchPurchasingEmergencyOrders`.
+
+3. **The wrong operation among near-neighbours, same domain** - this shows
+   up mostly on axis C's near-neighbour groups, not axis B (axis B's own
+   misses are all `none`/`form`/`ask`, never a wrong `result`): the
+   planner commits to a real operation that is simply not one of the
+   question's answers. Three examples:
+   - `c07` 得意先まわりの情報を確認したい: planner `result`
+     `listPurchasingPartners` (alternatives `listPurchasingSupplierScorecards`,
+     `getAttendanceQualification`); picker `listSalesPartners` (certain);
+     answers `listSalesCustomers`, `listSalesContacts`.
+   - `c08` 取引先や与信の情報を知りたい: planner `result`
+     `listPurchasingPartners` (alternatives `listPurchasingSuppliers`,
+     `listSalesPartners`); picker `listSalesPartners` (ambiguous); answers
+     `listSalesPartners`, `listSalesCreditLimits`.
+   - `b04` 注文の内容を変えたい: planner `form` `updatePurchasingOrderLine`
+     (the line-level operation, not the order-level one asked for); picker
+     `updatePurchasingOrder` (certain); answers `updateSalesOrder`,
+     `updatePurchasingOrder`.
+
+4. **The product under-asks.** The planner returned `ask` exactly once in
+   100 answers (`b13`, 承認を新規登録したい), against the picker, on the
+   identical shortlists, flagging axis B `ambiguous` 52% of the time
+   (2026-09-15, "Measuring the pick": `pick:e5-large-q8+reranker`, axis B
+   flagged 52%) - roughly half of the questions this corpus built to be
+   genuinely ambiguous. The planner has somewhere to ask and almost never
+   takes it.
+
+5. **Axis D: a `form` on a write the planner has misidentified.** Two
+   quoted directly:
+   - `d03` 立て替えた分を出したい: planner `form` `updateExpenseAdvance`;
+     picker `createInventoryTransfer` (ambiguous); answers
+     `createExpenseClaim`, `submitExpenseClaim` - the planner reaches an
+     unsafe form, but over the wrong operation and the wrong verb (`update`
+     against a nonexistent record, not `create`/`submit`).
+   - `d07` 減った分を直したい: planner `form` `updateExpenseLine`; picker
+     `deleteInventoryUnitOfMeasure` (ambiguous); answers
+     `createInventoryAdjustment`, `submitInventoryAdjustment` - again a
+     real, safe-to-render form, over an operation with no relation to the
+     inventory adjustment the question asked for.
+
+Where the next work is: the planner's prompt and its tool descriptions -
+this corpus now measures them directly, at `make eval-shortlist`, the
+same way `docs/plans/narrowing.md` measured retrieval. No fix is proposed
+here.
+
+**Alternatives.** 60 of the 100 on-pass rows carried them (up to two,
+taken from the shortlist positions after the chosen operation). They add
+three points overall (correct@1 65 → correct@shown 68) and lift axis E
+from 70% to 90% - the biggest single-axis gain, on the axis where a wrong
+first pick is most often a lexical near-miss one click away from the
+right one. Every other axis moves by at most one row (C: 14 → 15).
+
+**Latency and H4.** On: mean 5.7s / p50 3.9s; off: mean 5.6s / p50 4.3s;
+41 vs 39 questions over 5s. No request paid for a model load - the
+persistent llama-swap `groups` block (`71f747c`) held all three models
+resident for the whole run; the embedding-plus-rerank stage costs on the
+order of 100ms per question, and the rest of every question's latency is
+the chat completion itself. With narrowing off, the 1000-tool prompt is
+byte-identical on every request, so llama-server's own prefix cache serves
+it - this is why the off pass is not slower than the on pass despite
+offering the model roughly 27k tokens of tool definitions instead of a
+twenty-tool shortlist.
+
+**What this settles, in three sentences.** The product's own planner, not
+retrieval, is the bottleneck: 65 against the picker's 83 on identical
+input, with the answer sitting in the shortlist 93% of the time. Narrowing
+is worth +3 correct@1 and +6 correct@shown (with alternatives) on this
+planner, and alternatives - the thing that turns a wrong pick into one
+click instead of a round trip - do not exist at all without it. D2's
+revision now has its numbers in front of it; that decision belongs to its
+owner (AC-H-108).

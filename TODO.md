@@ -8,36 +8,25 @@ _Nothing in progress._
 
 ## Next
 
-1. **Choose what the product uses, and wire it into `services/platform`.**
-   The pick reads the reranker's order and the top 20 candidates, now
-   measured as a report row rather than by hand - see `DECISIONS.md`,
-   2026-09-15 ("Measuring the pick: three report rows, and whether the
-   written layer's recall gain survives to the pick"). `docs/plans/retrieving.md`'s own closing note names this as what comes
-   after and is deliberately not in that subproject: a hybrid of lexical
-   and vector scoring is named as the obvious next mechanism, excluded
-   because it moves two numbers at once and neither pure mechanism had been
-   measured yet. It now has: the lexical baseline at 48%/76% overall at
-   K=10 (100% on axis A, 0% on axis D by construction, wide worst/best gaps
-   on B/C/E driven by ties); six embedding configurations clustering at
-   80-89% overall where their contract check passes, and dropping to 44-59%
-   where it does not; the retrieve-then-rerank configuration
-   `e5-large-q8+reranker` at 88% overall, including 60% on axis D against
-   the baseline's 0%; and now the mechanism that actually closes the
-   vocabulary gap: `docs/specs/describing.md`'s written-utterance layer,
-   `x-orchestra-examples` on a contract operation, blind per AC-G-105,
-   which moves axis D to 80%/93% (K=10/K=50) alone and reaches 89% overall,
-   and (once the reranker was taught to read the written examples too,
-   `DECISIONS.md` 2026-09-15 "Letting the reranker read the written
-   examples") 80% axis D at K=10 in the headline two-stage row
-   `e5-large-q8+reranker(w)+written`, at zero cost to the axes that already
-   worked. See `DECISIONS.md`, 2026-09-15 ("the corpus answer key is fixed,
-   and every recall figure moves" for the base table, "The catalogue says
-   it" for the utterance layers, "Letting the reranker read the written
-   examples" for the reranker fix) for the contract-check cross-check and
-   the alternation cost. The pick side of that same fix did not carry over
-   - showing the picker the written examples made its raw pick worse, not
-     better (same entry) - so the pick this item wires in should read the
-     plain `+reranker+written` shortlist, not the examples-shown variant.
+1. **The planner's prompt and tool descriptions - the measured bottleneck,
+   not retrieval.** `docs/plans/shortlisting.md` closed with narrowing and
+   alternatives wired behind config and the product's own planner measured
+   end to end, for the first time, against the same shortlist the
+   stand-in picker was already measured on: the planner scores 65
+   correct@1 / 68 correct@shown, the picker scores 83 on the identical
+   input, and the shortlist itself holds the right answer 93% of the time
+   - an 18-point gap between the picker and the product's own planner,
+     with retrieval already ruled out as the cause. See `DECISIONS.md`,
+     2026-09-15 ("The product's planner, measured end to end") for the full
+     tables and the miss characterisation: `none` in place of a commit
+     (mostly axes B and D), `list_capabilities` returned as the answer to a
+     vague question (7 of 100), the wrong operation among near-neighbours
+     (axis C), asking back only once in 100 against the picker flagging half
+     of axis B ambiguous on the same shortlists, and axis D reaching for a
+     form on a write it has misidentified. `make eval-shortlist` is the
+     harness this can now be measured against directly, the same way
+     `make narrowing` measures retrieval - no fix is proposed there, only
+     named as where the next work is.
 2. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
@@ -66,7 +55,20 @@ _Nothing in progress._
    competition - through the operation's own tool description,
    `ask_user`'s own description, or the decision procedure itself - not add
    another value to the enum.
-5. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+5. **Open defect: `ask_user` about a safe operation degrades to an empty
+   form, not a question.** Found while fixing `make eval-shortlist`'s
+   scorer (`2dcb2e0`, 2026-09-15) - a real platform behaviour, not a test
+   defect. `Orchestrator.ask` (`internal/usecase/orchestrator.go`, `ask()`)
+   degrades an `ask_user` call that names a safe operation with no enum for
+   its parameter into the same form shape a D8 confirm-before-write uses,
+   e.g. 「注文を見たい」 renders as an empty form instead of asking 受注で
+   すか、発注ですか. `docs/plans/shortlisting.md`'s own measurement counts
+   this correctly as `asked`, not a miss (`askDegraded` in
+   `e2e/shortlist/run.ts`), so the corpus numbers already in `DECISIONS.md`
+   stand - but the shape a person actually sees is still wrong. Not yet
+   reproduced against a running screen; the shortlist measurement is what
+   surfaced it.
+6. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -77,13 +79,13 @@ _Nothing in progress._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-6. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+7. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
 
-7. **`<Typography color="text.secondary">` is a silent no-op almost
+8. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
@@ -105,6 +107,19 @@ _Nothing in progress._
 
 ## Done
 
+- **Chose what the product uses, and wired it in - `docs/plans/shortlisting.md`
+  closes.** The plain `e5-large-q8+reranker(w)+written` shortlist (H1) now
+  runs behind `ORCHESTRA_NARROWING_EMBED_MODEL`/`ORCHESTRA_NARROWING_RERANK_MODEL`/`ORCHESTRA_NARROWING_K`,
+  byte-identical to today when unset (H7); a `result` carries up to two
+  alternatives from the shortlist (H5); `make eval-shortlist` measures the
+  product's own planner, not a stand-in, end to end against the 100
+  question corpus. Wired behind config; the choice of whether to turn it
+  on in production is D2's owner's, with the measured numbers in front of
+  them (`DECISIONS.md`, 2026-09-15, "The product's planner, measured end
+  to end" - AC-H-108). What is not wired: the planner's own prompt and
+  tool descriptions, which the measurement found to be the actual
+  bottleneck (18 points below the picker on identical input) - see `##
+Next` item 1.
 - **Fixed two defects the five-service, 1000-operation shortlisting fixture
   exposed (`docs/specs/shortlisting.md`, measured 2026-09-15).** (1) 7 of
   100 `ask_user` answers 500'd as `endpoint not found in catalogue` because
