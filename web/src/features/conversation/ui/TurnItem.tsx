@@ -65,11 +65,9 @@ export function TurnItem({
     return (
       <Paper
         elevation={0}
-        sx={{ ...BUBBLE_SX, alignSelf: "flex-end", py: 0.5, px: 1.5, bgcolor: "action.hover" }}
+        sx={{ ...BUBBLE_SX, alignSelf: "flex-end", p: 2, bgcolor: "action.hover" }}
       >
-        <Typography variant="body2" color="textSecondary">
-          {`→ ${turn.label}`}
-        </Typography>
+        <Typography variant="body1">{`→ ${turn.label}`}</Typography>
       </Paper>
     );
   }
