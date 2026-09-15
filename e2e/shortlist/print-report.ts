@@ -1,84 +1,57 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { asRecord } from "../src/helpers/wire.ts";
-import { renderReport } from "./report.ts";
-import { scoreboard, type Axis, type QuestionResult } from "./score.ts";
+import { readResults } from "./parse-result.ts";
+import { renderReport, renderWordingReport, type WordingRunReport } from "./report.ts";
+import { scoreboard } from "./score.ts";
 
 /**
- * Prints the shortlist report from the two output files run.ts wrote
- * (docs/plans/shortlisting.md Task 4, Step 5). `make eval-shortlist` runs
- * `run.ts` then this - kept separate so a report can be reprinted from an
- * already-finished run without re-running any question.
+ * Prints the shortlist report from whichever output files run.ts wrote
+ * (docs/plans/shortlisting.md Task 4, Step 5; docs/plans/wording.md Task
+ * 2, Step 3): the plain `on.jsonl` / `off.jsonl` pair when both are
+ * present, and a block per `on-<name>.jsonl` wording file when any exist.
+ * `make eval-shortlist` runs `run.ts` then this - kept separate so a
+ * report can be reprinted from an already-finished run without re-running
+ * any question.
  */
 
 const outDir = path.join(import.meta.dirname, "out");
 
-/** Parses one line of a pass's output file into a QuestionResult, by runtime check (no `as`). */
-function parseLine(line: string): QuestionResult {
-  const record = asRecord(JSON.parse(line));
-  const id = typeof record["id"] === "string" ? record["id"] : "";
-  const axisValue = record["axis"];
-  const axis: Axis =
-    axisValue === "B" || axisValue === "C" || axisValue === "D" || axisValue === "E"
-      ? axisValue
-      : "A";
-  const answers = Array.isArray(record["answers"])
-    ? record["answers"].filter((a): a is string => typeof a === "string")
-    : [];
-  const kindValue = record["kind"];
-  const kind: QuestionResult["kind"] =
-    kindValue === "ask" ||
-    kindValue === "none" ||
-    kindValue === "form" ||
-    kindValue === "proposal" ||
-    kindValue === "error"
-      ? kindValue
-      : "result";
-  const text = typeof record["text"] === "string" ? record["text"] : "";
-  const operationId = typeof record["operationId"] === "string" ? record["operationId"] : undefined;
-  const askDegraded = record["askDegraded"] === true ? true : undefined;
-  const alternatives = Array.isArray(record["alternatives"])
-    ? record["alternatives"].filter((a): a is string => typeof a === "string")
-    : undefined;
-  const viaValue = record["via"];
-  const via = viaValue === "plan" || viaValue === "invoke-500" ? viaValue : undefined;
-  const latencyMs = typeof record["latencyMs"] === "number" ? record["latencyMs"] : 0;
-  const errorMessage =
-    typeof record["errorMessage"] === "string" ? record["errorMessage"] : undefined;
-  const errorStatus = typeof record["errorStatus"] === "number" ? record["errorStatus"] : undefined;
+/** Every `on-<name>.jsonl` wording file's name, in directory order. */
+function wordingNames(): readonly string[] {
+  if (!existsSync(outDir)) return [];
 
-  return {
-    id,
-    axis,
-    text,
-    answers,
-    kind,
-    ...(operationId !== undefined && { operationId }),
-    ...(askDegraded !== undefined && { askDegraded }),
-    ...(alternatives !== undefined && { alternatives }),
-    ...(via !== undefined && { via }),
-    latencyMs,
-    ...(errorMessage !== undefined && { errorMessage }),
-    ...(errorStatus !== undefined && { errorStatus }),
-  };
+  return readdirSync(outDir)
+    .map((entry) => /^on-(.+)\.jsonl$/u.exec(entry)?.[1])
+    .filter((name): name is string => name !== undefined);
 }
 
-function readPass(pass: "on" | "off"): readonly QuestionResult[] {
-  const filePath = path.join(outDir, `${pass}.jsonl`);
+function printWordingReport(names: readonly string[]): void {
+  const runs: readonly WordingRunReport[] = names.map((name) => {
+    const results = readResults(path.join(outDir, `on-${name}.jsonl`));
 
-  return readFileSync(filePath, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => parseLine(line));
+    return { name, board: scoreboard(results), results };
+  });
+
+  console.log(renderWordingReport(runs));
 }
 
-const on = readPass("on");
-const off = readPass("off");
+function printPlainReport(): void {
+  const on = readResults(path.join(outDir, "on.jsonl"));
+  const off = readResults(path.join(outDir, "off.jsonl"));
 
-console.log(
-  renderReport({
-    on: { board: scoreboard(on), results: on },
-    off: { board: scoreboard(off), results: off },
-  }),
-);
+  console.log(
+    renderReport({
+      on: { board: scoreboard(on), results: on },
+      off: { board: scoreboard(off), results: off },
+    }),
+  );
+}
+
+const names = wordingNames();
+
+if (names.length > 0) printWordingReport(names);
+
+if (existsSync(path.join(outDir, "on.jsonl")) && existsSync(path.join(outDir, "off.jsonl"))) {
+  printPlainReport();
+}

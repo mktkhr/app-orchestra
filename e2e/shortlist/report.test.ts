@@ -8,7 +8,9 @@ import {
   renderReport,
   renderRun,
   renderVia,
+  renderWordingReport,
   type RunReport,
+  type WordingRunReport,
 } from "./report.ts";
 import { scoreboard, type QuestionResult } from "./score.ts";
 
@@ -140,4 +142,36 @@ test("renderReport includes each run's via counts", () => {
 
   expect(rendered).toContain("narrowing on result via: plan=1 invoke-500=0");
   expect(rendered).toContain("narrowing off result via: plan=1 invoke-500=0");
+});
+
+function fakeWordingRun(name: string, results: readonly QuestionResult[]): WordingRunReport {
+  return { name, board: scoreboard(results), results };
+}
+
+test("renderWordingReport renders one block per wording", () => {
+  const rendered = renderWordingReport([
+    fakeWordingRun("v1", [fakeResult()]),
+    fakeWordingRun("v2-commit", [fakeResult()]),
+  ]);
+
+  expect(rendered).toContain("## wording v1");
+  expect(rendered).toContain("## wording v2-commit");
+});
+
+test("renderWordingReport puts v1 first even when named last", () => {
+  const rendered = renderWordingReport([
+    fakeWordingRun("v3-ask-on-collision", [fakeResult()]),
+    fakeWordingRun("v1", [fakeResult()]),
+  ]);
+
+  expect(rendered.indexOf("## wording v1")).toBeLessThan(
+    rendered.indexOf("## wording v3-ask-on-collision"),
+  );
+});
+
+test("renderWordingReport includes the stand-in picker's reference row once at the bottom", () => {
+  const rendered = renderWordingReport([fakeWordingRun("v1", [fakeResult()])]);
+  const matches = rendered.split("## reference (DECISIONS.md, 2026-09-15)").length - 1;
+
+  expect(matches).toBe(1);
 });

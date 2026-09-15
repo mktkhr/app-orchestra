@@ -8,8 +8,8 @@
  */
 import { AXES, type LatencyStats, type QuestionResult, type Scoreboard } from "./score.ts";
 
-/** One run's label, as it should head its own table. */
-export type RunLabel = "narrowing on" | "narrowing off";
+/** One run's label, as it should head its own table - "narrowing on" / "narrowing off" for the plain passes, "wording <name>" for a per-wording pass (docs/plans/wording.md Task 2, Step 3). */
+export type RunLabel = string;
 
 /** A table's columns, in the fixed order every row (a run's or a reference's) uses. */
 type Column = "A" | "B" | "C" | "D" | "E" | "overall";
@@ -192,4 +192,36 @@ export function renderReport(runs: { readonly on: RunReport; readonly off: RunRe
     "",
     renderReferenceRows(),
   ].join("\n");
+}
+
+/** One named wording's scoreboard plus the raw results it was scored from (docs/plans/wording.md Task 2, Step 3). */
+export interface WordingRunReport {
+  readonly name: string;
+  readonly board: Scoreboard;
+  readonly results: readonly QuestionResult[];
+}
+
+/** `runs`, `v1` moved first if present - `Array.prototype.sort` is stable, so every other name keeps its given relative order. */
+function v1First(runs: readonly WordingRunReport[]): readonly WordingRunReport[] {
+  return runs.toSorted((a, b) => Number(b.name === "v1") - Number(a.name === "v1"));
+}
+
+/**
+ * Renders one block per wording - `v1` first - the same columns as
+ * `renderReport`'s two blocks, plus the stand-in picker's reference row
+ * once at the bottom (docs/plans/wording.md Task 2, Step 3; AC-Q-103).
+ */
+export function renderWordingReport(runs: readonly WordingRunReport[]): string {
+  const blocks = v1First(runs).flatMap((r) => {
+    const label = `wording ${r.name}`;
+
+    return [
+      renderRun(label, r.board),
+      renderVia(label, r.results),
+      renderErrors(label, r.results),
+      "",
+    ];
+  });
+
+  return [...blocks, renderReferenceRows()].join("\n");
 }

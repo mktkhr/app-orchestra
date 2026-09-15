@@ -1,145 +1,33 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import path from "node:path";
-
 import { questions } from "../narrowing/corpus/index.ts";
-import { signIn, withSession, type Session } from "../src/helpers/auth.ts";
-import { asRecord, isRecord } from "../src/helpers/wire.ts";
+import { signIn, type Session } from "../src/helpers/auth.ts";
 import { boot, type Booted } from "./boot.ts";
 import { safeOperationIds } from "./catalogue-safety.ts";
+import { writeMisses } from "./misses.ts";
+import { readResults } from "./parse-result.ts";
+import { alreadyDone, appendResult, outputPathFor } from "./pass-io.ts";
+import { kindOf, postPlan } from "./plan-request.ts";
 import type { QuestionResult } from "./score.ts";
 
 /**
  * Runs the 100-question corpus against a running platform, one question at
  * a time, for the shortlist measurement (docs/plans/shortlisting.md Task
- * 4, Step 2 and Step 4; docs/specs/shortlisting.md section 6). NOT
- * imported by any test file: it needs a live platform, a live fixture and,
- * for the "on" pass, a live embedder and reranker.
+ * 4, Step 2 and Step 4; docs/specs/shortlisting.md section 6) and, with
+ * `--wording`, for the per-wording measurement (docs/plans/wording.md Task
+ * 2, Step 1). NOT imported by any test file: it needs a live platform, a
+ * live fixture and, for the "on" pass, a live embedder and reranker.
  *
  * Run with `node shortlist/run.ts` (invoked by `make eval-shortlist`).
  * `--on-only` / `--off-only` resume a half-finished run: each pass writes
- * its own output file and is independent of the other.
+ * its own output file and is independent of the other. `--wording
+ * a,b,c` runs one narrowing-on, K=20 pass per named wording instead,
+ * setting `ORCHESTRA_PLANNER_WORDING=<name>` on the platform for that
+ * pass; `v1` is always included first even when not named, so every
+ * report has the baseline to compare against. `--wording` and
+ * `--on-only`/`--off-only` are mutually exclusive modes: without
+ * `--wording`, run.ts behaves exactly as it did before this flag existed.
  */
 
 const NARROWING = { embedModel: "e5-large-q8", rerankModel: "bge-reranker-v2-m3-q8", k: 20 };
-
-const outDir = path.join(import.meta.dirname, "out");
-
-function outputPathFor(pass: "on" | "off"): string {
-  return path.join(outDir, `${pass}.jsonl`);
-}
-
-/**
- * One raw /api/plan response, read for the fields score.ts needs.
- *
- * `operationId` reads `source.operationId` for a `result` (the operation
- * actually run) or `target.operationId` for a `form` (the operation named
- * without running it - either a real D8 confirm-before-write, or an
- * `ask_user` degraded into one, see score.ts's own QuestionResult
- * comment). `alternatives` is only ever present on a `result`
- * (orchestrator.go's own `call`) - reading it here regardless of kind is
- * harmless, since a `form` never carries the field on the wire.
- */
-interface PlanResponse {
-  readonly kind: string;
-  readonly operationId?: string;
-  readonly alternatives?: readonly string[];
-  readonly via?: "plan" | "invoke-500";
-  readonly errorMessage?: string;
-  readonly errorStatus?: number;
-}
-
-/** Parses an /api/plan response body into the fields run.ts needs, by runtime check (no `as`). */
-function parsePlanResponse(value: unknown): PlanResponse {
-  const record = asRecord(value);
-  const kind = typeof record["kind"] === "string" ? record["kind"] : "error";
-  const source = isRecord(record["source"]) ? record["source"] : undefined;
-  const target = isRecord(record["target"]) ? record["target"] : undefined;
-  const operationId =
-    (typeof source?.["operationId"] === "string" ? source["operationId"] : undefined) ??
-    (typeof target?.["operationId"] === "string" ? target["operationId"] : undefined);
-  const rawAlternatives = Array.isArray(record["alternatives"]) ? record["alternatives"] : [];
-  const alternatives = rawAlternatives
-    .filter((a) => isRecord(a))
-    .map((a) => a["operationId"])
-    .filter((id): id is string => typeof id === "string");
-
-  return {
-    kind,
-    ...(operationId !== undefined && { operationId }),
-    ...(alternatives.length > 0 && { alternatives }),
-    ...(kind === "result" && { via: "plan" }),
-  };
-}
-
-/**
- * The fixture (e2e/narrowing/serve.ts) serves contracts only, never
- * `/api/invoke` - so `Orchestrator.Plan`'s existing, pre-shortlisting
- * behaviour of invoking a safe operation synchronously (D8,
- * docs/specs/orchestration.md) 404s against it, and `/api/plan` answers
- * with a 500 whose message still names what it tried to invoke:
- * `invoking <service>/<operationId>: service returned an error: ...`.
- * docs/specs/shortlisting.md section 7 excludes fixture invocation from
- * this measurement on purpose ("planning is measured; invoking a fixture
- * operation is not") - this reads the plan a 500 still names back out as
- * the `result` it would have been, so a safe operation's correct@1 is not
- * silently lost to an invocation the fixture was never meant to answer.
- * The result has no alternatives: those never reached the wire.
- */
-const INVOKE_FAILURE = /^invoking [^/]+\/(\S+):/u;
-
-function planFromInvokeFailure(message: string): PlanResponse | undefined {
-  const match = INVOKE_FAILURE.exec(message);
-
-  return match?.[1] === undefined
-    ? undefined
-    : { kind: "result", operationId: match[1], via: "invoke-500" };
-}
-
-async function postPlan(baseUrl: string, session: Session, query: string): Promise<PlanResponse> {
-  const response = await fetch(
-    `${baseUrl}/api/plan`,
-    withSession(session, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query, turns: [] }),
-    }),
-  );
-
-  if (!response.ok) {
-    const body = asRecord(await response.json().catch(() => ({})));
-    const message = typeof body["message"] === "string" ? body["message"] : "";
-
-    return (
-      planFromInvokeFailure(message) ?? {
-        kind: "error",
-        errorMessage: message,
-        errorStatus: response.status,
-      }
-    );
-  }
-
-  return parsePlanResponse(await response.json());
-}
-
-/** Appends one result to a run's output file, flushing to disk immediately - a killed process loses no completed work. */
-function appendResult(pass: "on" | "off", result: QuestionResult): void {
-  appendFileSync(outputPathFor(pass), `${JSON.stringify(result)}\n`);
-}
-
-/** Ids already recorded in a pass's output file, so a resumed run skips what it already has. */
-function alreadyDone(pass: "on" | "off"): ReadonlySet<string> {
-  const filePath = outputPathFor(pass);
-
-  if (!existsSync(filePath)) return new Set();
-
-  const lines = readFileSync(filePath, "utf8").split("\n").filter(Boolean);
-  const ids = lines
-    .map((line): unknown => JSON.parse(line))
-    .map((parsed) => asRecord(parsed)["id"])
-    .filter((id): id is string => typeof id === "string");
-
-  return new Set(ids);
-}
 
 /** Runs three sample questions and prints their raw responses, warning (not failing) if the first exceeds 5s (AC-H-107). */
 async function smokeTest(baseUrl: string, session: Session): Promise<void> {
@@ -149,7 +37,7 @@ async function smokeTest(baseUrl: string, session: Session): Promise<void> {
 
   for (const [index, question] of samples.entries()) {
     const start = Date.now();
-    // Sequential: one question at a time is the point (see runPass).
+    // Sequential: one question at a time is the point (see runQuestions).
     const response = await postPlan(baseUrl, session, question.text);
     const elapsedMs = Date.now() - start;
 
@@ -165,89 +53,137 @@ async function smokeTest(baseUrl: string, session: Session): Promise<void> {
   }
 }
 
-async function runPass(pass: "on" | "off"): Promise<void> {
-  mkdirSync(outDir, { recursive: true });
+/**
+ * Runs every not-yet-done question in the corpus against one booted
+ * platform, appending each result to `outputName`'s file as it completes.
+ * Shared by the narrowing on/off passes and the per-wording passes: the
+ * only difference between them is which platform `boot()` started and
+ * which output file the rows go to.
+ */
+async function runQuestions(
+  label: string,
+  outputName: string,
+  baseUrl: string,
+  session: Session,
+): Promise<readonly QuestionResult[]> {
+  const safeIds = safeOperationIds();
+  const done = alreadyDone(outputName);
+  const results: QuestionResult[] = [];
 
+  for (const question of questions()) {
+    if (done.has(question.id)) continue;
+
+    const start = Date.now();
+    // Sequential and deliberate: one question against one model at a
+    // time, so latency measures the platform's own round trip rather
+    // than queueing behind other requests (docs/specs/shortlisting.md
+    // section 6).
+    const response = await postPlan(baseUrl, session, question.text);
+    const latencyMs = Date.now() - start;
+
+    if (latencyMs > 5000) {
+      console.warn(
+        `[${label}] over 5s: "${question.text}" (${question.id}) took ${String(latencyMs)}ms`,
+      );
+    }
+
+    const kind = kindOf(response);
+    // An ask_user over a safe operation with no enum for its parameter
+    // degrades into this same form shape (score.ts's own QuestionResult
+    // comment; orchestrator.go's `ask`) - scored as `asked`, not as a
+    // pick, by score.ts. Not a platform bug to fix here - worth a follow
+    // up item in this repository's own memory files, left for the
+    // session that owns them (this task stops short of DECISIONS.md /
+    // STATE.md / TODO.md).
+    const askDegraded =
+      kind === "form" && response.operationId !== undefined && safeIds.has(response.operationId);
+
+    const result: QuestionResult = {
+      id: question.id,
+      axis: question.axis,
+      text: question.text,
+      answers: question.answers,
+      kind,
+      ...(response.operationId !== undefined && { operationId: response.operationId }),
+      ...(askDegraded && { askDegraded }),
+      ...(response.alternatives !== undefined && { alternatives: response.alternatives }),
+      ...(response.via !== undefined && { via: response.via }),
+      latencyMs,
+      ...(response.errorMessage !== undefined && { errorMessage: response.errorMessage }),
+      ...(response.errorStatus !== undefined && { errorStatus: response.errorStatus }),
+    };
+
+    appendResult(outputName, result);
+    results.push(result);
+    console.log(`[${label}] ${question.id} ${question.axis} ${result.kind} ${String(latencyMs)}ms`);
+  }
+
+  return results;
+}
+
+async function runPass(pass: "on" | "off"): Promise<void> {
   const options = pass === "on" ? { narrowing: NARROWING } : {};
   const booted: Booted = await boot(options);
-  const safeIds = safeOperationIds();
 
   try {
     const session = await signIn(booted.baseUrl, "admin", booted.adminPassword);
 
-    if (pass === "on") {
-      await smokeTest(booted.baseUrl, session);
-    }
+    if (pass === "on") await smokeTest(booted.baseUrl, session);
 
-    const done = alreadyDone(pass);
-
-    for (const question of questions()) {
-      if (done.has(question.id)) continue;
-
-      const start = Date.now();
-      // Sequential and deliberate: one question against one model at a
-      // time, so latency measures the platform's own round trip rather
-      // than queueing behind other requests (docs/specs/shortlisting.md
-      // section 6).
-      const response = await postPlan(booted.baseUrl, session, question.text);
-      const latencyMs = Date.now() - start;
-
-      if (latencyMs > 5000) {
-        console.warn(
-          `[${pass}] over 5s: "${question.text}" (${question.id}) took ${String(latencyMs)}ms`,
-        );
-      }
-
-      const kind = kindOf(response);
-      // An ask_user over a safe operation with no enum for its parameter
-      // degrades into this same form shape (score.ts's own QuestionResult
-      // comment; orchestrator.go's `ask`) - scored as `asked`, not as a
-      // pick, by score.ts. Not a platform bug to fix here - worth a follow
-      // up item in this repository's own memory files, left for the
-      // session that owns them (this task stops short of DECISIONS.md /
-      // STATE.md / TODO.md).
-      const askDegraded =
-        kind === "form" && response.operationId !== undefined && safeIds.has(response.operationId);
-
-      const result: QuestionResult = {
-        id: question.id,
-        axis: question.axis,
-        text: question.text,
-        answers: question.answers,
-        kind,
-        ...(response.operationId !== undefined && { operationId: response.operationId }),
-        ...(askDegraded && { askDegraded }),
-        ...(response.alternatives !== undefined && { alternatives: response.alternatives }),
-        ...(response.via !== undefined && { via: response.via }),
-        latencyMs,
-        ...(response.errorMessage !== undefined && { errorMessage: response.errorMessage }),
-        ...(response.errorStatus !== undefined && { errorStatus: response.errorStatus }),
-      };
-
-      appendResult(pass, result);
-      console.log(
-        `[${pass}] ${question.id} ${question.axis} ${result.kind} ${String(latencyMs)}ms`,
-      );
-    }
+    await runQuestions(pass, pass, booted.baseUrl, session);
   } finally {
     await booted.stop();
   }
 }
 
-function kindOf(response: PlanResponse): QuestionResult["kind"] {
-  const kinds: readonly QuestionResult["kind"][] = [
-    "result",
-    "ask",
-    "none",
-    "form",
-    "proposal",
-    "error",
-  ];
+/** One pass for one named wording: narrowing on, K=20, `ORCHESTRA_PLANNER_WORDING=<name>` (docs/plans/wording.md Task 2, Step 1). Rows go to `out/on-<name>.jsonl`; the miss list to `out/misses-<name>.txt`. */
+async function runWordingPass(name: string): Promise<void> {
+  const outputName = `on-${name}`;
+  const booted: Booted = await boot({ narrowing: NARROWING, wording: name });
 
-  return kinds.find((k) => k === response.kind) ?? "error";
+  try {
+    const session = await signIn(booted.baseUrl, "admin", booted.adminPassword);
+
+    await runQuestions(outputName, outputName, booted.baseUrl, session);
+    // Read the whole pass's file back - not just this run's freshly
+    // appended rows - so a resumed pass's miss list still covers every
+    // row, including ones a previous run already wrote (pass-io.ts's
+    // alreadyDone).
+    writeMisses(name, readResults(outputPathFor(outputName)));
+  } finally {
+    await booted.stop();
+  }
+}
+
+/** `--wording a,b,c`'s names, deduplicated in first-seen order, with `v1` always first even when not named. */
+function wordingArg(): readonly string[] | undefined {
+  const flagIndex = process.argv.indexOf("--wording");
+
+  if (flagIndex === -1) return undefined;
+
+  const raw = process.argv[flagIndex + 1] ?? "";
+  const named = raw
+    .split(",")
+    .map((n) => n.trim())
+    .filter((n) => n.length > 0);
+  const ordered = ["v1", ...named];
+
+  return [...new Set(ordered)];
 }
 
 async function main(): Promise<void> {
+  const wording = wordingArg();
+
+  if (wording !== undefined) {
+    for (const name of wording) {
+      // Sequential and deliberate: one platform boot per wording, one at
+      // a time (docs/plans/wording.md Task 2, Step 1).
+      await runWordingPass(name);
+    }
+
+    return;
+  }
+
   const onOnly = process.argv.includes("--on-only");
   const offOnly = process.argv.includes("--off-only");
 

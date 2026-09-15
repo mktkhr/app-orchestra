@@ -39,6 +39,8 @@ export interface NarrowingOptions {
 export interface BootOptions {
   /** When set, narrowing is configured on the platform; when absent, none of the three vars are set (config.go: all or none). */
   readonly narrowing?: NarrowingOptions;
+  /** When set, `ORCHESTRA_PLANNER_WORDING` is set to this name on the platform (docs/plans/wording.md Task 2) - the whole contract with the `wording` package is this variable's name. */
+  readonly wording?: string;
 }
 
 export interface Booted {
@@ -125,6 +127,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
             ORCHESTRA_NARROWING_RERANK_MODEL: options.narrowing.rerankModel,
             ORCHESTRA_NARROWING_K: String(options.narrowing.k),
           }),
+      ...(options.wording === undefined ? {} : { ORCHESTRA_PLANNER_WORDING: options.wording }),
     }),
     port: platformPort,
   };
