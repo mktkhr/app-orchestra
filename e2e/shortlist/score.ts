@@ -36,6 +36,14 @@ export type Kind = "result" | "ask" | "none" | "form" | "proposal" | "error";
  * `errorMessage`/`errorStatus` are set only for `kind: "error"` - the
  * platform's own message and the HTTP status /api/plan answered with,
  * so a run's error rows can be listed, not just counted (`report.ts`).
+ *
+ * `via` says where a `result` came from: `"plan"` for a genuine 200
+ * `/api/plan` response (the fixture answered the invoke and the platform
+ * rendered it), or `"invoke-500"` for the honest fallback that reads a
+ * `result` back out of a 500 `invoking <service>/<op>: ...` message
+ * (`run.ts`'s `planFromInvokeFailure`) - undefined for every other kind,
+ * where the question does not apply. `report.ts` counts these per pass so
+ * a run measuring only the fallback path is visible, not silent.
  */
 export interface QuestionResult {
   readonly id: string;
@@ -46,6 +54,7 @@ export interface QuestionResult {
   readonly operationId?: string;
   readonly askDegraded?: boolean;
   readonly alternatives?: readonly string[];
+  readonly via?: "plan" | "invoke-500";
   readonly latencyMs: number;
   readonly narrowingMs?: number;
   readonly errorMessage?: string;

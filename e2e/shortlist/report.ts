@@ -110,6 +110,24 @@ function over5000ByAxisLine(board: Scoreboard): string {
   return `over 5000ms by axis: ${perAxis}`;
 }
 
+/**
+ * One line counting where each `result` row's answer came from
+ * (`QuestionResult.via`): a genuine 200 `/api/plan` response ("plan") or
+ * the honest fallback read out of a 500 `invoking ...` message
+ * ("invoke-500") - so a run where every result is `invoke-500` is
+ * visibly not measuring the render path, not silently passing.
+ */
+export function renderVia(label: RunLabel, results: readonly QuestionResult[]): string {
+  const withVia = results.filter((r) => r.via !== undefined);
+  const plan = withVia.filter((r) => r.via === "plan").length;
+  const invoke500 = withVia.filter((r) => r.via === "invoke-500").length;
+
+  return (
+    `${label} result via: plan=${String(plan)} invoke-500=${String(invoke500)} ` +
+    `(of ${String(withVia.length)} result rows)`
+  );
+}
+
 /** Every error row in results, with its question, latency and the platform's own message - not just counted (score.ts's Tally), listed. */
 export function renderErrors(label: RunLabel, results: readonly QuestionResult[]): string {
   const errors = results.filter((r) => r.kind === "error");
@@ -165,9 +183,11 @@ export interface RunReport {
 export function renderReport(runs: { readonly on: RunReport; readonly off: RunReport }): string {
   return [
     renderRun("narrowing on", runs.on.board),
+    renderVia("narrowing on", runs.on.results),
     renderErrors("narrowing on", runs.on.results),
     "",
     renderRun("narrowing off", runs.off.board),
+    renderVia("narrowing off", runs.off.results),
     renderErrors("narrowing off", runs.off.results),
     "",
     renderReferenceRows(),

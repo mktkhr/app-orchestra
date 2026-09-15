@@ -43,6 +43,7 @@ interface PlanResponse {
   readonly kind: string;
   readonly operationId?: string;
   readonly alternatives?: readonly string[];
+  readonly via?: "plan" | "invoke-500";
   readonly errorMessage?: string;
   readonly errorStatus?: number;
 }
@@ -66,6 +67,7 @@ function parsePlanResponse(value: unknown): PlanResponse {
     kind,
     ...(operationId !== undefined && { operationId }),
     ...(alternatives.length > 0 && { alternatives }),
+    ...(kind === "result" && { via: "plan" }),
   };
 }
 
@@ -88,7 +90,9 @@ const INVOKE_FAILURE = /^invoking [^/]+\/(\S+):/u;
 function planFromInvokeFailure(message: string): PlanResponse | undefined {
   const match = INVOKE_FAILURE.exec(message);
 
-  return match?.[1] === undefined ? undefined : { kind: "result", operationId: match[1] };
+  return match?.[1] === undefined
+    ? undefined
+    : { kind: "result", operationId: match[1], via: "invoke-500" };
 }
 
 async function postPlan(baseUrl: string, session: Session, query: string): Promise<PlanResponse> {
@@ -214,6 +218,7 @@ async function runPass(pass: "on" | "off"): Promise<void> {
         ...(response.operationId !== undefined && { operationId: response.operationId }),
         ...(askDegraded && { askDegraded }),
         ...(response.alternatives !== undefined && { alternatives: response.alternatives }),
+        ...(response.via !== undefined && { via: response.via }),
         latencyMs,
         ...(response.errorMessage !== undefined && { errorMessage: response.errorMessage }),
         ...(response.errorStatus !== undefined && { errorStatus: response.errorStatus }),

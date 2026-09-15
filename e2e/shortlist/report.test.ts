@@ -7,6 +7,7 @@ import {
   renderReferenceRows,
   renderReport,
   renderRun,
+  renderVia,
   type RunReport,
 } from "./report.ts";
 import { scoreboard, type QuestionResult } from "./score.ts";
@@ -113,4 +114,30 @@ test("renderErrors says so when a run has none", () => {
   const rendered = renderErrors("narrowing off", [fakeResult()]);
 
   expect(rendered).toContain("(none)");
+});
+
+test("renderVia counts plan and invoke-500 results separately", () => {
+  const { operationId: _operationId, ...askWithoutVia } = fakeResult({ id: "a04", kind: "ask" });
+  const rendered = renderVia("narrowing on", [
+    fakeResult({ id: "a01", via: "plan" }),
+    fakeResult({ id: "a02", via: "plan" }),
+    fakeResult({ id: "a03", via: "invoke-500" }),
+    askWithoutVia,
+  ]);
+
+  expect(rendered).toContain("narrowing on result via: plan=2 invoke-500=1 (of 3 result rows)");
+});
+
+test("renderVia reads 0 for a run with no via recorded at all", () => {
+  const rendered = renderVia("narrowing off", [fakeResult()]);
+
+  expect(rendered).toContain("plan=0 invoke-500=0 (of 0 result rows)");
+});
+
+test("renderReport includes each run's via counts", () => {
+  const run = fakeRunReport([fakeResult({ via: "plan" })]);
+  const rendered = renderReport({ on: run, off: run });
+
+  expect(rendered).toContain("narrowing on result via: plan=1 invoke-500=0");
+  expect(rendered).toContain("narrowing off result via: plan=1 invoke-500=0");
 });

@@ -41,6 +41,8 @@ function parseLine(line: string): QuestionResult {
   const alternatives = Array.isArray(record["alternatives"])
     ? record["alternatives"].filter((a): a is string => typeof a === "string")
     : undefined;
+  const viaValue = record["via"];
+  const via = viaValue === "plan" || viaValue === "invoke-500" ? viaValue : undefined;
   const latencyMs = typeof record["latencyMs"] === "number" ? record["latencyMs"] : 0;
   const errorMessage =
     typeof record["errorMessage"] === "string" ? record["errorMessage"] : undefined;
@@ -55,6 +57,7 @@ function parseLine(line: string): QuestionResult {
     ...(operationId !== undefined && { operationId }),
     ...(askDegraded !== undefined && { askDegraded }),
     ...(alternatives !== undefined && { alternatives }),
+    ...(via !== undefined && { via }),
     latencyMs,
     ...(errorMessage !== undefined && { errorMessage }),
     ...(errorStatus !== undefined && { errorStatus }),
