@@ -83,6 +83,22 @@ func stagingShortlist() domain.Catalog {
 			Service: "svc-d", OperationID: "Opd", Method: domain.MethodGet, Path: "/d", Summary: "operation d",
 			DisplayName: "操作d", Response: &domain.Schema{Type: domain.SchemaTypeObject},
 		},
+		{
+			// Ope is unsafe (POST, not GET/HEAD/QUERY - domain.Endpoint.
+			// IsSafe) with a required parameter of its own: the fixture
+			// TestPlanStagedOnPickOperationWithRequiredParameterCallsThe
+			// PlannerAndFormsWithItsArgs needs (create/create-attendance
+			// regression, docs/specs/staging.md section 5) - a pick whose
+			// question carries the argument an unsafe operation requires,
+			// so the fill must still call the model rather than shortcut
+			// straight to an empty form.
+			Service: "svc-e", OperationID: "Ope", Method: "POST", Path: "/e", Summary: "operation e",
+			DisplayName: "操作e",
+			Parameters: []domain.Parameter{
+				{Name: "name", In: "body", Required: true, Schema: domain.Schema{Type: domain.SchemaTypeString}},
+			},
+			Response: &domain.Schema{Type: domain.SchemaTypeObject},
+		},
 	}}
 }
 
@@ -143,11 +159,43 @@ func TestPlanStagedOnPickOperationWithEnumOffersAskUser(t *testing.T) {
 	assert.Contains(t, names, "ask_user")
 }
 
-// TestPlanStagedOnPickOperationWithRequiredParameterFormsWithoutCallingThePlanner
-// is planPreferred's own required-parameter short circuit, reached through
-// the pick: Opc's required "id" is not in answers, so the planner is never
-// consulted at all.
-func TestPlanStagedOnPickOperationWithRequiredParameterFormsWithoutCallingThePlanner(t *testing.T) {
+// TestPlanStagedOnPickOperationWithRequiredParameterCallsThePlannerAndForms
+// WithItsArgs is the create/create-attendance regression fix
+// (docs/specs/staging.md section 5): a pick's question is the source of
+// its own arguments, so planPreferred's required-parameter shortcut must
+// not apply when fromPick is true - Ope's required "name" is not in
+// answers, but the planner is still consulted, and its Args (which the
+// question itself carried, e.g. 「名前はテスト品、数量は5、引当済で」)
+// come back as the D8 confirm form's Initial values, because Ope is
+// unsafe (o.call degrades an unsafe call to formFor with decision.Args).
+func TestPlanStagedOnPickOperationWithRequiredParameterCallsThePlannerAndFormsWithItsArgs(t *testing.T) {
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-e", OperationID: "Ope"}}
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionCall, Service: "svc-e", OperationID: "Ope",
+		Args: map[string]any{"name": "テスト品"},
+	}}
+
+	orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "登録して。名前はテスト品で", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, planner.calls, "a pick must always consult the model for its arguments")
+	require.Len(t, planner.tools, 1, "only the picked operation's tool must be offered")
+	assert.Equal(t, "Ope", planner.tools[0].Name)
+	assert.Equal(t, usecase.ResultKindForm, result.Kind, "Ope is unsafe, so the call degrades to a confirm form")
+	assert.Equal(t, "Ope", result.OperationID)
+	assert.Equal(t, map[string]any{"name": "テスト品"}, result.Initial)
+}
+
+// TestPlanStagedOnPickOperationWithRequiredParameterFallsBackToFormOnAnyOther
+// Decision is the fallback planPreferred already had, still reached
+// through a pick now that the shortcut above no longer applies before the
+// call: Opc's required "id" cannot be supplied by the model either, and
+// whatever it returns instead of a call to Opc degrades to the same form
+// planPreferred always built for this case, built from the answers rather
+// than the model's own (unusable) Args.
+func TestPlanStagedOnPickOperationWithRequiredParameterFallsBackToFormOnAnyOtherDecision(t *testing.T) {
 	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-c", OperationID: "Opc"}}
 	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
 
@@ -156,7 +204,7 @@ func TestPlanStagedOnPickOperationWithRequiredParameterFormsWithoutCallingThePla
 	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "", nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, 0, planner.calls, "the planner must never be called when a required parameter is unanswered")
+	assert.Equal(t, 1, planner.calls, "the planner must still be consulted before falling back to the form")
 	assert.Equal(t, usecase.ResultKindForm, result.Kind)
 	assert.Equal(t, "Opc", result.OperationID)
 }

@@ -177,7 +177,14 @@ asserts the Go file contains `PICK_SYSTEM_PROMPT`'s text verbatim.
   next two after it (the existing `alternativesFor` on the narrowed
   catalogue, not the one-endpoint catalogue - assert two alternatives).
 - picker names an operation with a required parameter not in `answers` →
-  form, planner not called (existing `planPreferred` behaviour).
+  planner is still called with that operation's tool (amended
+  2026-09-16, create/create-attendance regression,
+  `docs/specs/staging.md` section 5: a pick's question is the source of
+  its own arguments, so `planPreferred`'s required-parameter shortcut
+  applies only when `fromPick` is false); a call to that operation forms
+  or invokes normally, anything else degrades to the form
+  `requiredParamsKnown` used to return without calling the planner at
+  all.
 - picker → `PickListCapabilities` → the same `Result` `listCapabilities`
   returns today, planner not called.
 - picker → `PickNone` → `kind: none`, planner not called.

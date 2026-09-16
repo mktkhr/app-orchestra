@@ -57,7 +57,17 @@ func (o *Orchestrator) planPreferred(
 	// cannot supply is exactly what a form is for (D8 already renders one
 	// for an unsafe operation; a safe operation missing an id it was never
 	// given is the same situation) - so the model is never even asked.
-	if !requiredParamsKnown(endpoint, answers) {
+	//
+	// Only when fromPick is false: a chip's preferred carries no fresh
+	// text (the person chose an operation and typed nothing new, 0840502),
+	// so the model has nothing to extract and the shortcut is exact. A
+	// pick's preferred comes from the question itself - 「在庫を登録して。
+	// 名前はテスト品、数量は5、引当済で」 names CreateInventoryItem and
+	// carries its arguments in the same sentence (regression, ORCHESTRA_
+	// PLANNER_STAGES=2 make eval, create/create-attendance) - so under a
+	// pick the model is always consulted; the fallback below still catches
+	// anything it cannot use.
+	if !fromPick && !requiredParamsKnown(endpoint, answers) {
 		return formFor(endpoint, fallback), nil
 	}
 

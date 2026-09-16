@@ -112,7 +112,7 @@ are chosen by measurement (section 7) and recorded with it.
 `planPreferred` as it stands: the picked endpoint's tool alone, or the
 form at once when a required parameter is not in `answers`; anything the
 model returns that is not a call to that operation degrades to the form
-(`orchestrator_preferred.go`). Two things change:
+(`orchestrator_preferred.go`). Three things change:
 
 - `ask_user` is offered alongside the one tool when the endpoint has an
   enum parameter, so an unmatched restricting word (`v6-unmatched-filter`)
@@ -120,6 +120,18 @@ model returns that is not a call to that operation degrades to the form
   chip the person has already chosen, so today's withholding stands there;
   under a pick they have not.
 - The fill is where the request's `thinking` applies (S5).
+- Under a pick, the required-parameter shortcut above never fires: a
+  chip's `preferred` carries no fresh text (the person chose an operation
+  and typed nothing new, `0840502`), so skipping the model and going
+  straight to the form is exact - but a pick's `preferred` comes from the
+  question itself, and the question is where its arguments are
+  (create/create-attendance regression, `ORCHESTRA_PLANNER_STAGES=2 make
+eval`: 「在庫を登録して。名前はテスト品、数量は5、引当済で」 picks
+  `CreateInventoryItem` and must still reach the model to extract `{name:
+"テスト品", quantity: 5, status: "allocated"}`). So under a pick the
+  fill always calls the model with the one tool (plus `ask_user` per the
+  bullet above); the same fallback - anything other than a call to that
+  operation, or an honoured ask - still degrades to `formFor`.
 
 ## 6. The configuration
 
