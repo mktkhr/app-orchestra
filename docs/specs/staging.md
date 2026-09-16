@@ -133,11 +133,27 @@ form at once when a required parameter is not in `answers`; anything the
 model returns that is not a call to that operation degrades to the form
 (`orchestrator_preferred.go`). Three things change:
 
-- `ask_user` is offered alongside the one tool when the endpoint has an
-  enum parameter, so an unmatched restricting word (`v6-unmatched-filter`)
-  still ends in a question rather than a form. Under `preferred` from a
-  chip the person has already chosen, so today's withholding stands there;
-  under a pick they have not.
+- Under a pick, the fill offers the picked tool plus `ask_user` (always,
+  not only when the endpoint has an enum parameter - the model may need to
+  ask about anything) and `list_capabilities`, never `propose_panel`, and
+  honours what the model returns rather than degrading all of it: a call to
+  the picked operation runs as today, a `DecisionAsk` naming it resolves
+  through `o.ask` as today, but now a `DecisionNone` resolves to the same
+  `none` result `planOrdinary` would give it and a `DecisionListCapabilities`
+  resolves through `o.listCapabilities` over the shortlist, instead of both
+  being forced into a form for an operation the model just said does not
+  fit. Only a call naming some _other_ operation still degrades to
+  `formFor(picked endpoint)` - the pick is the decision, the fill only
+  fills. Found on the dev stack (2026-09-16, real services, 6 operations,
+  30 questions): with two-stage planning on, a small catalogue made this
+  degrade fire on plain questions it had no business swallowing -
+  「今日は何曜日？」and 「在庫について何ができる？」both got forced into a
+  form, and several safe-listing questions were forced into whatever the
+  picked operation happened to list - where a single planner call answered
+  every one of them correctly with `list_capabilities` or a refusal. Under
+  `preferred` from a chip the person has already chosen, none of this
+  changes: the withholding and the total degrade both stand exactly as
+  before.
 - The fill is where the request's `thinking` applies (S5).
 - Under a pick, the required-parameter shortcut above never fires: a
   chip's `preferred` carries no fresh text (the person chose an operation

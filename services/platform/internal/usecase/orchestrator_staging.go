@@ -122,7 +122,7 @@ func (o *Orchestrator) planPicked(
 		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, p.Service, p.OperationID)
 	}
 
-	result, err := o.planPreferred(ctx, &endpoint, query, answers, turns, thinking, true)
+	result, err := o.planPreferred(ctx, catalog, &endpoint, query, answers, turns, thinking, true)
 	if err != nil {
 		return Result{}, err
 	}
@@ -132,22 +132,4 @@ func (o *Orchestrator) planPicked(
 	}
 
 	return result, nil
-}
-
-// hasEnumParameter reports whether endpoint declares any parameter with an
-// enum: the fill (planPreferred) offers ask_user alongside the picked
-// operation's own tool only when this holds (S5, docs/specs/staging.md,
-// section 5), so a pick can still end in a question rather than a form
-// when a restricting word does not match one of the enum's declared
-// values (v6-unmatched-filter) - the same situation a chip-chosen
-// preferred never needed to guard against, since the person had already
-// disambiguated by choosing the chip.
-func hasEnumParameter(e *domain.Endpoint) bool {
-	for i := range e.Parameters {
-		if len(e.Parameters[i].Schema.Enum) > 0 {
-			return true
-		}
-	}
-
-	return false
 }

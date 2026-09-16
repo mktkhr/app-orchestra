@@ -116,11 +116,15 @@ func stagedOrchestrator(t *testing.T, picker usecase.Picker, planner usecase.Pla
 	)
 }
 
-// TestPlanStagedOnPickOperationCallsThePlannerWithOnlyThatOperationsTool is
-// the core dispatch: a pick naming an operation runs the fill with exactly
-// that operation's tool (no ask_user, since Opa declares no enum), and the
-// result carries the shortlist's own next two entries as Alternatives.
-func TestPlanStagedOnPickOperationCallsThePlannerWithOnlyThatOperationsTool(t *testing.T) {
+// TestPlanStagedOnPickOperationCallsThePlannerWithThePickedToolAskUserAnd
+// ListCapabilities is the core dispatch and the fill-escape fix's own tool
+// list (dev-stack finding, docs/specs/staging.md section 5): a pick naming
+// an operation runs the fill with that operation's own tool plus ask_user
+// and list_capabilities - always, not only when the endpoint declares an
+// enum - and never propose_panel. A call to the picked operation still
+// resolves through o.call, and the result carries the shortlist's own next
+// two entries as Alternatives.
+func TestPlanStagedOnPickOperationCallsThePlannerWithThePickedToolAskUserAndListCapabilities(t *testing.T) {
 	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
 	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
 	invoker := &fakeInvoker{data: map[string]any{}}
@@ -132,33 +136,20 @@ func TestPlanStagedOnPickOperationCallsThePlannerWithOnlyThatOperationsTool(t *t
 	require.NoError(t, err)
 	assert.Equal(t, 1, picker.calls)
 	assert.Equal(t, 1, planner.calls)
-	require.Len(t, planner.tools, 1, "only the picked operation's tool must be offered")
-	assert.Equal(t, "Opa", planner.tools[0].Name)
+	require.Len(t, planner.tools, 3, "the picked operation's tool, ask_user and list_capabilities")
+
+	names := []string{planner.tools[0].Name, planner.tools[1].Name, planner.tools[2].Name}
+	assert.Contains(t, names, "Opa")
+	assert.Contains(t, names, "ask_user")
+	assert.Contains(t, names, "list_capabilities")
+	assert.NotContains(t, names, "propose_panel")
+
 	assert.Equal(t, usecase.ResultKindResult, result.Kind)
 	assert.Equal(t, "Opa", result.OperationID)
 	assert.Equal(t, []usecase.Alternative{
 		{OperationID: "Opb", DisplayName: "操作b", Service: "svc-b"},
 		{OperationID: "Opc", DisplayName: "操作c", Service: "svc-c"},
 	}, result.Alternatives)
-}
-
-// TestPlanStagedOnPickOperationWithEnumOffersAskUser is S5: the picked
-// operation's enum parameter earns ask_user alongside its own tool.
-func TestPlanStagedOnPickOperationWithEnumOffersAskUser(t *testing.T) {
-	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-b", OperationID: "Opb"}}
-	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-b", OperationID: "Opb"}}
-	invoker := &fakeInvoker{data: map[string]any{}}
-
-	orchestrator := stagedOrchestrator(t, picker, planner, invoker)
-
-	_, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "", nil)
-
-	require.NoError(t, err)
-	require.Len(t, planner.tools, 2)
-
-	names := []string{planner.tools[0].Name, planner.tools[1].Name}
-	assert.Contains(t, names, "Opb")
-	assert.Contains(t, names, "ask_user")
 }
 
 // TestPlanStagedOnPickOperationWithRequiredParameterCallsThePlannerAndForms
@@ -183,23 +174,25 @@ func TestPlanStagedOnPickOperationWithRequiredParameterCallsThePlannerAndFormsWi
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, planner.calls, "a pick must always consult the model for its arguments")
-	require.Len(t, planner.tools, 1, "only the picked operation's tool must be offered")
-	assert.Equal(t, "Ope", planner.tools[0].Name)
+	require.Len(t, planner.tools, 3, "the picked operation's tool, ask_user and list_capabilities")
+	names := []string{planner.tools[0].Name, planner.tools[1].Name, planner.tools[2].Name}
+	assert.Contains(t, names, "Ope")
 	assert.Equal(t, usecase.ResultKindForm, result.Kind, "Ope is unsafe, so the call degrades to a confirm form")
 	assert.Equal(t, "Ope", result.OperationID)
 	assert.Equal(t, map[string]any{"name": "テスト品"}, result.Initial)
 }
 
-// TestPlanStagedOnPickOperationWithRequiredParameterFallsBackToFormOnAnyOther
-// Decision is the fallback planPreferred already had, still reached
-// through a pick now that the shortcut above no longer applies before the
-// call: Opc's required "id" cannot be supplied by the model either, and
-// whatever it returns instead of a call to Opc degrades to the same form
+// TestPlanStagedOnPickOperationWithRequiredParameterFallsBackToFormOnACall
+// ToADifferentOperation is the one fallback planPreferred still has under a
+// pick (docs/specs/staging.md section 5): the pick, not the fill, is where
+// the operation gets chosen, so a call naming some other operation entirely
+// - here, a model that reaches for Opa instead of the picked Opc, whose
+// required "id" the model cannot supply - still degrades to the same form
 // planPreferred always built for this case, built from the answers rather
 // than the model's own (unusable) Args.
-func TestPlanStagedOnPickOperationWithRequiredParameterFallsBackToFormOnAnyOtherDecision(t *testing.T) {
+func TestPlanStagedOnPickOperationWithRequiredParameterFallsBackToFormOnACallToADifferentOperation(t *testing.T) {
 	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-c", OperationID: "Opc"}}
-	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
 
 	orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{})
 
@@ -208,7 +201,50 @@ func TestPlanStagedOnPickOperationWithRequiredParameterFallsBackToFormOnAnyOther
 	require.NoError(t, err)
 	assert.Equal(t, 1, planner.calls, "the planner must still be consulted before falling back to the form")
 	assert.Equal(t, usecase.ResultKindForm, result.Kind)
-	assert.Equal(t, "Opc", result.OperationID)
+	assert.Equal(t, "Opc", result.OperationID, "the pick is the decision, the fill only fills")
+}
+
+// TestPlanStagedFromPickHonoursDecisionNoneAsAKindNone is the fill-escape
+// fix's own regression (dev-stack finding, docs/specs/staging.md section
+// 5): a fill that finds nothing in the picked operation to answer with must
+// say so - the same messageNoEndpoint planOrdinary's own DecisionNone
+// produces - rather than being forced into a form for an operation the
+// model just said does not fit.
+func TestPlanStagedFromPickHonoursDecisionNoneAsAKindNone(t *testing.T) {
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
+
+	orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "今日は何曜日？", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, planner.calls)
+	assert.Equal(t, usecase.ResultKindNone, result.Kind)
+	assert.NotEmpty(t, result.Message)
+}
+
+// TestPlanStagedFromPickHonoursDecisionListCapabilitiesOverTheShortlist is
+// the fill-escape fix's other regression: a fill that reaches for
+// list_capabilities must answer from the same shortlist catalogue planStaged
+// itself was given (S3's own pick-time list_capabilities line, not a
+// one-endpoint catalogue), not degrade into a form for the picked operation.
+func TestPlanStagedFromPickHonoursDecisionListCapabilitiesOverTheShortlist(t *testing.T) {
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionListCapabilities}}
+
+	orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫について何ができる？", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, planner.calls)
+	assert.Equal(t, usecase.ResultKindResult, result.Kind)
+	assert.Equal(t, "list_capabilities", result.OperationID)
+
+	items, ok := result.Data.(map[string]any)["items"].([]map[string]any)
+	require.True(t, ok)
+	assert.Len(t, items, len(stagingShortlist().Endpoints), "the whole shortlist, not the one picked endpoint")
 }
 
 // TestPlanStagedOnPickListCapabilitiesNeverCallsThePlanner is S3's

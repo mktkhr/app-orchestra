@@ -42,14 +42,30 @@ import (
 // preferred request field), which keeps every behaviour above unchanged;
 // true when this fill follows a pick (Orchestrator.planStaged,
 // orchestrator_staging.go). Only when true does this function offer
-// AskUserTool() alongside the one operation's tool, and only then does a
-// DecisionAsk naming this same operation resolve through o.ask rather than
-// being discarded - a pick has not already let the person choose between
-// candidates the way a chip has, so an unmatched restricting word
-// (v6-unmatched-filter) must still be able to end in a question.
+// AskUserTool() and ListCapabilitiesTool() alongside the one operation's
+// tool (never propose_panel - section 3's own single-call fallback already
+// covers it), and only then is the model's answer honoured rather than
+// degraded to a form: a DecisionAsk naming this same operation resolves
+// through o.ask, DecisionNone and DecisionListCapabilities resolve exactly
+// as planOrdinary resolves them. A pick has not already let the person
+// choose between candidates the way a chip has, so the fill must still be
+// able to end in a question, a "nothing here" refusal, or a capabilities
+// table - not only in a call or a form. A call naming some other operation
+// is the one case that still degrades to formFor: the pick, not the fill,
+// is where the operation gets chosen, so a fill that reaches for a
+// different one has not disagreed with the pick, it has misfired, and the
+// form for the endpoint the person actually picked is still the safer
+// answer than acting on an operation they never chose (dev-stack finding,
+// docs/specs/staging.md section 5).
+//
+// catalog is the caller's already-scoped catalogue - the shortlist under a
+// pick, the permission-filtered whole catalogue under a chip's preferred -
+// used only for a fromPick DecisionListCapabilities (o.listCapabilities
+// reads the whole scope, never the one endpoint alone); ignored otherwise,
+// so passing it under fromPick == false changes nothing observable.
 func (o *Orchestrator) planPreferred(
-	ctx context.Context, endpoint *domain.Endpoint, query string, answers []Answer, turns []Turn, thinking *bool,
-	fromPick bool,
+	ctx context.Context, catalog domain.Catalog, endpoint *domain.Endpoint, query string, answers []Answer,
+	turns []Turn, thinking *bool, fromPick bool,
 ) (Result, error) {
 	fallback := &Decision{Service: endpoint.Service, OperationID: endpoint.OperationID, Args: argsFromAnswers(answers)}
 
@@ -72,8 +88,8 @@ func (o *Orchestrator) planPreferred(
 	}
 
 	tools := []Tool{toolFor(endpoint)}
-	if fromPick && hasEnumParameter(endpoint) {
-		tools = append(tools, AskUserTool())
+	if fromPick {
+		tools = append(tools, AskUserTool(), ListCapabilitiesTool())
 	}
 
 	decision, err := o.planner.Plan(ctx, query, answers, truncateTurns(turns, o.contextWindow), tools, thinking)
@@ -81,21 +97,55 @@ func (o *Orchestrator) planPreferred(
 		return Result{}, fmt.Errorf("planning: %w", err)
 	}
 
-	if fromPick && decision.Kind == DecisionAsk &&
-		decision.Service == endpoint.Service && decision.OperationID == endpoint.OperationID {
-		return o.ask(domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, &decision)
+	sameOperation := decision.Service == endpoint.Service && decision.OperationID == endpoint.OperationID
+
+	if fromPick {
+		return o.resolvePickedFill(ctx, catalog, endpoint, &decision, fallback, sameOperation)
 	}
 
-	// Anything other than a call to the one tool offered - list_capabilities,
-	// ask_user, none, or a call naming some other operation entirely - is
-	// discarded in favour of the same form: the person already chose this
-	// operation, so whatever the model said instead is not the answer to
-	// show them (see the reproduction above).
-	if decision.Kind != DecisionCall || decision.Service != endpoint.Service || decision.OperationID != endpoint.OperationID {
+	// fromPick == false (a chip's own preferred): unchanged from before this
+	// subproject. Anything other than a call to the one tool offered -
+	// list_capabilities, ask_user, none, or a call naming some other
+	// operation entirely - is discarded in favour of the same form: the
+	// person already chose this operation, so whatever the model said
+	// instead is not the answer to show them (see the reproduction above).
+	if decision.Kind != DecisionCall || !sameOperation {
 		return formFor(endpoint, fallback), nil
 	}
 
 	return o.call(ctx, domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, &decision)
+}
+
+// resolvePickedFill is planPreferred's fromPick == true dispatch, split out
+// to keep planPreferred itself under the harness's cyclomatic-complexity
+// guard (gocyclo, harness/quality/go/golangci.yml). See planPreferred's own
+// doc comment for what each DecisionKind resolves to and why; decision is a
+// pointer for the same gocritic hugeParam reason as planPreferred's own
+// endpoint parameter.
+func (o *Orchestrator) resolvePickedFill(
+	ctx context.Context, catalog domain.Catalog, endpoint *domain.Endpoint, decision *Decision, fallback *Decision,
+	sameOperation bool,
+) (Result, error) {
+	switch decision.Kind {
+	case DecisionAsk:
+		if sameOperation {
+			return o.ask(domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, decision)
+		}
+	case DecisionNone:
+		return Result{Kind: ResultKindNone, Message: messageNoEndpoint}, nil
+	case DecisionListCapabilities:
+		return o.listCapabilities(catalog, decision), nil
+	case DecisionCall:
+		if sameOperation {
+			return o.call(ctx, domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, decision)
+		}
+	case DecisionProposal:
+		// Not offered above (ProposePanelToolName is never in tools built by
+		// planPreferred), so the model cannot legitimately return this -
+		// falls through to the same formFor as any other unusable answer.
+	}
+
+	return formFor(endpoint, fallback), nil
 }
 
 // requiredParamsKnown reports whether endpoint has no required parameter at
