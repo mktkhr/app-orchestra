@@ -66,6 +66,17 @@ type Schema struct {
 	// appear in the question - unlike a plain string with neither Enum
 	// nor Format.
 	Format string
+	// Pattern is the schema's OpenAPI `pattern` keyword, if any - a
+	// regular expression an id's own shape must match (services/
+	// attendance/api/openapi.yaml's `^att-[0-9]+$`, services/inventory/
+	// api/openapi.yaml's `^itm-[0-9]+$`). Its only reader today is
+	// usecase's idAffinity (TODO.md, "real-attendance-detail"): a pick
+	// that never reads an id's service prefix sends `att-002` to
+	// inventory's GetInventoryItem, which 404s. Not validated here or by
+	// the loader - an invalid regular expression is a contract-quality
+	// problem idAffinity itself logs and ignores, never a reason to fail
+	// the fetch (mirroring Format's own leniency above).
+	Pattern string
 }
 
 // Parameter is one request parameter of an Endpoint.

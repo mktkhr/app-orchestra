@@ -112,6 +112,7 @@ paths:
           schema:
             type: string
             title: ID
+            pattern: "^itm-[0-9]+$"
       responses:
         "200":
           description: The requested stock item.
@@ -150,6 +151,7 @@ components:
           type: string
           title: ID
           description: The item's id.
+          pattern: "^itm-[0-9]+$"
         name:
           type: string
           title: 品名

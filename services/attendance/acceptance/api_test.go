@@ -136,7 +136,14 @@ func TestGetAttendanceRecordReturnsExistingRecord(t *testing.T) {
 func TestGetAttendanceRecordReportsMissingRecord(t *testing.T) {
 	server := newTestServer(t)
 
-	status := doJSON(t, server, http.MethodGet, "/api/attendance/records/does-not-exist", nil, nil)
+	// att-999 matches the contract's own id pattern (`^att-[0-9]+$`,
+	// services/attendance/api/openapi.yaml - added for TODO.md's
+	// "real-attendance-detail", read by the platform's usecase.idAffinity)
+	// but names no record the fixture seeds: the shape a real "not found"
+	// looks like, as opposed to a malformed id, which the request
+	// validation middleware now rejects with 400 before this handler ever
+	// runs.
+	status := doJSON(t, server, http.MethodGet, "/api/attendance/records/att-999", nil, nil)
 
 	assert.Equal(t, http.StatusNotFound, status)
 }

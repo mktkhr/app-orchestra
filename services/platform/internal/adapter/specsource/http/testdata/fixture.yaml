@@ -89,6 +89,7 @@ paths:
           description: The widget's id.
           schema:
             type: string
+            pattern: "^wgt-[0-9]+$"
       responses:
         "200":
           description: The requested widget.

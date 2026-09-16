@@ -154,6 +154,8 @@ func TestFetchConvertsUIHint(t *testing.T) {
 	assert.Equal(t, "id", get.Parameters[0].Name)
 	assert.Equal(t, "path", get.Parameters[0].In)
 	assert.True(t, get.Parameters[0].Required)
+	assert.Equal(t, "^wgt-[0-9]+$", get.Parameters[0].Schema.Pattern,
+		"getWidget's id parameter declares a pattern in the fixture - usecase.idAffinity's own reader")
 
 	// listWidgets declares no x-ui-hint at all: DisplayName stays empty
 	// rather than falling back to anything here - DisplayNameOr is where a

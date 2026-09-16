@@ -112,6 +112,7 @@ paths:
           schema:
             type: string
             title: ID
+            pattern: "^att-[0-9]+$"
       responses:
         "200":
           description: The requested attendance record.
@@ -150,6 +151,7 @@ components:
           type: string
           title: ID
           description: The record's id.
+          pattern: "^att-[0-9]+$"
         employee:
           type: string
           title: 従業員名

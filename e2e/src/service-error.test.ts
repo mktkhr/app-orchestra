@@ -12,8 +12,14 @@ import { freePort, startBinary, stop, waitForReady, type RunningService } from "
  * dev-stack defect: /tmp/orchestra-platform.log 2026-09-16T20:52:15 shows
  * the platform answering /api/plan with 500 after the inventory service
  * answered 404 "no item exists with this id" to a planner-chosen
- * GetInventoryItem(id: att-002) call - a service saying "not found" is an
- * answer, not a platform failure).
+ * GetInventoryItem(id: itm-999) call - a service saying "not found" is an
+ * answer, not a platform failure). itm-999 (not att-002, the fixture's
+ * original id) so the id still matches inventory's own contract pattern
+ * (`^itm-[0-9]+$`, added for TODO.md's "real-attendance-detail") and
+ * reaches this 404, rather than a 400 from the request validation
+ * middleware the pattern now enables - a mismatched-service id is what
+ * usecase.idAffinity now catches before the pick, not what this suite
+ * tests.
  *
  * Split from orchestration.test.ts (which already covers the AC-E-101 call
  * and ask paths against the same two dummy services) only to stay under
@@ -81,15 +87,18 @@ beforeAll(async () => {
 
   await waitForReady(`http://127.0.0.1:${inventoryPort}/openapi.yaml`, 10_000);
 
-  // "att-002" is not seeded by the real inventory service's dummy store
+  // "itm-999" is not seeded by the real inventory service's dummy store
   // (services/inventory), so this reaches Orchestrator.resultForInvokeError
-  // through a real HTTP round trip to that service, not a stub.
+  // through a real HTTP round trip to that service, not a stub - and,
+  // unlike the dev-stack defect's own att-002, matches inventory's own
+  // id pattern, so the request validation middleware lets it through to a
+  // real 404 rather than rejecting it with 400.
   const planFixtures = [
     {
-      query: "att-002の内容",
+      query: "itm-999の内容",
       service: "inventory",
       operationId: "GetInventoryItem",
-      args: { id: "att-002" },
+      args: { id: "itm-999" },
     },
   ];
 
@@ -124,7 +133,7 @@ describe("a service's 4xx answer is a result, not a platform failure (dev-stack 
       withSession(requireSession(), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ query: "att-002の内容", turns: [], thinking: false }),
+        body: JSON.stringify({ query: "itm-999の内容", turns: [], thinking: false }),
       }),
     );
 
