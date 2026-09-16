@@ -29,6 +29,23 @@ ambiguous のときも、最も可能性の高い operationId を必ず1つ挙�
 // The three built-in ids the pick offers beside the shortlist (S3): the
 // only text in this subproject that is new prose to the model, and
 // exactly what section 7's measurement judges.
+//
+// The wording below is the first of at most three attempts the
+// unanswerable regression allowed (docs/specs/staging.md section 7): the
+// original list_capabilities line, "何ができるか知りたい" ("want to know
+// what can be done"), reads as a paraphrase of any question the model
+// cannot otherwise place, including 「今日の天気は？」 - so an
+// off-topic question was picked as a request for the capabilities table
+// instead of none. Renaming it to "使える操作の一覧を知りたい" ("want the
+// list of operations available") ties the line to naming the built-in
+// itself rather than to not knowing an answer, and giving none its own
+// explicit exclusion, "どの候補も質問に合わない（業務と無関係な質問）"
+// ("no candidate fits the question (a question unrelated to the
+// business)"), gives the model a line to prefer for exactly that
+// question instead of leaving it to fall through. This one wording fixed
+// both `unanswerable` and kept `capability` at 10/10
+// (ORCHESTRA_PLANNER_STAGES=2 make eval), so the other two attempts
+// section 7 allowed were never needed.
 const (
 	idListCapabilities = "list_capabilities"
 	idProposePanel     = "propose_panel"
@@ -39,9 +56,9 @@ const (
 // so the id a response is matched against (parse.go) and the id shown in
 // the prompt can never drift apart.
 const (
-	lineListCapabilities = idListCapabilities + "\tplatform\t何ができるか知りたい"
+	lineListCapabilities = idListCapabilities + "\tplatform\t使える操作の一覧を知りたい"
 	lineProposePanel     = idProposePanel + "\tplatform\t画面に出したい"
-	lineNone             = idNone + "\tplatform\t該当なし"
+	lineNone             = idNone + "\tplatform\tどの候補も質問に合わない（業務と無関係な質問）"
 )
 
 // summaryFor is an endpoint's summary column: its own Summary, or - when

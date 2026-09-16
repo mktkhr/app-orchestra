@@ -117,9 +117,9 @@ func TestPickSendsTheExactRequestTheStandInPickerSent(t *testing.T) {
 		"質問: 在庫を見せて\n\n候補:\n"+
 			"listInventoryItems\t在庫管理\t在庫の一覧を返す\n"+
 			"listAttendanceRecords\tattendance\t勤怠記録の一覧を返す\n"+
-			"list_capabilities\tplatform\t何ができるか知りたい\n"+
+			"list_capabilities\tplatform\t使える操作の一覧を知りたい\n"+
 			"propose_panel\tplatform\t画面に出したい\n"+
-			"none\tplatform\t該当なし",
+			"none\tplatform\tどの候補も質問に合わない（業務と無関係な質問）",
 		user["content"],
 	)
 }
