@@ -223,6 +223,7 @@ func convertSchema(ref *openapi3.SchemaRef) *domain.Schema {
 	out := &domain.Schema{
 		Title:       s.Title,
 		Description: s.Description,
+		Format:      s.Format,
 	}
 
 	if s.Type != nil && !s.Type.IsEmpty() {

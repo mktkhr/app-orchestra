@@ -18,6 +18,7 @@ const (
 	keyItems       = "items"
 	keyTitle       = "title"
 	keyEnumLabels  = "enumLabels"
+	keyFormat      = "format"
 )
 
 // paramService names the "service" argument shared by ask_user,
@@ -462,7 +463,8 @@ func requiredParamNames(e *domain.Endpoint) []string {
 // dropped, and "body" itself is required, since the body as a whole is.
 func mergeRequestBody(properties map[string]any, body *domain.Schema) []string {
 	if body.Type == domain.SchemaTypeObject {
-		for name, prop := range body.Properties {
+		for name := range body.Properties {
+			prop := body.Properties[name]
 			properties[name] = schemaToJSONSchema(&prop)
 		}
 
@@ -511,6 +513,10 @@ func schemaToJSONSchema(s *domain.Schema) map[string]any {
 		m[keyTitle] = s.Title
 	}
 
+	if s.Format != "" {
+		m[keyFormat] = s.Format
+	}
+
 	if len(s.Enum) > 0 {
 		enum := make([]string, len(s.Enum))
 		copy(enum, s.Enum)
@@ -528,7 +534,8 @@ func schemaToJSONSchema(s *domain.Schema) map[string]any {
 
 	if s.Type == domain.SchemaTypeObject && len(s.Properties) > 0 {
 		props := make(map[string]any, len(s.Properties))
-		for name, prop := range s.Properties {
+		for name := range s.Properties {
+			prop := s.Properties[name]
 			props[name] = schemaToJSONSchema(&prop)
 		}
 

@@ -33,9 +33,9 @@ func (o *Orchestrator) planOrdinary(
 	case DecisionNone:
 		return Result{Kind: ResultKindNone, Message: messageNoEndpoint}, nil
 	case DecisionCall:
-		return o.call(ctx, catalog, &decision)
+		return o.call(ctx, catalog, &decision, query, answers)
 	case DecisionAsk:
-		return o.ask(catalog, &decision)
+		return o.ask(catalog, &decision, query, answers)
 	case DecisionListCapabilities:
 		return o.listCapabilities(catalog, &decision), nil
 	case DecisionProposal:

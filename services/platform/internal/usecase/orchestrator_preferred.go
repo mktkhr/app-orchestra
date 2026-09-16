@@ -84,7 +84,7 @@ func (o *Orchestrator) planPreferred(
 	// pick the model is always consulted; the fallback below still catches
 	// anything it cannot use.
 	if !fromPick && !requiredParamsKnown(endpoint, answers) {
-		return formFor(endpoint, fallback), nil
+		return formFor(endpoint, fallback, query, answers), nil
 	}
 
 	tools := []Tool{toolFor(endpoint)}
@@ -100,7 +100,7 @@ func (o *Orchestrator) planPreferred(
 	sameOperation := decision.Service == endpoint.Service && decision.OperationID == endpoint.OperationID
 
 	if fromPick {
-		return o.resolvePickedFill(ctx, catalog, endpoint, &decision, fallback, sameOperation)
+		return o.resolvePickedFill(ctx, catalog, endpoint, &decision, fallback, sameOperation, query, answers)
 	}
 
 	// fromPick == false (a chip's own preferred): unchanged from before this
@@ -110,10 +110,10 @@ func (o *Orchestrator) planPreferred(
 	// person already chose this operation, so whatever the model said
 	// instead is not the answer to show them (see the reproduction above).
 	if decision.Kind != DecisionCall || !sameOperation {
-		return formFor(endpoint, fallback), nil
+		return formFor(endpoint, fallback, query, answers), nil
 	}
 
-	return o.call(ctx, domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, &decision)
+	return o.call(ctx, domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, &decision, query, answers)
 }
 
 // resolvePickedFill is planPreferred's fromPick == true dispatch, split out
@@ -124,12 +124,12 @@ func (o *Orchestrator) planPreferred(
 // endpoint parameter.
 func (o *Orchestrator) resolvePickedFill(
 	ctx context.Context, catalog domain.Catalog, endpoint *domain.Endpoint, decision *Decision, fallback *Decision,
-	sameOperation bool,
+	sameOperation bool, query string, answers []Answer,
 ) (Result, error) {
 	switch decision.Kind {
 	case DecisionAsk:
 		if sameOperation {
-			return o.ask(domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, decision)
+			return o.ask(domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, decision, query, answers)
 		}
 	case DecisionNone:
 		return Result{Kind: ResultKindNone, Message: messageNoEndpoint}, nil
@@ -137,7 +137,7 @@ func (o *Orchestrator) resolvePickedFill(
 		return o.listCapabilities(catalog, decision), nil
 	case DecisionCall:
 		if sameOperation {
-			return o.call(ctx, domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, decision)
+			return o.call(ctx, domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, decision, query, answers)
 		}
 	case DecisionProposal:
 		// Not offered above (ProposePanelToolName is never in tools built by
@@ -145,7 +145,7 @@ func (o *Orchestrator) resolvePickedFill(
 		// falls through to the same formFor as any other unusable answer.
 	}
 
-	return formFor(endpoint, fallback), nil
+	return formFor(endpoint, fallback, query, answers), nil
 }
 
 // requiredParamsKnown reports whether endpoint has no required parameter at

@@ -488,7 +488,10 @@ func viewFromWire(wire *wireDecision) *domain.View {
 // checking happens downstream, at /api/invoke (docs/specs/orchestration.md,
 // section 5).
 func validateArgs(e *domain.Endpoint, args map[string]any) error {
-	for name, schema := range argSchemas(e) {
+	schemas := argSchemas(e)
+
+	for name := range schemas {
+		schema := schemas[name]
 		if len(schema.Enum) == 0 {
 			continue
 		}

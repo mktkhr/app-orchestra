@@ -93,6 +93,7 @@ export type components = {
             readonly kind: components["schemas"]["RecordKind"];
             /**
              * 対象日
+             * Format: date
              * @description The date the record applies to (YYYY-MM-DD).
              */
             readonly date: string;
@@ -112,6 +113,7 @@ export type components = {
             readonly kind: components["schemas"]["RecordKind"];
             /**
              * 対象日
+             * Format: date
              * @description The date the record applies to (YYYY-MM-DD).
              */
             readonly date: string;

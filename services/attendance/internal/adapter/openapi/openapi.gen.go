@@ -21,6 +21,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for RecordKind.
@@ -56,7 +57,7 @@ type Error struct {
 // NewRecord The fields needed to create an attendance record.
 type NewRecord struct {
 	// Date The date the record applies to (YYYY-MM-DD).
-	Date string `json:"date"`
+	Date openapi_types.Date `json:"date"`
 
 	// Employee The employee's name.
 	Employee string `json:"employee"`
@@ -68,7 +69,7 @@ type NewRecord struct {
 // Record A single attendance record.
 type Record struct {
 	// Date The date the record applies to (YYYY-MM-DD).
-	Date string `json:"date"`
+	Date openapi_types.Date `json:"date"`
 
 	// Employee The employee's name.
 	Employee string `json:"employee"`
@@ -612,32 +613,32 @@ func (sh *strictHandler) GetAttendanceSpec(w http.ResponseWriter, r *http.Reques
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"9u/mbP7iwLXSDaTprWwL53hZ6fYUhuZC848BAA==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

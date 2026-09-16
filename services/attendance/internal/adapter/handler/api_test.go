@@ -2,7 +2,9 @@ package handler_test
 
 import (
 	"testing"
+	"time"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -10,7 +12,27 @@ import (
 	"github.com/mktkhr/app-orchestra/services/attendance/internal/adapter/handler"
 	"github.com/mktkhr/app-orchestra/services/attendance/internal/adapter/openapi"
 	"github.com/mktkhr/app-orchestra/services/attendance/internal/adapter/repository"
+	"github.com/mktkhr/app-orchestra/services/attendance/internal/domain"
 )
+
+// fakeStore is a minimal recordStore double (handler.NewRecords accepts
+// any value with this method set, whether or not the interface itself is
+// exported) - here only to make Create return a record whose Date could
+// never come from a real request (CreateAttendanceRecord's own Date
+// argument is already a parsed openapi_types.Date), so
+// TestRecordsCreateAttendanceRecordReportsAnUnparsableStoredDate can drive
+// toAPIRecord's error path from the create side, the way
+// TestRecordsGetAttendanceRecordReportsAnUnparsableStoredDate already
+// drives it from the get side.
+type fakeStore struct {
+	created domain.Record
+}
+
+func (f *fakeStore) List(_ *domain.Kind) []domain.Record { return nil }
+
+func (f *fakeStore) Get(_ string) (domain.Record, bool) { return domain.Record{}, false }
+
+func (f *fakeStore) Create(_ domain.NewRecord) domain.Record { return f.created }
 
 func TestRecordsListAttendanceRecordsReturnsEveryRecordWithoutFilter(t *testing.T) {
 	h := handler.NewRecords(repository.NewMemory())
@@ -92,6 +114,59 @@ func TestRecordsGetAttendanceRecordReportsMissingRecord(t *testing.T) {
 	assert.True(t, ok)
 }
 
+// TestRecordsGetAttendanceRecordReportsAnUnparsableStoredDate covers
+// toAPIRecord's own error path (2026-09-16, api/openapi.yaml's date field
+// gained format: date, so the wire type is openapi_types.Date, not a bare
+// string): a record whose stored Date cannot be parsed as YYYY-MM-DD - not
+// reachable through CreateAttendanceRecord, whose own Date argument is
+// already a parsed openapi_types.Date by the time it reaches the store,
+// but reachable by writing to the store directly, the same way a real
+// storage layer's own corruption would surface.
+func TestRecordsGetAttendanceRecordReportsAnUnparsableStoredDate(t *testing.T) {
+	store := repository.NewMemory()
+	created := store.Create(domain.NewRecord{Employee: "テスト社員", Kind: domain.KindDeemed, Date: "not-a-date"})
+
+	h := handler.NewRecords(store)
+
+	_, err := h.GetAttendanceRecord(t.Context(), openapi.GetAttendanceRecordRequestObject{Id: created.ID})
+
+	require.Error(t, err)
+}
+
+// TestRecordsListAttendanceRecordsReportsAnUnparsableStoredDate is
+// TestRecordsGetAttendanceRecordReportsAnUnparsableStoredDate's own
+// equivalent for the list path.
+func TestRecordsListAttendanceRecordsReportsAnUnparsableStoredDate(t *testing.T) {
+	store := repository.NewMemory()
+	store.Create(domain.NewRecord{Employee: "テスト社員", Kind: domain.KindDeemed, Date: "not-a-date"})
+
+	h := handler.NewRecords(store)
+
+	_, err := h.ListAttendanceRecords(t.Context(), openapi.ListAttendanceRecordsRequestObject{})
+
+	require.Error(t, err)
+}
+
+// TestRecordsCreateAttendanceRecordReportsAnUnparsableStoredDate drives
+// toAPIRecord's error path from CreateAttendanceRecord's own call to it,
+// via fakeStore (see its own doc comment).
+func TestRecordsCreateAttendanceRecordReportsAnUnparsableStoredDate(t *testing.T) {
+	store := &fakeStore{
+		created: domain.Record{ID: "att-x", Employee: "テスト社員", Kind: domain.KindDeemed, Date: "not-a-date"},
+	}
+	h := handler.NewRecords(store)
+
+	_, err := h.CreateAttendanceRecord(t.Context(), openapi.CreateAttendanceRecordRequestObject{
+		Body: &openapi.CreateAttendanceRecordJSONRequestBody{
+			Employee: "テスト社員",
+			Kind:     openapi.Deemed,
+			Date:     openapi_types.Date{Time: time.Date(2026, time.June, 1, 0, 0, 0, 0, time.UTC)},
+		},
+	})
+
+	require.Error(t, err)
+}
+
 func TestRecordsCreateAttendanceRecordStoresAndReturnsRecord(t *testing.T) {
 	h := handler.NewRecords(repository.NewMemory())
 
@@ -99,7 +174,7 @@ func TestRecordsCreateAttendanceRecordStoresAndReturnsRecord(t *testing.T) {
 		Body: &openapi.CreateAttendanceRecordJSONRequestBody{
 			Employee: "テスト社員",
 			Kind:     openapi.Deemed,
-			Date:     "2026-06-01",
+			Date:     openapi_types.Date{Time: time.Date(2026, time.June, 1, 0, 0, 0, 0, time.UTC)},
 		},
 	})
 
@@ -109,7 +184,7 @@ func TestRecordsCreateAttendanceRecordStoresAndReturnsRecord(t *testing.T) {
 	assert.NotEmpty(t, created.Id)
 	assert.Equal(t, "テスト社員", created.Employee)
 	assert.Equal(t, openapi.Deemed, created.Kind)
-	assert.Equal(t, "2026-06-01", created.Date)
+	assert.Equal(t, "2026-06-01", created.Date.String())
 }
 
 func TestRecordsGetAttendanceSpecServesParsableYAML(t *testing.T) {

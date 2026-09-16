@@ -66,19 +66,19 @@ import (
 // is deliberately here, in the usecase, rather than in either planner
 // adapter, so both internal/adapter/planner/toolcall and
 // internal/adapter/planner/jsonmode get it for free.
-func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, error) {
+func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision, query string, answers []Answer) (Result, error) {
 	endpoint, ok := catalog.Find(decision.Service, decision.OperationID)
 	if !ok {
 		return Result{Kind: ResultKindAsk, Question: decision.Question}, nil
 	}
 
 	if !endpoint.IsSafe() {
-		return formFor(&endpoint, decision), nil
+		return formFor(&endpoint, decision, query, answers), nil
 	}
 
 	options, ok := optionsForParam(&endpoint, decision.Param)
 	if !ok {
-		return askDegrade(&endpoint, decision), nil
+		return askDegrade(&endpoint, decision, query, answers), nil
 	}
 
 	return Result{
@@ -125,9 +125,9 @@ func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision) (Result, 
 // endpoint is a pointer for the same gocritic hugeParam reason as ask's own
 // decision parameter (domain.Endpoint is 136 bytes; see
 // harness/quality/go/golangci.yml).
-func askDegrade(endpoint *domain.Endpoint, decision *Decision) Result {
+func askDegrade(endpoint *domain.Endpoint, decision *Decision, query string, answers []Answer) Result {
 	if paramIsRequired(endpoint, decision.Param) {
-		return formFor(endpoint, decision)
+		return formFor(endpoint, decision, query, answers)
 	}
 
 	if len(decision.Options) >= minAskOptions {

@@ -56,6 +56,16 @@ type Schema struct {
 	Title string
 	// Description is the schema's free-text description, if any.
 	Description string
+	// Format is the schema's OpenAPI `format` keyword, if any - "date",
+	// "date-time", and so on. Its only reader today is
+	// usecase.formFor's drop rule (2026-09-16, TODO.md "invented form
+	// values"): a free-text string parameter (no Enum) with a Format is
+	// a value the platform itself computes a sensible default for
+	// (today's date, say), not a name or description a person alone can
+	// supply, so it is kept as an initial value even when it does not
+	// appear in the question - unlike a plain string with neither Enum
+	// nor Format.
+	Format string
 }
 
 // Parameter is one request parameter of an Endpoint.

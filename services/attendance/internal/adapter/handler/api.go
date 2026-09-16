@@ -8,7 +8,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"go.yaml.in/yaml/v3"
 
 	"github.com/mktkhr/app-orchestra/services/attendance/internal/adapter/openapi"
@@ -49,8 +51,14 @@ func (h *Records) ListAttendanceRecords(
 	items := h.store.List(kind)
 
 	out := make([]openapi.Record, 0, len(items))
+
 	for _, item := range items {
-		out = append(out, toAPIRecord(item))
+		record, err := toAPIRecord(item)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, record)
 	}
 
 	return openapi.ListAttendanceRecords200JSONResponse{Records: out}, nil
@@ -69,7 +77,12 @@ func (h *Records) GetAttendanceRecord(
 		}, nil
 	}
 
-	return openapi.GetAttendanceRecord200JSONResponse(toAPIRecord(item)), nil
+	record, err := toAPIRecord(item)
+	if err != nil {
+		return nil, err
+	}
+
+	return openapi.GetAttendanceRecord200JSONResponse(record), nil
 }
 
 // CreateAttendanceRecord creates a new record and returns it.
@@ -80,10 +93,15 @@ func (h *Records) CreateAttendanceRecord(
 	created := h.store.Create(domain.NewRecord{
 		Employee: request.Body.Employee,
 		Kind:     domain.Kind(request.Body.Kind),
-		Date:     request.Body.Date,
+		Date:     request.Body.Date.Format(openapi_types.DateFormat),
 	})
 
-	return openapi.CreateAttendanceRecord201JSONResponse(toAPIRecord(created)), nil
+	record, err := toAPIRecord(created)
+	if err != nil {
+		return nil, err
+	}
+
+	return openapi.CreateAttendanceRecord201JSONResponse(record), nil
 }
 
 // GetAttendanceSpec serves the service's own contract, rendered as YAML from the spec
@@ -117,12 +135,27 @@ func (h *Records) GetAttendanceSpec(
 }
 
 // toAPIRecord converts a domain.Record into its generated wire
-// representation.
-func toAPIRecord(item domain.Record) openapi.Record {
+// representation. domain.Record.Date stays a plain string
+// (harness/quality/go/golangci.yml's depguard keeps the domain package
+// stdlib-only; the generated openapi_types.Date is squarely an adapter
+// concern) - date: date in the contract (api/openapi.yaml) is what makes
+// oapi-codegen emit openapi_types.Date for the wire type instead, so this
+// is where the two are reconciled. item.Date is only ever "2026-04-01",
+// one of the seed fixtures (memory.go) or a string CreateAttendanceRecord
+// itself already round-tripped through openapi_types.Date's own
+// UnmarshalJSON, so time.Parse failing here would mean the store holds a
+// date that never should have gotten in - not something a caller can
+// usefully recover from.
+func toAPIRecord(item domain.Record) (openapi.Record, error) {
+	date, err := time.Parse(openapi_types.DateFormat, item.Date)
+	if err != nil {
+		return openapi.Record{}, fmt.Errorf("parsing stored date %q: %w", item.Date, err)
+	}
+
 	return openapi.Record{
 		Id:       item.ID,
 		Employee: item.Employee,
 		Kind:     openapi.RecordKind(item.Kind),
-		Date:     item.Date,
-	}
+		Date:     openapi_types.Date{Time: date},
+	}, nil
 }

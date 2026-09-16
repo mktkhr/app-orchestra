@@ -86,7 +86,11 @@ func TestPlanAskDecisionForAnUnsafeOperationReturnsAFormEvenWithAnEnum(t *testin
 	assert.Equal(t, usecase.ResultKindForm, result.Kind)
 	assert.Equal(t, "inventory", result.Service)
 	assert.Equal(t, "CreateInventoryItem", result.OperationID)
-	assert.Equal(t, map[string]any{"name": "widget"}, result.Initial)
+	// "widget" is a plain free-text string (no enum, no format) that
+	// "在庫を登録したい" never said - dropInventedInitials drops it
+	// (2026-09-16, TODO.md "invented form values"), leaving the form with
+	// no initial values at all rather than a name nobody typed.
+	assert.Nil(t, result.Initial)
 
 	properties, ok := result.Schema["properties"].(map[string]any)
 	require.True(t, ok)

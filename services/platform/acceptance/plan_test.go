@@ -340,7 +340,12 @@ func TestPlanUnsafeCallReturnsAFormAndNeverReachesTheService(t *testing.T) {
 	require.True(t, ok, "schema must carry the request body's required fields")
 	assert.ElementsMatch(t, []any{"name", "status"}, required)
 
-	assert.Equal(t, map[string]any{"name": "新しい棚", "status": "allocated"}, body.Initial)
+	// Both "新しい棚" and "allocated" are plain free-text strings here
+	// (inventorySpecWithCreate declares "status" as a bare `type: string`,
+	// no enum) that "在庫を登録して" never said - dropInventedInitials
+	// drops both (2026-09-16, TODO.md "invented form values"), leaving
+	// the form with no initial values at all.
+	assert.Empty(t, body.Initial)
 
 	assert.Equal(t, "inventory", body.Target.Service)
 	assert.Equal(t, "CreateInventoryItem", body.Target.OperationID)
