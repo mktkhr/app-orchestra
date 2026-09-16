@@ -81,7 +81,11 @@ _Nothing in progress._
    no such filter and the fill says nothing about the mismatch. Found in
    the same real-usage check. Possible fix: say in the answer that the
    filter could not be applied, rather than answering as if it had been.
-   Unscheduled.
+   (b) a note carried through the planner's own reply text was tried
+   2026-09-17 and withdrawn - it worked in isolation but went silent again
+   under the full system prompt and regressed three unrelated `make eval`
+   rows; see `DECISIONS.md`. (c) a synthetic optional argument on every
+   catalogue tool, schema only, no prompt text, is untried. Unscheduled.
 8. **The web's 500 message is generic.** A service's own 4xx no longer
    reaches the platform as a 500 (`DECISIONS.md`, 2026-09-16, "a service's
    4xx is an answer"), but a genuine 500 still shows only 「質問の送信に

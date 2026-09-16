@@ -7206,3 +7206,63 @@ the thirty-question script identical row for row). Verified: API 3/3
 updated.
 
 Committed as `59d489a`.
+
+## 2026-09-17 A note for an unapplied restriction: tried through the reply text, withdrawn
+
+`TODO.md` item 7 ("Free-text restrictions are dropped silently"):
+田中さんの勤怠 / 4月の勤怠記録 / 今日の勤怠 all answer every record,
+because the operation has no such parameter; the goal was a one-line note
+above the result saying the restriction could not be applied, without
+refusing or inventing a filter.
+
+Design tried (b): the planner's reply `content` alongside the tool call
+becomes `Decision.Note` → `PlanResult.note` (a new optional contract
+field), shown above the result in the web. `v6-unmatched-filter`'s system
+prompt gained one more sentence, `v6NoteAddition`, asking for exactly that
+sentence before the call and "absolutely nothing" otherwise:
+
+> When the question restricts the result by something the tool you are
+> about to call has no parameter for at all - a person's name, a month,
+> "today" - still call that tool exactly as you otherwise would, and
+> before the call write one short Japanese sentence naming that
+> restriction and saying the operation cannot filter by it, so every row
+> is shown instead. If the question named no such restriction, write
+> absolutely nothing before the tool call - no explanation, no
+> description of what you are about to do, call the tool silently with an
+> empty message.
+
+Probed in isolation first (a generic tool-use prompt plus only this
+sentence, one tool): Qwen3.5 emitted the note for all three restricted
+questions and nothing for the unrestricted ones. Against the full
+`v6-unmatched-filter` prompt (v2-commit + the unmatched-filter sentence +
+this one), the content went back to empty on every question - the same
+dilution already on record for the picker (below, 2026-09-15, "one
+sentence moves the picker 11 points"): a mechanism that needs prompt text
+competes with every rule already there, and this prompt already carries
+two.
+
+Measured: the shortlist corpus held at 77/79, unchanged - the reason the
+first pass judged this safe to commit - but `make eval` regressed once
+run: `no-enum-value-attendance` went 0/10 → 10/10 reject (有給 stopped
+being read as an enum value at all), `real-report-tardiness` and
+`real-register-new-item` went 10/10 reject (a fabricated employee / item
+name came back), and `real-tanaka-attendance` / `real-april-attendance`
+stayed 0/10 - no note was ever produced for the four dev-stack questions
+the feature was built for. Every row's picked kind/operation was
+otherwise unchanged; only the note and the three unrelated refusals
+moved.
+
+Withdrawn before any push: four commits (`973c6f5`, `6e9cfa5`, `2f6a482`,
+`99d0616`, patches only, not in this repository's history - reset before
+`make eval` ran against the real build). Untried and still open: (c) a
+synthetic optional argument (e.g. `_unapplied`) on every catalogue tool -
+schema only, no prompt text - stripped before invoke, answered by the
+model filling it in rather than by reply text competing with the rest of
+the prompt.
+
+Process lesson for the next attempt: `make eval` has to run before a
+wording change is judged safe, not after landing it - the shortlist
+corpus alone said "unchanged" while three unrelated eval rows had already
+moved.
+
+`TODO.md` item 7 left open, amended with this attempt.
