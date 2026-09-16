@@ -1,3 +1,4 @@
+import { realCases } from "./cases-real.ts";
 import type { Case } from "./types.ts";
 
 /**
@@ -14,6 +15,11 @@ import type { Case } from "./types.ts";
  * from the source file - the same reason `e2e/src/*.test.ts` already write
  * `ListInventoryItems`/`ListAttendanceRecords` rather than the lower-cased
  * spelling `services/inventory/api/openapi.yaml` declares.
+ *
+ * `cases-real.ts`'s cases are appended at the end: real-catalogue questions
+ * run against the actual dev services rather than a fixture built to
+ * exercise every operation (docs/specs/eval.md "Real-catalogue cases"),
+ * split into its own file to stay under the 300-line guard.
  */
 export const cases: readonly Case[] = [
   {
@@ -279,4 +285,5 @@ export const cases: readonly Case[] = [
       { kind: "result", service: "attendance", operationId: "ListAttendanceRecords", args: {} },
     ],
   },
+  ...realCases,
 ];

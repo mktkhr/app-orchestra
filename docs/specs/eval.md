@@ -137,6 +137,46 @@ expected operation is meaningless against a different catalogue.
 - **Running in CI.** It needs a GPU. The baseline in the repository is how a
   reviewer sees the numbers without one.
 
+## 6a. Real-catalogue cases
+
+`e2e/eval/cases-real.ts` (appended into `cases` by `cases.ts`) is a second
+family of cases, run alongside section 5's fixture corpus rather than
+replacing it. It exists because refusal is only measurable on a catalogue
+that lacks the thing being asked for - a delete, a sales figure, an overtime
+total - and the fixture corpus, built to exercise every operation the
+platform has, cannot lack anything by construction. The real dev
+inventory/attendance services can, so this is where "does the model refuse
+what it should" gets checked.
+
+The families:
+
+- **Refusals.** A question the catalogue has no operation for
+  (delete/decrease/sales/overtime, and a plain "what day is it") - `accept`
+  is a plain `none` or a `list_capabilities` redirect (either counts as
+  refusing), `reject` is a `result` naming the nearest real operation
+  anyway.
+- **A capability question scoped to one service** ("what can I do with
+  inventory?"), distinct from the unscoped `capability` case in the fixture
+  corpus.
+- **No fabrication.** A create request missing a required field ("I want to
+  log being late", "register a new item", "apply for paid leave") - `accept`
+  is a form (or an `ask`, or a `none`) that leaves the missing field out of
+  `initial`; `reject` is a form that filled it in with a guess.
+  `ExpectedOutcome.argsAbsent`/`argsPresent` (`match.ts`) check a field's
+  presence regardless of what value would have been guessed, which `args`
+  alone cannot: `args` only checks values a case pins down, not the absence
+  of one it does not name.
+- **Right answers that must hold.** Questions the catalogue does answer, run
+  against the real seed data (an id lookup, a status/kind filter, a create
+  with values named in the question, a follow-up with no filter the
+  operation supports) - watching that the honest answer keeps happening
+  once refusal is also being asked of the same model.
+
+Like every case in this suite, a real-catalogue case's expectations are the
+product's decisions, not a transcript of what the platform answers today: a
+case can fail on the day it is added and still be worth keeping, recorded as
+failing by the baseline exactly as `no-enum-value` was (section 3).
+
 ## 7. Acceptance criteria
 
 - **AC-E-201** `make eval` runs every case, prints a rate per case, and exits
