@@ -89,6 +89,86 @@
       "total": 10,
       "accept": 10,
       "reject": 0
+    },
+    "real-delete-inventory": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-decrease-inventory": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-show-sales": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-sum-overtime": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-what-day": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-capability-inventory": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-report-tardiness": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-register-new-item": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-apply-paid-leave": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-attendance-detail": {
+      "total": 10,
+      "accept": 0,
+      "reject": 10
+    },
+    "real-inventory-detail": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-consigned-inventory": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-compensatory-attendance": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-register-screws": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-tanaka-attendance": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
+    },
+    "real-inventory-list-graph": {
+      "total": 10,
+      "accept": 10,
+      "reject": 0
     }
   }
 }
