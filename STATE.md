@@ -1,8 +1,35 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-16 (thinking on under two stages, measured)_
+_Last updated: 2026-09-16 (real-usage check against the dev stack, two fixes)_
 
 ## Summary
+
+**2026-09-16 - thirty questions against the real dev services, and two
+fixes it produced.** Everything measured before this was the
+1000-operation fixture; the dev stack runs the two real dummy services
+(inventory, attendance, six operations). Thirty realistic Japanese
+questions (`DECISIONS.md`, 2026-09-16, "Thirty questions against the real
+dev services") found what the fixture cannot show: listing, the four
+status filters, id lookups, argument-carrying create forms, and simple
+filters all work in ~1s; four kinds of failure did not - (1) a wrong pick
+whose service correctly 404s turned into a platform 500, now fixed; (2)
+two-stage planning forced an operation on seven questions none of them
+fit, now fixed; (3) a create form invents a value (a name, a date) the
+question never gave, left open; (4) a free-text restriction the operation
+cannot filter on is dropped silently rather than reported, left open. Two
+fixes landed from this: `usecase.ServiceError` turns a service's 4xx into
+`kind: "none"` instead of a 500 (`9d64d69`, `DECISIONS.md`, "a service's
+4xx is an answer"); and the fill after a pick is now offered
+`ask_user`/`list_capabilities` alongside the picked tool so it can say
+`none` instead of forcing a form (`988697a`, variant A, chosen over
+variants B and E - `DECISIONS.md`, "the fill after a pick may answer none
+or list_capabilities"). A costs 3 points on the shortlist corpus (79/80 →
+**76/77**), read as the corpus's own bias toward penalising any refusal -
+every corpus question has a real answer by construction, so it can never
+reward a fill for correctly refusing an impossible one; a real-catalogue
+refusal question set is the next step to close that bias (`TODO.md`).
+Current defaults are otherwise unchanged: two stages, wording
+`v6-unmatched-filter`, thinking off.
 
 **2026-09-16 - thinking on under two stages, measured:** +1 correct@1
 against thinking off, inside the 7-row near-tie noise band, at 3.8x the

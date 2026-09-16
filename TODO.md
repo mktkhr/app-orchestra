@@ -71,10 +71,75 @@ _Nothing in progress._
    reproduce exactly, but the classic and `STAGES=2` runner paths differ
    by 7 near-tie rows purely from request history (`DECISIONS.md`,
    2026-09-16, "Measurement determinism") - a fix that moves fewer than
-   about 7 rows is not distinguishable from that band.
+   about 7 rows is not distinguishable from that band. Adopting fix A for
+   the fill-after-pick defect (below) added four more rows the pick's own
+   corpus loses outright: `c12`, `c13`, `d06`, `d12`, all to
+   `list_capabilities` (`DECISIONS.md`, 2026-09-16, "the fill after a pick
+   may answer none or list_capabilities").
+7. **A real-catalogue refusal question set is missing.** Every fix
+   measured so far against the shortlist corpus is scored only on
+   questions that have a real answer, so the corpus can penalise a fill
+   that wrongly refuses but can never reward one that rightly refuses
+   something impossible - the bias named when fix A was chosen over E
+   (`DECISIONS.md`, 2026-09-16, "the fill after a pick may answer none or
+   list_capabilities"). Build a small real-catalogue (dev-stack) question
+   set with expected refusals, in the style of the real-usage check's
+   `realuse.mjs`, and promote it into `e2e/` so it runs in CI instead of
+   living in a scratchpad.
+8. **Invented form values.** A create form fills a blank the question
+   never specified with something plausible-looking rather than leaving it
+   empty - 新しい在庫を登録したい → name 「新しい在庫」 quantity 1;
+   遅刻を記録したい → a fabricated name, a fabricated date, a guessed
+   `kind`. Found in the real-usage check against the dev stack
+   (`DECISIONS.md`, 2026-09-16, "Thirty questions against the real dev
+   services"). Approved next design: pass today's date to the fill (closes
+   the date-invention case), and drop a form's initial value for any
+   free-text string parameter whose value does not appear in the question
+   (name/employee-name fields) while keeping dates and enums, whose
+   defaults are not invented the same way. Unscheduled.
+9. **Free-text restrictions are dropped silently.** 今日の勤怠 / 田中さんの
+   勤怠 / 4月の勤怠記録 all return every record, because the operation has
+   no such filter and the fill says nothing about the mismatch. Found in
+   the same real-usage check. Possible fix: say in the answer that the
+   filter could not be applied, rather than answering as if it had been.
+   Unscheduled.
+10. **`propose_panel` under two stages was never exercised with a
+    workspace.** The real-usage check sent no workspace id, so every
+    question reached the fill through the pick's own fixed tool list,
+    never through `propose_panel` - confirm live in the UI, with a
+    workspace open, that a panel proposal still reaches the fill correctly
+    under two stages. Unscheduled.
+11. **The web's 500 message is generic.** A service's own 4xx no longer
+    reaches the platform as a 500 (`DECISIONS.md`, 2026-09-16, "a service's
+    4xx is an answer"), but a genuine 500 still shows only 「質問の送信に
+    失敗しました…」 (`client.ts` / `conversationStore.tsx`), never the
+    server's own message. Left as is; unscheduled.
 
 ## Done
 
+- **A service's 4xx no longer reaches the platform as a 500.** Found by
+  the real-usage check against the dev stack (`DECISIONS.md`, 2026-09-16,
+  "Thirty questions against the real dev services"):
+  「att-002の内容」picked the wrong operation, the service correctly
+  answered 404, and the platform turned that into a 500. A new
+  `usecase.ServiceError{Status, Message}` lets `Orchestrator` turn a 4xx
+  into `kind: "none"` with the service's own message instead; a 5xx,
+  timeout or unreachable service still answer 500. `e2e/src/service-error.test.ts`.
+  See `DECISIONS.md`, 2026-09-16 ("a service's 4xx is an answer"). The
+  web's generic 500 text is left open (item 11 above).
+- **The fill after a pick can now answer `none` or `list_capabilities`
+  instead of forcing the picked operation's form on a question it cannot
+  really serve.** Also found by the real-usage check: with one tool
+  offered, the fill under two stages was forced into a form for seven
+  questions the single call correctly refused. Variant A (`988697a`) -
+  picked tool + `ask_user` (always) + `list_capabilities`, all three
+  outcomes honoured - is adopted over B (never answers `none` with one
+  tool; not committed) and E (a fill-specific prompt that over-refuses two
+  real requests; `b4bfae9`, dropped, not pushed). Costs 3 points on the
+  shortlist corpus (79/80 → 76/77), read as the corpus's own bias toward
+  penalising refusal rather than a real regression - see item 7 above, and
+  `DECISIONS.md`, 2026-09-16 ("the fill after a pick may answer none or
+  list_capabilities").
 - **Thinking-on reasoning overrunning `max_tokens` 1024 is closed.**
   Measured under two-stage planning (`DECISIONS.md`, 2026-09-16, "Thinking
   on under two stages"): with the fill seeing one tool, 0 of 100 rows

@@ -6955,3 +6955,130 @@ which this corpus may not represent. It does close `TODO.md`'s open
 reasoning stays short, and 0 of 100 rows truncated at 1024 - against 9 of
 100 measured under the single call's thinking-on pass. Closed with that
 evidence (`TODO.md`).
+
+## 2026-09-16 Thirty questions against the real dev services
+
+Everything measured so far, including the shortlist corpus, is the
+1000-operation fixture; the dev stack runs the two real dummy services
+(`inventory`, `attendance`, six operations total). Thirty realistic
+Japanese questions (scratchpad `realuse.mjs`) were posted to `/api/plan`
+against the dev stack, thinking off, no workspace - once under two-stage
+planning (`realuse-1.txt`, `realuse-fill-escape.txt` before/after the fill
+fix below) and once under the single call (`realuse-stages1.txt`), for a
+read on what the fixture cannot show: a small real catalogue rather than a
+thousand near-synonyms.
+
+**What worked in both stages settings, ~1s each.** Listing every
+operation; the four status filters; id lookups; argument-carrying create
+forms (在庫を追加して。名前はネジ、数量100 filled `name`/`quantity`
+directly); the 代休 filter; 何ができるの？.
+
+**What failed, four kinds.**
+
+1. 「att-002の内容」routed to `inventory/GetInventoryItem` instead of the
+   attendance operation; the service answered 404, the platform answered
+   **500** - fixed below ("a service's 4xx is an answer").
+2. Two stages forced an operation where none fits, because the fill saw
+   only the picked tool: 在庫を削除して / 在庫を減らして / 売上を見せて /
+   残業時間を集計して all returned list results; 有給の申請 produced a
+   `CreateAttendanceRecord` form with `kind` guessed `compensatory`; 今日は
+   何曜日？ and 在庫について何ができる？ both forced `list_capabilities`/
+   `ListInventoryItems` rather than admitting no fit. The single call
+   refused all seven of these (list_capabilities or none) - fixed below
+   ("the fill after a pick may answer none or list_capabilities").
+3. Forms invent values the question never gave: 新しい在庫を登録したい →
+   name 「新しい在庫」 quantity 1; 遅刻を記録したい → 田中太郎 /
+   2023-10-10 / みなし労働 - the model has no notion of today's date and
+   fills blanks with something plausible-looking instead of leaving them
+   empty. Left open (`TODO.md`).
+4. A free-text restriction the operation cannot filter on is silently
+   dropped rather than reported: 今日の勤怠 / 田中さんの勤怠 / 4月の勤怠
+   記録 all returned every record. Left open (`TODO.md`).
+
+One more observation, not a defect: 「ダッシュボードに在庫一覧を出して」
+returned a plain result, not a `propose_panel` proposal - by design,
+`propose_panel` is only offered with a workspace id on the request, and the
+script sent none. To be checked in the UI, not here (`TODO.md`).
+
+## 2026-09-16 Fix: a service's 4xx is an answer, not a 500
+
+The real-usage check's first failure: 「att-002の内容」 picked the wrong
+operation, the service correctly answered 404 for an id it does not have,
+and the platform turned that into a 500 - an ordinary "no such record"
+became an outage.
+
+A new `usecase.ServiceError{Status, Message}`, returned by the HTTP
+invoker whenever a service call answers 4xx with a decodable error body.
+`Orchestrator` now reads it and produces `kind: "none"` with
+「<service> の <operation> は「<message>」と答えました。」 (falling back to
+the bare status when the body carried no message) instead of propagating
+the error to a 500; the outcome is logged at `warn`, not `error`, since a
+4xx from a real service is expected traffic, not a fault. A 5xx, a
+timeout, or an unreachable service are unchanged - still a 500, since
+those genuinely are the platform's own failure to get an answer.
+
+Verified against the dev stack: 「att-002の内容」 now reads 200,
+`kind: "none"`, 「在庫管理 の 在庫アイテムの詳細 は「no item exists with
+this id」と答えました。」. New end-to-end coverage:
+`e2e/src/service-error.test.ts`.
+
+**Left open.** The web still shows a generic 「質問の送信に失敗しました…」
+on any 500 (`client.ts` / `conversationStore.tsx`) rather than the
+server's own text; this fix only stops a 4xx from becoming a 500 in the
+first place, it does not change how a genuine 500 is shown. Left as is
+(`TODO.md`).
+
+Committed as `9d64d69`.
+
+## 2026-09-16 Fix: the fill after a pick may answer none or list_capabilities - A adopted over B and E
+
+The real-usage check's second failure, under two-stage planning: once the
+pick names an operation, the fill stage was offered only that one tool (a
+rule from `0840502`'s chip design, meant to keep the fill from wandering
+off the pick's choice) - so a question the pick could not really match
+still forced that operation's form, rather than admitting no fit. The
+single call, seeing every tool, refused the same seven questions
+correctly.
+
+Three variants were measured against both the shortlist corpus and the
+dev-stack seven, to find a fix that keeps the corpus's good number without
+losing the pick's honesty on a real catalogue.
+
+- **A** (`988697a`, adopted): the fill is offered the picked tool, plus
+  `ask_user` (always), plus `list_capabilities`; `none`, `list_capabilities`
+  and a genuine `ask` are all honoured - a call naming a different
+  operation still degrades to the picked form, unchanged. Corpus
+  **76/77 correct@1/correct@shown** (down from 79/80 before this fix; four
+  real losses to `list_capabilities` - `c12` `c13` `d06` `d12` - the rest
+  inside measurement noise), mean latency 1372ms. Dev-stack seven: all
+  seven now refused (routed to `list_capabilities`), and
+  「在庫の一覧をグラフで」, not one of the seven, also refused correctly.
+  `make eval` reads at baseline.
+- **B** (not committed): picked tool + `ask_user` only, no
+  `list_capabilities` offered; `none` honoured. Corpus 80/81 (noise-level
+  against 79/80 - no real change). Dev-stack seven: the fill never once
+  answered `none` with only one tool on offer - only 今日は何曜日？ was
+  refused, and that by the pick's own fixed line, not the fill; the other
+  six were forced into a form again, same as before any fix.
+- **E** (`b4bfae9`, dropped by a later reset, not pushed): A plus a
+  fill-specific system prompt (wording v6, new `FillSystemPrompt`: call the
+  one offered operation with the question's own arguments, leave unstated
+  ones out, reach for `list_capabilities` only for what that operation
+  genuinely cannot do). Corpus 78/79 (`b09`/`b14` moved to `none` - a real,
+  if small, loss). Dev-stack seven: 6 of 7 correctly refused, but
+  **over-refused** two real requests to `none` - 新しい在庫を登録したい and
+  在庫の一覧をグラフで, both of which the operation on offer really could
+  serve - and invented form values (failure 3 above) persisted regardless.
+
+**Decision: A.** Refusing a real request, as E sometimes does, is worse
+than routing an impossible one to the capabilities list, as A does; the
+corpus's -3 against the pre-fix number is read as the corpus's own bias,
+not a real regression - every corpus question has a real answer by
+construction, so the corpus can only ever penalise a fill that refuses,
+never reward one that correctly refuses something impossible, and the real
+catalogue is exactly where that second case matters. `TODO.md` gains a
+Next item to close this bias: a small real-catalogue question set with
+expected refusals, run the way `realuse.mjs` was, promoted into `e2e/` so
+it stops living in a scratchpad.
+
+Committed as `988697a`.
