@@ -101,18 +101,11 @@ func (o *Orchestrator) planPreferred(
 // requiredParamsKnown reports whether endpoint has no required parameter at
 // all, or every one it does have is already named in answers - the same
 // "required" list inputSchemaFor builds for the tool's own schema and for
-// formFor's Schema, read once here rather than walked a second time, so
-// what counts as required can never drift between the three.
+// formFor's Schema (read via requiredParamNames, tools.go, so it can never
+// drift from either, or from askDegrade's own use of the same list).
 func requiredParamsKnown(endpoint *domain.Endpoint, answers []Answer) bool {
-	schema := inputSchemaFor(endpoint)
-
-	requiredAny, ok := schema[keyRequired]
-	if !ok {
-		return true
-	}
-
-	required, ok := requiredAny.([]string)
-	if !ok || len(required) == 0 {
+	required := requiredParamNames(endpoint)
+	if len(required) == 0 {
 		return true
 	}
 

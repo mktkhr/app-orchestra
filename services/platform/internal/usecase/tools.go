@@ -429,6 +429,30 @@ func inputSchemaFor(e *domain.Endpoint) map[string]any {
 	return schema
 }
 
+// requiredParamNames reads back the "required" list inputSchemaFor builds
+// for one endpoint, as a plain slice: the one notion of "required" that
+// requiredParamsKnown (orchestrator_preferred.go) and askDegrade
+// (orchestrator.go, the 2026-09-16 ask_user degradation rule) both need to
+// agree on, read once here rather than walked separately in each, so what
+// counts as required can never drift between the schema a form shows, the
+// preferred-fill shortcut, and the ask degradation. nil when the endpoint
+// has no required argument at all.
+func requiredParamNames(e *domain.Endpoint) []string {
+	schema := inputSchemaFor(e)
+
+	requiredAny, ok := schema[keyRequired]
+	if !ok {
+		return nil
+	}
+
+	required, ok := requiredAny.([]string)
+	if !ok {
+		return nil
+	}
+
+	return required
+}
+
 // mergeRequestBody adds a request body's fields to an endpoint's input
 // schema, and returns the names that must additionally be marked required.
 // An object body contributes its properties directly, since they are

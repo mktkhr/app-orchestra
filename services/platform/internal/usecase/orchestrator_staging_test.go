@@ -282,6 +282,49 @@ func TestPlanStagedFromPickHonoursDecisionAskAsAKindAsk(t *testing.T) {
 	assert.ElementsMatch(t, []domain.Option{{Value: "open"}, {Value: "closed"}}, result.Options)
 }
 
+// TestPlanStagedFromPickHonoursARuleTwoAsk is planPreferred's fromPick
+// DecisionAsk routing (line ~84, orchestrator_preferred.go) reaching
+// askDegrade's rule 2: Opd declares no parameters at all, so "kind" is
+// neither an enum (optionsForParam) nor required (askDegrade rule 1), and
+// the model's own two options are trusted verbatim.
+func TestPlanStagedFromPickHonoursARuleTwoAsk(t *testing.T) {
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-d", OperationID: "Opd"}}
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "svc-d", OperationID: "Opd", Question: "受注ですか、発注ですか？", Param: "kind",
+		Options: []domain.Option{{Value: "sales", Label: "受注"}, {Value: "purchase", Label: "発注"}},
+	}}
+
+	orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "注文を見たい", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindAsk, result.Kind)
+	assert.Equal(t, "受注ですか、発注ですか？", result.Question)
+	assert.Equal(t, "kind", result.Param)
+	assert.Equal(t, []domain.Option{{Value: "sales", Label: "受注"}, {Value: "purchase", Label: "発注"}}, result.Options)
+}
+
+// TestPlanStagedFromPickHonoursARuleThreeAsk is the same routing reaching
+// askDegrade's rule 3: fewer than two model options and a non-required
+// param degrades to a plain question, not a form.
+func TestPlanStagedFromPickHonoursARuleThreeAsk(t *testing.T) {
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-d", OperationID: "Opd"}}
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionAsk, Service: "svc-d", OperationID: "Opd", Question: "いつの分ですか？", Param: "period",
+	}}
+
+	orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "操作dを見たい", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindAsk, result.Kind)
+	assert.Equal(t, "いつの分ですか？", result.Question)
+	assert.Empty(t, result.Param)
+	assert.Empty(t, result.Options)
+}
+
 // TestPlanWithPreferredNeverCallsThePickerEvenUnderStages2 is S1's "a
 // preferred in the request bypasses the pick, as it bypasses narrowing".
 func TestPlanWithPreferredNeverCallsThePickerEvenUnderStages2(t *testing.T) {
