@@ -150,6 +150,15 @@ type Chart struct {
 	Kind     string `json:"kind"`
 }
 
+// Option is one entry of PlanFixture.Options, decoded from
+// ORCHESTRA_PLAN_FIXTURES. Mirrors pkg/app.Option (added 2026-09-16
+// alongside the ask_user degradation fix): only meaningful alongside Ask -
+// see pkg/app.PlanFixture's doc comment for what it stands in for.
+type Option struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 // PlanFixture is one entry of ORCHESTRA_PLAN_FIXTURES, decoded straight
 // into the shape pkg/app.PlanFixture takes - see that type's doc comment
 // for what each field means.
@@ -158,9 +167,10 @@ type PlanFixture struct {
 	Answers []Answer      `json:"answers"`
 	Turns   []TurnFixture `json:"turns"`
 
-	Ask      bool   `json:"ask"`
-	Question string `json:"question"`
-	Param    string `json:"param"`
+	Ask      bool     `json:"ask"`
+	Question string   `json:"question"`
+	Param    string   `json:"param"`
+	Options  []Option `json:"options"`
 
 	// Propose, when true, builds a DecisionProposal (usecase.DecisionProposal)
 	// instead of the default DecisionCall - the fixture-table equivalent of

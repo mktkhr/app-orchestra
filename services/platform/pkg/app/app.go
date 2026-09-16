@@ -46,6 +46,20 @@ type Answer struct {
 	Value string
 }
 
+// Option is one entry of PlanFixture.Options: a candidate value and its
+// label, mirroring domain.Option the way Answer mirrors usecase.Answer -
+// a local type so pkg/app's one public package does not leak an internal
+// one through its own field types. Only meaningful alongside Ask (see
+// PlanFixture's doc comment): it stands in for a real ask_user tool call's
+// own "options" argument (toolcall.decisionFromAskUser), so an e2e test can
+// stub askDegrade's rule 2 (internal/usecase/orchestrator_ask.go, added
+// 2026-09-16) - two or more options on a safe operation's non-enum,
+// non-required param - without needing a real model to supply them.
+type Option struct {
+	Value string
+	Label string
+}
+
 // TurnFixture is one entry of PlanFixture.Turns: the service and operation
 // an earlier turn in the conversation resolved to. Only what
 // internal/adapter/planner/stub.TurnsKey actually reads - a fixture keys a
@@ -78,10 +92,18 @@ type Chart struct {
 // Args is unused for it. Service and OperationID matter for an ask
 // fixture, not just a call one: they are how Orchestrator.ask finds the
 // one endpoint Param belongs to, since a parameter name such as "status"
-// is not unique across services. The candidate options themselves are
-// never set here - Orchestrator.Plan looks them up from that endpoint
-// (docs/plans/orchestration.md, Task 9), not from the fixture - so a
-// fixture cannot hand out an option the catalogue would not.
+// is not unique across services.
+//
+// Options carries through to Decision.Options verbatim (added 2026-09-16
+// alongside the ask_user degradation fix). It still cannot hand out an
+// enum value the catalogue would not: when Param names a real catalogue
+// enum, optionsForParam wins exactly as it does for the real planner and
+// Options here is ignored, matching a real ask_user call's own Options
+// argument (toolcall.decisionFromAskUser's doc comment - "Orchestrator.ask
+// never trusts it" for the enum case). Only when Param has no catalogue
+// enum at all does askDegrade ever look at Options (its rule 2), which is
+// the one case a fixture can use this field to stand in for a model
+// supplying two or more concrete candidates of its own.
 //
 // Turns lets the same Query resolve differently depending on what came
 // before it - the fixture-table equivalent of a follow-up question phrased
@@ -95,6 +117,7 @@ type PlanFixture struct {
 	Ask      bool
 	Question string
 	Param    string
+	Options  []Option
 
 	// Propose, when true, builds a usecase.Decision{Kind: DecisionProposal}
 	// instead of the default DecisionCall - the stub-fixture equivalent of
@@ -454,8 +477,8 @@ func toUsecaseTurns(turns []TurnFixture) []usecase.Turn {
 // toDecision builds the Decision one PlanFixture produces: a proposal when
 // Propose is set, an ask when Ask is set, a call otherwise - checked in
 // that order, so a fixture is exactly one of the three (PlanFixture.Propose's
-// doc comment). See PlanFixture's doc comment for why an ask fixture
-// carries no options of its own.
+// doc comment). See PlanFixture's doc comment for what Options on an ask
+// fixture can and cannot hand out.
 func toDecision(f *PlanFixture) usecase.Decision {
 	if f.Propose {
 		return usecase.Decision{
@@ -476,6 +499,7 @@ func toDecision(f *PlanFixture) usecase.Decision {
 			OperationID: f.OperationID,
 			Question:    f.Question,
 			Param:       f.Param,
+			Options:     toDomainOptions(f.Options),
 		}
 	}
 
@@ -506,6 +530,23 @@ func toDomainView(chart *Chart) *domain.View {
 			Kind:     domain.ChartKind(chart.Kind),
 		},
 	}
+}
+
+// toDomainOptions adapts PlanFixture.Options to []domain.Option, the shape
+// Decision.Options carries - nil, not an empty slice, for a fixture with no
+// options at all, the same "absent, not empty" convention toUsecaseAnswers
+// and toUsecaseTurns already follow for their own fixture slices.
+func toDomainOptions(options []Option) []domain.Option {
+	if len(options) == 0 {
+		return nil
+	}
+
+	out := make([]domain.Option, len(options))
+	for i, o := range options {
+		out[i] = domain.Option{Value: o.Value, Label: o.Label}
+	}
+
+	return out
 }
 
 // toUsecaseAnswers adapts PlanFixture.Answers to the shape

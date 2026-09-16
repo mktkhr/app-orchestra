@@ -87,6 +87,7 @@ func toAppPlanFixtures(fixtures []config.PlanFixture) []app.PlanFixture {
 			Ask:         f.Ask,
 			Question:    f.Question,
 			Param:       f.Param,
+			Options:     toAppOptions(f.Options),
 			Propose:     f.Propose,
 			Component:   f.Component,
 			Chart:       toAppChart(f.Chart),
@@ -116,6 +117,22 @@ func toAppTurnFixtures(turns []config.TurnFixture) []app.TurnFixture {
 	out := make([]app.TurnFixture, 0, len(turns))
 	for _, t := range turns {
 		out = append(out, app.TurnFixture{Service: t.Service, OperationID: t.OperationID})
+	}
+
+	return out
+}
+
+// toAppOptions adapts config.Option to app.Option, or nil for an ask
+// fixture with none - see toAppServices; nil rather than empty for the same
+// "absent, not empty" reason toAppAnswers/toAppTurnFixtures already follow.
+func toAppOptions(options []config.Option) []app.Option {
+	if len(options) == 0 {
+		return nil
+	}
+
+	out := make([]app.Option, 0, len(options))
+	for _, o := range options {
+		out = append(out, app.Option{Value: o.Value, Label: o.Label})
 	}
 
 	return out

@@ -351,6 +351,127 @@ func TestNewWiresAProposePlanFixtureThroughToAProposalResult(t *testing.T) {
 	}, body.Panel.View)
 }
 
+// TestNewWiresAnAskPlanFixtureWithTwoOrMoreOptionsThroughToAnAskResult
+// closes the e2e/stub-planner gap docs/plans/orchestration.md's ask_user
+// degradation fix (2026-09-16, TODO.md item 3) needs: PlanFixture.Options
+// lets a fixture stand in for a model's own ask_user "options" argument, so
+// this exercises askDegrade's rule 2 (internal/usecase/orchestrator_ask.go)
+// end to end through the built binary - ListWidgets declares no
+// parameters at all, so "kind" is neither an enum nor required, and the
+// fixture's two options must reach the person verbatim.
+func TestNewWiresAnAskPlanFixtureWithTwoOrMoreOptionsThroughToAnAskResult(t *testing.T) {
+	fixture := fixtureService(t)
+
+	handler, err := app.New(&app.Config{
+		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
+		PlanFixtures: []app.PlanFixture{
+			{
+				Query:       "widgets please",
+				Ask:         true,
+				Service:     "fixture",
+				OperationID: "ListWidgets",
+				Question:    "受注ですか、発注ですか？",
+				Param:       "kind",
+				Options:     []app.Option{{Value: "sales", Label: "受注"}, {Value: "purchase", Label: "発注"}},
+			},
+		},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Kind     string `json:"kind"`
+		Question string `json:"question"`
+		Param    string `json:"param"`
+		Options  []struct {
+			Value string `json:"value"`
+			Label string `json:"label"`
+		} `json:"options"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "ask", body.Kind)
+	assert.Equal(t, "受注ですか、発注ですか？", body.Question)
+	assert.Equal(t, "kind", body.Param)
+	require.Len(t, body.Options, 2)
+	assert.Equal(t, "sales", body.Options[0].Value)
+	assert.Equal(t, "受注", body.Options[0].Label)
+	assert.Equal(t, "purchase", body.Options[1].Value)
+	assert.Equal(t, "発注", body.Options[1].Label)
+}
+
+// TestNewWiresAnAskPlanFixtureWithNoOptionsThroughToAPlainQuestion is
+// askDegrade's rule 3 through the same fixture shape: a non-enum,
+// non-required param with no Options at all degrades to a plain question -
+// no param, no options - rather than the empty form this used to render
+// before the 2026-09-16 fix.
+func TestNewWiresAnAskPlanFixtureWithNoOptionsThroughToAPlainQuestion(t *testing.T) {
+	fixture := fixtureService(t)
+
+	handler, err := app.New(&app.Config{
+		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
+		PlanFixtures: []app.PlanFixture{
+			{
+				Query:       "widgets please",
+				Ask:         true,
+				Service:     "fixture",
+				OperationID: "ListWidgets",
+				Question:    "いつの分ですか？",
+				Param:       "period",
+			},
+		},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Kind     string            `json:"kind"`
+		Question string            `json:"question"`
+		Param    *string           `json:"param"`
+		Options  *[]map[string]any `json:"options"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "ask", body.Kind)
+	assert.Equal(t, "いつの分ですか？", body.Question)
+	assert.Nil(t, body.Param, "rule 3 must carry no param")
+	assert.Nil(t, body.Options, "rule 3 must carry no options")
+}
+
 // fixtureChatServer answers every chat-completions request with a tool
 // call naming ListWidgets, regardless of what tools or messages it was
 // sent - just enough to prove app.New wires the tool-calling planner in

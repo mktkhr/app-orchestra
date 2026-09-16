@@ -83,6 +83,35 @@ function parsePlanResponse(value: unknown): PlanResponseBody {
   return value;
 }
 
+/**
+ * The shape this suite reads out of a POST /api/plan response body when it
+ * is an ask (kind: "ask") - the ask_user degradation fix's own two outcomes
+ * (askDegrade, internal/usecase/orchestrator_ask.go, 2026-09-16): rule 2's
+ * options carried verbatim, or rule 3's plain question with neither param
+ * nor options at all.
+ */
+interface AskResponseBody {
+  readonly kind: string;
+  readonly question: string;
+  readonly param?: string;
+  readonly options?: ReadonlyArray<{ readonly value: string; readonly label: string }>;
+}
+
+function isAskResponseBody(value: unknown): value is AskResponseBody {
+  if (!isRecord(value)) return false;
+
+  return typeof value["kind"] === "string" && typeof value["question"] === "string";
+}
+
+/** Parses a POST /api/plan response body as an ask. See parsePlanResponse. */
+function parseAskResponse(value: unknown): AskResponseBody {
+  if (!isAskResponseBody(value)) {
+    throw new Error(`unexpected /api/plan ask response shape: ${JSON.stringify(value)}`);
+  }
+
+  return value;
+}
+
 let inventory: RunningService | undefined;
 let attendance: RunningService | undefined;
 let platform: RunningService | undefined;
@@ -121,6 +150,34 @@ beforeAll(async () => {
 
   const planFixtures = [
     { query: "在庫の一覧を見せて", service: "inventory", operationId: "ListInventoryItems" },
+    // Rule 2 (askDegrade, internal/usecase/orchestrator_ask.go): "kind" is
+    // not a parameter ListInventoryItems declares at all, so it is neither
+    // an enum (optionsForParam) nor required - and two or more
+    // model-supplied options are trusted verbatim as a real ask.
+    {
+      query: "注文を見たい",
+      ask: true,
+      question: "受注ですか、発注ですか？",
+      param: "kind",
+      options: [
+        { value: "sales", label: "受注" },
+        { value: "purchase", label: "発注" },
+      ],
+      service: "inventory",
+      operationId: "ListInventoryItems",
+    },
+    // Rule 3: the same non-enum, non-required situation but with no
+    // options at all - degrades to a plain question, carrying neither
+    // param nor options, rather than the empty form this used to render
+    // before the 2026-09-16 fix (TODO.md item 3).
+    {
+      query: "いつの分の在庫ですか",
+      ask: true,
+      question: "いつの分ですか？",
+      param: "period",
+      service: "inventory",
+      operationId: "ListInventoryItems",
+    },
   ];
 
   // A file in its own temporary directory, per docs/specs/workspaces.md
@@ -183,5 +240,57 @@ describe("the built product answers a question end to end (AC-E-101)", () => {
     });
     expect(Array.isArray(body.data.items)).toBe(true);
     expect(body.data.items.length).toBeGreaterThan(0);
+  });
+
+  // The ask_user degradation fix (2026-09-16, TODO.md item 3): a safe
+  // operation's ask over a param with no catalogue enum no longer degrades
+  // unconditionally to an empty form. These two cases are askDegrade's
+  // rule 2 and rule 3 (internal/usecase/orchestrator_ask.go) driven through
+  // the built binary, the same way the result case above proves a call.
+  it("asks using the model's own options when it supplies two or more (rule 2)", async () => {
+    const port = requirePlatform().port;
+
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/plan`,
+      withSession(requireSession(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "注文を見たい" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = parseAskResponse(await response.json());
+
+    expect(body.kind).toBe("ask");
+    expect(body.question).toBe("受注ですか、発注ですか？");
+    expect(body.param).toBe("kind");
+    expect(body.options).toEqual([
+      { value: "sales", label: "受注" },
+      { value: "purchase", label: "発注" },
+    ]);
+  });
+
+  it("degrades to a plain question with no param or options when there is nothing to offer (rule 3)", async () => {
+    const port = requirePlatform().port;
+
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/plan`,
+      withSession(requireSession(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ query: "いつの分の在庫ですか" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = parseAskResponse(await response.json());
+
+    expect(body.kind).toBe("ask");
+    expect(body.question).toBe("いつの分ですか？");
+    expect(body.param).toBeUndefined();
+    expect(body.options).toBeUndefined();
   });
 });

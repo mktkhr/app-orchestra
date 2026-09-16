@@ -301,6 +301,38 @@ func TestLoadParsesAProposePlanFixture(t *testing.T) {
 	}, cfg.PlanFixtures[0])
 }
 
+// TestLoadParsesAnAskPlanFixtureWithOptions is the ORCHESTRA_PLAN_FIXTURES
+// half of the ask_user degradation fix (2026-09-16, TODO.md item 3):
+// "options" lets a fixture stand in for a model's own ask_user "options"
+// argument, exercising askDegrade's rule 2
+// (internal/usecase/orchestrator_ask.go) from a process started off the
+// built binary (e2e/src/orchestration.test.ts), the same way
+// TestLoadParsesAProposePlanFixture already does for a propose fixture.
+func TestLoadParsesAnAskPlanFixtureWithOptions(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv(
+		"ORCHESTRA_PLAN_FIXTURES",
+		`[{"query":"注文を見たい","ask":true,"question":"受注ですか、発注ですか？","param":"kind",`+
+			`"options":[{"value":"sales","label":"受注"},{"value":"purchase","label":"発注"}],`+
+			`"service":"inventory","operationId":"ListInventoryItems"}]`,
+	)
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	require.Len(t, cfg.PlanFixtures, 1)
+	assert.Equal(t, config.PlanFixture{
+		Query:       "注文を見たい",
+		Ask:         true,
+		Question:    "受注ですか、発注ですか？",
+		Param:       "kind",
+		Options:     []config.Option{{Value: "sales", Label: "受注"}, {Value: "purchase", Label: "発注"}},
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}, cfg.PlanFixtures[0])
+}
+
 func TestLoadRejectsMalformedPlanFixtures(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
