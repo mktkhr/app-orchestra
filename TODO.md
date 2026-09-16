@@ -86,30 +86,19 @@ _Nothing in progress._
    set with expected refusals, in the style of the real-usage check's
    `realuse.mjs`, and promote it into `e2e/` so it runs in CI instead of
    living in a scratchpad.
-8. **Invented form values.** A create form fills a blank the question
-   never specified with something plausible-looking rather than leaving it
-   empty - 新しい在庫を登録したい → name 「新しい在庫」 quantity 1;
-   遅刻を記録したい → a fabricated name, a fabricated date, a guessed
-   `kind`. Found in the real-usage check against the dev stack
-   (`DECISIONS.md`, 2026-09-16, "Thirty questions against the real dev
-   services"). Approved next design: pass today's date to the fill (closes
-   the date-invention case), and drop a form's initial value for any
-   free-text string parameter whose value does not appear in the question
-   (name/employee-name fields) while keeping dates and enums, whose
-   defaults are not invented the same way. Unscheduled.
-9. **Free-text restrictions are dropped silently.** 今日の勤怠 / 田中さんの
+8. **Free-text restrictions are dropped silently.** 今日の勤怠 / 田中さんの
    勤怠 / 4月の勤怠記録 all return every record, because the operation has
    no such filter and the fill says nothing about the mismatch. Found in
    the same real-usage check. Possible fix: say in the answer that the
    filter could not be applied, rather than answering as if it had been.
    Unscheduled.
-10. **`propose_panel` under two stages was never exercised with a
-    workspace.** The real-usage check sent no workspace id, so every
-    question reached the fill through the pick's own fixed tool list,
-    never through `propose_panel` - confirm live in the UI, with a
-    workspace open, that a panel proposal still reaches the fill correctly
-    under two stages. Unscheduled.
-11. **The web's 500 message is generic.** A service's own 4xx no longer
+9. **`propose_panel` under two stages was never exercised with a
+   workspace.** The real-usage check sent no workspace id, so every
+   question reached the fill through the pick's own fixed tool list,
+   never through `propose_panel` - confirm live in the UI, with a
+   workspace open, that a panel proposal still reaches the fill correctly
+   under two stages. Unscheduled.
+10. **The web's 500 message is generic.** A service's own 4xx no longer
     reaches the platform as a 500 (`DECISIONS.md`, 2026-09-16, "a service's
     4xx is an answer"), but a genuine 500 still shows only 「質問の送信に
     失敗しました…」 (`client.ts` / `conversationStore.tsx`), never the
@@ -117,6 +106,23 @@ _Nothing in progress._
 
 ## Done
 
+- **Invented form values are closed - today's date is told to the model,
+  and a free-text initial value is dropped unless the question said it.**
+  Found by the real-usage check against the dev stack (`DECISIONS.md`,
+  2026-09-16, "Thirty questions against the real dev services"): 新しい
+  在庫を登録したい → name 「新しい在庫」 quantity 1; 遅刻を記録したい →
+  a fabricated name, a fabricated date, a guessed `kind`. Two fixes:
+  every planning call's user content now opens with 「今日は
+  YYYY-MM-DD（曜日）です。」 from an injected clock (`toolcall.WithClock`/
+  `jsonmode.WithClock`, `6f18dd4`), and `usecase`'s `formFor` now drops a
+  free-text `string` parameter's model-filled initial value unless it is
+  an enum, a number, a boolean, carries a declared `format` (date,
+  date-time - `domain.Schema.Format`, new), or the value itself appears in
+  the question or an earlier answer (`a2c7503`). See `DECISIONS.md`,
+  2026-09-16 ("Fix: invented form values - today's date, and a free-text
+  initial value dropped unless said") for the row-level dev-stack read and
+  the shortlist corpus number (77/79 correct@1/correct@shown against the
+  76/77 pre-date baseline, within the measurement-determinism band).
 - **A service's 4xx no longer reaches the platform as a 500.** Found by
   the real-usage check against the dev stack (`DECISIONS.md`, 2026-09-16,
   "Thirty questions against the real dev services"):
@@ -126,7 +132,7 @@ _Nothing in progress._
   into `kind: "none"` with the service's own message instead; a 5xx,
   timeout or unreachable service still answer 500. `e2e/src/service-error.test.ts`.
   See `DECISIONS.md`, 2026-09-16 ("a service's 4xx is an answer"). The
-  web's generic 500 text is left open (item 11 above).
+  web's generic 500 text is left open (item 10 above).
 - **The fill after a pick can now answer `none` or `list_capabilities`
   instead of forcing the picked operation's form on a question it cannot
   really serve.** Also found by the real-usage check: with one tool

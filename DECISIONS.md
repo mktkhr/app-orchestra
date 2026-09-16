@@ -7082,3 +7082,62 @@ expected refusals, run the way `realuse.mjs` was, promoted into `e2e/` so
 it stops living in a scratchpad.
 
 Committed as `988697a`.
+
+## 2026-09-16 Fix: invented form values - today's date, and a free-text initial value dropped unless said
+
+The real-usage check's third failure (above, "Thirty questions against the
+real dev services"): a create form fills a blank the question never
+specified with something plausible-looking instead of leaving it empty -
+新しい在庫を登録したい → name 「新しい在庫」 quantity 1; 遅刻を記録した
+い → 田中太郎 / 2023-10-10 / みなし労働, none of it said. Two fixes close
+it.
+
+**The date (`6f18dd4`).** The model had no notion of today, so a date
+defaulted to whatever looked plausible from training (2023-10-10). Every
+planning call's user content now opens with 「今日は 2026-09-16（火）で
+す。」 from an injected clock (`toolcall.WithClock`, `jsonmode.WithClock`;
+default `time.Now`, injectable for tests) - the pick's own prompt is
+untouched, guarded by a byte-identity test. Measured against the shortlist
+corpus under two-stage planning: correct@1/correct@shown 77/79 against the
+pre-date baseline of 76/77 (above, "the fill after a pick may answer none
+or list_capabilities") - within the measurement-determinism band
+(`DECISIONS.md`, 2026-09-16, "Measurement determinism"). 6 rows moved
+(`b09`, `b14`, `b19`, `c13`, `d03`, `d06`); none of the six operations
+involved takes a date parameter, so the movement is the same
+list_capabilities/plausible-form noise the "A" fix already documents, not
+the date line destabilizing a previously-correct answer.
+
+**The name (`a2c7503`).** `usecase`'s `formFor` now drops a parameter's
+model-filled initial value unless it is an enum, a number, a boolean, or
+carries a declared `format` (date, date-time); a plain free-text `string`
+with none of those keeps its value only when that value (case-folded)
+actually appears in the question or in an answer already given.
+`domain.Schema` gained `Format`; `services/attendance/api/openapi.yaml`'s
+`date` fields now declare `format: date` (they did not before this fix -
+without it the rule above would have dropped a real date along with the
+invented ones), regenerated with `make generate`. A guessed `quantity`
+stays - it is not distinguishable from a real one by this rule - and so
+does a guessed enum `kind`/`status`; the defect being fixed is a
+fabricated name, not a guessed number. Rationale: a form is the person's
+to complete, and a name they never said reads as data, not a default - a
+blank left for them to fill is honest, a fabricated one is not.
+
+Verified against the dev stack after both fixes (`realuse-date-fix.txt`):
+新しい在庫を登録したい → `CreateInventoryItem initial={}`; 勤怠を登録し
+て。田中太郎、4月20日、みなし労働 → `date":"2026-04-20"`, employee and
+kind both kept (both said in the question); 遅刻を記録したい → `none`
+(「その質問に答えられる操作が見つかりませんでした」) - the model no
+longer fabricates a whole record, it declines instead. Arguably a form
+with just `kind` prefilled would serve the person better than a flat
+refusal; noted as an observation, not a new defect (`TODO.md`). Two more
+rows moved with this pair of fixes but trace to the date-line prompt
+change, not the form-value rule (neither touches a form): 有給の申請 now
+returns an empty `CreateAttendanceRecord` form rather than
+`list_capabilities`, and 在庫の一覧をグラフで again returns the list
+rather than `list_capabilities`.
+
+`make eval`'s `create`/`create-attendance` cases (10/10 each) read
+unchanged - both name every value they set in the question, so the
+free-text rule never has anything to drop.
+
+Committed as `6f18dd4` and `a2c7503`.

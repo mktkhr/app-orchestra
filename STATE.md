@@ -1,8 +1,23 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-16 (real-usage check against the dev stack, two fixes)_
+_Last updated: 2026-09-16 (invented form values closed - today's date, and a dropped free-text initial value)_
 
 ## Summary
+
+**2026-09-16 - invented form values closed: today's date, and a dropped
+free-text initial value.** Closes failure (3) below. Every planning call's
+user content now opens with today's date from an injected clock
+(`toolcall.WithClock`/`jsonmode.WithClock`, `6f18dd4`), fixing a create
+form's fabricated date (2023-10-10 for a 2026 question); `usecase.formFor`
+now drops a free-text `string` parameter's model-filled initial value
+unless it is an enum, a number, a boolean, carries a declared `format`
+(date, date-time - `domain.Schema.Format`, new), or its value already
+appears in the question or an earlier answer (`a2c7503`), fixing a
+fabricated name (新しい在庫を登録したい no longer fills name 「新しい在
+庫」). Shortlist corpus 77/79 correct@1/correct@shown against the 76/77
+pre-date baseline, within the measurement-determinism band; full account
+in `DECISIONS.md`, 2026-09-16 ("Fix: invented form values - today's date,
+and a free-text initial value dropped unless said").
 
 **2026-09-16 - thirty questions against the real dev services, and two
 fixes it produced.** Everything measured before this was the
@@ -15,8 +30,9 @@ filters all work in ~1s; four kinds of failure did not - (1) a wrong pick
 whose service correctly 404s turned into a platform 500, now fixed; (2)
 two-stage planning forced an operation on seven questions none of them
 fit, now fixed; (3) a create form invents a value (a name, a date) the
-question never gave, left open; (4) a free-text restriction the operation
-cannot filter on is dropped silently rather than reported, left open. Two
+question never gave, now fixed (see the entry above); (4) a free-text
+restriction the operation cannot filter on is dropped silently rather than
+reported, left open (`TODO.md`). Two
 fixes landed from this: `usecase.ServiceError` turns a service's 4xx into
 `kind: "none"` instead of a 500 (`9d64d69`, `DECISIONS.md`, "a service's
 4xx is an answer"); and the fill after a pick is now offered
