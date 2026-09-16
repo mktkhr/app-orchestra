@@ -16,6 +16,26 @@ function hasArgs(
   return Object.entries(expected).every(([key, value]) => present[key] === value);
 }
 
+/** True when none of keys is present in actual - ExpectedOutcome.argsAbsent's check. */
+function hasNoneOfKeys(
+  actual: Record<string, unknown> | undefined,
+  keys: readonly string[],
+): boolean {
+  const present = actual ?? {};
+
+  return keys.every((key) => !(key in present));
+}
+
+/** True when every key of keys is present in actual, any value - ExpectedOutcome.argsPresent's check. */
+function hasAllOfKeys(
+  actual: Record<string, unknown> | undefined,
+  keys: readonly string[],
+): boolean {
+  const present = actual ?? {};
+
+  return keys.every((key) => key in present);
+}
+
 /**
  * True when actual is the outcome expected describes. Only the fields
  * expected names are checked - a case only writes down what it cares about
@@ -39,6 +59,12 @@ export function matches(actual: PlanOutcome, expected: ExpectedOutcome): boolean
       }
 
       if (expected.args !== undefined && !hasArgs(source?.args, expected.args)) return false;
+      if (expected.argsAbsent !== undefined && !hasNoneOfKeys(source?.args, expected.argsAbsent)) {
+        return false;
+      }
+      if (expected.argsPresent !== undefined && !hasAllOfKeys(source?.args, expected.argsPresent)) {
+        return false;
+      }
 
       return true;
     }
@@ -51,6 +77,18 @@ export function matches(actual: PlanOutcome, expected: ExpectedOutcome): boolean
       }
 
       if (expected.args !== undefined && !hasArgs(actual.initial, expected.args)) return false;
+      if (
+        expected.argsAbsent !== undefined &&
+        !hasNoneOfKeys(actual.initial, expected.argsAbsent)
+      ) {
+        return false;
+      }
+      if (
+        expected.argsPresent !== undefined &&
+        !hasAllOfKeys(actual.initial, expected.argsPresent)
+      ) {
+        return false;
+      }
 
       return true;
     }

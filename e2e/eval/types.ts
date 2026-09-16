@@ -30,6 +30,20 @@ export interface ExpectedOutcome {
   readonly operationId?: string;
   readonly args?: Record<string, unknown>;
   readonly param?: string;
+  /**
+   * Keys that must not appear at all in the outcome's args/initial - for
+   * asserting the model did not fabricate a value nobody gave it (the
+   * real-catalogue "no fabrication" cases, docs/specs/eval.md "Real-catalogue
+   * cases"). Distinct from `args`, which checks values that were given;
+   * this checks the absence of a key regardless of value.
+   */
+  readonly argsAbsent?: readonly string[];
+  /**
+   * Keys that must appear in the outcome's args/initial, with any value -
+   * the mirror of `argsAbsent`, for asserting a guess was made without
+   * pinning down which guess.
+   */
+  readonly argsPresent?: readonly string[];
 }
 
 /**

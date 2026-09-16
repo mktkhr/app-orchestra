@@ -16,7 +16,18 @@ export default defineConfig({
     // Task 4). shortlist/boot.ts and shortlist/run.ts need a live platform
     // and a live model and are never imported by a *.test.ts file, so this
     // glob never pulls them into `make check`.
-    include: ["src/**/*.test.ts", "narrowing/**/*.test.ts", "shortlist/**/*.test.ts"],
+    //
+    // eval/match.test.ts is the same shape again: match.ts's own logic
+    // against fake PlanOutcomes, no server, no model. eval/run.ts,
+    // plan-client.ts and services.ts (the ones that do need a live platform
+    // and ORCHESTRA_EVAL_MODEL) are never *.test.ts, so `make check` still
+    // calls no model (AC-E-202) even with eval/**/*.test.ts included here.
+    include: [
+      "src/**/*.test.ts",
+      "narrowing/**/*.test.ts",
+      "shortlist/**/*.test.ts",
+      "eval/**/*.test.ts",
+    ],
     globals: false,
     testTimeout: 30_000,
     hookTimeout: 30_000,
