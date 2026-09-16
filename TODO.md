@@ -86,12 +86,7 @@ _Nothing in progress._
    under the full system prompt and regressed three unrelated `make eval`
    rows; see `DECISIONS.md`. (c) a synthetic optional argument on every
    catalogue tool, schema only, no prompt text, is untried. Unscheduled.
-8. **The web's 500 message is generic.** A service's own 4xx no longer
-   reaches the platform as a 500 (`DECISIONS.md`, 2026-09-16, "a service's
-   4xx is an answer"), but a genuine 500 still shows only 「質問の送信に
-   失敗しました…」 (`client.ts` / `conversationStore.tsx`), never the
-   server's own message. Left as is; unscheduled.
-9. **`real-attendance-detail` (att-002の内容) fails 0/10 in the real-
+8. **`real-attendance-detail` (att-002の内容) fails 0/10 in the real-
    catalogue eval.** The pick sends `att-002` to
    `inventory/GetInventoryItem` instead of
    `attendance/GetAttendanceRecord`; the service's 404 correctly becomes
@@ -103,6 +98,13 @@ eval`"). The pick ignores an id's service prefix - a pick that reads id
    service after a 404, are the candidates. Unscheduled.
 
 ## Done
+
+- **The web shows the platform's own message when a plan request fails**
+  (`5ac3660`, 2026-09-17). Since a service's 4xx is a `none` answer
+  (`9d64d69`), a failed `POST /api/plan` is a platform or service fault;
+  `postPlan` now throws `PlanRequestError` carrying the `ErrorResponse`
+  message and the conversation appends it to 「質問の送信に失敗しました。
+  時間をおいて試してください。」 in parentheses.
 
 - **A real-catalogue refusal question set now runs in `make eval`.** The
   shortlist corpus (every question has a real answer) can penalise a fill
