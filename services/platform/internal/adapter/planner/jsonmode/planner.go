@@ -17,6 +17,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
@@ -137,9 +138,30 @@ type Planner struct {
 
 	responseFormatWithProposePanel    *chat.ResponseFormat
 	responseFormatWithoutProposePanel *chat.ResponseFormat
+
+	// clock is what buildMessages asks for "today" (WithClock's own doc
+	// comment, toolcall.WithClock's equivalent for this planner):
+	// time.Now by default, overridable so a test can pin an exact
+	// instant (dev-stack defect, 2026-09-16: a create form's date was
+	// invented outright because the model was never told what day it
+	// is).
+	clock func() time.Time
 }
 
 var _ usecase.Planner = (*Planner)(nil)
+
+// Option configures a Planner beyond client and catalog. WithClock is the
+// only one today.
+type Option func(*Planner)
+
+// WithClock overrides the source of "today" buildMessages prefixes every
+// user message with (New's default is time.Now). Tests are the only real
+// caller - see toolcall.WithClock, this planner's own equivalent.
+func WithClock(clock func() time.Time) Option {
+	return func(p *Planner) {
+		p.clock = clock
+	}
+}
 
 // New builds a Planner. catalog is rendered into the system prompt once,
 // here, rather than on every Plan call, and is kept to validate a "call" or
@@ -150,10 +172,10 @@ var _ usecase.Planner = (*Planner)(nil)
 // names its own service (it is just another field of the object), so there
 // is no equivalent ambiguity here - catalog is needed for validation, not
 // resolution (see DECISIONS.md).
-func New(client *chat.Client, catalog domain.Catalog) *Planner {
+func New(client *chat.Client, catalog domain.Catalog, opts ...Option) *Planner {
 	catalogText := renderCatalog(catalog)
 
-	return &Planner{
+	p := &Planner{
 		client:  client,
 		catalog: catalog,
 
@@ -163,7 +185,15 @@ func New(client *chat.Client, catalog domain.Catalog) *Planner {
 
 		responseFormatWithProposePanel:    buildResponseFormat(true),
 		responseFormatWithoutProposePanel: buildResponseFormat(false),
+
+		clock: time.Now,
 	}
+
+	for _, opt := range opts {
+		opt(p)
+	}
+
+	return p
 }
 
 // Plan sends query (with answers folded in) and the rendered catalogue,
@@ -197,7 +227,7 @@ func (p *Planner) Plan(
 ) (usecase.Decision, error) {
 	offerProposePanel := toolOffered(tools, usecase.ProposePanelToolName)
 
-	messages := buildMessages(p.systemPromptFor(turns, offerProposePanel), query, answers)
+	messages := buildMessages(p.systemPromptFor(turns, offerProposePanel), query, answers, p.clock())
 
 	var lastErr error
 
@@ -600,17 +630,18 @@ func renderTurns(turns []usecase.Turn) string {
 
 // buildMessages renders one system message (systemPrompt, already carrying
 // the rendered catalogue and, when there are any, the conversation so far
-// after it) and one user message: the question, followed - when answers is
-// non-empty - by every answer already given to a previous ask, exactly as
+// after it) and one user message: dateLine first, on every call, then the
+// question, followed - when answers is non-empty - by every answer
+// already given to a previous ask, exactly as
 // internal/adapter/planner/toolcall.buildMessages does, for the same
 // reason (D8: one stateless chat completion per request).
-func buildMessages(systemPrompt, query string, answers []usecase.Answer) []chat.Message {
-	content := query
+func buildMessages(systemPrompt, query string, answers []usecase.Answer, now time.Time) []chat.Message {
+	var b strings.Builder
+
+	b.WriteString(dateLine(now))
+	b.WriteString(query)
 
 	if len(answers) > 0 {
-		var b strings.Builder
-
-		b.WriteString(query)
 		b.WriteString("\n\nこれまでに確認した値:\n")
 
 		for _, a := range answers {
@@ -618,14 +649,26 @@ func buildMessages(systemPrompt, query string, answers []usecase.Answer) []chat.
 		}
 
 		b.WriteString("\n上記の値をそのまま使って、対応する操作を呼び出してください。")
-
-		content = b.String()
 	}
 
 	return []chat.Message{
 		{Role: "system", Content: systemPrompt},
-		{Role: roleUser, Content: content},
+		{Role: roleUser, Content: b.String()},
 	}
+}
+
+// dateLine is buildMessages's own first line of the user message, on every
+// call - see toolcall.dateLine, this planner's own equivalent (duplicated
+// rather than shared: each planner adapter already renders its own turns
+// and answers independently, for the same reason).
+func dateLine(now time.Time) string {
+	return fmt.Sprintf("今日は %s（%s）です。\n\n", now.Format("2006-01-02"), japaneseWeekday(now.Weekday()))
+}
+
+// japaneseWeekday renders a time.Weekday as its single full-width Japanese
+// character - see toolcall.japaneseWeekday, this planner's own duplicate.
+func japaneseWeekday(d time.Weekday) string {
+	return [...]string{"日", "月", "火", "水", "木", "金", "土"}[d]
 }
 
 // renderCatalog renders catalog as the text block described in

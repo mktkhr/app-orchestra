@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/wording"
@@ -58,6 +59,13 @@ type Planner struct {
 	// means neither is sent - today's behaviour.
 	repeatPenalty *float64
 	repeatLastN   *int
+	// clock is what buildUserContent asks for "today" (WithClock's own
+	// doc comment): time.Now by default, so the running platform always
+	// prefixes the user message with the real date, but a test can pin
+	// it to an exact instant instead (dev-stack defect, 2026-09-16:
+	// without any notion of today, the model filled a create form's date
+	// with an invented year, "2023-10-10", when asked to record 4月20日).
+	clock func() time.Time
 }
 
 var _ usecase.Planner = (*Planner)(nil)
@@ -65,6 +73,17 @@ var _ usecase.Planner = (*Planner)(nil)
 // Option configures a Planner beyond client and catalog. WithWording is
 // the only one today.
 type Option func(*Planner)
+
+// WithClock overrides the source of "today" buildUserContent prefixes
+// every user message with (New's default is time.Now, so the platform
+// itself always sees the real date). Tests are the only real caller: a
+// pinned clock lets a test assert the exact date line without depending
+// on when it happens to run.
+func WithClock(clock func() time.Time) Option {
+	return func(p *Planner) {
+		p.clock = clock
+	}
+}
 
 // WithWording selects the words this Planner uses for its system message,
 // its three built-in tools' descriptions and each catalogue tool's own
@@ -109,7 +128,7 @@ func WithRepeatPenalty(penalty float64, lastN int) Option {
 // behaviour) unless WithThinking(false) is given.
 func New(client *chat.Client, catalog domain.Catalog, opts ...Option) *Planner {
 	defaultWording := wording.Default()
-	p := &Planner{client: client, catalog: catalog, wording: &defaultWording, thinking: true}
+	p := &Planner{client: client, catalog: catalog, wording: &defaultWording, thinking: true, clock: time.Now}
 
 	for _, opt := range opts {
 		opt(p)
@@ -143,7 +162,7 @@ func (p *Planner) Plan(
 	}
 
 	resp, err := p.client.Complete(ctx, &chat.Request{
-		Messages:           buildMessages(query, answers, turns, p.wording.SystemPrompt),
+		Messages:           buildMessages(query, answers, turns, p.wording.SystemPrompt, p.clock()),
 		Tools:              shapeTools(tools, p.wording),
 		Temperature:        chat.Zero(),
 		MaxTokens:          chat.MaxTokens(),
@@ -485,20 +504,43 @@ const turnsIntro = "Here is the conversation so far, oldest first. Each line is 
 // docs/specs/orchestration.md - one LLM call per request), not a
 // continuation of a stored conversation, so the only way either reaches
 // the model at all is rendered as plain text.
-func buildMessages(query string, answers []usecase.Answer, turns []usecase.Turn, systemPrompt string) []chat.Message {
+func buildMessages(
+	query string, answers []usecase.Answer, turns []usecase.Turn, systemPrompt string, now time.Time,
+) []chat.Message {
 	return []chat.Message{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: buildUserContent(query, answers, turns)},
+		{Role: "user", Content: buildUserContent(query, answers, turns, now)},
 	}
 }
 
-// buildUserContent renders, when turns is non-empty, the conversation so
-// far (renderTurns) first, then the current question, followed - when
-// answers is non-empty - by every answer the person has already given to a
-// previous ask_user question, so a resubmitted query actually uses the
-// chosen value instead of asking again.
-func buildUserContent(query string, answers []usecase.Answer, turns []usecase.Turn) string {
+// dateLine is buildUserContent's own first line, on every planning call:
+// "今日は 2026-09-16（火）です。" followed by a blank line, so the model
+// has some notion of today without it ever touching systemPrompt (which
+// wording's own byte-identity tests, AC-Q-101, pin unchanged) - fixing the
+// dev-stack defect where a create form's date was invented outright
+// (2023-10-10 for a question asked in 2026) because the model was never
+// told what day it is (TODO.md, DECISIONS.md 2026-09-16 "Thirty questions
+// against the real dev services").
+func dateLine(now time.Time) string {
+	return fmt.Sprintf("今日は %s（%s）です。\n\n", now.Format("2006-01-02"), japaneseWeekday(now.Weekday()))
+}
+
+// japaneseWeekday renders a time.Weekday as its single full-width Japanese
+// character, the way a person would say it - dateLine's own "（火）".
+func japaneseWeekday(d time.Weekday) string {
+	return [...]string{"日", "月", "火", "水", "木", "金", "土"}[d]
+}
+
+// buildUserContent renders dateLine first, on every call, then - when
+// turns is non-empty - the conversation so far (renderTurns), then the
+// current question, followed - when answers is non-empty - by every
+// answer the person has already given to a previous ask_user question, so
+// a resubmitted query actually uses the chosen value instead of asking
+// again.
+func buildUserContent(query string, answers []usecase.Answer, turns []usecase.Turn, now time.Time) string {
 	var b strings.Builder
+
+	b.WriteString(dateLine(now))
 
 	if len(turns) > 0 {
 		b.WriteString(renderTurns(turns))

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -675,7 +676,8 @@ func TestPlanRendersNoRowOfAnyPreviousAnswer(t *testing.T) {
 	server, requests := captureBody(t)
 
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
-	planner := toolcall.New(client, fixtureCatalog())
+	fixedClock := func() time.Time { return time.Date(2026, time.September, 16, 12, 0, 0, 0, time.UTC) }
+	planner := toolcall.New(client, fixtureCatalog(), toolcall.WithClock(fixedClock))
 
 	_, err := planner.Plan(context.Background(), "勤怠でも同じことして", nil, fixtureTurns(), usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
 	require.NoError(t, err)
@@ -691,7 +693,8 @@ func TestPlanRendersNoRowOfAnyPreviousAnswer(t *testing.T) {
 	require.True(t, ok)
 
 	assert.Equal(t,
-		"Here is the conversation so far, oldest first. Each line is a question the user "+
+		"今日は 2026-09-16（水）です。\n\n"+
+			"Here is the conversation so far, oldest first. Each line is a question the user "+
 			"already asked and what the platform decided to do about it - service, operation and arguments, "+
 			"never the data the operation returned. Use it only to understand what \"it\", \"the same thing\" "+
 			"or an unnamed service in the new question below refers to.\n"+
