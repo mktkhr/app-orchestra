@@ -78,7 +78,7 @@ func (o *Orchestrator) planStaged(
 ) (Result, error) {
 	start := time.Now()
 
-	p, err := o.picker.Pick(ctx, query, catalog)
+	p, err := o.picker.Pick(ctx, query, answers, catalog)
 	if err != nil {
 		return Result{}, fmt.Errorf("picking: %w", err)
 	}

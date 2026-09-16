@@ -42,6 +42,17 @@ type Pick struct {
 // the three fixed lines S3 offers beside it. Implemented by
 // internal/adapter/planner/pick over chat.Client - the usecase layer
 // itself imports neither net/http nor encoding/json (S7).
+//
+// answers carries whatever the person has already answered - most often a
+// reply to a rule 2 ask (askDegrade, orchestrator_ask.go) surfaced on a
+// previous pick - so a re-plan's pick step can read it too, not just the
+// fill that follows a pick (docs/specs/staging.md, section 4, added
+// 2026-09-16 alongside the ask_user degradation fix): before this, a pick
+// re-run after an answer saw only the raw query again, with no memory of
+// what the person had already narrowed down. nil/empty is the ordinary
+// case (no ask has happened yet), and pick/prompt.go's own user-message
+// builder must produce byte-identical output to before whenever answers is
+// empty.
 type Picker interface {
-	Pick(ctx context.Context, query string, shortlist domain.Catalog) (Pick, error)
+	Pick(ctx context.Context, query string, answers []Answer, shortlist domain.Catalog) (Pick, error)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
 // SystemPrompt is byte-identical to e2e/narrowing/pick/client.ts's
@@ -95,10 +96,18 @@ func candidateLine(e *domain.Endpoint) string {
 // usecase.builtinToolCount is named.
 const builtinLineCount = 3
 
-// userMessage builds the pick's one user message: the framing line, one
-// candidate line per shortlist endpoint in shortlist order, then the three
-// fixed lines of S3, in that order.
-func userMessage(query string, shortlist domain.Catalog) string {
+// userMessage builds the pick's one user message: the framing line, then -
+// only when answers is non-empty (added 2026-09-16 alongside the ask_user
+// degradation fix, docs/specs/staging.md section 4) - one "回答:
+// <param>=<value>" line per answer, then the blank line, one candidate line
+// per shortlist endpoint in shortlist order, then the three fixed lines of
+// S3.
+//
+// When answers is empty this must build byte-identical output to before
+// the answers parameter existed: AC-S-103's own measurement, and the
+// stages2 comparison it feeds, both depend on the pick seeing exactly the
+// same prompt it always has whenever there is nothing new to tell it.
+func userMessage(query string, answers []usecase.Answer, shortlist domain.Catalog) string {
 	lines := make([]string, 0, len(shortlist.Endpoints)+builtinLineCount)
 
 	for i := range shortlist.Endpoints {
@@ -107,5 +116,24 @@ func userMessage(query string, shortlist domain.Catalog) string {
 
 	lines = append(lines, lineListCapabilities, lineProposePanel, lineNone)
 
-	return "質問: " + query + "\n\n候補:\n" + strings.Join(lines, "\n")
+	return "質問: " + query + "\n" + answerLines(answers) + "\n候補:\n" + strings.Join(lines, "\n")
+}
+
+// answerLines renders answers as the pick's own "回答: <param>=<value>"
+// lines, one per answer, each terminated by its own newline so
+// userMessage's surrounding "\n" + ... + "\n候補:" produces exactly one
+// blank line before 候補: whether or not there are any - empty answers
+// yields "", collapsing the two adjacent "\n"s in userMessage into the same
+// single blank line the byte-identical empty case has always had.
+func answerLines(answers []usecase.Answer) string {
+	if len(answers) == 0 {
+		return ""
+	}
+
+	lines := make([]string, len(answers))
+	for i, a := range answers {
+		lines[i] = "回答: " + a.Param + "=" + a.Value
+	}
+
+	return strings.Join(lines, "\n") + "\n"
 }

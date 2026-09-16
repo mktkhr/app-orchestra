@@ -34,19 +34,21 @@ func withCapturedDefaultLogger(t *testing.T) *bytes.Buffer {
 }
 
 // fakePicker is a test double for usecase.Picker: it always returns the
-// fixed pick (or error) it was built with, and records the query and
-// catalogue it was called with.
+// fixed pick (or error) it was built with, and records the query, answers
+// and catalogue it was called with.
 type fakePicker struct {
 	pick usecase.Pick
 	err  error
 
 	query   string
+	answers []usecase.Answer
 	catalog domain.Catalog
 	calls   int
 }
 
-func (f *fakePicker) Pick(_ context.Context, query string, catalog domain.Catalog) (usecase.Pick, error) {
+func (f *fakePicker) Pick(_ context.Context, query string, answers []usecase.Answer, catalog domain.Catalog) (usecase.Pick, error) {
 	f.query = query
+	f.answers = answers
 	f.catalog = catalog
 	f.calls++
 

@@ -34,11 +34,13 @@ func New(client *chat.Client, model string) *Picker {
 	return &Picker{client: client, model: model}
 }
 
-// Pick sends query and shortlist to the model in the pick's own format
-// (userMessage) and parses the one line it answers with back into a
+// Pick sends query, answers and shortlist to the model in the pick's own
+// format (userMessage) and parses the one line it answers with back into a
 // usecase.Pick. An empty shortlist is PickNone without calling the model
 // at all - there is nothing to pick from.
-func (p *Picker) Pick(ctx context.Context, query string, shortlist domain.Catalog) (usecase.Pick, error) {
+func (p *Picker) Pick(
+	ctx context.Context, query string, answers []usecase.Answer, shortlist domain.Catalog,
+) (usecase.Pick, error) {
 	if len(shortlist.Endpoints) == 0 {
 		return usecase.Pick{Kind: usecase.PickNone}, nil
 	}
@@ -49,7 +51,7 @@ func (p *Picker) Pick(ctx context.Context, query string, shortlist domain.Catalo
 		Model: p.model,
 		Messages: []chat.Message{
 			{Role: "system", Content: SystemPrompt},
-			{Role: "user", Content: userMessage(query, shortlist)},
+			{Role: "user", Content: userMessage(query, answers, shortlist)},
 		},
 		Temperature:        chat.Zero(),
 		MaxTokens:          &maxTokens,

@@ -96,6 +96,11 @@ The adapter builds exactly what `pick/client.ts` builds:
   fixed lines of S3 in that order.
 - `temperature: 0`, `max_tokens: 200`, `chat_template_kwargs:
 {enable_thinking: false}`.
+- When the request carries `answers` (a person's reply to a previous ask,
+  most often a rule 2 ask from the ask_user degradation fix, 2026-09-16) -
+  one `回答: <param>=<value>` line per answer, in order, right after the
+  question line and before the blank line and `候補:` line; when `answers`
+  is empty the message is byte-identical to before this addition.
 
 Parsing is the measured rule: the first candidate id that appears in the
 response, longest id first so one id being a substring of another cannot
