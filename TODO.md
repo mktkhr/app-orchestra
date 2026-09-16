@@ -21,20 +21,7 @@ _Nothing in progress._
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-3. **Open defect: `ask_user` about a safe operation degrades to an empty
-   form, not a question.** Found while fixing `make eval-shortlist`'s
-   scorer (`2dcb2e0`, 2026-09-15) - a real platform behaviour, not a test
-   defect. `Orchestrator.ask` (`internal/usecase/orchestrator.go`, `ask()`)
-   degrades an `ask_user` call that names a safe operation with no enum for
-   its parameter into the same form shape a D8 confirm-before-write uses,
-   e.g. 「注文を見たい」 renders as an empty form instead of asking 受注で
-   すか、発注ですか. `docs/plans/shortlisting.md`'s own measurement counts
-   this correctly as `asked`, not a miss (`askDegraded` in
-   `e2e/shortlist/run.ts`), so the corpus numbers already in `DECISIONS.md`
-   stand - but the shape a person actually sees is still wrong. Not yet
-   reproduced against a running screen; the shortlist measurement is what
-   surfaced it.
-4. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+3. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -45,12 +32,12 @@ _Nothing in progress._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-5. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+4. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
-6. **Thinking-on reasoning can still overrun `max_tokens` 1024.** Not a
+5. **Thinking-on reasoning can still overrun `max_tokens` 1024.** Not a
    repetition loop - corrected 2026-09-16 (`DECISIONS.md`, "Planner
    thinking: off by default, on by a 「思考」 switch"): the truncation logs
    show ordinary, on-track reasoning (e.g. `d05`, 「品物が届いたので登録し
@@ -65,7 +52,7 @@ _Nothing in progress._
    `reasoning_budget`-style split between the reasoning and the answer.
    Not measured yet.
 
-7. **`<Typography color="text.secondary">` is a silent no-op almost
+6. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
@@ -84,7 +71,7 @@ _Nothing in progress._
    this task's own scope for one commit was the wrong trade. TypeScript
    does not catch it either - the prop's type falls back to `(string & {})`
    for exactly this reason.
-8. **With two-stage planning now the default, the pick's own misses are
+7. **With two-stage planning now the default, the pick's own misses are
    the gap.** Two stages reaches 79 correct@1 against the picker's own 83
    and the shortlist's 93 recall; what stands between them is no longer
    the planner's prompt but the pick itself. Two groups remain open:
@@ -95,9 +82,30 @@ _Nothing in progress._
    all and falls through to `none` rather than a genuine "no match".
    Measured 2026-09-16, `DECISIONS.md` ("Planning in two stages"). Not
    yet a candidate lever - each row needs reading before one is proposed.
+   One more constraint on any candidate: two runs of the same runner path
+   reproduce exactly, but the classic and `STAGES=2` runner paths differ
+   by 7 near-tie rows purely from request history (`DECISIONS.md`,
+   2026-09-16, "Measurement determinism") - a fix that moves fewer than
+   about 7 rows is not distinguishable from that band.
 
 ## Done
 
+- **`ask_user` about a safe operation no longer degrades to an empty
+  form.** Closed the open defect above: `askDegrade`
+  (`internal/usecase/orchestrator_ask.go`, `21aea53`) now reads three
+  cases for an ask naming a safe endpoint whose `param` has no catalogue
+  enum - a required free-text `param` still gets the form; two or more
+  model-supplied `options` on `ask_user` become a `ResultKindAsk` answered
+  like an enum ask (previously discarded); otherwise a plain question
+  reaching the planner through `turns`. Unsafe endpoints and unknown
+  endpoints are unchanged. The pick stage now reads answers back
+  (`e3bea51`), the stub planner can produce the options case
+  (`ff14bb5`), and the web renders a question-only ask as a left 「質問」
+  bubble (`f9d4ea0`) instead of the generic fallback. See `DECISIONS.md`,
+  2026-09-16 ("`ask_user` about a safe operation no longer degrades to an
+  empty form") for the row-level measurement (unchanged, 79/80 - the
+  corpus never exercised this path) and the known limit left open (`Turn`
+  carries the person's answer, not the planner's own asked question).
 - **`v6-unmatched-filter` becomes the default wording, closing the
   no-enum-value defect above.** An unmatched restricting word against an
   enum parameter (`no-enum-value`, 破損した在庫はある？;

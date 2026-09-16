@@ -6847,3 +6847,86 @@ misses are now the gap, not the planner's prompt: two stages' 79 against
 the picker's 83 and the shortlist's 93 recall. Filed as a new `TODO.md`
 Next item, listing the 7 rows the pick itself misses and the 6 lost
 against the single call by id, plus `a19`'s `none`.
+
+## 2026-09-16 `ask_user` about a safe operation no longer degrades to an empty form
+
+Closes `TODO.md` item 3, the open defect found while fixing `make
+eval-shortlist`'s scorer (`2dcb2e0`, 2026-09-15): an `ask_user` naming a
+safe endpoint whose `param` carries no catalogue enum used to degrade to
+the same empty form shape a D8 confirm-before-write uses, so 「注文を見た
+い」 rendered as an empty form instead of asking 受注ですか、発注ですか.
+
+`askDegrade` (`internal/usecase/orchestrator_ask.go`, `21aea53`) now reads
+three cases in order, unsafe endpoints still degrading to the confirm form
+before `param` is looked at (D11 is unchanged), unknown endpoints still a
+plain question, and an enum parameter's options still coming only from the
+catalogue, never from the model:
+
+1. `param` is a required free-text parameter of the endpoint (an id) - the
+   form, exactly as before.
+2. The model supplied two or more `options` on `ask_user` - previously
+   discarded - a `ResultKindAsk` is built from those options, answered the
+   same way an enum ask already is (`answers: [{param, value}]`).
+3. Otherwise - a plain question (`kind: ask`, `question` only), answered in
+   the person's next message and reaching the planner through `turns`.
+
+The pick stage now carries an answer back into its own prompt:
+`usecase.Picker.Pick` takes `answers`, and `pick/prompt.go` appends
+`回答: <param>=<value>` lines after the question only when answers are
+present - the no-answers case stays byte-identical (tested), so the 79/80
+two-stage measurement recorded 2026-09-16 stays comparable (`e3bea51`;
+`docs/specs/staging.md` section 4). `pkg/app.PlanFixture.Options` lets the
+stub planner produce rule 2 (`ff14bb5`), and `e2e/src/orchestration.test.ts`
+gained end-to-end cases for rules 2 and 3. On the web side (`f9d4ea0`), a
+question-only `ask` now renders as a left-aligned 「質問」 bubble
+(`AnswerResult.tsx`, new `TextBubble.tsx`) instead of falling through to
+the generic fallback; `toContextTurns` already carried an ask turn as
+`{question, kind: "ask"}`, so no contract change was needed there.
+
+**Known limit, recorded rather than fixed.** The contract's `Turn` carries
+the person's question and the kind, not the planner's own question text,
+so after a rule-3 ask the re-plan sees "that question was answered with an
+ask" plus the person's reply - not what was actually asked. If that proves
+too weak in practice, `Turn` would need to gain the asked question itself;
+not done now.
+
+**Measurement.** On the shortlist corpus (two stages, default settings) no
+row was ever a safe-targeted form (`askDegraded` 0 of 100) before or after
+this fix - the corpus never exercised the path, so the fix is proven by
+the new unit and e2e tests, not by a corpus delta. `make eval` reads at
+baseline; the corpus numbers are unchanged at 79/80 correct@1/correct@shown.
+
+## 2026-09-16 Measurement determinism: exact within a runner, ~7 rows apart between runners
+
+Qualifies `docs/specs/wording.md` Q3's "Planning is deterministic at
+temperature 0 (two runs, 100 of 100 identical), so one pass per wording is
+a measurement, not a sample" - true, but incomplete: determinism holds
+only relative to the request history a runner sends, not per request in
+isolation. Not a correction to any number already recorded; those numbers
+stand, each read from its own runner path.
+
+Three `make eval-shortlist STAGES=2` runs on 2026-09-16 reproduce each
+other exactly - 0 rows differ across all three, 79 correct@1 / 80
+correct@shown every time. Two runs of the classic `make eval-shortlist`
+pass - which sends three smoke-test questions through the platform before
+the 100-question corpus - also reproduce each other exactly (0 rows differ
+between the two), but land on 80/81, and **7 rows differ from the
+`STAGES=2` runs**: `b05`, `b20`, `b25`, `c07`, `c11`, `d07`, `e04`
+(scratchpad `stages2-fixed.jsonl` against `ask-fix.jsonl` /
+`classic-on-run2.jsonl`). Warming llama-server with three unrelated raw
+chat requests before a `STAGES=2` run did not move any row on its own.
+
+So with `temperature: 0`, the outcome is a deterministic function of the
+whole request history sent to the model since it loaded, not of any one
+request read alone: llama-server's prefix cache (`--cache-reuse 256` on
+`qwen3.5-9b-q8`) changes numerics on near-tie rows once earlier requests in
+the same run share a prefix with later ones. The classic pass's three
+smoke questions, sent before the corpus, are exactly such a shared prefix
+that `STAGES=2` runs never send.
+
+**Consequence.** Compare numbers only across runs that took the same
+runner path; the band between paths is about 7 rows / 1 point on this
+corpus. The 79/80 recorded 2026-09-16 for two-stage planning is the
+`STAGES=2` path's own number; the classic path reads 80/81 on the
+identical binary and corpus. A candidate fix to the pick that moves fewer
+than about 7 rows is not distinguishable from this band alone.

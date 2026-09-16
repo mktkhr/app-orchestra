@@ -1,9 +1,30 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-16 (planning defaults to two stages - pick first,
-fill second)_
+_Last updated: 2026-09-16 (`ask_user` about a safe operation no longer
+degrades to an empty form)_
 
 ## Summary
+
+**2026-09-16 - `ask_user` about a safe operation no longer degrades to an
+empty form.** Closes `TODO.md`'s open defect: `askDegrade`
+(`internal/usecase/orchestrator_ask.go`, `21aea53`) now asks a plain
+question (or, when the model offered two or more `options`, an
+enum-style ask) instead of an empty form for a safe endpoint whose
+`param` carries no catalogue enum; a required free-text `param` still
+gets the form, and unsafe/unknown endpoints are unchanged. The pick stage
+carries an answer back into its own prompt (`e3bea51`); a question-only
+ask now renders as a left 「質問」 bubble on the web instead of the
+generic fallback (`f9d4ea0`). Corpus numbers unmoved (the path was never
+exercised by the shortlist corpus); full account in `DECISIONS.md`,
+2026-09-16.
+
+**Measurement determinism, noted where two-stage planning is measured:**
+a run reproduces itself exactly within one runner path, but the classic
+`make eval-shortlist` pass and the `STAGES=2` pass disagree on 7 near-tie
+rows purely from shared request history against llama-server's prefix
+cache - see `DECISIONS.md`, 2026-09-16 ("Measurement determinism"), which
+qualifies `docs/specs/wording.md` Q3's determinism claim without
+reopening any number already recorded.
 
 **2026-09-16 - planning defaults to two stages: pick first, fill second.**
 `ORCHESTRA_PLANNER_STAGES` now defaults to `2` (`1` stays available and
