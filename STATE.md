@@ -1,8 +1,22 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-16 (invented form values closed - today's date, and a dropped free-text initial value)_
+_Last updated: 2026-09-17 (real-catalogue refusal eval added; propose_panel under two stages fixed)_
 
 ## Summary
+
+**2026-09-17 - the eval now has 16 real-catalogue cases (15 pass,
+att-002 open); proposals work under two stages again.** `e2e/eval/
+cases-real.ts` runs 16 `real-*` cases against the real dummy services
+under `make eval`, closing the bias named 2026-09-16 (a fixture corpus can
+only penalise wrongful refusal, never reward a correct one). Baseline
+15/16 at 10/10; `real-attendance-detail` (att-002の内容) 0/10 because the
+pick sends an attendance id to the inventory service - open (`TODO.md`).
+Separately, a workspace question (「在庫の一覧をグラフで」 and similar)
+had silently lost its `proposal` answer under two-stage planning because
+`propose_panel` was withheld from the fill; the fill is now offered it
+whenever the request carries a workspace. Current defaults unchanged: two
+stages, wording `v6-unmatched-filter`, thinking off. Full account in
+`DECISIONS.md`, 2026-09-17.
 
 **2026-09-16 - invented form values closed: today's date, and a dropped
 free-text initial value.** Closes failure (3) below. Every planning call's

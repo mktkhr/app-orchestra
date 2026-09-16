@@ -76,36 +76,49 @@ _Nothing in progress._
    corpus loses outright: `c12`, `c13`, `d06`, `d12`, all to
    `list_capabilities` (`DECISIONS.md`, 2026-09-16, "the fill after a pick
    may answer none or list_capabilities").
-7. **A real-catalogue refusal question set is missing.** Every fix
-   measured so far against the shortlist corpus is scored only on
-   questions that have a real answer, so the corpus can penalise a fill
-   that wrongly refuses but can never reward one that rightly refuses
-   something impossible - the bias named when fix A was chosen over E
-   (`DECISIONS.md`, 2026-09-16, "the fill after a pick may answer none or
-   list_capabilities"). Build a small real-catalogue (dev-stack) question
-   set with expected refusals, in the style of the real-usage check's
-   `realuse.mjs`, and promote it into `e2e/` so it runs in CI instead of
-   living in a scratchpad.
-8. **Free-text restrictions are dropped silently.** 今日の勤怠 / 田中さんの
+7. **Free-text restrictions are dropped silently.** 今日の勤怠 / 田中さんの
    勤怠 / 4月の勤怠記録 all return every record, because the operation has
    no such filter and the fill says nothing about the mismatch. Found in
    the same real-usage check. Possible fix: say in the answer that the
    filter could not be applied, rather than answering as if it had been.
    Unscheduled.
-9. **`propose_panel` under two stages was never exercised with a
-   workspace.** The real-usage check sent no workspace id, so every
-   question reached the fill through the pick's own fixed tool list,
-   never through `propose_panel` - confirm live in the UI, with a
-   workspace open, that a panel proposal still reaches the fill correctly
-   under two stages. Unscheduled.
-10. **The web's 500 message is generic.** A service's own 4xx no longer
-    reaches the platform as a 500 (`DECISIONS.md`, 2026-09-16, "a service's
-    4xx is an answer"), but a genuine 500 still shows only 「質問の送信に
-    失敗しました…」 (`client.ts` / `conversationStore.tsx`), never the
-    server's own message. Left as is; unscheduled.
+8. **The web's 500 message is generic.** A service's own 4xx no longer
+   reaches the platform as a 500 (`DECISIONS.md`, 2026-09-16, "a service's
+   4xx is an answer"), but a genuine 500 still shows only 「質問の送信に
+   失敗しました…」 (`client.ts` / `conversationStore.tsx`), never the
+   server's own message. Left as is; unscheduled.
+9. **`real-attendance-detail` (att-002の内容) fails 0/10 in the real-
+   catalogue eval.** The pick sends `att-002` to
+   `inventory/GetInventoryItem` instead of
+   `attendance/GetAttendanceRecord`; the service's 404 correctly becomes
+   `none` (`9d64d69`), but the answer is a refusal to a question with a
+   real answer. Found accepting the `real-*` baseline (`DECISIONS.md`,
+   2026-09-17, "The real-catalogue refusal set is now part of `make
+eval`"). The pick ignores an id's service prefix - a pick that reads id
+   prefixes, or a fill that retries the same operation on the other
+   service after a 404, are the candidates. Unscheduled.
 
 ## Done
 
+- **A real-catalogue refusal question set now runs in `make eval`.** The
+  shortlist corpus (every question has a real answer) can penalise a fill
+  that wrongly refuses but can never reward one that rightly refuses
+  something impossible - the bias named when fix A was chosen over E
+  (`DECISIONS.md`, 2026-09-16, "the fill after a pick may answer none or
+  list_capabilities"). `e2e/eval/cases-real.ts` holds 16 `real-*` cases run
+  against the real dummy services, 10 runs each; `match.ts` gained
+  `argsAbsent`/`argsPresent`. Baseline accepted 2026-09-17: 15/16 at
+  10/10, `real-attendance-detail` 0/10 (item 9 above). See `DECISIONS.md`,
+  2026-09-17, "The real-catalogue refusal set is now part of `make eval`".
+- **`propose_panel` under two stages was confirmed live in the UI, and a
+  silencing bug fixed.** With a workspace, a panel-proposal question
+  answered a plain table under two stages instead of a `proposal`, because
+  `docs/specs/staging.md` S3 withheld `propose_panel` from the fill. Fixed:
+  the fill is offered `propose_panel` whenever the request carries a
+  workspace; a `DecisionProposal` naming the picked operation is honoured.
+  No change without a workspace (corpus, `make eval` unaffected). See
+  `DECISIONS.md`, 2026-09-17, "Fix: two-stage planning had silenced
+  `propose_panel`".
 - **Invented form values are closed - today's date is told to the model,
   and a free-text initial value is dropped unless the question said it.**
   Found by the real-usage check against the dev stack (`DECISIONS.md`,

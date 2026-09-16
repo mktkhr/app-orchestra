@@ -7141,3 +7141,68 @@ unchanged - both name every value they set in the question, so the
 free-text rule never has anything to drop.
 
 Committed as `6f18dd4` and `a2c7503`.
+
+## 2026-09-16/17 The real-catalogue refusal set is now part of `make eval`
+
+`TODO.md`'s item 7 (above, "A costs 3 points on the shortlist corpus...a
+real-catalogue refusal question set is the next step to close that bias")
+closed: the fixture corpus (1000 operations, every question answerable)
+can only measure picking; refusal is measurable only on a catalogue that
+lacks things, and the thirty-question dev-stack check was the evidence
+behind the A/B/E decision (above, "A adopted over B and E"). It lived in a
+scratchpad; now `e2e/eval/cases-real.ts` holds 16 `real-*` cases run by
+`make eval` against the real dummy services (inventory + attendance, 6
+operations), 10 runs each, ~5.5 min added. `match.ts` gained
+`argsAbsent`/`argsPresent` so "no fabricated field" can be asserted
+without pinning a guessed value. `docs/specs/eval.md` section 6a describes
+the set.
+
+Families and expectations: refusals (在庫を削除して / 在庫を減らして /
+売上を見せて / 残業時間を集計して → `none` or `list_capabilities`, never a
+list result; 今日は何曜日？ → `none` only); scoped capabilities (在庫につ
+いて何ができる？ → `list_capabilities`); no fabrication (遅刻を記録した
+い → a form without employee/date, or `none`; 新しい在庫を登録したい → a
+form without name; 有給の申請 → an ask on kind, `none`, or a form without
+kind); right answers that must still hold (att-002の内容 →
+`GetAttendanceRecord`; itm-001の詳細; 預託在庫ある？ → status consigned;
+代休を取った人 → kind compensatory; ネジを100個入庫 → form name ネジ
+quantity 100; 田中さんの勤怠 → all records, honestly; 在庫の一覧をグラフ
+で → the list, no workspace in the eval).
+
+Baseline accepted 2026-09-17: 15 of 16 at 10/10; **`real-attendance-detail`
+(att-002の内容) 0/10** - the pick sends `att-002` to
+`inventory/GetInventoryItem`, the service's 404 becomes a `none`
+(`9d64d69`). Recorded as failing, the way `no-enum-value` once was; it is
+the open item (`TODO.md` Next: "the pick ignores an id's service prefix -
+att-... is attendance; a pick that reads id prefixes, or a fill that
+retries the same operation on the other service after a 404, are the
+candidates").
+
+Note for the record: under this run 今日は何曜日？ answered `none` 10/10
+(the scratchpad script had seen `list_capabilities`); the request-history
+dependence recorded 2026-09-16 (above, "Measurement determinism") applies.
+
+Committed as `58edecf`, `818a754`, `8665153`.
+
+## 2026-09-17 Fix: two-stage planning had silenced `propose_panel`
+
+`TODO.md` item 9 (above, "`propose_panel` under two stages was never
+exercised with a workspace"): with a workspace, 「ダッシュボードに在庫一
+覧を出して」/「在庫の一覧をグラフで」/「勤怠の一覧をパネルにして」
+answered a plain `result` table under two stages, while the single call
+answered `proposal` (table / chart / table) for all three. Cause:
+`docs/specs/staging.md` S3 withheld `propose_panel` from the fill and left
+it to the pick's fixed line, which never wins against a concrete
+operation.
+
+Fix: under a pick, when the request carries a workspace (the same
+`Applies` rule `ToolsFor` uses), the fill is offered `propose_panel`; a
+`DecisionProposal` naming the picked operation is honoured through
+`o.propose`; one naming another operation still falls back to the picked
+form. Without a workspace nothing changes (corpus, `make eval` unaffected;
+the thirty-question script identical row for row). Verified: API 3/3
+`proposal`; UI (workspace サンプル) shows the proposal card 「操作: 勤怠
+管理 / 勤怠記録一覧」 with 表示方法 / パネル名 / 配置. Spec S3 / section 5
+updated.
+
+Committed as `59d489a`.
