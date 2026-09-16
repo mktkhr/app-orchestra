@@ -158,7 +158,10 @@ function variantSuffix(
   repeatPenalty: number | undefined,
   stages: 1 | 2 | undefined,
 ): string {
-  const nothink = thinking === "off" ? "-nothink" : "";
+  // "on" gets its own suffix too: since 2026-09-16 the platform's default is
+  // off, so an explicit "on" is a distinct variant, not the plain pass.
+  const thinkSuffix = { on: "-think", off: "-nothink" } as const;
+  const nothink = thinking === undefined ? "" : thinkSuffix[thinking];
   const rp = repeatPenalty === undefined ? "" : `-rp${String(repeatPenalty)}`;
   const st = stages === undefined || stages === 1 ? "" : `-stages${String(stages)}`;
 
