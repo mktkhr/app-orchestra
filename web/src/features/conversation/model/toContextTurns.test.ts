@@ -85,6 +85,19 @@ describe("toContextTurns", () => {
     expect(toContextTurns(turns)).toEqual([{ question: "存在しない質問", kind: "none" }]);
   });
 
+  it("carries a question-only ask answer as its kind, with no service or operationId", () => {
+    const turns: Turn[] = [
+      { id: "1", role: "question", text: "在庫の名前を変更して" },
+      {
+        id: "2",
+        role: "answer",
+        result: { kind: "ask", question: "新しい名前は何ですか？" },
+      },
+    ];
+
+    expect(toContextTurns(turns)).toEqual([{ question: "在庫の名前を変更して", kind: "ask" }]);
+  });
+
   it("never carries the answer's data", () => {
     const turns: Turn[] = [
       { id: "1", role: "question", text: "検品保留の在庫を見せて" },

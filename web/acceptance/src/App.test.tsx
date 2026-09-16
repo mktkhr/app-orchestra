@@ -67,6 +67,39 @@ async function respond(input: RequestInfo | URL): Promise<Response> {
 }
 
 /**
+ * Answers GET /api/session the same way `respond` does, the first
+ * `/api/plan` call with a question-only `ask` (no `param`, no `options`),
+ * and every one after that with `kind: "none"` - enough to answer the
+ * question-only ask test below without a conditional inside its own body.
+ */
+async function respondAskThenNone(input: RequestInfo | URL): Promise<Response> {
+  const url = input instanceof Request ? input.url : String(input);
+
+  if (url.endsWith("/api/session")) {
+    return respond(input);
+  }
+
+  if (!(input instanceof Request)) {
+    throw new Error("expected POST /api/plan to be called with a Request");
+  }
+
+  const body: unknown = JSON.parse(await input.clone().text());
+  planRequests.push(body);
+
+  if (planRequests.length === 1) {
+    return new Response(JSON.stringify({ kind: "ask", question: "新しい名前は何ですか？" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify({ kind: "none", message: "更新しました。" }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/**
  * Application-level: renders the real App (AppBar + Drawer shell + chat
  * page) against a scripted platform, the way the built product will
  * actually run.
@@ -172,6 +205,37 @@ describe("App", () => {
     expect(await screen.findByText("itm-001")).toBeTruthy();
     expect(planRequests.at(-1)).toEqual(
       expect.objectContaining({ query: "在庫の一覧を見せて", thinking: true }),
+    );
+  });
+
+  // A safe operation's parameter with no enum comes back as `kind: "ask"`
+  // with only `question` - no `param`, no `options` - answered by typing
+  // the next message rather than picking a chip. That reply carries the
+  // exchange forward as an ordinary `Turn` (`toContextTurns`), the same way
+  // any other question/answer pair does.
+  it("shows a question-only ask as a plain bubble, and carries it as a turn once answered", async () => {
+    const user = userEvent.setup();
+
+    vi.stubGlobal("fetch", vi.fn(respondAskThenNone));
+
+    render(<App />);
+
+    await user.type(await screen.findByLabelText("質問を入力"), "在庫の名前を変更して");
+    await user.click(screen.getByRole("button", { name: "送信" }));
+
+    expect(await screen.findByText("新しい名前は何ですか？")).toBeTruthy();
+    expect(screen.getByText("質問")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "新しい名前は何ですか？" })).toBeNull();
+
+    await user.type(screen.getByLabelText("質問を入力"), "テスト品です");
+    await user.click(screen.getByRole("button", { name: "送信" }));
+
+    expect(await screen.findByText("更新しました。")).toBeTruthy();
+    expect(planRequests.at(-1)).toEqual(
+      expect.objectContaining({
+        query: "テスト品です",
+        turns: [{ question: "在庫の名前を変更して", kind: "ask" }],
+      }),
     );
   });
 });

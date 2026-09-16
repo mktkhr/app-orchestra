@@ -8,8 +8,8 @@ import type { PlanResult } from "@/shared/api/client";
 
 import { ConversationStoreContext } from "../model/conversationContext";
 import type { ProposalSlot, SaveControlSlot } from "./answerSlots";
-import { BUBBLE_SX } from "./bubbleStyles";
 import { renderResultAnswer } from "./renderResultAnswer";
+import { TextBubble } from "./TextBubble";
 
 // Re-exported so `TurnList.tsx` can pull both slot types from this module
 // instead of also reaching into "./answerSlots" directly - one fewer
@@ -75,12 +75,9 @@ export function AnswerResult({
 
   if (result.kind === "none") {
     return (
-      <Paper elevation={1} sx={{ ...BUBBLE_SX, alignSelf: "flex-start", p: 2 }}>
-        <Typography variant="overline" color="textSecondary">
-          {result.kind}
-        </Typography>
+      <TextBubble overline={result.kind}>
         <Typography variant="body1">{result.message}</Typography>
-      </Paper>
+      </TextBubble>
     );
   }
 
@@ -125,17 +122,26 @@ export function AnswerResult({
     );
   }
 
+  // The same safe operation, but its parameter had no enum to offer as
+  // `options`: the platform's own question, answered by typing the next
+  // message rather than picking a chip (docs/specs referenced above the
+  // component this renders).
+  if (result.kind === "ask" && result.question !== undefined && result.options === undefined) {
+    return (
+      <TextBubble overline="質問">
+        <Typography variant="body1">{result.question}</Typography>
+      </TextBubble>
+    );
+  }
+
   // A response this deployment's contract allows but no branch above
   // matches - a `kind`/`component` combination missing one of its required
   // fields. Shows what kind of answer came back rather than nothing.
   return (
-    <Paper elevation={1} sx={{ ...BUBBLE_SX, alignSelf: "flex-start", p: 2 }}>
-      <Typography variant="overline" color="textSecondary">
-        {result.kind}
-      </Typography>
+    <TextBubble overline={result.kind}>
       <Alert severity="info" sx={{ mt: 1 }}>
         この回答（{result.kind}）には表示に必要な情報が含まれていません。
       </Alert>
-    </Paper>
+    </TextBubble>
   );
 }
