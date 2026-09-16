@@ -1,6 +1,7 @@
 import createClient, { type MethodResponse } from "openapi-fetch";
 
 import type { components, paths } from "./gen/platform";
+import { PlanRequestError } from "./planRequestError";
 
 /**
  * The one HTTP client in the application. Nothing outside src/shared/api may
@@ -117,16 +118,15 @@ export type PlanRequest = components["schemas"]["PlanRequest"];
  */
 export type PlanResult = MethodResponse<typeof client, "post", "/api/plan">;
 
-/** Calls POST /api/plan and returns the planner's decision. */
+/** Calls POST /api/plan and returns the planner's decision; fetch is read at call time (see getHealth). */
 export async function postPlan(request: PlanRequest): Promise<PlanResult> {
-  // See the comment on getHealth above: fetch is read at call time on purpose.
   const { data, error } = await client.POST("/api/plan", {
     body: request,
     fetch: globalThis.fetch,
   });
 
   if (error !== undefined) {
-    throw new Error("POST /api/plan failed");
+    throw new PlanRequestError(error.message);
   }
 
   return data;

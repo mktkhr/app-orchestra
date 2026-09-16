@@ -148,8 +148,17 @@ describe("postPlan", () => {
     stubFetch(500, { message: "boom" });
 
     await expect(postPlan({ query: "在庫の一覧を見せて" })).rejects.toThrow(
-      "POST /api/plan failed",
+      "POST /api/plan failed: boom",
     );
+  });
+
+  it("carries the server's message on the error", async () => {
+    stubFetch(500, { message: "invoking inventory: service unreachable" });
+
+    await expect(postPlan({ query: "在庫の一覧を見せて" })).rejects.toMatchObject({
+      name: "PlanRequestError",
+      serverMessage: "invoking inventory: service unreachable",
+    });
   });
 });
 

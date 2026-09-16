@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 
 import { postPlan, type PlanRequest, type PlanResult } from "@/shared/api/client";
+import { PlanRequestError } from "@/shared/api/planRequestError";
 import { nextTurnId } from "@/shared/lib/turnId";
 
 import { toAlternatives } from "./alternatives";
@@ -12,6 +13,22 @@ import {
 import { useThinkingSwitch } from "./thinkingPreference";
 import { toContextTurns, type ContextTurn } from "./toContextTurns";
 import type { Turn } from "./turn";
+
+const GENERIC_FAILURE = "質問の送信に失敗しました。時間をおいて試してください。";
+
+/**
+ * What the error bar says when a plan fails. A `PlanRequestError` carries
+ * the platform's own message (since a service's 4xx became a `none`
+ * result, a failure here is a platform or service fault worth naming);
+ * anything else - a network error, a parse error - keeps the generic line.
+ */
+function failureMessage(failure: unknown): string {
+  if (failure instanceof PlanRequestError) {
+    return `${GENERIC_FAILURE}（${failure.serverMessage}）`;
+  }
+
+  return GENERIC_FAILURE;
+}
 
 const EMPTY_CONVERSATION: ConversationState = { turns: [], pending: false, error: null };
 
@@ -121,11 +138,11 @@ async function planAndUpdate(
       pending: false,
       turns: answeredTurns(current.turns, result),
     }));
-  } catch {
+  } catch (failure: unknown) {
     update(key, (current) => ({
       ...current,
       pending: false,
-      error: "質問の送信に失敗しました。時間をおいて試してください。",
+      error: failureMessage(failure),
     }));
   }
 }
