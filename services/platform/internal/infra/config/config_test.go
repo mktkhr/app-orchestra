@@ -557,9 +557,9 @@ func TestLoadRejectsAnUnknownPlannerThinking(t *testing.T) {
 	assert.ErrorIs(t, err, config.ErrInvalidPlannerThinking)
 }
 
-// TestLoadPlannerStagesDefaultsToOne is AC-S-101: an unset
-// ORCHESTRA_PLANNER_STAGES resolves to 1, today's single call.
-func TestLoadPlannerStagesDefaultsToOne(t *testing.T) {
+// TestLoadPlannerStagesDefaultsToTwo documents the 2026-09-16 default: an
+// unset ORCHESTRA_PLANNER_STAGES resolves to 2, the pick-then-fill path.
+func TestLoadPlannerStagesDefaultsToTwo(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
 	t.Setenv("ORCHESTRA_PLANNER_STAGES", "")
@@ -567,7 +567,7 @@ func TestLoadPlannerStagesDefaultsToOne(t *testing.T) {
 	cfg, err := config.Load()
 
 	require.NoError(t, err)
-	assert.Equal(t, 1, cfg.PlannerStages)
+	assert.Equal(t, 2, cfg.PlannerStages)
 }
 
 func TestLoadPlannerStagesReadsOneExplicitly(t *testing.T) {

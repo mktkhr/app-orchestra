@@ -45,7 +45,7 @@ export interface BootOptions {
   readonly thinking?: "on" | "off";
   /** When set, `ORCHESTRA_PLANNER_REPEAT_PENALTY` is set to this on the platform; unset sends nothing. */
   readonly repeatPenalty?: number;
-  /** When set, `ORCHESTRA_PLANNER_STAGES` is set to this on the platform (docs/plans/staging.md, Task 3); unset leaves the platform's own default (1, today's single call). */
+  /** When set, `ORCHESTRA_PLANNER_STAGES` is set to this on the platform (docs/plans/staging.md, Task 3); unset leaves the platform's own default (2, the pick-then-fill path, the default since 2026-09-16). */
   readonly stages?: 1 | 2;
   /** When set, the platform's stdout and stderr - its JSON logs, including the `planner truncated by max_tokens` warn line - are written to this file instead of being discarded. */
   readonly logFile?: string;

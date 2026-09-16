@@ -47,7 +47,7 @@ measured, and only then asking it for arguments.
 | **S3** | The pick offers three fixed lines after the shortlist, so the built-ins keep a way in: `list_capabilities` (使える操作の一覧を知りたい), `propose_panel` (画面に出したい), and `none` (どの候補も質問に合わない（業務と無関係な質問）). The pick is the only place they are offered; the fill does not get them. Their wording is measured by `make eval`'s `capability` and `unanswerable` cases, not guessed; `propose_panel` has no eval case and is covered by the orchestrator's own tests. |
 | **S4** | `ambiguous` is recorded, not acted on. The pick's second word is logged and returned on the result for measurement; the alternatives stay the shortlist's next two after the picked one (H5). Asking on ambiguity is the lever `v3-ask-on-collision` measured at 68 → 56.                                                                                                                                                                                                                        |
 | **S5** | The pick never thinks; the fill follows the 「思考」 switch. Thinking on the picker was flat or negative (`shortlisting.md` section 1); the fill is where an argument may need it.                                                                                                                                                                                                                                                                                                               |
-| **S6** | Staging is a mode, not a replacement. `ORCHESTRA_PLANNER_STAGES=1` is today's single call, byte-identical when set or unset; `2` is this. The default stays `1` until the measurement in section 7 is recorded, and the entry that records it also moves the default or says why not.                                                                                                                                                                                                            |
+| **S6** | Staging is a mode, not a replacement. `ORCHESTRA_PLANNER_STAGES=1` is the single call, byte-identical whether explicitly set; `2` is this. The default became `2` on 2026-09-16, once section 7's measurement was recorded: +12 correct@1 over the single call (79 against 67), faster (mean 893 ms against 1377 ms), every `make eval` case at baseline, and the thinking-off `unanswerable` regression closed. `1` stays available and byte-identical.                                         |
 | **S7** | The pick is a port in the usecase, implemented in an adapter. `usecase.Picker` takes the question and the shortlist and returns one operation id (or a built-in's name) and the ambiguity flag; `internal/adapter/planner/pick` implements it over `chat.Client`. The usecase still imports neither `net/http` nor `encoding/json`.                                                                                                                                                              |
 
 ## 3. Where it goes
@@ -149,9 +149,9 @@ eval`: 「在庫を登録して。名前はテスト品、数量は5、引当済
 
 ## 6. The configuration
 
-| Variable                   | Values   | Default |
-| -------------------------- | -------- | ------- |
-| `ORCHESTRA_PLANNER_STAGES` | `1`, `2` | `1`     |
+| Variable                   | Values   | Default                |
+| -------------------------- | -------- | ---------------------- |
+| `ORCHESTRA_PLANNER_STAGES` | `1`, `2` | `2` (since 2026-09-16) |
 
 `2` requires a narrower or a catalogue small enough to show whole; the pick
 reads whatever `Narrow` returns, so with no narrowing configured it reads
@@ -187,9 +187,10 @@ pick's model is the planner's model, its base URL the planner's.
 
 ## 9. Acceptance criteria
 
-- **AC-S-101** With `ORCHESTRA_PLANNER_STAGES` unset or `1`, every request
-  the platform sends to the model is byte-identical to today's; the
-  shortlist measurement under `STAGES=1` reproduces 67 / 71.
+- **AC-S-101** With `ORCHESTRA_PLANNER_STAGES=1`, every request the
+  platform sends to the model is byte-identical to before this
+  subproject; the shortlist measurement under `STAGES=1` reproduces
+  67 / 71. Unset now means `2` (S6).
 - **AC-S-102** With `STAGES=2`, a question is answered by exactly two model
   calls when the pick names an operation, one when it names
   `list_capabilities` or `none`, and two when it names `propose_panel`.

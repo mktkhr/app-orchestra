@@ -252,14 +252,15 @@ type Config struct {
 	PlannerRepeatLastN int
 	// PlannerStages selects how many model calls the toolcall planner
 	// makes to resolve an ordinary question, read from
-	// ORCHESTRA_PLANNER_STAGES ("1" or "2"; unset means 1) - documented
+	// ORCHESTRA_PLANNER_STAGES ("1" or "2"; unset means 2) - documented
 	// beside ORCHESTRA_PLANNER_THINKING (docs/specs/staging.md, section
-	// 6): 1 is today's single call, byte-identical whether this is unset
-	// or "1" (AC-S-101); 2 is the pick-then-fill path
+	// 6): 1 is the single call, byte-identical whether explicitly set to
+	// "1" (AC-S-101); 2 is the pick-then-fill path
 	// (usecase.WithStages(2), internal/usecase/orchestrator_staging.go,
-	// S1). Only pkg/app.build reads this, to decide whether to also build
-	// a usecase.Picker (pick.New) and pass usecase.WithPicker alongside
-	// usecase.WithStages.
+	// S1) and is the default since 2026-09-16 (+12 correct@1, faster,
+	// every eval case at baseline). Only pkg/app.build reads this, to
+	// decide whether to also build a usecase.Picker (pick.New) and pass
+	// usecase.WithPicker alongside usecase.WithStages.
 	PlannerStages int
 	// PlanFixtures configures the stub planner's table when LLMBaseURL is
 	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
@@ -546,17 +547,18 @@ const (
 	plannerStagesTwo      = 2
 )
 
-// parsePlannerStages reads ORCHESTRA_PLANNER_STAGES: plannerStagesOne (1,
-// the default, AC-S-101) when unset or "1", plannerStagesTwo (2,
-// docs/specs/staging.md section 6) when "2" - anything else fails startup
-// rather than silently falling back to the default, the same reasoning
-// parsePlannerThinking already applies to ORCHESTRA_PLANNER_THINKING.
+// parsePlannerStages reads ORCHESTRA_PLANNER_STAGES: plannerStagesTwo (2,
+// the default since 2026-09-16, docs/specs/staging.md section 6) when
+// unset or "2", plannerStagesOne (1, the single call, AC-S-101) when "1" -
+// anything else fails startup rather than silently falling back to the
+// default, the same reasoning parsePlannerThinking already applies to
+// ORCHESTRA_PLANNER_THINKING.
 func parsePlannerStages(raw string) (int, error) {
 	switch raw {
-	case "", plannerStagesOneValue:
-		return plannerStagesOne, nil
-	case plannerStagesTwoValue:
+	case "", plannerStagesTwoValue:
 		return plannerStagesTwo, nil
+	case plannerStagesOneValue:
+		return plannerStagesOne, nil
 	default:
 		return 0, fmt.Errorf("%w: %q", ErrInvalidPlannerStages, raw)
 	}

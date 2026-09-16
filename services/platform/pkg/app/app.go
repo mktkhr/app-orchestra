@@ -679,17 +679,20 @@ const stagesTwo = 2
 
 // stagingOptions builds the usecase.Option list build passes to
 // NewOrchestrator for the staging subproject: nil when cfg.LLM.Stages is
-// not 2 (every test and caller that predates this subproject, and the
-// platform's own default, AC-S-101), otherwise a pick.Picker built over
-// this same LLM (S6: "the pick's model is the planner's model, its base
-// URL the planner's") plus usecase.WithStages(2).
+// not 2, or when cfg.LLM.BaseURL is empty (every test and caller that
+// predates this subproject, and production with no LLM configured -
+// newPlanner's own stub fallback, above), otherwise a pick.Picker built
+// over this same LLM (S6: "the pick's model is the planner's model, its
+// base URL the planner's") plus usecase.WithStages(2). Staging needs a
+// real model to pick against; pairing it with the stub planner would send
+// a real request to an empty base URL instead of exercising the stub.
 //
 // The picker gets its own chat.Client rather than sharing newPlanner's -
 // newPlanner returns only a usecase.Planner, not the client it built, and
 // a second *http.Client here costs nothing a request-scoped call would
 // notice.
 func stagingOptions(cfg *Config) []usecase.Option {
-	if cfg.LLM.Stages != stagesTwo {
+	if cfg.LLM.Stages != stagesTwo || cfg.LLM.BaseURL == "" {
 		return nil
 	}
 
