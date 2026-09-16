@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"sort"
 
@@ -318,7 +319,7 @@ func (o *Orchestrator) Plan(
 			return Result{}, fmt.Errorf("%w: %s", ErrEndpointNotFound, preferred)
 		}
 
-		return o.planPreferred(ctx, &endpoint, query, answers, turns, thinking, false)
+		return o.planPreferred(ctx, catalog, &endpoint, query, answers, turns, thinking, false)
 	}
 
 	// Narrowed to a shortlist before the planner ever sees it
@@ -451,7 +452,14 @@ func (o *Orchestrator) call(ctx context.Context, catalog domain.Catalog, decisio
 		return Result{}, err
 	}
 
-	result.Alternatives = o.alternativesFor(catalog, decision.Service, decision.OperationID)
+	// invokeAndRender's success case is no longer only ResultKindResult
+	// (see resultForInvokeError): a service that answered 4xx comes back
+	// here too, as a nil error carrying ResultKindNone. Alternatives is a
+	// ResultKindResult-only field (see its own doc comment above); a
+	// none has nothing chosen for alternativesFor to sit after.
+	if result.Kind == ResultKindResult {
+		result.Alternatives = o.alternativesFor(catalog, decision.Service, decision.OperationID)
+	}
 
 	return result, nil
 }
@@ -745,7 +753,7 @@ func (o *Orchestrator) invokeAndRender(
 ) (Result, error) {
 	data, err := o.invoker.Invoke(ctx, endpoint, args)
 	if err != nil {
-		return Result{}, fmt.Errorf("invoking %s/%s: %w", service, operationID, err)
+		return o.resultForInvokeError(ctx, endpoint, service, operationID, err)
 	}
 
 	return Result{
@@ -759,6 +767,58 @@ func (o *Orchestrator) invokeAndRender(
 		Fields:             fieldsFor(endpoint),
 		View:               chartViewFor(endpoint),
 	}, nil
+}
+
+// resultForInvokeError turns an error from o.invoker.Invoke into either a
+// ResultKindNone result or an error, depending on whose fault it was
+// (dev-stack defect, 2026-09-16: a service answering 404 "no item exists
+// with this id" was logged as an error and turned /api/plan into a 500,
+// though the service had simply answered).
+//
+// A usecase.ServiceError with a 4xx Status means the service itself
+// answered the question - "no such id", "that value is invalid" - which is
+// a result, not a platform failure: it is rendered as ResultKindNone
+// carrying a Japanese message built from the endpoint's and service's own
+// display names (see messageForServiceError), and logged at warn, not
+// error, since nothing here is broken.
+//
+// Anything else - a 5xx ServiceError, a timeout, an unreachable service,
+// or an error the invoker did not shape as ServiceError at all - is the
+// platform's or the service's own fault, not an answer, and is returned
+// unchanged as an error: Plan reports it as a 500, exactly as before this
+// fix.
+func (o *Orchestrator) resultForInvokeError(
+	ctx context.Context, endpoint *domain.Endpoint, service, operationID string, err error,
+) (Result, error) {
+	var svcErr ServiceError
+	if errors.As(err, &svcErr) && svcErr.Status >= 400 && svcErr.Status < 500 {
+		slog.Default().WarnContext(ctx, "service declined a call",
+			slog.String("service", service),
+			slog.String("operation_id", operationID),
+			slog.Int("status", svcErr.Status),
+			slog.String("service_message", svcErr.Message))
+
+		return Result{Kind: ResultKindNone, Message: messageForServiceError(endpoint, service, operationID, &svcErr)}, nil
+	}
+
+	return Result{}, fmt.Errorf("invoking %s/%s: %w", service, operationID, err)
+}
+
+// messageForServiceError renders the Japanese message a ResultKindNone
+// result carries for a 4xx ServiceError: the service's own display name,
+// the operation's own display name, and the service's message when it
+// gave one ("在庫管理 の 在庫アイテムの詳細 は「no item exists with this
+// id」と答えました。"), or the bare status when it did not ("… は 404 を
+// 返しました。").
+func messageForServiceError(endpoint *domain.Endpoint, service, operationID string, svcErr *ServiceError) string {
+	serviceDisplay := endpoint.ServiceDisplayNameOr(service)
+	operationDisplay := endpoint.DisplayNameOr(operationID)
+
+	if svcErr.Message != "" {
+		return fmt.Sprintf("%s の %s は「%s」と答えました。", serviceDisplay, operationDisplay, svcErr.Message)
+	}
+
+	return fmt.Sprintf("%s の %s は %d を返しました。", serviceDisplay, operationDisplay, svcErr.Status)
 }
 
 // chartViewFor carries an endpoint's contract-declared chart axes onto its

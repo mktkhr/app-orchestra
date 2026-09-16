@@ -11,6 +11,7 @@ import (
 
 	invokerhttp "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/invoker/http"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
 func listEndpoint() *domain.Endpoint {
@@ -181,22 +182,65 @@ func TestInvokeUnknownServiceFails(t *testing.T) {
 	require.ErrorIs(t, err, invokerhttp.ErrUnknownService)
 }
 
-func TestInvokeServiceErrorStatusFails(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
+// TestInvokeServiceErrorStatusCarriesATypedServiceError is the dev-stack
+// defect's adapter half (2026-09-16, /tmp/orchestra-platform.log
+// 2026-09-16T20:52:15): every non-2xx response yields a usecase.ServiceError
+// alongside ErrServiceError - Status always the response's own, Message its
+// body's own {"message": "..."} field when it gave one and "" when the
+// body was empty or not JSON shaped that way (a service is not required to
+// answer its errors this way).
+//
+// A 5xx is shaped exactly like a 4xx's ServiceError here - same Status
+// field, same optional Message, not a distinct error shape - because it is
+// Orchestrator.resultForInvokeError, not this adapter, that tells "the
+// service answered no" (4xx) apart from "the service or platform is at
+// fault" (5xx), by reading Status off the one type both cases share.
+func TestInvokeServiceErrorStatusCarriesATypedServiceError(t *testing.T) {
+	tests := map[string]struct {
+		status  int
+		body    string
+		wantErr usecase.ServiceError
+	}{
+		"404 with a JSON message body": {
+			status:  http.StatusNotFound,
+			body:    `{"message":"no item"}`,
+			wantErr: usecase.ServiceError{Status: http.StatusNotFound, Message: "no item"},
+		},
+		"404 with a non-JSON body carries no message": {
+			status:  http.StatusNotFound,
+			body:    `not json`,
+			wantErr: usecase.ServiceError{Status: http.StatusNotFound, Message: ""},
+		},
+		"503 carries the same typed error": {
+			status:  http.StatusServiceUnavailable,
+			body:    `{"message":"try again later"}`,
+			wantErr: usecase.ServiceError{Status: http.StatusServiceUnavailable, Message: "try again later"},
+		},
+	}
 
-		if _, err := w.Write([]byte(`{"message":"no item"}`)); err != nil {
-			t.Errorf("writing fixture response: %v", err)
-		}
-	}))
-	defer server.Close()
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
 
-	inv := invokerhttp.New([]invokerhttp.Service{{Name: "inventory", URL: server.URL}}, nil)
+				if _, err := w.Write([]byte(tt.body)); err != nil {
+					t.Errorf("writing fixture response: %v", err)
+				}
+			}))
+			defer server.Close()
 
-	_, err := inv.Invoke(t.Context(), getEndpoint(), map[string]any{"id": "missing"})
+			inv := invokerhttp.New([]invokerhttp.Service{{Name: "inventory", URL: server.URL}}, nil)
 
-	require.Error(t, err)
-	require.ErrorIs(t, err, invokerhttp.ErrServiceError)
+			_, err := inv.Invoke(t.Context(), getEndpoint(), map[string]any{"id": "missing"})
+
+			require.Error(t, err)
+			require.ErrorIs(t, err, invokerhttp.ErrServiceError)
+
+			var svcErr usecase.ServiceError
+			require.ErrorAs(t, err, &svcErr)
+			assert.Equal(t, tt.wantErr, svcErr)
+		})
+	}
 }
 
 func TestInvokeUnreachableServiceFails(t *testing.T) {

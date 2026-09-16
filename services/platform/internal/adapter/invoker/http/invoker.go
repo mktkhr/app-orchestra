@@ -138,13 +138,42 @@ func (i *Invoker) do(req *http.Request) (any, error) {
 // serviceError builds the error for a non-2xx response, folding in as much
 // of the body as maxErrorDetailBytes allows. A failure to read that body is
 // not itself fatal: the status code alone is still worth reporting.
+//
+// It wraps two things at once: ErrServiceError, which every caller already
+// checked for before this fix, and a usecase.ServiceError carrying the
+// status and the body's own message (see serviceMessage) - what
+// Orchestrator.invokeAndRender needs to tell a service saying "no" (4xx)
+// apart from a platform or service fault (5xx and worse), without parsing
+// this error's string. Go's multi-%w (since 1.20) puts both in the chain,
+// so errors.Is(err, ErrServiceError) and errors.As(err, &usecase.ServiceError{})
+// both still see it.
 func serviceError(req *http.Request, resp *http.Response) error {
 	detail, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorDetailBytes))
 	if readErr != nil {
 		detail = nil
 	}
 
-	return fmt.Errorf("%w: %s %s -> %d: %s", ErrServiceError, req.Method, req.URL, resp.StatusCode, detail)
+	svcErr := usecase.ServiceError{Status: resp.StatusCode, Message: serviceMessage(detail)}
+
+	return fmt.Errorf("%w: %w: %s %s -> %d: %s",
+		ErrServiceError, svcErr, req.Method, req.URL, resp.StatusCode, detail)
+}
+
+// serviceMessage reads a failing response body as {"message": "..."} and
+// returns its message, or "" when the body is empty, is not JSON, or has
+// no such field - a service is not required to answer its errors this
+// way, and one that does not still gets a usecase.ServiceError, just with
+// no message of its own to carry.
+func serviceMessage(detail []byte) string {
+	var body struct {
+		Message string `json:"message"`
+	}
+
+	if err := json.Unmarshal(detail, &body); err != nil {
+		return ""
+	}
+
+	return body.Message
 }
 
 // encodeBody marshals a non-nil body as JSON, returning the reader to send

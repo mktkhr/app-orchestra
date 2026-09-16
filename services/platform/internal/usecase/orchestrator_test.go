@@ -573,6 +573,76 @@ func TestPlanWrapsAnInvokerError(t *testing.T) {
 	require.ErrorIs(t, err, boom)
 }
 
+// TestPlanTurnsA4xxServiceErrorIntoResultKindNone is the dev-stack defect
+// (2026-09-16, /tmp/orchestra-platform.log 2026-09-16T20:52:15): the
+// inventory service answering 404 "no item exists with this id" to a
+// planner-chosen GetInventoryItem(id: att-002) must not turn /api/plan
+// into a 500 - it is the service answering, not the platform failing.
+func TestPlanTurnsA4xxServiceErrorIntoResultKindNone(t *testing.T) {
+	catalog := inventoryCatalog()
+	catalog.Endpoints[0].ServiceDisplayName = "在庫管理"
+	catalog.Endpoints[0].DisplayName = "在庫アイテムの詳細"
+
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+		Args:        map[string]any{"id": "att-002"},
+	}}
+	invoker := &fakeInvoker{err: usecase.ServiceError{Status: 404, Message: "no item exists with this id"}}
+
+	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "att-002の内容", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindNone, result.Kind)
+	assert.Equal(t, "在庫管理 の 在庫アイテムの詳細 は「no item exists with this id」と答えました。", result.Message)
+	assert.Empty(t, result.Alternatives, "a none result has nothing chosen for alternativesFor to sit after")
+}
+
+// TestPlanTurnsA4xxServiceErrorWithNoMessageIntoTheBareStatus is the same
+// shape, but for a service that answered 4xx with no JSON message at all
+// (see the adapter's serviceMessage): the person still gets a sentence,
+// just naming the status instead of quoting nothing.
+func TestPlanTurnsA4xxServiceErrorWithNoMessageIntoTheBareStatus(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}}
+	invoker := &fakeInvoker{err: usecase.ServiceError{Status: 400}}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindNone, result.Kind)
+	assert.Equal(t, "inventory の ListInventoryItems は 400 を返しました。", result.Message)
+}
+
+// TestPlanKeepsA5xxServiceErrorAsAnError is the other half of the rule: a
+// 5xx is the service's or the platform's own fault, not an answer, and
+// stays exactly what TestPlanWrapsAnInvokerError already pins for a plain
+// error - a ServiceError does not change that just because it is typed.
+func TestPlanKeepsA5xxServiceErrorAsAnError(t *testing.T) {
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind:        usecase.DecisionCall,
+		Service:     "inventory",
+		OperationID: "ListInventoryItems",
+	}}
+	svcErr := usecase.ServiceError{Status: 503, Message: "try again later"}
+	invoker := &fakeInvoker{err: svcErr}
+
+	orchestrator := usecase.NewOrchestrator(inventoryCatalog(), planner, invoker, &fakePermissionStore{})
+
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧を見せて", nil, nil, "", "", nil)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, svcErr)
+}
+
 func TestPlanPassesAnswersThrough(t *testing.T) {
 	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionNone}}
 	invoker := &fakeInvoker{}
