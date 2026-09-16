@@ -319,7 +319,7 @@ func (o *Orchestrator) Plan(
 			return Result{}, fmt.Errorf("%w: %s", ErrEndpointNotFound, preferred)
 		}
 
-		return o.planPreferred(ctx, catalog, &endpoint, query, answers, turns, thinking, false)
+		return o.planPreferred(ctx, catalog, &endpoint, query, answers, turns, thinking, false, workspaceID)
 	}
 
 	// Narrowed to a shortlist before the planner ever sees it

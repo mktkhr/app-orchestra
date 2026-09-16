@@ -43,29 +43,45 @@ import (
 // true when this fill follows a pick (Orchestrator.planStaged,
 // orchestrator_staging.go). Only when true does this function offer
 // AskUserTool() and ListCapabilitiesTool() alongside the one operation's
-// tool (never propose_panel - section 3's own single-call fallback already
-// covers it), and only then is the model's answer honoured rather than
-// degraded to a form: a DecisionAsk naming this same operation resolves
-// through o.ask, DecisionNone and DecisionListCapabilities resolve exactly
-// as planOrdinary resolves them. A pick has not already let the person
-// choose between candidates the way a chip has, so the fill must still be
-// able to end in a question, a "nothing here" refusal, or a capabilities
-// table - not only in a call or a form. A call naming some other operation
-// is the one case that still degrades to formFor: the pick, not the fill,
-// is where the operation gets chosen, so a fill that reaches for a
-// different one has not disagreed with the pick, it has misfired, and the
-// form for the endpoint the person actually picked is still the safer
-// answer than acting on an operation they never chose (dev-stack finding,
-// docs/specs/staging.md section 5).
+// tool, and - only when workspaceID also names a workspace, the same
+// appliesFromWorkspace condition ToolsFor's own builtinTools entry uses for
+// propose_panel (tools.go, O3) - ProposePanelTool() too (regression fix,
+// 2026-09-16: docs/specs/staging.md section 5 originally said "never
+// propose_panel", reasoning that section 3's single-call fallback already
+// covered it; on the dev stack every ダッシュボード/グラフ/パネル request under
+// a workspace picked a concrete operation - ListInventoryItems and the
+// like - long before propose_panel could ever be the pick's own answer, so
+// that fallback never fired and the fill answered with a plain result
+// instead of a proposal). Only then is the model's answer honoured rather
+// than degraded to a form: a DecisionAsk naming this same operation
+// resolves through o.ask, DecisionNone and DecisionListCapabilities resolve
+// exactly as planOrdinary resolves them, and - under a workspace -
+// DecisionProposal naming this same operation resolves through o.propose,
+// exactly as planOrdinary's own DecisionProposal case does. A pick has not
+// already let the person choose between candidates the way a chip has, so
+// the fill must still be able to end in a question, a "nothing here"
+// refusal, a capabilities table or a proposal - not only in a call or a
+// form. A call or a proposal naming some other operation is the one case
+// that still degrades to formFor: the pick, not the fill, is where the
+// operation gets chosen, so a fill that reaches for a different one has not
+// disagreed with the pick, it has misfired, and the form for the endpoint
+// the person actually picked is still the safer answer than acting on an
+// operation they never chose (dev-stack finding, docs/specs/staging.md
+// section 5).
 //
 // catalog is the caller's already-scoped catalogue - the shortlist under a
 // pick, the permission-filtered whole catalogue under a chip's preferred -
 // used only for a fromPick DecisionListCapabilities (o.listCapabilities
 // reads the whole scope, never the one endpoint alone); ignored otherwise,
 // so passing it under fromPick == false changes nothing observable.
+//
+// workspaceID is Plan's own workspaceID (docs/specs/offering.md O4),
+// carried through unchanged from planStaged/planPicked; read only when
+// fromPick is true, so a chip's preferred (fromPick == false) is byte-
+// identical whatever it holds.
 func (o *Orchestrator) planPreferred(
 	ctx context.Context, catalog domain.Catalog, endpoint *domain.Endpoint, query string, answers []Answer,
-	turns []Turn, thinking *bool, fromPick bool,
+	turns []Turn, thinking *bool, fromPick bool, workspaceID string,
 ) (Result, error) {
 	fallback := &Decision{Service: endpoint.Service, OperationID: endpoint.OperationID, Args: argsFromAnswers(answers)}
 
@@ -90,6 +106,10 @@ func (o *Orchestrator) planPreferred(
 	tools := []Tool{toolFor(endpoint)}
 	if fromPick {
 		tools = append(tools, AskUserTool(), ListCapabilitiesTool())
+
+		if appliesFromWorkspace(PlanContext{WorkspaceID: workspaceID}) {
+			tools = append(tools, ProposePanelTool())
+		}
 	}
 
 	decision, err := o.planner.Plan(ctx, query, answers, truncateTurns(turns, o.contextWindow), tools, thinking)
@@ -100,7 +120,7 @@ func (o *Orchestrator) planPreferred(
 	sameOperation := decision.Service == endpoint.Service && decision.OperationID == endpoint.OperationID
 
 	if fromPick {
-		return o.resolvePickedFill(ctx, catalog, endpoint, &decision, fallback, sameOperation, query, answers)
+		return o.resolvePickedFill(ctx, catalog, endpoint, &decision, fallback, sameOperation, query, answers, workspaceID)
 	}
 
 	// fromPick == false (a chip's own preferred): unchanged from before this
@@ -122,9 +142,17 @@ func (o *Orchestrator) planPreferred(
 // doc comment for what each DecisionKind resolves to and why; decision is a
 // pointer for the same gocritic hugeParam reason as planPreferred's own
 // endpoint parameter.
+//
+// workspaceID gates DecisionProposal the same way planPreferred gates
+// whether ProposePanelTool() was offered in the first place
+// (appliesFromWorkspace, tools.go O3, reused rather than re-derived): a
+// DecisionProposal can only legitimately arrive when the tool was offered,
+// but this re-checks rather than trusting the model's own answer, the same
+// defensiveness planOrdinary's own ErrToolNotOffered check applies to a
+// DecisionProposal it did not offer.
 func (o *Orchestrator) resolvePickedFill(
 	ctx context.Context, catalog domain.Catalog, endpoint *domain.Endpoint, decision *Decision, fallback *Decision,
-	sameOperation bool, query string, answers []Answer,
+	sameOperation bool, query string, answers []Answer, workspaceID string,
 ) (Result, error) {
 	switch decision.Kind {
 	case DecisionAsk:
@@ -140,9 +168,13 @@ func (o *Orchestrator) resolvePickedFill(
 			return o.call(ctx, domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, decision, query, answers)
 		}
 	case DecisionProposal:
-		// Not offered above (ProposePanelToolName is never in tools built by
-		// planPreferred), so the model cannot legitimately return this -
-		// falls through to the same formFor as any other unusable answer.
+		// The picked operation, and only under a workspace (see
+		// planPreferred's own doc comment): a proposal naming some other
+		// operation has misfired exactly as a DecisionCall to a different
+		// operation has, and falls through to the same picked form below.
+		if sameOperation && appliesFromWorkspace(PlanContext{WorkspaceID: workspaceID}) {
+			return o.propose(domain.Catalog{Endpoints: []domain.Endpoint{*endpoint}}, decision)
+		}
 	}
 
 	return formFor(endpoint, fallback, query, answers), nil

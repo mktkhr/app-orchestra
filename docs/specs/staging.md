@@ -38,17 +38,28 @@ larger model, thinking, examples in the tools - moved it between 56 and 68.
 The one thing not tried is letting the model choose the way the 83 was
 measured, and only then asking it for arguments.
 
+**Found later (2026-09-16, dev stack).** Splitting the choosing from the
+filling also split `propose_panel` from every question that names a
+concrete operation: the pick almost always finds one (`ListInventoryItems`
+for 「ダッシュボードに在庫一覧を出して」, certain), so section 3's own
+`propose_panel` line - the only way the single call ever reached a
+proposal - never gets to answer a request that both names an operation
+_and_ asks for a panel, and the fill, never offered `propose_panel` of its
+own, answered `result` instead of the `proposal` `docs/specs/proposing.md`
+promises. Fixed in section 5: the fill offers `propose_panel` too, under
+the same workspace condition the single call already applies.
+
 ## 2. Decisions taken here
 
-|        | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **S1** | Planning is two model calls. **Pick**: the shortlist is shown in the picker's format and the model names one operation. **Fill**: the planner is offered that operation's tool only, plus `ask_user`, and produces the call, a question, or a form - the path `preferred` already takes (`shortlisting.md`, "Choosing an alternative"; `Orchestrator.planPreferred`). The fill never sees the other nineteen.                                                                                    |
-| **S2** | The pick's prompt is the measured one, byte for byte. `e2e/narrowing/pick/client.ts`'s `PICK_SYSTEM_PROMPT` and its candidate line (`operationId \t serviceDisplayName \t summary`) produced the 83; the platform's picker sends the same text so its number is comparable. The examples column is not shown (83 → 77 when it was). A copy in Go is a transcription; the Go and the TypeScript both assert the exact string in a test, and the TypeScript is the source.                         |
-| **S3** | The pick offers three fixed lines after the shortlist, so the built-ins keep a way in: `list_capabilities` (使える操作の一覧を知りたい), `propose_panel` (画面に出したい), and `none` (どの候補も質問に合わない（業務と無関係な質問）). The pick is the only place they are offered; the fill does not get them. Their wording is measured by `make eval`'s `capability` and `unanswerable` cases, not guessed; `propose_panel` has no eval case and is covered by the orchestrator's own tests. |
-| **S4** | `ambiguous` is recorded, not acted on. The pick's second word is logged and returned on the result for measurement; the alternatives stay the shortlist's next two after the picked one (H5). Asking on ambiguity is the lever `v3-ask-on-collision` measured at 68 → 56.                                                                                                                                                                                                                        |
-| **S5** | The pick never thinks; the fill follows the 「思考」 switch. Thinking on the picker was flat or negative (`shortlisting.md` section 1); the fill is where an argument may need it.                                                                                                                                                                                                                                                                                                               |
-| **S6** | Staging is a mode, not a replacement. `ORCHESTRA_PLANNER_STAGES=1` is the single call, byte-identical whether explicitly set; `2` is this. The default became `2` on 2026-09-16, once section 7's measurement was recorded: +12 correct@1 over the single call (79 against 67), faster (mean 893 ms against 1377 ms), every `make eval` case at baseline, and the thinking-off `unanswerable` regression closed. `1` stays available and byte-identical.                                         |
-| **S7** | The pick is a port in the usecase, implemented in an adapter. `usecase.Picker` takes the question and the shortlist and returns one operation id (or a built-in's name) and the ambiguity flag; `internal/adapter/planner/pick` implements it over `chat.Client`. The usecase still imports neither `net/http` nor `encoding/json`.                                                                                                                                                              |
+|        | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **S1** | Planning is two model calls. **Pick**: the shortlist is shown in the picker's format and the model names one operation. **Fill**: the planner is offered that operation's tool only, plus `ask_user`, and produces the call, a question, or a form - the path `preferred` already takes (`shortlisting.md`, "Choosing an alternative"; `Orchestrator.planPreferred`). The fill never sees the other nineteen.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **S2** | The pick's prompt is the measured one, byte for byte. `e2e/narrowing/pick/client.ts`'s `PICK_SYSTEM_PROMPT` and its candidate line (`operationId \t serviceDisplayName \t summary`) produced the 83; the platform's picker sends the same text so its number is comparable. The examples column is not shown (83 → 77 when it was). A copy in Go is a transcription; the Go and the TypeScript both assert the exact string in a test, and the TypeScript is the source.                                                                                                                                                                                                                                                                                                                                      |
+| **S3** | The pick offers three fixed lines after the shortlist, so the built-ins keep a way in: `list_capabilities` (使える操作の一覧を知りたい), `propose_panel` (画面に出したい), and `none` (どの候補も質問に合わない（業務と無関係な質問）). The pick is the only place the fixed _line_ is offered; whether a proposal actually results is the fill's own decision (section 5), not this line's - the pick's `propose_panel` line still exists only for a question that names no concrete operation at all (S1's own single-call fallback), because the pick almost always names a real operation first (section 1's regression). Their wording is measured by `make eval`'s `capability` and `unanswerable` cases, not guessed; `propose_panel` has no eval case and is covered by the orchestrator's own tests. |
+| **S4** | `ambiguous` is recorded, not acted on. The pick's second word is logged and returned on the result for measurement; the alternatives stay the shortlist's next two after the picked one (H5). Asking on ambiguity is the lever `v3-ask-on-collision` measured at 68 → 56.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **S5** | The pick never thinks; the fill follows the 「思考」 switch. Thinking on the picker was flat or negative (`shortlisting.md` section 1); the fill is where an argument may need it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **S6** | Staging is a mode, not a replacement. `ORCHESTRA_PLANNER_STAGES=1` is the single call, byte-identical whether explicitly set; `2` is this. The default became `2` on 2026-09-16, once section 7's measurement was recorded: +12 correct@1 over the single call (79 against 67), faster (mean 893 ms against 1377 ms), every `make eval` case at baseline, and the thinking-off `unanswerable` regression closed. `1` stays available and byte-identical.                                                                                                                                                                                                                                                                                                                                                      |
+| **S7** | The pick is a port in the usecase, implemented in an adapter. `usecase.Picker` takes the question and the shortlist and returns one operation id (or a built-in's name) and the ambiguity flag; `internal/adapter/planner/pick` implements it over `chat.Client`. The usecase still imports neither `net/http` nor `encoding/json`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ## 3. Where it goes
 
@@ -135,25 +146,39 @@ model returns that is not a call to that operation degrades to the form
 
 - Under a pick, the fill offers the picked tool plus `ask_user` (always,
   not only when the endpoint has an enum parameter - the model may need to
-  ask about anything) and `list_capabilities`, never `propose_panel`, and
-  honours what the model returns rather than degrading all of it: a call to
-  the picked operation runs as today, a `DecisionAsk` naming it resolves
-  through `o.ask` as today, but now a `DecisionNone` resolves to the same
-  `none` result `planOrdinary` would give it and a `DecisionListCapabilities`
-  resolves through `o.listCapabilities` over the shortlist, instead of both
-  being forced into a form for an operation the model just said does not
-  fit. Only a call naming some _other_ operation still degrades to
-  `formFor(picked endpoint)` - the pick is the decision, the fill only
-  fills. Found on the dev stack (2026-09-16, real services, 6 operations,
-  30 questions): with two-stage planning on, a small catalogue made this
-  degrade fire on plain questions it had no business swallowing -
-  「今日は何曜日？」and 「在庫について何ができる？」both got forced into a
-  form, and several safe-listing questions were forced into whatever the
-  picked operation happened to list - where a single planner call answered
-  every one of them correctly with `list_capabilities` or a refusal. Under
-  `preferred` from a chip the person has already chosen, none of this
-  changes: the withholding and the total degrade both stand exactly as
-  before.
+  ask about anything) and `list_capabilities`, and - only when the plan
+  context carries a workspace, `appliesFromWorkspace` (`tools.go`, O3),
+  the same condition `ToolsFor`'s own `propose_panel` entry uses, reused
+  rather than re-decided here - `propose_panel` too; without a workspace
+  the tool list is exactly as before. It honours what the model returns
+  rather than degrading all of it: a call to the picked operation runs as
+  today, a `DecisionAsk` naming it resolves through `o.ask` as today, a
+  `DecisionNone` resolves to the same `none` result `planOrdinary` would
+  give it, a `DecisionListCapabilities` resolves through
+  `o.listCapabilities` over the shortlist, and - under a workspace - a
+  `DecisionProposal` naming the picked operation resolves through
+  `o.propose` exactly as `planOrdinary`'s own `DecisionProposal` case does,
+  instead of all four being forced into a form for an operation the model
+  just said does not fit. Only a call or a proposal naming some _other_
+  operation still degrades to `formFor(picked endpoint)` - the pick is the
+  decision, the fill only fills. Found on the dev stack (2026-09-16, real
+  services, 6 operations, 30 questions): with two-stage planning on, a
+  small catalogue made this degrade fire on plain questions it had no
+  business swallowing - 「今日は何曜日？」and 「在庫について何ができる？」
+  both got forced into a form, and several safe-listing questions were
+  forced into whatever the picked operation happened to list - where a
+  single planner call answered every one of them correctly with
+  `list_capabilities` or a refusal. A second dev-stack finding, the same
+  day: with a workspace open, 「ダッシュボードに在庫一覧を出して」/
+  「在庫の一覧をグラフで」/「勤怠の一覧をパネルにして」 all picked a
+  concrete operation (`ListInventoryItems`, certain) and the fill, never
+  offered `propose_panel`, answered a plain `result` table instead of the
+  `proposal` `docs/specs/proposing.md` promises - the fixed pick-time line
+  above exists for exactly this request and almost never gets to answer it,
+  because a real catalogue almost always has a concrete operation to name
+  first (section 1). Under `preferred` from a chip the person has already
+  chosen, none of this changes: the withholding and the total degrade both
+  stand exactly as before.
 - The fill is where the request's `thinking` applies (S5).
 - Under a pick, the required-parameter shortcut above never fires: a
   chip's `preferred` carries no fresh text (the person chose an operation

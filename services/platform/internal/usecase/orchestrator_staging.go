@@ -102,7 +102,7 @@ func (o *Orchestrator) planStaged(
 		// STAGES=1 would have handled it.
 		return o.planOrdinary(ctx, catalog, query, answers, turns, workspaceID, thinking)
 	case PickOperation:
-		return o.planPicked(ctx, catalog, &p, query, answers, turns, thinking)
+		return o.planPicked(ctx, catalog, &p, query, answers, turns, workspaceID, thinking)
 	default:
 		return Result{}, fmt.Errorf("%w: unknown pick kind %q", ErrNotImplemented, p.Kind)
 	}
@@ -115,14 +115,15 @@ func (o *Orchestrator) planStaged(
 // own call uses internally (H5, docs/specs/staging.md section 3: "pick
 // then dispatches ... down the existing planPreferred path").
 func (o *Orchestrator) planPicked(
-	ctx context.Context, catalog domain.Catalog, p *Pick, query string, answers []Answer, turns []Turn, thinking *bool,
+	ctx context.Context, catalog domain.Catalog, p *Pick, query string, answers []Answer, turns []Turn,
+	workspaceID string, thinking *bool,
 ) (Result, error) {
 	endpoint, ok := catalog.Find(p.Service, p.OperationID)
 	if !ok {
 		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, p.Service, p.OperationID)
 	}
 
-	result, err := o.planPreferred(ctx, catalog, &endpoint, query, answers, turns, thinking, true)
+	result, err := o.planPreferred(ctx, catalog, &endpoint, query, answers, turns, thinking, true, workspaceID)
 	if err != nil {
 		return Result{}, err
 	}

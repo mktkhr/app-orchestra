@@ -121,9 +121,11 @@ func stagedOrchestrator(t *testing.T, picker usecase.Picker, planner usecase.Pla
 // list (dev-stack finding, docs/specs/staging.md section 5): a pick naming
 // an operation runs the fill with that operation's own tool plus ask_user
 // and list_capabilities - always, not only when the endpoint declares an
-// enum - and never propose_panel. A call to the picked operation still
-// resolves through o.call, and the result carries the shortlist's own next
-// two entries as Alternatives.
+// enum - and never propose_panel when no workspace is open (see
+// TestPlanStagedFromPickOffersProposePanelOnlyUnderAWorkspace for the
+// workspace case, the 2026-09-16 proposing regression fix). A call to the
+// picked operation still resolves through o.call, and the result carries
+// the shortlist's own next two entries as Alternatives.
 func TestPlanStagedOnPickOperationCallsThePlannerWithThePickedToolAskUserAndListCapabilities(t *testing.T) {
 	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
 	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
@@ -202,6 +204,72 @@ func TestPlanStagedOnPickOperationWithRequiredParameterFallsBackToFormOnACallToA
 	assert.Equal(t, 1, planner.calls, "the planner must still be consulted before falling back to the form")
 	assert.Equal(t, usecase.ResultKindForm, result.Kind)
 	assert.Equal(t, "Opc", result.OperationID, "the pick is the decision, the fill only fills")
+}
+
+// TestPlanStagedFromPickOffersProposePanelOnlyUnderAWorkspace is the
+// 2026-09-16 proposing regression fix (docs/specs/staging.md section 5):
+// the fill's tool list gains propose_panel exactly when the plan context
+// carries a workspace, reusing tools.go's own appliesFromWorkspace rather
+// than a second copy of that condition - the same rule ToolsFor's
+// builtinTools entry for propose_panel already applies to the single-call
+// path (docs/specs/offering.md O3).
+func TestPlanStagedFromPickOffersProposePanelOnlyUnderAWorkspace(t *testing.T) {
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
+
+	orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{data: map[string]any{}})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "ダッシュボードに在庫一覧を出して", nil, nil, "ws-1", "", nil)
+
+	require.NoError(t, err)
+	require.Len(t, planner.tools, 4, "the picked operation's tool, ask_user, list_capabilities and propose_panel")
+
+	names := []string{planner.tools[0].Name, planner.tools[1].Name, planner.tools[2].Name, planner.tools[3].Name}
+	assert.Contains(t, names, "Opa")
+	assert.Contains(t, names, "ask_user")
+	assert.Contains(t, names, "list_capabilities")
+	assert.Contains(t, names, "propose_panel")
+	assert.Equal(t, usecase.ResultKindResult, result.Kind, "this fixture's planner still answers with a call")
+}
+
+// TestPlanStagedFromPickHonoursDecisionProposalNamingThePickedOperation is
+// the same fix's other half: under a workspace, a DecisionProposal naming
+// the picked operation resolves to kind: proposal with its panel, exactly
+// as planOrdinary's own DecisionProposal case does (o.propose).
+func TestPlanStagedFromPickHonoursDecisionProposalNamingThePickedOperation(t *testing.T) {
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionProposal, Service: "svc-a", OperationID: "Opa",
+	}}
+
+	orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫の一覧をグラフで", nil, nil, "ws-1", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindProposal, result.Kind)
+	assert.Equal(t, "svc-a", result.Service)
+	assert.Equal(t, "Opa", result.OperationID)
+}
+
+// TestPlanStagedFromPickHonoursDecisionProposalNamingAnotherOperationFalls
+// BackToThePickedForm is the same fallback DecisionCall already has: the
+// pick, not the fill, chooses the operation, so a proposal naming some
+// other operation entirely has misfired, not disagreed, and degrades to
+// the picked operation's own form.
+func TestPlanStagedFromPickHonoursDecisionProposalNamingAnotherOperationFallsBackToThePickedForm(t *testing.T) {
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{
+		Kind: usecase.DecisionProposal, Service: "svc-d", OperationID: "Opd",
+	}}
+
+	orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "ダッシュボードに出して", nil, nil, "ws-1", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, usecase.ResultKindForm, result.Kind)
+	assert.Equal(t, "Opa", result.OperationID, "the pick is the decision, the fill only fills")
 }
 
 // TestPlanStagedFromPickHonoursDecisionNoneAsAKindNone is the fill-escape
