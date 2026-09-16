@@ -72,13 +72,31 @@ const staged = 2
 // logger field threaded onto Orchestrator: nothing else here needs one,
 // and slog.Default() is what pkg/app.build already configures
 // process-wide before an Orchestrator is ever built.
+//
+// Before the pick itself, idAffinity narrows the catalogue the picker is
+// offered (not catalog, which planPicked still looks the chosen operation
+// up in unchanged) to one service's endpoints when the question carries a
+// token matching only that service's own id Pattern - logged at info,
+// pick_affinity_service (TODO.md, "real-attendance-detail"). This has no
+// counterpart under planOrdinary (WithStages unset or 1): a single call
+// over the whole shortlist is never narrowed this way; a later item may
+// apply the same affinity there.
 func (o *Orchestrator) planStaged(
 	ctx context.Context, catalog domain.Catalog, query string, answers []Answer, turns []Turn, workspaceID string,
 	thinking *bool,
 ) (Result, error) {
 	start := time.Now()
 
-	p, err := o.picker.Pick(ctx, query, answers, catalog)
+	pickCatalog := catalog
+
+	if service, ok := idAffinity(ctx, query, catalog); ok {
+		pickCatalog = narrowToService(catalog, service)
+
+		slog.Default().InfoContext(ctx, "pick affinity narrowed shortlist to one service",
+			slog.String("pick_affinity_service", service))
+	}
+
+	p, err := o.picker.Pick(ctx, query, answers, pickCatalog)
 	if err != nil {
 		return Result{}, fmt.Errorf("picking: %w", err)
 	}
