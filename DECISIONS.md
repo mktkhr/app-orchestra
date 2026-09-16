@@ -6930,3 +6930,28 @@ corpus. The 79/80 recorded 2026-09-16 for two-stage planning is the
 `STAGES=2` path's own number; the classic path reads 80/81 on the
 identical binary and corpus. A candidate fix to the pick that moves fewer
 than about 7 rows is not distinguishable from this band alone.
+
+## 2026-09-16 Thinking on under two stages: +1 inside the noise band, 3.8x slower, no overrun
+
+`make eval-shortlist STAGES=2 THINKING=on` (fixed by `764163f`, which gives
+`--thinking on` its own `-think` suffix rather than resuming the plain
+pass's file and running nothing): two stages with the fill's own thinking
+turned on (the pick never thinks - `docs/specs/staging.md` section 5)
+reads 80 correct@1 / 81 correct@shown, per axis A 88 B 88 C 68 D 67 E 90,
+latency mean 3358ms/p50 2936ms/max 8793ms, 10 rows over 5s, kinds result
+69/form 30/ask 0/none 1, 0 truncations at `max_tokens` 1024.
+
+Against two stages thinking off (79/80, mean 893ms): gained `b20`/`e04`,
+lost `d07` - all three sit inside the 7-row near-tie band this same day's
+"Measurement determinism" entry records (`b05` `b20` `b25` `c07` `c11`
+`d07` `e04`), so the +1 correct@1 is not distinguishable from
+request-history noise, not a real gain.
+
+**Reading.** Under two stages the 「思考」 switch buys nothing measurable
+on this corpus and costs 3.8x the latency; it stays off by default, as
+already decided - the switch exists for a real catalogue's harder fills,
+which this corpus may not represent. It does close `TODO.md`'s open
+`max_tokens`-overrun item: the fill sees one tool under two stages, so its
+reasoning stays short, and 0 of 100 rows truncated at 1024 - against 9 of
+100 measured under the single call's thinking-on pass. Closed with that
+evidence (`TODO.md`).

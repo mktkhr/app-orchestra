@@ -1,9 +1,13 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-16 (`ask_user` about a safe operation no longer
-degrades to an empty form)_
+_Last updated: 2026-09-16 (thinking on under two stages, measured)_
 
 ## Summary
+
+**2026-09-16 - thinking on under two stages, measured:** +1 correct@1
+against thinking off, inside the 7-row near-tie noise band, at 3.8x the
+latency and no `max_tokens` overrun - stays off by default (`DECISIONS.md`,
+2026-09-16, "Thinking on under two stages").
 
 **2026-09-16 - `ask_user` about a safe operation no longer degrades to an
 empty form.** Closes `TODO.md`'s open defect: `askDegrade`

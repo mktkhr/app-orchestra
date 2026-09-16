@@ -37,22 +37,7 @@ _Nothing in progress._
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
-5. **Thinking-on reasoning can still overrun `max_tokens` 1024.** Not a
-   repetition loop - corrected 2026-09-16 (`DECISIONS.md`, "Planner
-   thinking: off by default, on by a 「思考」 switch"): the truncation logs
-   show ordinary, on-track reasoning (e.g. `d05`, 「品物が届いたので登録し
-   たい」, names `createInventoryReceiving` correctly and is still
-   narrating its parameters when the budget ends) that simply runs long.
-   With thinking off by default this no longer happens (0 of 100 in that
-   measurement); with thinking on - now reachable per-question through the
-   「思考」 switch (`cc3d6ea`) - it still can: 9 of 100 with no
-   `repeat_penalty`, 4 of 100 at `repeat_penalty` 1.1. Candidate: a larger
-   `max_tokens` for thinking-on requests only (thinking-off's own answers
-   are short, so raising the shared budget buys nothing there), or a
-   `reasoning_budget`-style split between the reasoning and the answer.
-   Not measured yet.
-
-6. **`<Typography color="text.secondary">` is a silent no-op almost
+5. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
@@ -71,7 +56,7 @@ _Nothing in progress._
    this task's own scope for one commit was the wrong trade. TypeScript
    does not catch it either - the prop's type falls back to `(string & {})`
    for exactly this reason.
-7. **With two-stage planning now the default, the pick's own misses are
+6. **With two-stage planning now the default, the pick's own misses are
    the gap.** Two stages reaches 79 correct@1 against the picker's own 83
    and the shortlist's 93 recall; what stands between them is no longer
    the planner's prompt but the pick itself. Two groups remain open:
@@ -90,6 +75,13 @@ _Nothing in progress._
 
 ## Done
 
+- **Thinking-on reasoning overrunning `max_tokens` 1024 is closed.**
+  Measured under two-stage planning (`DECISIONS.md`, 2026-09-16, "Thinking
+  on under two stages"): with the fill seeing one tool, 0 of 100 rows
+  truncated at 1024 with thinking on, against 9 of 100 measured under the
+  single call's thinking-on pass; +1 correct@1 against thinking off sits
+  inside the 7-row near-tie band, so the switch stays off by default with
+  no overrun risk left open.
 - **`ask_user` about a safe operation no longer degrades to an empty
   form.** Closed the open defect above: `askDegrade`
   (`internal/usecase/orchestrator_ask.go`, `21aea53`) now reads three
