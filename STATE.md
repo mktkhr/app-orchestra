@@ -1,9 +1,39 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-16 (planner thinking defaults to off; a per-question
-「思考」 switch turns it back on)_
+_Last updated: 2026-09-16 (planning defaults to two stages - pick first,
+fill second)_
 
 ## Summary
+
+**2026-09-16 - planning defaults to two stages: pick first, fill second.**
+`ORCHESTRA_PLANNER_STAGES` now defaults to `2` (`1` stays available and
+byte-identical to before this subproject, AC-S-101). A pick model call
+names one operation off the shortlist in the stand-in picker's own format
+(id, `certain`/`ambiguous`); a fill model call then gets that operation's
+tool alone, plus `ask_user` when it has an enum parameter, and produces
+the call, a question, or a form. Measured against the same shortlist
+corpus as the single call (wording `v6-unmatched-filter`, thinking off,
+narrowing on K=20): two stages reaches 79 correct@1 / 80 correct@shown
+(against the single call's 67 / 71 and the stand-in picker's 83), mean
+893ms/p50 989ms (against the single call's 1377ms mean), 0 truncations.
+`make eval` reads every one of its eighteen cases at baseline under the
+new default, after fixing two regressions `make eval` itself caught before
+the default moved: a pick's fill was skipping the model and returning an
+empty form instead of extracting the arguments the question already gave
+(`create`/`create-attendance`); the three fixed lines' first wording sent
+`unanswerable`「今日の天気は？」to `list_capabilities` instead of `none`,
+fixed by naming the built-in instead of paraphrasing it. Two stages also
+closes, as a side effect, a `make eval` regression the thinking-off
+default had introduced unnoticed: the single call with thinking off
+answers `unanswerable` with `list_capabilities` 10/10; two stages answers
+`none` 10/10. What remains open: the pick's own misses - 7 rows it gets
+wrong outright, 6 rows lost against the single call, and one `none` where
+it names no operation at all (`TODO.md` Next; `DECISIONS.md`, 2026-09-16,
+"Planning in two stages: pick first, fill second - now the default").
+
+**Planner defaults now:** wording `v6-unmatched-filter`, thinking off,
+two stages (pick then fill), temperature 0, `max_tokens` 1024 for the
+fill / 200 for the pick, narrowing on with K=20.
 
 **2026-09-16 - planner thinking defaults to off; a per-question 「思考」
 switch turns it on.** The planner had been calling

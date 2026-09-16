@@ -242,15 +242,27 @@ asserts the Go file contains `PICK_SYSTEM_PROMPT`'s text verbatim.
 
 ### Task 4: measure and record (session owner)
 
-- [ ] `make eval-shortlist STAGES=2` (narrowing on, wording
+- [x] `make eval-shortlist STAGES=2` (narrowing on, wording
       `v6-unmatched-filter`, thinking off - the defaults). Copy the jsonl
-      and report to the scratchpad. Never delete `e2e/shortlist/out/`.
-- [ ] `ORCHESTRA_PLANNER_STAGES=2 make eval` from the repo root: `capability`,
+      and report to the scratchpad. Never delete `e2e/shortlist/out/`. 79
+      correct@1 / 80 correct@shown, mean 893ms/p50 989ms - scratchpad
+      `stages2-fixed-report.txt`/`stages2-fixed.jsonl`.
+- [x] `ORCHESTRA_PLANNER_STAGES=2 make eval` from the repo root: `capability`,
       `unanswerable`, `no-enum-value`, `no-enum-value-attendance` must
-      hold; report every case that moved.
-- [ ] From the platform log of the shortlist pass: mean and p50 of `pick.ms`
-      against the total latency; the `ambiguous` rate.
-- [ ] The 22 rows of the spec's section 1, id by id: pick right → fill
-      right / fill lost; pick wrong.
-- [ ] Record in `DECISIONS.md` beside 67 / 71 and 83; move the default in
-      S6 or say why not; `STATE.md`, `TODO.md`. AC-S-107.
+      hold; report every case that moved. All eighteen cases at baseline
+      after two fixes (`5031418`, `555c485`) - scratchpad
+      `eval-stages2-fixed.txt`. Re-run once more with `STAGES` unset
+      (the new default): still every case at baseline, scratchpad
+      `eval-default-stages2.txt`.
+- [x] From the platform log of the shortlist pass: mean and p50 of `pick.ms`
+      against the total latency; the `ambiguous` rate. Pick alone: mean
+      378ms, p50 379ms; 43 of 100 picks flagged `ambiguous` (recorded
+      only, S4).
+- [x] The 22 rows of the spec's section 1, id by id: pick right → fill
+      right / fill lost; pick wrong. 15 recovered, 7 still missed by the
+      pick itself, 6 lost against the single call, 3 more gained beyond
+      the original 22 - see `DECISIONS.md`.
+- [x] Record in `DECISIONS.md` beside 67 / 71 and 83; move the default in
+      S6 or say why not; `STATE.md`, `TODO.md`. AC-S-107. Default moved to
+      `2` (`DECISIONS.md`, 2026-09-16, "Planning in two stages: pick first,
+      fill second - now the default").

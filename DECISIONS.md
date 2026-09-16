@@ -6730,3 +6730,120 @@ edge (thinking's own D53/E80 against A's D47/E70) and is willing to pay
 recorded for `eval-shortlist` runs ("~5.7s mean") were all measured with
 thinking on by default and are superseded by this entry's numbers; nothing
 in this repository measured thinking off before today.
+
+## 2026-09-16 Planning in two stages: pick first, fill second - now the default
+
+`docs/specs/staging.md` (S1-S7), `docs/plans/staging.md`. The wording move
+above closed the enum-value defects but left the single call 16 points
+below the stand-in picker on the same shortlist (67 against 83, section 1
+of the spec): of the 22 rows the picker gets and the single call misses,
+10 are `none` (b06-b10, b13-b15, d01) - every one names an operation that
+exists in two services (expense/sales both have 明細, purchasing/expense
+both have 承認), and the planner, offered all twenty tools at once, answers
+with no tool at all. The picker reads a short Japanese instruction and
+twenty tab-separated `id / service / summary` lines and writes one line
+back; the planner reads an English system prompt, twenty JSON Schema tool
+definitions plus three built-ins, and must choose and fill arguments in
+the same breath. Nothing tried on the single call (five wordings, a larger
+model, thinking, examples in the tools) closed this; the lever not yet
+tried was letting the model choose the way the 83 was measured, and only
+then asking it for arguments.
+
+**The design (commits `c09e470` pick port + adapter, `5468ca6` staged
+branch, `3c70007` config, `b6b3f19` `STAGES=` pass-through, `9cfaadc`
+runner fix).** `Orchestrator.Plan` gains one branch after narrowing: when
+staging is on and no `preferred` was given, it calls a `usecase.Picker`
+with the question and the shortlist. The pick is shown the shortlist in
+exactly the format that measured 83 (`PICK_SYSTEM_PROMPT` and its
+candidate line, asserted byte-identical against
+`e2e/narrowing/pick/client.ts` in both Go and TypeScript), plus three
+fixed lines so the built-ins keep a way in: `list_capabilities`,
+`propose_panel`, `none`. Parsing is the measured rule (first candidate id
+in the response, longest first; `ambiguous` recorded but not acted on,
+S4). A picked operation id goes down the existing `preferred` path with
+that endpoint's tool alone, plus `ask_user` when it has an enum parameter;
+`list_capabilities` and `none` answer without a second model call;
+`propose_panel` falls back to the single call over the whole shortlist,
+being rare enough (one `make eval` case) not to earn its own format. The
+pick never thinks (S5); the fill follows the 「思考」 switch.
+
+**Two defects found and fixed by `make eval` under `ORCHESTRA_PLANNER_STAGES=2`,
+before any default was moved:**
+
+- `5031418` - **a pick's fill always calls the model for its arguments.**
+  Under `preferred` from a chip, skipping the model and going straight to
+  a form is exact, because a chip's `preferred` carries no fresh text -
+  the person already chose and typed nothing new. Under a pick, `preferred`
+  comes from the question itself, and the question is where its arguments
+  are: 「在庫を登録して。名前はテスト品、数量は5、引当済で」 picked
+  `CreateInventoryItem`/`CreateAttendance` correctly but then skipped the
+  model and returned an empty form, losing the name/quantity/status the
+  question already gave. `create` and `create-attendance` now read 10/10
+  form-with-arguments under staging, matching the single call.
+- `555c485` - **the three fixed lines' wording sent `unanswerable` to
+  `list_capabilities`.** The first wording tried (`list_capabilities`:
+  「何ができるか知りたい」 "want to know what can be done"; `none`: a bare
+  "no match") read as a paraphrase of any question with nowhere better to
+  go, including 「今日の天気は？」, and `unanswerable` regressed to 0/10
+  reject under `ORCHESTRA_PLANNER_STAGES=2 make eval`. Reworded to name the
+  built-in itself and give `none` an explicit exclusion:
+  `list_capabilities`: `使える操作の一覧を知りたい`; `propose_panel`:
+  `画面に出したい`; `none`: `どの候補も質問に合わない（業務と無関係な質問）`.
+  Fixed `unanswerable` back to 10/10 reject on the first wording tried
+  after that rename, without moving `capability`.
+
+**A pre-existing regression closed as a side effect.** Independent of
+staging: the single call with thinking off (the default since `9ea5772`)
+answers `unanswerable`「今日の天気は？」with `list_capabilities` 10/10
+(scratchpad `eval-stages1-retry.txt`) - a regression of the thinking-off
+default that went unnoticed because `make eval` was not re-run after that
+commit. Two stages answers it `none` 10/10. This is recorded plainly here
+because the default move that follows fixes it as a side effect, not
+because staging was built to fix it.
+
+**Measured** (shortlist corpus, narrowing on, wording
+`v6-unmatched-filter`, thinking off; scratchpad `stages2-fixed-report.txt`/
+`stages2-fixed.jsonl`, `stages2-platform.log`, `eval-stages2-fixed.txt`,
+`eval-stages1-retry.txt`, `variant-A.jsonl`, `pick-9b-rerank-k20.tsv`):
+
+| path                      | correct@1 | correct@shown | A   | B   | C   | D   | E   | mean ms | p50 ms | max ms | >5s | truncated |
+| ------------------------- | --------- | ------------- | --- | --- | --- | --- | --- | ------- | ------ | ------ | --- | --------- |
+| single call (`variant-A`) | 67        | 71            | 92  | 52  | 68  | 47  | 70  | 1377    | -      | -      | -   | -         |
+| two stages                | 79        | 80            | 88  | 84  | 68  | 73  | 80  | 893     | 989    | 2089   | 0   | 0         |
+| stand-in picker (id only) | 83        | -             | 100 | 100 | 72  | 53  | 70  | -       | -      | -      | -   | -         |
+
+Two stages' pick alone: mean 378 ms, p50 379 ms; 43 of 100 picks flagged
+`ambiguous` (recorded only, S4, not acted on). Kinds under two stages:
+result 70, form 29, ask 0, none 1 (`a19` 研修受講の状況が知りたい - the
+pick itself returns no id). `ORCHESTRA_PLANNER_STAGES=2 make eval`: every
+one of the eighteen cases at baseline after the two fixes above - the
+enum cases still 0/30 and 0/10 reject, `create`/`create-attendance` still
+10/10 form with arguments, `capability` and `unanswerable` still 10/10.
+
+**Row level, against the 22 rows of the gap analysis above.** 15 recovered
+by the pick (`a20`, `b07`, `b08`, `b09`, `b10`, `b13`, `b14`, `b15`, `b19`,
+`b24`, `c08`, `c23`, `d06`, `d08`, `e02`); 7 still missed because the pick
+itself misses them (`a10`, `b04`, `b05`, `b06`, `c09`, `d01`, `e03`). Lost
+against the single call, rows the single call got that two stages does
+not: `a19`, `a21`, `b20`, `c02`, `c15`, `e04`. Gained beyond the original
+22: `d07`, `d09`, `e06`.
+
+**Decision.** `ORCHESTRA_PLANNER_STAGES` now defaults to `2`
+(`services/platform/internal/infra/config/config.go`'s `parsePlannerStages`,
+its test, `docs/specs/staging.md` S6 and section 6's table, `e2e/shortlist/boot.ts`'s
+doc comment). Grounds: +12 correct@1 over the single call (79 against 67),
+faster (mean 893 ms against 1377 ms), every `make eval` case at baseline,
+and the thinking-off `unanswerable` regression closed as a side effect.
+`ORCHESTRA_PLANNER_STAGES=1` stays available and byte-identical to before
+this subproject (AC-S-101) - `pkg/app.stagingOptions` only builds a
+picker when `Stages == 2` _and_ an LLM base URL is configured, so the
+stub-planner fallback `make check` and an unconfigured production both use
+is untouched (found while running `make check` under the new default: four
+e2e suites 500'd because `stagingOptions` had ignored `cfg.LLM.BaseURL`
+and tried to pick against an empty base URL even under the stub).
+
+**What this does not close (staging spec, section 10).** The pick's own
+misses are now the gap, not the planner's prompt: two stages' 79 against
+the picker's 83 and the shortlist's 93 recall. Filed as a new `TODO.md`
+Next item, listing the 7 rows the pick itself misses and the 6 lost
+against the single call by id, plus `a19`'s `none`.

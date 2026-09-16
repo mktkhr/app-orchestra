@@ -84,6 +84,17 @@ _Nothing in progress._
    this task's own scope for one commit was the wrong trade. TypeScript
    does not catch it either - the prop's type falls back to `(string & {})`
    for exactly this reason.
+8. **With two-stage planning now the default, the pick's own misses are
+   the gap.** Two stages reaches 79 correct@1 against the picker's own 83
+   and the shortlist's 93 recall; what stands between them is no longer
+   the planner's prompt but the pick itself. Two groups remain open:
+   (a) 7 rows the pick misses outright - `a10`, `b04`, `b05`, `b06`,
+   `c09`, `d01`, `e03`; (b) 6 rows two stages loses against the single
+   call - `a19`, `a21`, `b20`, `c02`, `c15`, `e04`. `a19` (研修受講の状況
+   が知りたい) is also the one row where the pick names no operation at
+   all and falls through to `none` rather than a genuine "no match".
+   Measured 2026-09-16, `DECISIONS.md` ("Planning in two stages"). Not
+   yet a candidate lever - each row needs reading before one is proposed.
 
 ## Done
 
@@ -137,7 +148,10 @@ _Nothing in progress._
   measured end to end" - AC-H-108). What is not wired: the planner's own prompt and
   tool descriptions, which the measurement found to be the actual
   bottleneck (18 points below the picker on identical input) - see the
-  wording entry below, which closes this.
+  wording entry below, which closes this. Further closed 2026-09-16: the
+  wording move alone left a 16-point gap (67 against the picker's 83);
+  two-stage planning (pick first, fill second) becomes the default and
+  reaches 79 - see `DECISIONS.md`, 2026-09-16 ("Planning in two stages").
 - **Fixed two defects the five-service, 1000-operation shortlisting fixture
   exposed (`docs/specs/shortlisting.md`, measured 2026-09-15).** (1) 7 of
   100 `ask_user` answers 500'd as `endpoint not found in catalogue` because
