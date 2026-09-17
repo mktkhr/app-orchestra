@@ -165,6 +165,19 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
         ? {}
         : { ORCHESTRA_PLANNER_REPEAT_PENALTY: String(options.repeatPenalty) }),
       ...(options.stages === undefined ? {} : { ORCHESTRA_PLANNER_STAGES: String(options.stages) }),
+      // The Jev trial (2026-09-17): ORCHESTRA_PICKER/ORCHESTRA_JEV_API_KEY,
+      // like e2e/eval/services.ts's own pair, are passed through only when
+      // set in the caller's own environment - never a default - so a run
+      // that never mentions either is byte-identical to before this pair
+      // existed. Env vars, not BootOptions fields, the same way `make
+      // eval-shortlist PICKER=jev` reaches this file through the process
+      // environment rather than a run.ts flag (variantSuffix, flags.ts).
+      ...(process.env["ORCHESTRA_PICKER"] === undefined
+        ? {}
+        : { ORCHESTRA_PICKER: process.env["ORCHESTRA_PICKER"] }),
+      ...(process.env["ORCHESTRA_JEV_API_KEY"] === undefined
+        ? {}
+        : { ORCHESTRA_JEV_API_KEY: process.env["ORCHESTRA_JEV_API_KEY"] }),
     }),
     port: platformPort,
   };

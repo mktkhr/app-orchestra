@@ -99,6 +99,18 @@ export async function startEvalPlatform(
       ...(process.env["ORCHESTRA_PLANNER_STAGES"] === undefined
         ? {}
         : { ORCHESTRA_PLANNER_STAGES: process.env["ORCHESTRA_PLANNER_STAGES"] }),
+      // The Jev trial (2026-09-17): ORCHESTRA_PICKER selects the picker
+      // implementation stagingOptions builds under STAGES=2 ("local" the
+      // default, "jev" TypeSafe's hosted API); ORCHESTRA_JEV_API_KEY is
+      // its bearer token. Passed through only when set in the caller's
+      // own environment - never a default - so a run that never mentions
+      // either is byte-identical to before this pair existed.
+      ...(process.env["ORCHESTRA_PICKER"] === undefined
+        ? {}
+        : { ORCHESTRA_PICKER: process.env["ORCHESTRA_PICKER"] }),
+      ...(process.env["ORCHESTRA_JEV_API_KEY"] === undefined
+        ? {}
+        : { ORCHESTRA_JEV_API_KEY: process.env["ORCHESTRA_JEV_API_KEY"] }),
     }),
     port: platformPort,
   };
