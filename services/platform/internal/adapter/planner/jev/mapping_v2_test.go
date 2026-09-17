@@ -74,10 +74,15 @@ func TestPickWithCriteriaV2SendsWhatExamplesAndNotFor(t *testing.T) {
 
 	pickQuestion, ok := questions["pick"].(map[string]any)
 	require.True(t, ok)
-	instructions, ok := pickQuestion["instructions"].(map[string]any)
+
+	// instructions is the plain-string form by default (v5's own
+	// per-variable isolation, docs/measurements/jev-v5.md) - its own
+	// CriteriaV2 addition (defaultInstructionsV2) still names examples/
+	// not_for.
+	instructions, ok := pickQuestion["instructions"].(string)
 	require.True(t, ok)
-	assert.Contains(t, instructions["note"], "examples")
-	assert.Contains(t, instructions["note"], "not_for")
+	assert.Contains(t, instructions, "examples")
+	assert.Contains(t, instructions, "not_for")
 
 	criteria, ok := pickQuestion["criteria"].(map[string]any)
 	require.True(t, ok)

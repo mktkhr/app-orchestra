@@ -253,13 +253,15 @@ type Picker struct {
 	// `what`/`examples`/`not_for` object per option, the Jev trial's
 	// second round). Ignored when Name is not PickerJev.
 	JevCriteria string
-	// JevLegacyInstructions reverts internal/adapter/planner/jev's "pick"
-	// question instructions to the plain string v1/v2 always sent, while
-	// turns still reach "state" unchanged - v5's own run B isolation
-	// switch (docs/measurements/jev-v5.md), mirroring
-	// config.Config.JevLegacyInstructions. Ignored when Name is not
-	// PickerJev.
-	JevLegacyInstructions bool
+	// JevObjectInstructions opts internal/adapter/planner/jev's "pick"
+	// question instructions into the v5 trial's own object form instead
+	// of the plain string v1/v2 always sent (the default) - kept behind
+	// this switch since v5's own per-variable isolation measured the
+	// object form regressing real-attendance-detail
+	// (docs/measurements/jev-v5.md), mirroring
+	// config.Config.JevObjectInstructions. turns still reach "state"
+	// unchanged either way. Ignored when Name is not PickerJev.
+	JevObjectInstructions bool
 }
 
 // JevCriteriaV1 and JevCriteriaV2 are Picker.JevCriteria's two non-empty

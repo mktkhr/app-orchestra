@@ -839,29 +839,30 @@ func TestLoadJevCriteriaReadsV2(t *testing.T) {
 	assert.Equal(t, config.JevCriteriaV2, cfg.JevCriteria)
 }
 
-// TestLoadJevLegacyInstructionsDefaultsToFalse documents that an unset
-// ORCHESTRA_JEV_LEGACY_INSTRUCTIONS resolves to false - the v5 object
-// instructions apply, exactly as for every caller that predates run B's
-// own isolation switch (docs/measurements/jev-v5.md).
-func TestLoadJevLegacyInstructionsDefaultsToFalse(t *testing.T) {
+// TestLoadJevObjectInstructionsDefaultsToFalse documents that an unset
+// ORCHESTRA_JEV_OBJECT_INSTRUCTIONS resolves to false - the plain-string
+// instructions apply by default, since v5's own per-variable isolation
+// measured the object form regressing real-attendance-detail
+// (docs/measurements/jev-v5.md).
+func TestLoadJevObjectInstructionsDefaultsToFalse(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
 
 	cfg, err := config.Load()
 
 	require.NoError(t, err)
-	assert.False(t, cfg.JevLegacyInstructions)
+	assert.False(t, cfg.JevObjectInstructions)
 }
 
-func TestLoadJevLegacyInstructionsReadsAnyNonEmptyValueAsTrue(t *testing.T) {
+func TestLoadJevObjectInstructionsReadsAnyNonEmptyValueAsTrue(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
-	t.Setenv("ORCHESTRA_JEV_LEGACY_INSTRUCTIONS", "1")
+	t.Setenv("ORCHESTRA_JEV_OBJECT_INSTRUCTIONS", "1")
 
 	cfg, err := config.Load()
 
 	require.NoError(t, err)
-	assert.True(t, cfg.JevLegacyInstructions)
+	assert.True(t, cfg.JevObjectInstructions)
 }
 
 func TestLoadRejectsAnUnknownJevCriteria(t *testing.T) {

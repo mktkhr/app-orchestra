@@ -88,8 +88,8 @@ func newPicker(cfg *Config, fanOut bool) (usecase.Picker, error) {
 			opts = append(opts, jev.WithFanOutGate(cfg.Gate.JevGateThreshold))
 		}
 
-		if cfg.Picker.JevLegacyInstructions {
-			opts = append(opts, jev.WithLegacyInstructions())
+		if cfg.Picker.JevObjectInstructions {
+			opts = append(opts, jev.WithObjectInstructions())
 		}
 
 		return jev.New(cfg.Picker.JevBaseURL, cfg.Picker.JevAPIKey, nil, opts...), nil

@@ -152,13 +152,16 @@ export async function startEvalPlatform(
       ...(process.env["ORCHESTRA_GATE"] === undefined
         ? {}
         : { ORCHESTRA_GATE: process.env["ORCHESTRA_GATE"] }),
-      // The v5 Jev trial's own run B (2026-09-17, "isolating turns from
-      // the object instructions"): ORCHESTRA_JEV_LEGACY_INSTRUCTIONS,
-      // same pass-through as ORCHESTRA_PICKER above - unset means the
-      // platform's own default (the v5 object instructions apply).
-      ...(process.env["ORCHESTRA_JEV_LEGACY_INSTRUCTIONS"] === undefined
+      // The v5 Jev trial's own per-variable isolation (2026-09-17,
+      // "isolating turns from the object instructions"):
+      // ORCHESTRA_JEV_OBJECT_INSTRUCTIONS, same pass-through as
+      // ORCHESTRA_PICKER above - unset means the platform's own default
+      // (the plain-string instructions apply; the v5 object form is
+      // opt-in after isolation measured it as a net-negative
+      // alternative, docs/measurements/jev-v5.md).
+      ...(process.env["ORCHESTRA_JEV_OBJECT_INSTRUCTIONS"] === undefined
         ? {}
-        : { ORCHESTRA_JEV_LEGACY_INSTRUCTIONS: process.env["ORCHESTRA_JEV_LEGACY_INSTRUCTIONS"] }),
+        : { ORCHESTRA_JEV_OBJECT_INSTRUCTIONS: process.env["ORCHESTRA_JEV_OBJECT_INSTRUCTIONS"] }),
     }),
     port: platformPort,
   };

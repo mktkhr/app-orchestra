@@ -153,12 +153,14 @@ func TestNewRejectsPickerJevWithoutAnAPIKey(t *testing.T) {
 	assert.ErrorIs(t, err, app.ErrMissingJevAPIKey)
 }
 
-// TestNewWithPickerJevLegacyInstructionsBuildsAndServesAQuestion mirrors
+// TestNewWithPickerJevObjectInstructionsBuildsAndServesAQuestion mirrors
 // TestNewWithPickerJevCriteriaV2BuildsAndServesAQuestion for
-// Picker.JevLegacyInstructions - v5's own run B isolation switch
+// Picker.JevObjectInstructions - the v5 trial's own opt-in switch back
+// into its own object-instructions form, kept after per-variable
+// isolation measured it as the default's net-negative alternative
 // (docs/measurements/jev-v5.md): proving the wiring from Config down to
-// jev.WithLegacyInstructions holds too.
-func TestNewWithPickerJevLegacyInstructionsBuildsAndServesAQuestion(t *testing.T) {
+// jev.WithObjectInstructions still holds.
+func TestNewWithPickerJevObjectInstructionsBuildsAndServesAQuestion(t *testing.T) {
 	fixture := fixtureService(t)
 	chatServer := fixtureChatServer(t)
 	jevServer := fixtureJevServer(t)
@@ -167,7 +169,7 @@ func TestNewWithPickerJevLegacyInstructionsBuildsAndServesAQuestion(t *testing.T
 		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
 		LLM:      app.LLM{BaseURL: chatServer.URL, Model: "test-model", Stages: 2},
 		Picker: app.Picker{
-			Name: app.PickerJev, JevAPIKey: "test-key", JevBaseURL: jevServer.URL, JevLegacyInstructions: true,
+			Name: app.PickerJev, JevAPIKey: "test-key", JevBaseURL: jevServer.URL, JevObjectInstructions: true,
 		},
 		DBPath:        filepath.Join(t.TempDir(), "app.db"),
 		AdminPassword: appTestAdminPassword,

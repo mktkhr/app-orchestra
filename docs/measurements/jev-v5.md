@@ -6,12 +6,18 @@ at `e4c51b2` (docs: record Jev v4 language spike). This round touched
 `internal/adapter/planner/jev/`, `internal/infra/config/`, `pkg/app/`,
 `cmd/api/main.go` and `e2e/eval/services.ts`.
 
-**This record has two passes.** The first pass measured turns-in-state,
-the fan-out gate and the object instructions together in one `make eval`
-run, per the coordinator's own "one make eval measures the corrected
-usage as a whole" instruction. That confounded three independent
-variables into one number, noticed after the fact; a second pass (two
-further `make eval` runs, "run A" and "run B") isolates them. See
+**This record has two measurement passes and one resulting code change.**
+The first pass measured turns-in-state, the fan-out gate and the object
+instructions together in one `make eval` run, per the coordinator's own
+"one make eval measures the corrected usage as a whole" instruction. That
+confounded three independent variables into one number, noticed after the
+fact; a second pass (two further `make eval` runs, "run A" and "run B")
+isolates them. The isolation settled the question cleanly enough that the
+jev picker's own **default was changed** to match what won: turns in
+`state` (always on, no switch), the plain v1/v2 instructions string
+(now the default), and the fan-out gate kept as it was (opt-in only when
+both `Picker.Name` and `Gate.Name` are `jev`) - the v5 object-instructions
+form is now behind `jev.WithObjectInstructions()`, off by default. See
 "Per-variable isolation: run A and run B" for the isolated numbers and
 "What each variable did" for the one-table summary - read that section
 first if short on time.
@@ -113,27 +119,42 @@ with this option, and skip building a standalone `jev.Gate`, exactly when
 (e.g. `GateJev` with the local picker) is unchanged, byte for byte.
 
 **Added for run B's own isolation** (approved mid-task, after the first
-pass above): `jev.WithLegacyInstructions()`, a small `Picker` option that
-sends `legacyInstructionsFor`'s plain string - byte for byte this
-package's own pre-v5 `instructions`/`instructionsV2` constants - as the
-"pick" question's `instructions`, instead of `instructionsFor`'s v5
-object. `state` is unaffected by this option: turns still reach it as an
-object exactly as they do without it. Wired the same way
-`JevCriteria`/`Gate` already are:
-`ORCHESTRA_JEV_LEGACY_INSTRUCTIONS` (`internal/infra/config`, any
-non-empty value means true) → `config.Config.JevLegacyInstructions` →
-`app.Picker.JevLegacyInstructions` → `pkg/app/app_staging.go`'s
-`newPicker` appends `jev.WithLegacyInstructions()` → `e2e/eval/services.ts`'s
-own pass-through block (mirroring its `ORCHESTRA_GATE` one) so `make eval`
-can reach it. Tested: `TestLoadJevLegacyInstructionsDefaultsToFalse`/
-`ReadsAnyNonEmptyValueAsTrue` (config), `TestPickWithLegacyInstructionsSendsThePlainV2StringWithTurnsStillInState`/
-`TestPickWithoutLegacyInstructionsSendsTheV5ObjectByDefault` (jev),
-`TestNewWithPickerJevLegacyInstructionsBuildsAndServesAQuestion` (app
-wiring end to end). The Makefile itself was **not** touched - it is a
-protected harness path; the env var reaches `node eval/run.ts` through
-ordinary shell/Make environment inheritance (`VAR=1 make eval` exports
-`VAR` to every recipe's own child process) without a new `$(if $(...))`
-pass-through line, the same way any other unlisted env var would.
+pass above): a temporary switch that sent a plain string as the "pick"
+question's own `instructions`, instead of `instructionsFor`'s v5 object -
+`state` unaffected either way, turns reaching it as an object regardless.
+At the time run B was measured this switch was named
+`jev.WithLegacyInstructions()`/`ORCHESTRA_JEV_LEGACY_INSTRUCTIONS`
+("legacy" meaning "the pre-v5 behavior, opted back into"). Wired the same
+way `JevCriteria`/`Gate` already are: an env var
+(`internal/infra/config`, any non-empty value means true) →
+`config.Config` → `app.Picker` → `pkg/app/app_staging.go`'s `newPicker`
+→ `e2e/eval/services.ts`'s own pass-through block (mirroring its
+`ORCHESTRA_GATE` one) so `make eval` can reach it. The Makefile itself was
+**not** touched - it is a protected harness path; the env var reaches
+`node eval/run.ts` through ordinary shell/Make environment inheritance
+(`VAR=1 make eval` exports `VAR` to every recipe's own child process)
+without a new `$(if $(...))` pass-through line, the same way any other
+unlisted env var would.
+
+**Renamed and flipped after the isolation confirmed the result**
+(coordinator-approved, same round): since run B's plain string measured
+better than the object form with no confirmed offsetting gain anywhere,
+it is now the picker's own **default** - the switch and its wiring were
+renamed and inverted rather than left as a "legacy" opt-out. The object
+form is what is now behind an opt-in switch:
+`jev.WithObjectInstructions()` / `ORCHESTRA_JEV_OBJECT_INSTRUCTIONS` /
+`config.Config.JevObjectInstructions` / `app.Picker.JevObjectInstructions`,
+with a doc comment on `wireInstructionsObject` and `instructionsFocus`
+(`internal/adapter/planner/jev/mapping.go`) explaining why it lost.
+Tested: `TestLoadJevObjectInstructionsDefaultsToFalse`/
+`ReadsAnyNonEmptyValueAsTrue` (config),
+`TestPickByDefaultSendsThePlainV2StringWithTurnsStillInState`/
+`TestPickWithObjectInstructionsSendsTheV5ObjectByDefault`/
+`TestPickWithObjectInstructionsAndNoTurnsCarriesNoContextField` (jev),
+`TestNewWithPickerJevObjectInstructionsBuildsAndServesAQuestion` (app
+wiring end to end) - `mapping_v2_test.go` and `picker_test.go`'s own
+pre-existing tests were updated for the new default's plain-string
+instructions rather than left asserting the old default.
 
 ## One real request with turns, and its response
 
@@ -253,6 +274,12 @@ PICKER=jev JEV_CRITERIA=v2 GATE=none ORCHESTRA_JEV_LEGACY_INSTRUCTIONS=1 \
   ORCHESTRA_JEV_API_KEY=<key from its local file> make eval
 ```
 
+(`ORCHESTRA_JEV_LEGACY_INSTRUCTIONS` is the env var's own name as run at
+the time - it was renamed to `ORCHESTRA_JEV_OBJECT_INSTRUCTIONS`, with
+its meaning inverted, once the isolation above settled which side should
+be the default; see "Renamed and flipped after the isolation confirmed
+the result" in "Design".)
+
 Neither of these two runs captured the platform log (the isolation itself
 was the point, not token accounting this time); their own token totals in
 "Spend" below are estimated, not measured, and flagged as such.
@@ -333,6 +360,19 @@ fan-out gate from the request entirely, so the pick alone answers every
 case - no `impossible` question is ever sent when `GATE=none`, since
 `WithFanOutGate` is only ever configured when `Gate.Name` is also `jev`).
 
+**The three cases that ever moved, across all three runs:**
+
+| case                      | first pass (`GATE=jev`, both instructions+gate on)       | run A (`GATE=none`, object instructions, no gate) | run B (`GATE=none`, plain-string instructions, no gate)           |
+| ------------------------- | -------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------- |
+| `follow-up-other-service` | **0/10** accept (10x `none`, all `gate_impossible=true`) | **10/10** accept                                  | **10/10** accept                                                  |
+| `follow-up-stays`         | 10/10 accept (baseline)                                  | 10/10 accept (baseline)                           | 10/10 accept (baseline)                                           |
+| `real-attendance-detail`  | **0/10** accept (10/10 reject)                           | **0/10** accept (10/10 reject)                    | **3/10** accept (7/10 reject) - inside the historical 2–6/10 band |
+
+Every other case held at v2's own 32/34 baseline in all three runs -
+these three are the whole story. Reports:
+`eval-run1-report.txt`/`eval-run2-report.txt` (first pass, identical to
+each other), `run-a-gate-none-report.txt` (A), `run-b-legacy-instructions-report.txt` (B).
+
 ### Run A — `PICKER=jev JEV_CRITERIA=v2 GATE=none` (turns + object instructions, no gate)
 
 Isolates turns-in-state and the object instructions together, apart from
@@ -369,15 +409,21 @@ Report: `run-a-gate-none-report.txt`.
 
 `real-attendance-detail` was still at 0/10 after run A, so run B isolates
 the object instructions from turns, per the brief: a new, small,
-committed option, `jev.WithLegacyInstructions()` (wired through
-`ORCHESTRA_JEV_LEGACY_INSTRUCTIONS`, `internal/infra/config` →
+committed option (wired through an env var, `internal/infra/config` →
 `pkg/app` → `e2e/eval/services.ts`'s own pass-through, the same shape
-`ORCHESTRA_JEV_CRITERIA`/`ORCHESTRA_GATE` already use). It reverts the
-"pick" question's own `instructions` to `legacyInstructionsFor`'s plain
-string - byte for byte this package's pre-v5 `instructions`/
-`instructionsV2` constants - while `state` still carries turns as an
-object exactly as it does without the option; only the instructions
-value changes. Command:
+`ORCHESTRA_JEV_CRITERIA`/`ORCHESTRA_GATE` already use). At the time this
+run was measured, opting into the plain string was the non-default
+choice, named `jev.WithLegacyInstructions()`/
+`ORCHESTRA_JEV_LEGACY_INSTRUCTIONS`; it reverted the "pick" question's
+own `instructions` to the plain string - byte for byte this package's
+pre-v5 `instructions`/`instructionsV2` constants - while `state` still
+carried turns as an object exactly as it did without the option; only the
+instructions value changed. (This switch's own name and default were
+later inverted once this run's own result settled which side should be
+the default - see "Renamed and flipped" in "Design" - so the plain string
+this run measured is now `jev.New`'s default behavior with no option
+needed, and what was "the default" here is now behind
+`jev.WithObjectInstructions()`.) Command, as actually run:
 
 ```
 PICKER=jev JEV_CRITERIA=v2 GATE=none ORCHESTRA_JEV_LEGACY_INSTRUCTIONS=1 \
@@ -397,10 +443,9 @@ PICKER=jev JEV_CRITERIA=v2 GATE=none ORCHESTRA_JEV_LEGACY_INSTRUCTIONS=1 \
   3/10. The `focus` field named in the first pass's own root-cause
   reasoning ("動詞と対象resourceの両方を、選ぶ候補と一致させる") remains
   the most likely single cause within the object instructions bundle, but
-  this round's own `WithLegacyInstructions` reverts the whole object
-  (`focus`+`builtins`+`note` folded back to one string), not `focus`
-  alone - a `focus`-only ablation is the natural next isolation, not run
-  here.
+  this switch reverts the whole object (`focus`+`builtins`+`note` folded
+  back to one string), not `focus` alone - a `focus`-only ablation is the
+  natural next isolation, not run here.
 - `follow-up-other-service`: **10/10 accept** - unaffected by the
   instructions style, exactly as expected (this case's own recovery
   depends on turns and the absence of the gate, neither of which run B
@@ -487,32 +532,50 @@ request. Measured against v2's own eval-suite pick-only figures
 ## What the API offers that v1–v4 did not use
 
 1. **Fan-out, not extra calls** — implemented (`WithFanOutGate`,
-   `addImpossibleQuestion`). Confirmed cheaper than two sequential calls
-   in principle, though this round's own measured 311.5ms mean is ~42%
-   above v2's pick-only 219.7ms, not latency-free as the docs' own
-   phrasing ("typically doesn't add any latency") might suggest for a
-   two-question request.
+   `addImpossibleQuestion`), and kept as an opt-in (unchanged: only wired
+   when both `Picker.Name` and `Gate.Name` are `jev`). **Confirmed cheaper
+   than two sequential calls, but not free, and confirmed to cost a real
+   case**: this round's own measured 311.5ms mean is ~42% above v2's
+   pick-only 219.7ms, not latency-free as the docs' own phrasing
+   ("typically doesn't add any latency") might suggest for a two-question
+   request; and per-variable isolation (run A, `GATE=none`) confirmed the
+   fan-out gate's own short-circuit - not the pick, not turns - is what
+   cost `follow-up-other-service` its full first-pass regression
+   (10/10 → 0/10), by answering `impossible` on a question the pick would
+   have answered correctly. The gate's own `impossibleInstructions` never
+   learned about `state.turns` the way the pick's own `instructionsContext`
+   did - see point 4.
 2. **`noul` takes `criteria`** — implemented (`impossibleCriteria`,
    true/false). Measured to correctly separate `capability` (noul ~0.08)
    from `unanswerable` (noul ~0.59, still safely under threshold) — v3's
    own instructions-only gate was never measured against `capability`
    with this precision.
 3. **`instructions` as an object** — implemented (`wireInstructionsObject`,
-   `focus`/`builtins`/`note`/`context`). Its own effect could not be
-   isolated from the other three changes in this round's single combined
-   `make eval` (the coordinator's own instruction: "one `make eval`
-   measures the corrected usage as a whole") — `real-attendance-detail`'s
-   new, deeper regression (0/10 vs. v1–v4's 2–6/10) is the one piece of
-   evidence suggesting `focus` may be making the model more willing to
-   answer `none` on a single-candidate shortlist, but this is not
-   confirmed against a `focus`-only variant.
+   `focus`/`builtins`/`note`/`context`), **now confirmed net negative and
+   moved behind `WithObjectInstructions`, off by default**. Run A vs. run
+   B isolated it cleanly from turns and the gate: the object form alone
+   pushed `real-attendance-detail` from its historical 2–6/10 near-tie
+   band down to 0/10 (run A, object instructions, no gate); reverting to
+   the plain string (run B, same turns, same no-gate) recovered it to
+   3/10 - inside the historical band, though not to the 10/10 baseline no
+   round has reached for this case. The `focus` field's own stated aim
+   (steering `list*`/`get*` choices apart) was not itself confirmed to
+   work; `WithObjectInstructions` reverts the whole object bundle, not
+   `focus` alone, so a `focus`-only ablation remains open for a future
+   round.
 4. **Backtick state paths** (`` `state.turns` `` in `instructionsContext`)
    — implemented, and demonstrably read by the model: the one real
    request/response in this record shows the pick correctly resolving a
    turn's continuation (`listInventoryItems`, 0.85 probability) using
-   exactly this field. Its counterpart was **not** added to the gate's own
-   `impossibleInstructions` — the gap this round's own root-cause finding
-   for `follow-up-other-service` turns on.
+   exactly this field, and this is the one field of the object-instructions
+   bundle isolation did not measure as harmful (turns themselves are
+   confirmed to help - point-1's own gate confound aside). Its counterpart
+   was **not** added to the gate's own `impossibleInstructions` - the gap
+   point 1's own root-cause finding for `follow-up-other-service` turns
+   on. Since the rest of the object-instructions bundle lost, this field
+   now ships disabled by default too (bundled inside
+   `WithObjectInstructions`) - a narrower option carrying only this field
+   is the natural next step, not built this round.
 5. **Option keys as short ids** — unchanged from v2 (already the
    recommended shape); no new finding this round.
 
@@ -575,11 +638,11 @@ run was stopped early for budget reasons. Ledger: `typesafe-spend.json`
    and the same single measurement pass, per that instruction.
 2. `real-attendance-detail`'s regression was full under the object
    instructions (0/10, not the historical 2–6/10) - worse than any prior
-   round measured for this case. Run B (`WithLegacyInstructions`) isolates
-   this to the object instructions specifically (not turns, not the gate):
-   reverting to the plain string recovers it to 3/10, back inside the
-   historical near-tie range, though not fully to baseline 10/10 (which no
-   round has reached for this case).
+   round measured for this case. Run B isolates this to the object
+   instructions specifically (not turns, not the gate): reverting to the
+   plain string recovers it to 3/10, back inside the historical near-tie
+   range, though not fully to baseline 10/10 (which no round has reached
+   for this case). The plain string is now the picker's own default.
 3. The gate never learning about `state.turns` (root cause of the first
    pass's `follow-up-other-service` 0/10) meant the turns hypothesis was
    not properly tested in the first pass - resolved by run A

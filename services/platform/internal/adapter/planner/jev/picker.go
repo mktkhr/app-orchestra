@@ -78,6 +78,18 @@ func WithCriteria(criteria string) Option {
 // Picker.Name and Gate.Name are "jev" - GateJev paired with the local
 // picker still goes through jev.Gate, the standalone port, since there is
 // no single request to fold it into there.
+//
+// Measured cost (docs/measurements/jev-v5.md, "per-variable isolation"):
+// a fan-out call (pick + impossible, one request) averaged ~311ms against
+// v2's own pick-only ~220ms - about +40%, not latency-free as
+// docs.typesafe.ai/patterns/fan-out's own "typically doesn't add any
+// latency" phrasing might suggest for a two-question request, though
+// still cheaper than two sequential calls would be. It also
+// short-circuits ahead of the pick on its own Impossible verdict: the
+// same isolation found this cost a genuinely answerable case
+// (follow-up-other-service, 10/10 -> 0/10) when impossibleInstructions
+// misjudged a turns-dependent follow-up, since it - unlike the "pick"
+// question's own instructionsContext - was never told about state.turns.
 func WithFanOutGate(threshold float64) Option {
 	return func(p *Picker) {
 		p.fanOutGate = true
@@ -88,16 +100,23 @@ func WithFanOutGate(threshold float64) Option {
 	}
 }
 
-// WithLegacyInstructions makes Pick send legacyInstructionsFor's plain
-// string as the "pick" question's own instructions, instead of
-// instructionsFor's v5 object - a temporary isolation switch
-// (docs/measurements/jev-v5.md, run B): turns still reach "state"
-// unchanged, so a run built with this option tells the v5 round's object
-// instructions apart from its turns-in-state change as the cause of
-// real-attendance-detail's new regression. ORCHESTRA_JEV_LEGACY_INSTRUCTIONS
+// WithObjectInstructions makes Pick send instructionsFor's v5 object as
+// the "pick" question's own instructions, instead of
+// defaultInstructionsFor's plain string (the default since v5's own
+// per-variable isolation, docs/measurements/jev-v5.md: run A/B measured
+// the object form - specifically its "focus" field, or the restructuring
+// more broadly - regressing real-attendance-detail, with no confirmed
+// offsetting gain elsewhere in the suite; reverting to the plain string
+// alone, turns unchanged, recovered most but not all of it). Kept as an
+// opt-in switch rather than deleted, for anyone re-testing a narrower
+// version of the object form (instructionsContext's own state.turns
+// pointer is the one field isolation did not measure separately from the
+// rest, and is worth trying on its own). turns still reach "state"
+// exactly the same either way - only the "pick" question's own
+// instructions value changes. ORCHESTRA_JEV_OBJECT_INSTRUCTIONS
 // (internal/infra/config) is this option's own env-var switch.
-func WithLegacyInstructions() Option {
-	return func(p *Picker) { p.legacyInstructions = true }
+func WithObjectInstructions() Option {
+	return func(p *Picker) { p.objectInstructions = true }
 }
 
 // Picker implements usecase.Picker over TypeSafe's Jev API: the shortlist
@@ -117,8 +136,8 @@ type Picker struct {
 	// Impossible at or above gateThreshold.
 	fanOutGate    bool
 	gateThreshold float64
-	// legacyInstructions is WithLegacyInstructions' own field.
-	legacyInstructions bool
+	// objectInstructions is WithObjectInstructions' own field.
+	objectInstructions bool
 }
 
 var _ usecase.Picker = (*Picker)(nil)
@@ -158,7 +177,7 @@ func (p *Picker) Pick(
 
 	start := time.Now()
 
-	req := buildRequest(query, answers, turns, shortlist, p.criteria, p.legacyInstructions)
+	req := buildRequest(query, answers, turns, shortlist, p.criteria, p.objectInstructions)
 	if p.fanOutGate {
 		addImpossibleQuestion(&req)
 	}

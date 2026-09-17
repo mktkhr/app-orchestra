@@ -58,6 +58,9 @@ func captureRequestBody(t *testing.T, response string) (*httptest.Server, *captu
 // this trial's own build note requires: with turns nil or empty, "state"
 // is still stateFor's plain string - decoded here as a Go string, not an
 // object - byte for byte what every request this adapter sent before v5.
+// The default picker's own instructions is a plain string too (v5's own
+// per-variable isolation, docs/measurements/jev-v5.md) - a separate
+// switch (WithObjectInstructions) from the state one this test guards.
 func TestPickWithNoTurnsSendsStatePlainByteForByte(t *testing.T) {
 	server, gotBody := captureRequestBody(t, responseWith(t, "listInventoryItems", 0.9))
 
@@ -72,6 +75,28 @@ func TestPickWithNoTurnsSendsStatePlainByteForByte(t *testing.T) {
 	require.True(t, ok)
 	assert.Len(t, questions, 1, "no fan-out gate: only the pick question is sent")
 
+	pickQuestion, ok := questions["pick"].(map[string]any)
+	require.True(t, ok)
+	_, isString := pickQuestion["instructions"].(string)
+	assert.True(t, isString, "instructions must be a plain string by default")
+}
+
+// TestPickWithObjectInstructionsAndNoTurnsCarriesNoContextField is the
+// object-instructions form's own no-turns guard (the counterpart to the
+// default-instructions test above): under WithObjectInstructions, with no
+// turns, the "pick" question's own instructions object carries no
+// `context` field - it is only added when turns is non-empty
+// (instructionsFor).
+func TestPickWithObjectInstructionsAndNoTurnsCarriesNoContextField(t *testing.T) {
+	server, gotBody := captureRequestBody(t, responseWith(t, "listInventoryItems", 0.9))
+
+	picker := jev.New(server.URL, "test-key", nil, jev.WithObjectInstructions())
+
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	require.NoError(t, err)
+
+	questions, ok := gotBody.body["questions"].(map[string]any)
+	require.True(t, ok)
 	pickQuestion, ok := questions["pick"].(map[string]any)
 	require.True(t, ok)
 	instructions, ok := pickQuestion["instructions"].(map[string]any)
@@ -107,7 +132,12 @@ func turnsShortlist() domain.Catalog {
 func TestPickWithTurnsSendsStateAsAnObjectWithDisplayNames(t *testing.T) {
 	server, gotBody := captureRequestBody(t, responseWith(t, "ListAttendanceRecords", 0.9))
 
-	picker := jev.New(server.URL, "test-key", nil)
+	// WithObjectInstructions: state carrying turns (asserted below) is
+	// independent of the instructions style, but this test also checks
+	// the object form's own "context" field, which only exists under
+	// this option (the default since v5's own isolation is a plain
+	// string, docs/measurements/jev-v5.md).
+	picker := jev.New(server.URL, "test-key", nil, jev.WithObjectInstructions())
 
 	turns := []usecase.Turn{
 		{
@@ -332,16 +362,18 @@ func TestPickWithFanOutGateLogsTheGateVerdictAtInfo(t *testing.T) {
 	assert.Equal(t, true, line["gate_fanout"])
 }
 
-// TestPickWithLegacyInstructionsSendsThePlainV2StringWithTurnsStillInState
-// is run B's own isolation switch (docs/measurements/jev-v5.md,
-// WithLegacyInstructions): turns still reach "state" as an object, but
-// the "pick" question's own instructions reverts to the plain string
-// v1/v2 always sent - byte for byte legacyInstructionsV2, no `focus`, no
-// `context`, no object at all.
-func TestPickWithLegacyInstructionsSendsThePlainV2StringWithTurnsStillInState(t *testing.T) {
+// TestPickByDefaultSendsThePlainV2StringWithTurnsStillInState is v5's own
+// per-variable isolation result (docs/measurements/jev-v5.md): a Picker
+// built with no WithObjectInstructions option (the default, since
+// isolation measured the object form regressing real-attendance-detail)
+// still sends turns inside "state" as an object - the two are
+// independent - but the "pick" question's own instructions is the plain
+// string v1/v2 always sent, byte for byte defaultInstructionsV2, no
+// `focus`, no `context`, no object at all.
+func TestPickByDefaultSendsThePlainV2StringWithTurnsStillInState(t *testing.T) {
 	server, gotBody := captureRequestBody(t, responseWith(t, "ListAttendanceRecords", 0.9))
 
-	picker := jev.New(server.URL, "test-key", nil, jev.WithCriteria(jev.CriteriaV2), jev.WithLegacyInstructions())
+	picker := jev.New(server.URL, "test-key", nil, jev.WithCriteria(jev.CriteriaV2))
 
 	turns := []usecase.Turn{
 		{Question: "勤怠を見せて", Kind: usecase.ResultKindResult, Service: "attendance", OperationID: "ListAttendanceRecords"},
@@ -351,7 +383,7 @@ func TestPickWithLegacyInstructionsSendsThePlainV2StringWithTurnsStillInState(t 
 	require.NoError(t, err)
 
 	state, ok := gotBody.body["state"].(map[string]any)
-	require.True(t, ok, "turns still reach state as an object under WithLegacyInstructions")
+	require.True(t, ok, "turns still reach state as an object by default")
 
 	gotTurns, ok := state["turns"].([]any)
 	require.True(t, ok)
@@ -363,21 +395,21 @@ func TestPickWithLegacyInstructionsSendsThePlainV2StringWithTurnsStillInState(t 
 	require.True(t, ok)
 
 	instructions, ok := pickQuestion["instructions"].(string)
-	require.True(t, ok, "instructions must be a plain string under WithLegacyInstructions, not an object")
+	require.True(t, ok, "instructions must be a plain string by default, not an object")
 	assert.Contains(t, instructions, "examples")
 	assert.Contains(t, instructions, "not_for")
-	assert.NotContains(t, instructions, "動詞", "the v5 focus field's own wording must not appear")
+	assert.NotContains(t, instructions, "動詞", "the v5 object form's own focus wording must not appear by default")
 }
 
-// TestPickWithoutLegacyInstructionsSendsTheV5ObjectByDefault guards the
-// default: a Picker built with no WithLegacyInstructions option sends the
-// v5 object form exactly as every other test in this file already checks
-// - this test exists only to name the contrast explicitly, next to the
-// option that changes it.
-func TestPickWithoutLegacyInstructionsSendsTheV5ObjectByDefault(t *testing.T) {
+// TestPickWithObjectInstructionsSendsTheV5ObjectByDefault guards the
+// opt-in: a Picker built with WithObjectInstructions sends the v5 object
+// form, the alternative isolation measured as a net-negative default
+// (docs/measurements/jev-v5.md) but kept available for a narrower
+// follow-up.
+func TestPickWithObjectInstructionsSendsTheV5ObjectByDefault(t *testing.T) {
 	server, gotBody := captureRequestBody(t, responseWith(t, "listInventoryItems", 0.9))
 
-	picker := jev.New(server.URL, "test-key", nil)
+	picker := jev.New(server.URL, "test-key", nil, jev.WithObjectInstructions())
 
 	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
@@ -388,5 +420,5 @@ func TestPickWithoutLegacyInstructionsSendsTheV5ObjectByDefault(t *testing.T) {
 	require.True(t, ok)
 
 	_, isObject := pickQuestion["instructions"].(map[string]any)
-	assert.True(t, isObject, "instructions must be an object by default")
+	assert.True(t, isObject, "instructions must be an object under WithObjectInstructions")
 }

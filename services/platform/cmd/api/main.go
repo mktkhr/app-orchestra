@@ -50,7 +50,7 @@ func main() {
 			JevAPIKey:             cfg.JevAPIKey,
 			JevBaseURL:            cfg.JevBaseURL,
 			JevCriteria:           cfg.JevCriteria,
-			JevLegacyInstructions: cfg.JevLegacyInstructions,
+			JevObjectInstructions: cfg.JevObjectInstructions,
 		},
 		Gate: app.Gate{
 			Name:             cfg.Gate,

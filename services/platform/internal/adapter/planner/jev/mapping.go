@@ -8,11 +8,48 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
-// instructionsQuestion is the "pick" question's own framing - the same
-// opening sentence this package's instructions carried before the v5
-// trial (docs/measurements/jev-picker-v5.md), now one field of
-// instructionsFor's object rather than the head of one concatenated
-// paragraph.
+// defaultInstructions and defaultInstructionsV2 are the "pick" question's
+// own default instructions: a plain string, byte-identical to this
+// package's own pre-v5 "instructions"/"instructionsV2" constants
+// (docs/measurements/jev-picker-v2.md). This is the default again as of
+// v5's own isolation (docs/measurements/jev-v5.md, "per-variable
+// isolation"): the v5 trial's own object-shaped alternative
+// (wireInstructionsObject, below) measured worse on real-attendance-detail
+// (10/10 baseline -> 0/10 under the object form; reverting to this plain
+// string alone, turns unchanged, measured 3/10 - back inside the
+// historical 2-6/10 near-tie band) and its own "focus" field's stated aim
+// (steering list*/get* choices apart, docs/measurements/jev-picker-v2.md's
+// own new failure mode) was not confirmed to work either. See
+// wireInstructionsObject's own doc comment for why the object form is
+// kept, behind WithObjectInstructions, rather than deleted outright.
+const defaultInstructions = "社内APIの振り分け役。質問に対して、候補の中から呼ぶべき操作を1つ選ぶ。" +
+	"list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、" +
+	"noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。"
+
+// defaultInstructionsV2 is defaultInstructions plus CriteriaV2's own
+// addition, unchanged since v2 (docs/measurements/jev-picker-v2.md,
+// section 0): what a criterion's examples and not_for fields mean, since
+// Jev is never told a field's own name carries meaning beyond its value
+// (docs.typesafe.ai/primitives/choice).
+const defaultInstructionsV2 = defaultInstructions +
+	"候補には examples（その操作に対して人がよく尋ねる質問）と" +
+	"not_for（混同しやすい別の操作）がある。"
+
+// defaultInstructionsFor returns defaultInstructions or
+// defaultInstructionsV2 depending on criteria - buildRequest's own
+// instructions value whenever WithObjectInstructions is not given (the
+// default, since v5's own isolation, docs/measurements/jev-v5.md).
+func defaultInstructionsFor(criteria string) string {
+	if criteria == CriteriaV2 {
+		return defaultInstructionsV2
+	}
+
+	return defaultInstructions
+}
+
+// instructionsQuestion is the object-instructions form's own opening
+// sentence - one field of instructionsFor's object rather than the head
+// of one concatenated paragraph.
 const instructionsQuestion = "社内APIの振り分け役。候補の中から呼ぶべき操作を1つ選ぶ。"
 
 // instructionsFocus is the v5 trial's own addition
@@ -21,43 +58,60 @@ const instructionsQuestion = "社内APIの振り分け役。候補の中から�
 // get* (singular-record) operation where a list*/search*/summarize*/
 // aggregate* one was right, or the reverse - that notForV2 was never
 // built to catch, since it is not a cross-service collision at all. A
-// second instructions field named for exactly this is the lever
+// second instructions field named for exactly this was the lever
 // docs.typesafe.ai/primitives/choice's free-form instructions object
-// invites for it.
+// invited for it. **Measured net negative** (docs/measurements/jev-v5.md,
+// "per-variable isolation"): this field's own presence, not turns,
+// pushed real-attendance-detail from its historical 2-6/10 near-tie band
+// down to 0/10, and its own stated aim (steering list*/get* choices
+// apart) was never itself confirmed - kept only behind
+// WithObjectInstructions for anyone re-testing a narrower version of it.
 const instructionsFocus = "質問が求めている操作そのものに注目すること。動詞（一覧/詳細/作成/更新/削除）と" +
 	"対象resourceの両方を、選ぶ候補と一致させる。"
 
 // instructionsBuiltins spells out what each of the three built-ins is
-// for - byte for byte the sentence this package's pre-v5 instructions
-// constant carried after its own framing sentence, moved into its own
-// object field.
+// for - byte for byte the sentence defaultInstructions carries after its
+// own framing sentence, moved into its own object field for the
+// object-instructions form.
 const instructionsBuiltins = "list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、" +
 	"noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。"
 
-// instructionsNoteV2 is CriteriaV2's own addition, unchanged since v2
-// (docs/measurements/jev-picker-v2.md, section 0): what a criterion's
-// examples and not_for fields mean, since Jev is never told a field's own
-// name carries meaning beyond its value
-// (docs.typesafe.ai/primitives/choice).
+// instructionsNoteV2 is the object-instructions form's own counterpart to
+// defaultInstructionsV2's own CriteriaV2 addition - unchanged wording,
+// moved into its own object field.
 const instructionsNoteV2 = "候補には examples（その操作に対して人がよく尋ねる質問）と" +
 	"not_for（混同しやすい別の操作）がある。"
 
-// instructionsContext is the v5 trial's own hypothesis
-// (docs/measurements/jev-picker-v5.md), stated to the model rather than
-// left implicit - point 4, "backtick state paths"
+// instructionsContext is the v5 trial's own turns hypothesis, stated to
+// the model rather than left implicit - point 4 of "what the API offers
+// that v1-v4 did not use", "backtick state paths"
 // (docs.typesafe.ai/primitives/choice documents instructions referencing
-// structured state paths such as `state.turns[0].question`). Added only
-// when turns is non-empty (instructionsFor), so a request with no turns
-// never gains a field pointing at an array that would be empty.
+// structured state paths such as `state.turns[0].question`). This field
+// is the one part of the object-instructions form that isolation
+// confirmed helps (docs/measurements/jev-v5.md): turns themselves are on
+// by default regardless of WithObjectInstructions (buildRequest always
+// sends state.turns when turns is non-empty); this field only makes the
+// pick's own instructions point at it explicitly, which is why it stays
+// bundled with the rest of the (otherwise net-negative)
+// WithObjectInstructions option rather than being split out on its own -
+// not attempted this round. Added only when turns is non-empty
+// (instructionsFor), so a request with no turns never gains a field
+// pointing at an array that would be empty.
 const instructionsContext = "直前の会話は `state.turns` にある。そこで扱った操作の続きなら、" +
 	"その操作か同じ資源の別操作を選ぶ。"
 
-// wireInstructionsObject is the "pick" question's own instructions value: an
-// object, not this package's pre-v5 plain string - field names are
-// free-form and read by the model as data
+// wireInstructionsObject is the "pick" question's own instructions value
+// under WithObjectInstructions: an object, not defaultInstructions' plain
+// string - field names are free-form and read by the model as data
 // (docs.typesafe.ai/primitives/choice: "The field names ... are not part
 // of the API, and none are reserved. You choose them"), chosen here for
-// what each says.
+// what each says. **Not the default** as of v5's own isolation
+// (docs/measurements/jev-v5.md): measured to regress
+// real-attendance-detail (see instructionsFocus's own doc comment) with
+// no confirmed offsetting gain elsewhere in the suite. Kept behind
+// WithObjectInstructions rather than deleted, since instructionsContext
+// (this object's one field isolation did not measure separately from the
+// rest) is worth a narrower follow-up.
 type wireInstructionsObject struct {
 	Question string `json:"question"`
 	Focus    string `json:"focus"`
@@ -66,36 +120,10 @@ type wireInstructionsObject struct {
 	Context  string `json:"context,omitempty"`
 }
 
-// legacyInstructions and legacyInstructionsV2 are byte-identical to this
-// package's own pre-v5 "instructions"/"instructionsV2" constants
-// (docs/measurements/jev-picker-v2.md) - kept only for
-// WithLegacyInstructions, run B of the v5 trial's own isolation
-// (docs/measurements/jev-v5.md): turns still reach "state" unchanged, but
-// "pick"'s own instructions revert to the plain string v1/v2 always sent,
-// to tell the v5 round's object instructions apart from its turns-in-state
-// change as the cause of real-attendance-detail's new regression.
-const legacyInstructions = "社内APIの振り分け役。質問に対して、候補の中から呼ぶべき操作を1つ選ぶ。" +
-	"list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、" +
-	"noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。"
-
-const legacyInstructionsV2 = legacyInstructions +
-	"候補には examples（その操作に対して人がよく尋ねる質問）と" +
-	"not_for（混同しやすい別の操作）がある。"
-
-// legacyInstructionsFor returns legacyInstructions or legacyInstructionsV2
-// depending on criteria - WithLegacyInstructions' own counterpart to
-// instructionsFor.
-func legacyInstructionsFor(criteria string) string {
-	if criteria == CriteriaV2 {
-		return legacyInstructionsV2
-	}
-
-	return legacyInstructions
-}
-
-// instructionsFor builds the "pick" question's instructions object:
-// instructionsNoteV2 only under CriteriaV2, instructionsContext only when
-// hasTurns (the request carries a non-empty turns list).
+// instructionsFor builds the "pick" question's instructions object, sent
+// only under WithObjectInstructions: instructionsNoteV2 only under
+// CriteriaV2, instructionsContext only when hasTurns (the request carries
+// a non-empty turns list).
 func instructionsFor(criteria string, hasTurns bool) wireInstructionsObject {
 	wi := wireInstructionsObject{Question: instructionsQuestion, Focus: instructionsFocus, Builtins: instructionsBuiltins}
 
@@ -412,15 +440,15 @@ func stateValue(query string, answers []usecase.Answer, turns []usecase.Turn, sh
 // answers, turns and shortlist. criteria selects CriteriaV1 (criteriaFor)
 // or CriteriaV2 (criteriaForV2); anything other than CriteriaV2 -
 // including "", Picker.criteria's zero value - is CriteriaV1, matching
-// WithCriteria's own fallback. instructionsFor folds criteria and
-// len(turns)>0 into the "pick" question's own instructions object, unless
-// legacyInstructions is true (WithLegacyInstructions), in which case
-// legacyInstructionsFor's plain string is sent instead - state still
-// carries turns exactly as it does when legacyInstructions is false; only
-// the "pick" question's own instructions value changes.
+// WithCriteria's own fallback. The "pick" question's own instructions is
+// defaultInstructionsFor's plain string by default (v5's own isolation,
+// docs/measurements/jev-v5.md), or instructionsFor's object when
+// objectInstructions is true (WithObjectInstructions) - state always
+// carries turns the same way regardless of this switch; only the "pick"
+// question's own instructions value changes.
 func buildRequest(
 	query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
-	criteria string, legacyInstructions bool,
+	criteria string, objectInstructions bool,
 ) wireRequest {
 	var wireCriteria any = criteriaFor(shortlist)
 
@@ -428,9 +456,9 @@ func buildRequest(
 		wireCriteria = criteriaForV2(shortlist)
 	}
 
-	var wireQuestionInstructions any = instructionsFor(criteria, len(turns) > 0)
-	if legacyInstructions {
-		wireQuestionInstructions = legacyInstructionsFor(criteria)
+	var wireQuestionInstructions any = defaultInstructionsFor(criteria)
+	if objectInstructions {
+		wireQuestionInstructions = instructionsFor(criteria, len(turns) > 0)
 	}
 
 	return wireRequest{

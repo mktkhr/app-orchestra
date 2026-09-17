@@ -140,11 +140,13 @@ func TestPickSendsStateInstructionsAndCriteria(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "choice", pickQuestion["type"])
 
-	instructions, ok := pickQuestion["instructions"].(map[string]any)
+	// instructions is the plain-string form by default (v5's own
+	// per-variable isolation, docs/measurements/jev-v5.md).
+	instructions, ok := pickQuestion["instructions"].(string)
 	require.True(t, ok)
-	assert.Contains(t, instructions["builtins"], "list_capabilities")
-	assert.Contains(t, instructions["builtins"], "propose_panel")
-	assert.Contains(t, instructions["builtins"], "none")
+	assert.Contains(t, instructions, "list_capabilities")
+	assert.Contains(t, instructions, "propose_panel")
+	assert.Contains(t, instructions, "none")
 
 	criteria, ok := pickQuestion["criteria"].(map[string]any)
 	require.True(t, ok)
