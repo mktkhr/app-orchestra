@@ -8,11 +8,16 @@ _Nothing in progress right now._
 
 ## Next
 
-1. Jev v5: conversation state / hierarchical choice - only if a round
-   with a concrete hypothesis is wanted. `follow-up-other-service`
-   remains a picker-only regression none of v1-v4 touched (v4 ruled out
-   language as the cause of the losses, not this regression), since no
-   round so far has given Jev any memory of the prior turn.
+1. **A multi-turn instrument is missing.** The shortlist corpus, the mid
+   runner, and `make eval`'s own cases each ask one question at a time;
+   Jev v5's isolation and the local pick's own turns fix (`DECISIONS.md`,
+   2026-09-17, "Jev, v5: the pick needed the conversation, not a better
+   model" and "The local pick gets the conversation too") were both
+   measured with ad hoc two-turn sequences run by hand against the dev
+   stack, not a repeatable instrument. A starting point: the live probe
+   script that round used (在庫の一覧→勤怠の方も見せて,
+   itm-001の詳細→att-002は？), generalised into a runner that drives a
+   sequence of questions through one conversation and scores each turn.
 1. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
@@ -135,6 +140,31 @@ _Nothing in progress right now._
    `docs/measurements/`, not `e2e/`.
 
 ## Done
+
+- **The Jev trial: five rounds measured, none adopted; the pick's own
+  shape changed.** v5 gave the pick stage the conversation's prior turns
+  (`state.turns`), confirmed by isolation runs (A, B) after a mid-task
+  scope widening (a fan-out gate) had confounded the first pass:
+  `follow-up-other-service` 0/10 → 10/10 once the gate could no longer
+  short-circuit ahead of the pick, `follow-up-stays` held 10/10. The
+  same widening's object-shaped `instructions` regressed
+  `real-attendance-detail` (10/10 baseline → 0/10 under the object form,
+  3/10 under the plain string) and is now opt-in
+  (`jev.WithObjectInstructions()`), off by default; the fan-out gate
+  measured +42% latency (311ms vs 220ms mean) against the docs' own
+  "typically doesn't add any latency" and pre-empts the pick, unchanged
+  from its existing opt-in wiring. Jev's default shape is now turns
+  (always on) + plain-string instructions + gate off. Not adopted:
+  `ORCHESTRA_PICKER` stays unset, the local picker remains the default.
+  Closed the "Jev v5: conversation state" Next item this list carried
+  since v4. The same isolation showed the local picker had the identical
+  blindness - it now renders turns into its own user message too
+  (`b4ac66c`), every instrument unchanged (byte-identical where no turns
+  are present), a live two-turn probe showing the pick itself, not just
+  the fill, switching correctly. See `DECISIONS.md`, 2026-09-17 ("Jev,
+  v5: the pick needed the conversation, not a better model", "The local
+  pick gets the conversation too") and `docs/measurements/jev-v5.md`.
+  $0.1688 cumulative across all five Jev rounds, 8.4% of the $2 budget.
 
 - **The Jev trial: four rounds measured, none adopted.** v1 (one-line
   criteria) and v2 (richer `what`/`examples`/`not_for` criteria), both a

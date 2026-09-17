@@ -7788,3 +7788,155 @@ cannot rule out. Full record, per-row table, and script appendix:
 **Cost: $0.00 Anthropic + $0.0185 Jev this round, $0.108 cumulative**
 across all four Jev rounds (v1 $0.0218 + v2 $0.0508 + v3 $0.0170 + v4
 $0.0185 = $0.1081), still under 6% of the $2 Jev budget.
+
+## 2026-09-17 Jev, v5: the pick needed the conversation, not a better model
+
+**Method note first, since it is the round's own lesson.** This round's
+own first `make eval` pass confounded three independent changes into one
+number: turns in the pick's `state`, the fan-out gate, and object-shaped
+`instructions`, all measured together per the coordinator's own "one
+`make eval` measures the corrected usage as a whole" instruction - and
+that instruction was given after a mid-task scope widening added the
+fan-out gate to the same round the turns hypothesis was already testing.
+The gate's own refusal short-circuits `planStaged` before the pick
+(`mapAnswer`) ever runs, so the first pass's `follow-up-other-service`
+0/10 said nothing about turns at all - it was the gate answering
+`impossible` (`gate_noul` 0.79-0.83, all above threshold) on a question
+the pick, left alone, would have gotten right. Mixing a hypothesis test
+with an unrelated scope change in the same measurement pass produced a
+result that looked like a refutation and was actually silent about the
+thing being tested; two further isolation runs (A, B; `GATE=none`) were
+needed to find that out. The lesson: a scope change added mid-round to
+the same build a hypothesis is being tested against has to be isolated
+from that hypothesis's own measurement, not folded into it, even when
+told to measure "the whole" - "the whole" and "the isolated variable"
+are different questions and only one of them was actually being asked.
+
+**Isolation runs settled each variable on its own terms.** `usecase.Picker.Pick`
+gained a `turns []Turn` parameter, mirroring `Planner.Plan`'s own
+`(query, answers, turns, tools, thinking)` shape; `jev.Picker` sends
+turns inside `state` as an object (`state.turns`, one entry per turn)
+when non-empty, byte-identical to before when empty.
+
+- **Turns = the fix.** Run A (`GATE=none`, turns + object instructions)
+  and run B (`GATE=none`, turns + plain-string instructions) both read
+  `follow-up-other-service` **0/10 → 10/10** once the fan-out gate could
+  no longer short-circuit ahead of the pick; `follow-up-stays` held
+  10/10 in both. The v5 hypothesis - the pick was never given the
+  conversation, only the fill was - is confirmed.
+- **Object-shaped `instructions` = harmful.** The same field aimed at
+  v2's own `list*`/`get*` confusion (a `focus` string:
+  "動詞と対象resourceの両方を、選ぶ候補と一致させる") did not fix that
+  confusion and cost a different case: `real-attendance-detail` read
+  **0/10** under the object form (run A) against **3/10** under the
+  plain string (run B) - back inside v1-v4's historical 2-6/10 near-tie
+  band but not to the 10/10 baseline no round has reached for this case.
+  Isolated cleanly from turns (present, unchanged, in both A and B) and
+  from the gate (absent in both).
+- **The fan-out gate works, and costs +40% latency, and pre-empts the
+  pick.** Folding the gate's own "impossible" `noul` question into the
+  same request as "pick" (`questions: {pick, impossible}`) measured
+  **311ms mean** against v2's own pick-only **220ms mean** (+42%,
+  n=360/350) - the docs' own "adding more questions to a call typically
+  doesn't add any latency" (`patterns/fan-out`) does not fully hold here.
+  Cheaper than two sequential calls would have been, but not free. And
+  separately from its cost, the gate's own `impossibleInstructions`
+  never learned about `state.turns` the way the pick's own
+  `instructionsContext` did, so it read "勤怠でも同じことして" against
+  an attendance-only shortlist as impossible and pre-empted a pick that,
+  isolation showed, would have answered correctly.
+
+**A wider reading of the API, at the coordinator's mid-task request.**
+Re-reading the docs surfaced four features v1-v4 never used: several
+questions evaluated in parallel in one call with input tokens counted
+once (fan-out, above); `noul` taking `criteria` (`true`/`false`) rather
+than only `instructions` (v3's own gate had only the latter) - measured
+to separate `capability` (noul ~0.08) from `unanswerable` (noul ~0.59,
+still safely under threshold) more precisely than v3 ever did;
+`instructions` as an object with caller-invented field names (`focus`/
+`builtins`/`note`/`context`, above); and `state` as a structured object
+whose fields the `instructions` can point to by backtick path
+(`` `state.turns` ``) rather than only a plain string - demonstrably
+read by the model (the one captured request/response in
+`docs/measurements/jev-v5.md` shows the pick resolving a turn's
+continuation at 0.85 probability via exactly this field). The round's
+real finding here is that v1-v4 had been using the API at about half its
+surface - but the two features actually put into a `make eval` run each
+cost more than they returned: object instructions net-lost a case,
+fan-out gained nothing this suite measures (it was only ever meant to
+save an HTTP round trip) while pre-empting the one gain turns produced.
+Only option keys as short ids (unchanged since v2) and turns in `state`
+carry no measured downside.
+
+**Decision (mine): Jev's default shape in the tree changes, its
+adoption status does not.** `jev.Picker` now always sends turns in
+`state` (no switch - a clean win with no measured cost) and defaults to
+the plain v1/v2 instructions string (`jev.WithObjectInstructions()` /
+`ORCHESTRA_JEV_OBJECT_INSTRUCTIONS` opts into the v5 object form, off by
+default, since it lost its own isolation). The fan-out gate stays
+exactly as wired before this round - opt-in only when both `Picker.Name`
+and `Gate.Name` are `jev` - unchanged, since nothing in this round found
+a reason to change when it runs, only that running it costs more than
+the docs suggested. `ORCHESTRA_PICKER` stays unset by default; the local
+picker remains the default pick stage. A gate that also reads
+`state.turns`, or a design where gate and pick do not compete for the
+same short-circuit, is the natural v6 - not built this round. Full
+record, per-run tables, the captured request/response, and the SHA-256
+manifest: `docs/measurements/jev-v5.md`.
+
+**Cost: $0.0436 first pass (721 calls, `follow-up-other-service`'s
+gate-short-circuited calls estimated, a logging gap noted not fixed) +
+~$0.0357 estimated for the run A/run B isolation (720 calls, no platform
+log captured - the isolation itself was the point, not token
+accounting) = ~$0.079 this round, $0.1688 cumulative across all five
+Jev rounds, 8.4% of the $2 budget.**
+
+## 2026-09-17 The local pick gets the conversation too
+
+Jev v5's isolation (above) showed the pick stage, not the fill, is where
+a follow-up question is lost - and the local picker had the identical
+blindness. `internal/adapter/planner/pick.Picker.Pick` accepted a
+`turns []usecase.Turn` parameter (`usecase.Picker`'s own signature) and
+never read it: `userMessage` had nothing to render turns into, and
+`TestPickIgnoresTurns` asserted the request body was byte-identical with
+or without them. `userMessage` now renders one
+`直前: <service> / <operation>（<question>）` line per prior turn, after
+any `回答:` lines, truncated by the same `truncateTurns` the planner's
+own `Plan` call already uses rather than a second truncation rule; with
+no turns the request body stays byte-identical to before
+(`TestPickByteIdenticalWithNoTurns` replaces `TestPickIgnoresTurns`).
+`SystemPrompt` is unaffected either way - it still stays byte-identical
+to `e2e/narrowing/pick/client.ts`'s own `PICK_SYSTEM_PROMPT` (S2's
+cross-language comparison).
+
+**Measured: every existing instrument unchanged, because none of them
+exercise this path with turns present except the two follow-up eval
+cases, which already passed.** The fill (`planPreferred`) already
+received turns before this change, so `follow-up-other-service` and
+`follow-up-stays` were already at baseline under the local picker - the
+fill was rescuing a pick that was guessing. `make eval`'s full 34-case
+suite, the shortlist corpus (78/79), and the mid runner (38/40 · 1 ·
+17/20 · 3 · 0) all read byte-identical to their pre-change baselines,
+which is the proof by construction that rendering turns changes nothing
+when `truncateTurns` returns the empty slice these instruments' own
+non-follow-up questions carry - not a new number, the absence of one.
+
+**A live two-turn probe on the dev stack shows the pick itself
+switching correctly, not just the fill covering for it:** 「在庫の一覧
+を見せて」→ `ListInventoryItems`, then 「勤怠の方も見せて」→
+`ListAttendanceRecords`; 「itm-001の詳細」→ `GetInventoryItem`, then
+「att-002は？」→ `GetAttendanceRecord`. Before this change the pick was
+guessing on the second turn of each pair and the fill's own broader
+context was what got the right answer through; now the pick agrees with
+the fill from the first stage.
+
+**Gap found, not closed here: no instrument covers multi-turn
+conversation.** The shortlist corpus, the mid runner, and `make eval`'s
+own cases each ask one question at a time; this round's own evidence -
+both Jev's isolation and the live probe above - came from ad hoc
+two-turn sequences, not a repeatable instrument. `TODO.md` gets a Next
+item for a multi-turn instrument, with this round's own probe script as
+the starting point for what it would need to drive.
+
+Commit: `b4ac66c` ("feat(pick): local picker renders prior turns into
+its user message").

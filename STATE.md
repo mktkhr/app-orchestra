@@ -1,8 +1,16 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-17 (the Jev trial: three rounds measured, none adopted; v3's gate recommended, off by default, pending confirmation)_
+_Last updated: 2026-09-17 (Jev v5: the pick stage now gets the conversation's turns by default; the local pick gets them too)_
 
 ## Summary
+
+**2026-09-17 - Jev's pick stage now always sends the conversation's
+prior turns in `state.turns` (plain-string `instructions` by default,
+the fan-out gate unchanged and still opt-in); the local picker's own
+`userMessage` now renders those same turns instead of ignoring them, so
+both pick stages see what the fill already saw. `ORCHESTRA_PICKER`
+stays unset by default - the local picker remains the pick stage in
+use; see `DECISIONS.md`/`docs/measurements/jev-v5.md`, 2026-09-17.**
 
 **2026-09-17 - a second pick-stage adapter, over TypeSafe's Jev, exists
 behind `ORCHESTRA_PICKER=jev` (config, off by default - the local picker
