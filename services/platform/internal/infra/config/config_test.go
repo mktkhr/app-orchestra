@@ -749,3 +749,66 @@ func TestLoadRejectsAnInvalidPlannerToday(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, config.ErrInvalidPlannerToday)
 }
+
+// TestLoadPickerDefaultsToLocal documents that an unset ORCHESTRA_PICKER
+// resolves to PickerLocal, with no Jev base URL or key required.
+func TestLoadPickerDefaultsToLocal(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.PickerLocal, cfg.Picker)
+	assert.Equal(t, "https://api.typesafe.ai", cfg.JevBaseURL)
+	assert.Empty(t, cfg.JevAPIKey)
+}
+
+func TestLoadPickerJevWithoutAKeyIsAnError(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PICKER", "jev")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrMissingJevAPIKey)
+}
+
+func TestLoadPickerJevWithAKeyReadsItAndTheDefaultBaseURL(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PICKER", "jev")
+	t.Setenv("ORCHESTRA_JEV_API_KEY", "test-key")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.PickerJev, cfg.Picker)
+	assert.Equal(t, "test-key", cfg.JevAPIKey)
+	assert.Equal(t, "https://api.typesafe.ai", cfg.JevBaseURL)
+}
+
+func TestLoadPickerReadsACustomJevBaseURL(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PICKER", "jev")
+	t.Setenv("ORCHESTRA_JEV_API_KEY", "test-key")
+	t.Setenv("ORCHESTRA_JEV_BASE_URL", "http://127.0.0.1:9999")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, "http://127.0.0.1:9999", cfg.JevBaseURL)
+}
+
+func TestLoadRejectsAnUnknownPicker(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PICKER", "remote")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidPicker)
+}

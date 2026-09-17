@@ -195,14 +195,24 @@ eval`: 「在庫を登録して。名前はテスト品、数量は5、引当済
 
 ## 6. The configuration
 
-| Variable                   | Values   | Default                |
-| -------------------------- | -------- | ---------------------- |
-| `ORCHESTRA_PLANNER_STAGES` | `1`, `2` | `2` (since 2026-09-16) |
+| Variable                   | Values         | Default                              |
+| -------------------------- | -------------- | ------------------------------------ |
+| `ORCHESTRA_PLANNER_STAGES` | `1`, `2`       | `2` (since 2026-09-16)               |
+| `ORCHESTRA_PICKER`         | `local`, `jev` | `local`                              |
+| `ORCHESTRA_JEV_API_KEY`    | a bearer token | required when `ORCHESTRA_PICKER=jev` |
+| `ORCHESTRA_JEV_BASE_URL`   | a base URL     | `https://api.typesafe.ai`            |
 
 `2` requires a narrower or a catalogue small enough to show whole; the pick
 reads whatever `Narrow` returns, so with no narrowing configured it reads
 the whole catalogue, as the planner does today. Nothing else is added: the
-pick's model is the planner's model, its base URL the planner's.
+pick's model is the planner's model, its base URL the planner's - unless
+`ORCHESTRA_PICKER=jev`, in which case the pick is a call to TypeSafe's
+hosted Jev API instead (`internal/adapter/planner/jev`), unrelated to the
+planner's own model or base URL entirely. `ORCHESTRA_PICKER` and the two
+`ORCHESTRA_JEV_*` variables are read (and, for the key, required) even
+under `ORCHESTRA_PLANNER_STAGES=1`, but never acted on: stage 1 never
+builds a `usecase.Picker` at all (S1's single call has no pick step to
+build one for).
 
 ## 7. What is measured
 

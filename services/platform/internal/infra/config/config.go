@@ -72,6 +72,18 @@ var ErrInvalidPlannerStages = errors.New("ORCHESTRA_PLANNER_STAGES must be 1 or 
 // silently fall back to the real clock.
 var ErrInvalidPlannerToday = errors.New("ORCHESTRA_PLANNER_TODAY must be YYYY-MM-DD")
 
+// ErrInvalidPicker is wrapped into the error returned when ORCHESTRA_PICKER
+// names anything other than PickerLocal or PickerJev - the same reasoning
+// ErrInvalidLLMMode already applies to ORCHESTRA_LLM_MODE.
+var ErrInvalidPicker = errors.New("ORCHESTRA_PICKER must be local or jev")
+
+// ErrMissingJevAPIKey is returned when ORCHESTRA_PICKER is PickerJev but
+// ORCHESTRA_JEV_API_KEY is unset or empty - internal/adapter/planner/jev
+// has no route to Jev without one, the same reasoning ErrMissingDBPath
+// already applies to ORCHESTRA_DB_PATH: a platform that started anyway
+// would fail on the first pick instead of at startup.
+var ErrMissingJevAPIKey = errors.New("ORCHESTRA_JEV_API_KEY is required when ORCHESTRA_PICKER=jev")
+
 // ErrMissingDBPath is returned when ORCHESTRA_DB_PATH is unset. Workspaces
 // live in the SQLite file it names (docs/specs/workspaces.md, W3); a
 // platform that started anyway would keep every workspace in a file
@@ -121,6 +133,18 @@ const (
 	LLMModeToolCall = "toolcall"
 	LLMModeJSON     = "json"
 )
+
+// PickerLocal and PickerJev are ORCHESTRA_PICKER's two accepted values:
+// internal/adapter/planner/pick (the measured stand-in picker, over the
+// same model the toolcall planner uses) and internal/adapter/planner/jev
+// (TypeSafe's hosted Jev API), respectively. PickerLocal is the default.
+const (
+	PickerLocal = "local"
+	PickerJev   = "jev"
+)
+
+// defaultJevBaseURL is used when ORCHESTRA_JEV_BASE_URL is unset.
+const defaultJevBaseURL = "https://api.typesafe.ai"
 
 // Service is one entry of ORCHESTRA_SERVICES: a service's name and the base
 // URL its /openapi.yaml is fetched from.
@@ -290,6 +314,22 @@ type Config struct {
 	// without a fixed date, a near-tie eval or shortlist row can move day
 	// to day for no reason the corpus itself changed.
 	PlannerToday *time.Time
+	// Picker selects which usecase.Picker implementation pkg/app.build
+	// builds, read from ORCHESTRA_PICKER: PickerLocal (the default) or
+	// PickerJev. Only meaningful when PlannerStages is 2 - the
+	// pick-then-fill path (docs/specs/staging.md, S1) is the only one that
+	// ever calls a usecase.Picker at all; under PlannerStages 1 this field
+	// is read but never acted on.
+	Picker string
+	// JevAPIKey is sent as internal/adapter/planner/jev's bearer token,
+	// read from ORCHESTRA_JEV_API_KEY. Required when Picker is PickerJev
+	// (ErrMissingJevAPIKey); ignored otherwise, so a value left set after
+	// switching Picker back to PickerLocal is inert rather than an error.
+	JevAPIKey string
+	// JevBaseURL is the base URL internal/adapter/planner/jev calls, read
+	// from ORCHESTRA_JEV_BASE_URL. Defaults to defaultJevBaseURL
+	// ("https://api.typesafe.ai") when unset.
+	JevBaseURL string
 	// PlanFixtures configures the stub planner's table when LLMBaseURL is
 	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
 	// never sets this - an operator sets ORCHESTRA_LLM_BASE_URL instead,
@@ -396,6 +436,10 @@ func Load() (Config, error) {
 
 	if narrowingErr := loadNarrowing(&cfg); narrowingErr != nil {
 		return Config{}, narrowingErr
+	}
+
+	if pickerErr := loadPicker(&cfg); pickerErr != nil {
+		return Config{}, pickerErr
 	}
 
 	dbPath, ok := os.LookupEnv("ORCHESTRA_DB_PATH")
@@ -765,6 +809,54 @@ func parseNarrowing(embedModel, rerankModel, rawK string) (narrowingConfig, erro
 	}
 
 	return narrowingConfig{embedModel: embedModel, rerankModel: rerankModel, k: k}, nil
+}
+
+// parsePicker reads ORCHESTRA_PICKER: PickerLocal when unset, or exactly
+// PickerLocal or PickerJev otherwise - anything else fails startup rather
+// than silently falling back to the default, the same reasoning
+// parseLLMMode already applies to ORCHESTRA_LLM_MODE.
+func parsePicker(raw string) (string, error) {
+	switch raw {
+	case "":
+		return PickerLocal, nil
+	case PickerLocal, PickerJev:
+		return raw, nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrInvalidPicker, raw)
+	}
+}
+
+// loadPicker reads ORCHESTRA_PICKER, ORCHESTRA_JEV_API_KEY and
+// ORCHESTRA_JEV_BASE_URL and applies them to cfg, isolating Load itself
+// from both the os.Getenv calls and their own validation (funlen,
+// harness/quality/go/golangci.yml) - the same reason loadNarrowing and
+// loadLLM exist. ORCHESTRA_JEV_API_KEY is required exactly when the
+// picker is PickerJev (ErrMissingJevAPIKey); a value left set for
+// PickerLocal is read but never validated, so switching back to the
+// local picker never needs the key removed.
+func loadPicker(cfg *Config) error {
+	picker, err := parsePicker(os.Getenv("ORCHESTRA_PICKER"))
+	if err != nil {
+		return err
+	}
+
+	cfg.Picker = picker
+
+	apiKey := os.Getenv("ORCHESTRA_JEV_API_KEY")
+	if picker == PickerJev && apiKey == "" {
+		return ErrMissingJevAPIKey
+	}
+
+	cfg.JevAPIKey = apiKey
+
+	baseURL := os.Getenv("ORCHESTRA_JEV_BASE_URL")
+	if baseURL == "" {
+		baseURL = defaultJevBaseURL
+	}
+
+	cfg.JevBaseURL = baseURL
+
+	return nil
 }
 
 // parsePlanFixtures reads ORCHESTRA_PLAN_FIXTURES: a JSON array of

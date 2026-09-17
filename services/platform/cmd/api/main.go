@@ -45,6 +45,11 @@ func main() {
 			RerankModel: cfg.NarrowingRerankModel,
 			K:           cfg.NarrowingK,
 		},
+		Picker: app.Picker{
+			Name:       cfg.Picker,
+			JevAPIKey:  cfg.JevAPIKey,
+			JevBaseURL: cfg.JevBaseURL,
+		},
 	})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))

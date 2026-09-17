@@ -17,6 +17,7 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/narrowing/llamaswap"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/openapi"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jev"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jsonmode"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/pick"
 	stubplanner "github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/stub"
@@ -227,6 +228,36 @@ const (
 	ModeJSON     = "json"
 )
 
+// Picker configures which usecase.Picker implementation stagingOptions
+// builds when LLM.Stages is 2 (docs/specs/staging.md, S1; unused under
+// Stages 1 - staging never calls a usecase.Picker at all). Mirrors
+// config.Config's own Picker/JevAPIKey/JevBaseURL fields the way LLM
+// mirrors LLMBaseURL et al.
+type Picker struct {
+	// Name is "" or PickerLocal (internal/adapter/planner/pick, the
+	// default - every test and caller that predates this subproject) or
+	// PickerJev (internal/adapter/planner/jev, TypeSafe's hosted Jev
+	// API).
+	Name string
+	// JevAPIKey is sent as internal/adapter/planner/jev's bearer token.
+	// Required when Name is PickerJev (ErrMissingJevAPIKey).
+	JevAPIKey string
+	// JevBaseURL is the base URL internal/adapter/planner/jev calls.
+	// cmd/api always sets it from config.Config.JevBaseURL, which
+	// already defaults to "https://api.typesafe.ai" when
+	// ORCHESTRA_JEV_BASE_URL is unset - New itself applies no further
+	// default, the same way it trusts config.Load's own validation for
+	// LLM.Mode and re-checks it anyway (ErrInvalidLLMMode).
+	JevBaseURL string
+}
+
+// PickerLocal and PickerJev are Picker.Name's two non-empty values,
+// mirroring internal/infra/config.PickerLocal/PickerJev.
+const (
+	PickerLocal = "local"
+	PickerJev   = "jev"
+)
+
 // ErrInvalidLLMMode is returned by New when Config.LLM.Mode is set to
 // anything other than "" (the default), ModeToolCall or ModeJSON -
 // mirroring internal/infra/config.ErrInvalidLLMMode's own refusal to fall
@@ -242,6 +273,18 @@ var ErrInvalidLLMMode = errors.New("invalid LLM.Mode, want \"\", \"toolcall\" or
 // ErrInvalidLLMMode already provides for a caller that builds a Config
 // directly.
 var ErrInvalidPlannerWording = errors.New("invalid LLM.Wording")
+
+// ErrInvalidPicker is returned by New when Config.Picker.Name is set to
+// anything other than "" (PickerLocal), PickerLocal or PickerJev -
+// mirroring ErrInvalidLLMMode's own defence-in-depth: cmd/api always goes
+// through config.Load's own validation first (config.ErrInvalidPicker).
+var ErrInvalidPicker = errors.New("invalid Picker.Name, want \"\", \"local\" or \"jev\"")
+
+// ErrMissingJevAPIKey is returned by New when Config.Picker.Name is
+// PickerJev but Config.Picker.JevAPIKey is empty - mirroring
+// config.ErrMissingJevAPIKey the same way ErrInvalidPicker mirrors
+// config.ErrInvalidPicker.
+var ErrMissingJevAPIKey = errors.New("Picker.JevAPIKey is required when Picker.Name is \"jev\"")
 
 // ErrMissingDBPath is returned by New when Config.DBPath is empty. There
 // is no legitimate use of this platform without a database - workspaces
@@ -319,6 +362,11 @@ type Config struct {
 	// Narrowing configures the shortlist stage. Its zero value
 	// (EmbedModel == "") is narrowing off - see newNarrower.
 	Narrowing Narrowing
+	// Picker selects which usecase.Picker implementation stagingOptions
+	// builds when LLM.Stages is 2. Its zero value (Name == "") is
+	// PickerLocal - every test and caller that predates this subproject
+	// keeps today's behaviour unchanged.
+	Picker Picker
 }
 
 // SeedAccount is one account for New to put in place via SeedAccounts,
@@ -403,8 +451,14 @@ func build(
 	}
 
 	invoker := invokerhttp.New(toInvokerServices(cfg.Services), nil)
+
+	staging, err := stagingOptions(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	orchestratorOptions := append(
-		[]usecase.Option{contextWindowOption(cfg.ContextTurns), narrowerOption}, stagingOptions(cfg)...,
+		[]usecase.Option{contextWindowOption(cfg.ContextTurns), narrowerOption}, staging...,
 	)
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions, orchestratorOptions...)
 	adminUsecase := usecase.NewAdmin(users, permissions, catalog)
@@ -731,25 +785,48 @@ const stagesTwo = 2
 // NewOrchestrator for the staging subproject: nil when cfg.LLM.Stages is
 // not 2, or when cfg.LLM.BaseURL is empty (every test and caller that
 // predates this subproject, and production with no LLM configured -
-// newPlanner's own stub fallback, above), otherwise a pick.Picker built
-// over this same LLM (S6: "the pick's model is the planner's model, its
-// base URL the planner's") plus usecase.WithStages(2). Staging needs a
-// real model to pick against; pairing it with the stub planner would send
-// a real request to an empty base URL instead of exercising the stub.
-//
-// The picker gets its own chat.Client rather than sharing newPlanner's -
-// newPlanner returns only a usecase.Planner, not the client it built, and
-// a second *http.Client here costs nothing a request-scoped call would
-// notice.
-func stagingOptions(cfg *Config) []usecase.Option {
+// newPlanner's own stub fallback, above), otherwise a usecase.Picker
+// (newPicker) plus usecase.WithStages(2). Staging needs a real model to
+// pick against; pairing it with the stub planner would send a real
+// request to an empty base URL instead of exercising the stub.
+func stagingOptions(cfg *Config) ([]usecase.Option, error) {
 	if cfg.LLM.Stages != stagesTwo || cfg.LLM.BaseURL == "" {
-		return nil
+		return nil, nil
 	}
 
-	client := chat.New(chat.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model})
-	picker := pick.New(client, cfg.LLM.Model)
+	picker, err := newPicker(cfg)
+	if err != nil {
+		return nil, err
+	}
 
-	return []usecase.Option{usecase.WithPicker(picker), usecase.WithStages(stagesTwo)}
+	return []usecase.Option{usecase.WithPicker(picker), usecase.WithStages(stagesTwo)}, nil
+}
+
+// newPicker builds the usecase.Picker stagingOptions passes to
+// usecase.WithPicker: cfg.Picker.Name PickerLocal (or "", the default -
+// every test and caller that predates the jev picker) builds
+// pick.New over this same LLM (S6: "the pick's model is the planner's
+// model, its base URL the planner's") - its own chat.Client, not
+// newPlanner's, since newPlanner returns only a usecase.Planner, not the
+// client it built, and a second *http.Client here costs nothing a
+// request-scoped call would notice. PickerJev builds jev.New against
+// Picker.JevBaseURL/JevAPIKey instead - a hosted picker, unrelated to
+// cfg.LLM entirely.
+func newPicker(cfg *Config) (usecase.Picker, error) {
+	switch cfg.Picker.Name {
+	case "", PickerLocal:
+		client := chat.New(chat.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model})
+
+		return pick.New(client, cfg.LLM.Model), nil
+	case PickerJev:
+		if cfg.Picker.JevAPIKey == "" {
+			return nil, ErrMissingJevAPIKey
+		}
+
+		return jev.New(cfg.Picker.JevBaseURL, cfg.Picker.JevAPIKey, nil), nil
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrInvalidPicker, cfg.Picker.Name)
+	}
 }
 
 // toolcallOptions builds the toolcall.Option list newPlanner passes to
