@@ -83,7 +83,7 @@ func (o *Orchestrator) ask(catalog domain.Catalog, decision *Decision, query str
 
 	return Result{
 		Kind:     ResultKindAsk,
-		Question: decision.Question,
+		Question: withoutOptionListing(decision.Question, options),
 		Param:    decision.Param,
 		Options:  options,
 	}, nil
