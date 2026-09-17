@@ -114,6 +114,15 @@ export function variantSuffix(
   const rp = repeatPenalty === undefined ? "" : `-rp${String(repeatPenalty)}`;
   const st = stages === undefined || stages === 1 ? "" : `-stages${String(stages)}`;
   const jev = process.env["ORCHESTRA_PICKER"] === "jev" ? "-jev" : "";
+  // The Jev trial's second round (2026-09-17, "v2: richer criteria"):
+  // ORCHESTRA_JEV_CRITERIA, read the same direct way as ORCHESTRA_PICKER
+  // just above. Only meaningful alongside "-jev" (jev), but this suffix
+  // is appended whenever ORCHESTRA_JEV_CRITERIA is literally "v2"
+  // regardless of ORCHESTRA_PICKER, mirroring how `st` above does not
+  // itself check that a picker exists to be staged - the value's own
+  // presence is what names the variant. "v1" (the default) carries no
+  // suffix, matching `st`'s own no-suffix-for-the-default rule.
+  const criteria = process.env["ORCHESTRA_JEV_CRITERIA"] === "v2" ? "-v2" : "";
 
-  return `${nothink}${rp}${st}${jev}`;
+  return `${nothink}${rp}${st}${jev}${criteria}`;
 }

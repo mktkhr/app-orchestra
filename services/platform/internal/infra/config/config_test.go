@@ -812,3 +812,40 @@ func TestLoadRejectsAnUnknownPicker(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, config.ErrInvalidPicker)
 }
+
+// TestLoadJevCriteriaDefaultsToV1 documents that an unset
+// ORCHESTRA_JEV_CRITERIA resolves to config.JevCriteriaV1, the trial's
+// second round (v2) never happening for a caller that never mentions it.
+func TestLoadJevCriteriaDefaultsToV1(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.JevCriteriaV1, cfg.JevCriteria)
+}
+
+func TestLoadJevCriteriaReadsV2(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PICKER", "jev")
+	t.Setenv("ORCHESTRA_JEV_API_KEY", "test-key")
+	t.Setenv("ORCHESTRA_JEV_CRITERIA", "v2")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.JevCriteriaV2, cfg.JevCriteria)
+}
+
+func TestLoadRejectsAnUnknownJevCriteria(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_JEV_CRITERIA", "v3")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidJevCriteria)
+}

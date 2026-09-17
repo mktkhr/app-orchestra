@@ -11,17 +11,22 @@ import { corpusArg, variantSuffix } from "./flags.ts";
 
 const originalArgv = process.argv;
 const originalPicker = process.env["ORCHESTRA_PICKER"];
+const originalJevCriteria = process.env["ORCHESTRA_JEV_CRITERIA"];
 
 beforeEach(() => {
   process.argv = [...originalArgv];
   delete process.env["ORCHESTRA_PICKER"];
+  delete process.env["ORCHESTRA_JEV_CRITERIA"];
 });
 
 afterEach(() => {
   process.argv = originalArgv;
   delete process.env["ORCHESTRA_PICKER"];
+  delete process.env["ORCHESTRA_JEV_CRITERIA"];
 
   if (originalPicker !== undefined) process.env["ORCHESTRA_PICKER"] = originalPicker;
+  if (originalJevCriteria !== undefined)
+    process.env["ORCHESTRA_JEV_CRITERIA"] = originalJevCriteria;
 });
 
 test("--corpus is undefined when not given", () => {
@@ -66,5 +71,24 @@ test("variantSuffix appends nothing for ORCHESTRA_PICKER=local", () => {
 });
 
 test("variantSuffix appends nothing when ORCHESTRA_PICKER is unset", () => {
+  expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends -v2 when ORCHESTRA_PICKER=jev and ORCHESTRA_JEV_CRITERIA=v2", () => {
+  process.env["ORCHESTRA_PICKER"] = "jev";
+  process.env["ORCHESTRA_JEV_CRITERIA"] = "v2";
+
+  expect(variantSuffix()).toBe("-jev-v2");
+  expect(variantSuffix("off", 1.1, 2)).toBe("-nothink-rp1.1-stages2-jev-v2");
+});
+
+test("variantSuffix appends nothing for ORCHESTRA_JEV_CRITERIA=v1 (the default)", () => {
+  process.env["ORCHESTRA_PICKER"] = "jev";
+  process.env["ORCHESTRA_JEV_CRITERIA"] = "v1";
+
+  expect(variantSuffix()).toBe("-jev");
+});
+
+test("variantSuffix appends nothing when ORCHESTRA_JEV_CRITERIA is unset", () => {
   expect(variantSuffix()).toBe("");
 });

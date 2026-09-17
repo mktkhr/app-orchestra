@@ -80,6 +80,45 @@ func TestNewWithPickerJevBuildsAndServesAQuestion(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+// TestNewWithPickerJevCriteriaV2BuildsAndServesAQuestion mirrors
+// TestNewWithPickerJevBuildsAndServesAQuestion with Picker.JevCriteria set
+// to app.JevCriteriaV2, proving the wiring from Config down to
+// jev.WithCriteria holds for the trial's second round too, not just the
+// zero-value ("" -> CriteriaV1) path the test above already covers.
+func TestNewWithPickerJevCriteriaV2BuildsAndServesAQuestion(t *testing.T) {
+	fixture := fixtureService(t)
+	chatServer := fixtureChatServer(t)
+	jevServer := fixtureJevServer(t)
+
+	handler, err := app.New(&app.Config{
+		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:      app.LLM{BaseURL: chatServer.URL, Model: "test-model", Stages: 2},
+		Picker: app.Picker{
+			Name: app.PickerJev, JevAPIKey: "test-key", JevBaseURL: jevServer.URL, JevCriteria: app.JevCriteriaV2,
+		},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
 // TestNewRejectsAnUnknownPicker mirrors TestNewRejectsAnUnknownLLMMode
 // (app_test.go): Config.Picker.Name is the same defence-in-depth as
 // Config.LLM.Mode - cmd/api never reaches this path because

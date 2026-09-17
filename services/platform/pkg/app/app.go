@@ -249,7 +249,20 @@ type Picker struct {
 	// default, the same way it trusts config.Load's own validation for
 	// LLM.Mode and re-checks it anyway (ErrInvalidLLMMode).
 	JevBaseURL string
+	// JevCriteria selects the shape internal/adapter/planner/jev builds
+	// each shortlist entry's criteria into: "" or JevCriteriaV1 (the
+	// default, one descriptive line per option) or JevCriteriaV2 (a
+	// `what`/`examples`/`not_for` object per option, the Jev trial's
+	// second round). Ignored when Name is not PickerJev.
+	JevCriteria string
 }
+
+// JevCriteriaV1 and JevCriteriaV2 are Picker.JevCriteria's two non-empty
+// values, mirroring internal/infra/config.JevCriteriaV1/JevCriteriaV2.
+const (
+	JevCriteriaV1 = "v1"
+	JevCriteriaV2 = "v2"
+)
 
 // PickerLocal and PickerJev are Picker.Name's two non-empty values,
 // mirroring internal/infra/config.PickerLocal/PickerJev.
@@ -823,7 +836,7 @@ func newPicker(cfg *Config) (usecase.Picker, error) {
 			return nil, ErrMissingJevAPIKey
 		}
 
-		return jev.New(cfg.Picker.JevBaseURL, cfg.Picker.JevAPIKey, nil), nil
+		return jev.New(cfg.Picker.JevBaseURL, cfg.Picker.JevAPIKey, nil, jev.WithCriteria(cfg.Picker.JevCriteria)), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidPicker, cfg.Picker.Name)
 	}

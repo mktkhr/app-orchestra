@@ -46,9 +46,10 @@ func main() {
 			K:           cfg.NarrowingK,
 		},
 		Picker: app.Picker{
-			Name:       cfg.Picker,
-			JevAPIKey:  cfg.JevAPIKey,
-			JevBaseURL: cfg.JevBaseURL,
+			Name:        cfg.Picker,
+			JevAPIKey:   cfg.JevAPIKey,
+			JevBaseURL:  cfg.JevBaseURL,
+			JevCriteria: cfg.JevCriteria,
 		},
 	})
 	if err != nil {

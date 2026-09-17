@@ -139,6 +139,12 @@ export async function startEvalPlatform(
       ...(process.env["ORCHESTRA_JEV_API_KEY"] === undefined
         ? {}
         : { ORCHESTRA_JEV_API_KEY: process.env["ORCHESTRA_JEV_API_KEY"] }),
+      // The Jev trial's second round (2026-09-17, "v2: richer criteria"):
+      // ORCHESTRA_JEV_CRITERIA, same pass-through as ORCHESTRA_PICKER
+      // above - unset means the platform's own default (v1).
+      ...(process.env["ORCHESTRA_JEV_CRITERIA"] === undefined
+        ? {}
+        : { ORCHESTRA_JEV_CRITERIA: process.env["ORCHESTRA_JEV_CRITERIA"] }),
     }),
     port: platformPort,
   };

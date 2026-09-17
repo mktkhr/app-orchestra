@@ -84,6 +84,12 @@ var ErrInvalidPicker = errors.New("ORCHESTRA_PICKER must be local or jev")
 // would fail on the first pick instead of at startup.
 var ErrMissingJevAPIKey = errors.New("ORCHESTRA_JEV_API_KEY is required when ORCHESTRA_PICKER=jev")
 
+// ErrInvalidJevCriteria is wrapped into the error returned when
+// ORCHESTRA_JEV_CRITERIA is set to something other than JevCriteriaV1 or
+// JevCriteriaV2 - the same reasoning ErrInvalidPicker already applies to
+// ORCHESTRA_PICKER.
+var ErrInvalidJevCriteria = errors.New("ORCHESTRA_JEV_CRITERIA must be v1 or v2")
+
 // ErrMissingDBPath is returned when ORCHESTRA_DB_PATH is unset. Workspaces
 // live in the SQLite file it names (docs/specs/workspaces.md, W3); a
 // platform that started anyway would keep every workspace in a file
@@ -145,6 +151,20 @@ const (
 
 // defaultJevBaseURL is used when ORCHESTRA_JEV_BASE_URL is unset.
 const defaultJevBaseURL = "https://api.typesafe.ai"
+
+// JevCriteriaV1 and JevCriteriaV2 are ORCHESTRA_JEV_CRITERIA's two
+// accepted values: internal/adapter/planner/jev's original one-line-per-
+// option criteria (v1), and the richer per-option object (`what`,
+// `examples`, `not_for`) the Jev trial's second round measures (v2).
+// JevCriteriaV1 is the default, so a deployment that never sets this
+// variable sends exactly what it always has.
+const (
+	JevCriteriaV1 = "v1"
+	JevCriteriaV2 = "v2"
+)
+
+// defaultJevCriteria is used when ORCHESTRA_JEV_CRITERIA is unset.
+const defaultJevCriteria = JevCriteriaV1
 
 // Service is one entry of ORCHESTRA_SERVICES: a service's name and the base
 // URL its /openapi.yaml is fetched from.
@@ -330,6 +350,12 @@ type Config struct {
 	// from ORCHESTRA_JEV_BASE_URL. Defaults to defaultJevBaseURL
 	// ("https://api.typesafe.ai") when unset.
 	JevBaseURL string
+	// JevCriteria selects which shape internal/adapter/planner/jev builds
+	// each shortlist entry's criteria into, read from
+	// ORCHESTRA_JEV_CRITERIA: JevCriteriaV1 (the default, one descriptive
+	// line per option) or JevCriteriaV2 (a `what`/`examples`/`not_for`
+	// object per option). Ignored when Picker is not PickerJev.
+	JevCriteria string
 	// PlanFixtures configures the stub planner's table when LLMBaseURL is
 	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
 	// never sets this - an operator sets ORCHESTRA_LLM_BASE_URL instead,
@@ -826,14 +852,28 @@ func parsePicker(raw string) (string, error) {
 	}
 }
 
-// loadPicker reads ORCHESTRA_PICKER, ORCHESTRA_JEV_API_KEY and
-// ORCHESTRA_JEV_BASE_URL and applies them to cfg, isolating Load itself
-// from both the os.Getenv calls and their own validation (funlen,
-// harness/quality/go/golangci.yml) - the same reason loadNarrowing and
-// loadLLM exist. ORCHESTRA_JEV_API_KEY is required exactly when the
-// picker is PickerJev (ErrMissingJevAPIKey); a value left set for
-// PickerLocal is read but never validated, so switching back to the
-// local picker never needs the key removed.
+// parseJevCriteria reads ORCHESTRA_JEV_CRITERIA: defaultJevCriteria when
+// unset, or exactly JevCriteriaV1 or JevCriteriaV2 otherwise - the same
+// reasoning parsePicker already applies to ORCHESTRA_PICKER.
+func parseJevCriteria(raw string) (string, error) {
+	switch raw {
+	case "":
+		return defaultJevCriteria, nil
+	case JevCriteriaV1, JevCriteriaV2:
+		return raw, nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrInvalidJevCriteria, raw)
+	}
+}
+
+// loadPicker reads ORCHESTRA_PICKER, ORCHESTRA_JEV_API_KEY,
+// ORCHESTRA_JEV_BASE_URL and ORCHESTRA_JEV_CRITERIA and applies them to
+// cfg, isolating Load itself from both the os.Getenv calls and their own
+// validation (funlen, harness/quality/go/golangci.yml) - the same reason
+// loadNarrowing and loadLLM exist. ORCHESTRA_JEV_API_KEY is required
+// exactly when the picker is PickerJev (ErrMissingJevAPIKey); a value
+// left set for PickerLocal is read but never validated, so switching
+// back to the local picker never needs the key removed.
 func loadPicker(cfg *Config) error {
 	picker, err := parsePicker(os.Getenv("ORCHESTRA_PICKER"))
 	if err != nil {
@@ -855,6 +895,13 @@ func loadPicker(cfg *Config) error {
 	}
 
 	cfg.JevBaseURL = baseURL
+
+	criteria, err := parseJevCriteria(os.Getenv("ORCHESTRA_JEV_CRITERIA"))
+	if err != nil {
+		return err
+	}
+
+	cfg.JevCriteria = criteria
 
 	return nil
 }
