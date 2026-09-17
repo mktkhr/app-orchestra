@@ -182,11 +182,11 @@ and report`, (b) `feat(make): eval-mid` with
 
 ### Task 4: measure and record (session owner)
 
-- [ ] `make eval-mid` (defaults: two stages, v6, thinking off, narrowing on).
+- [x] `make eval-mid` (defaults: two stages, v6, thinking off, narrowing on).
       Copy jsonl + report to the scratchpad; never delete `e2e/shortlist/out/`.
-- [ ] Read every miss (answerable misses, forced impossibles, fabricated
+- [x] Read every miss (answerable misses, forced impossibles, fabricated
       forms) row by row; widen an answer key only where the review says the
       question was ambiguous, then re-run.
-- [ ] Record in `DECISIONS.md` beside 77 / 79 and 15 / 16 (AC-M-105); note
+- [x] Record in `DECISIONS.md` beside 77 / 79 and 15 / 16 (AC-M-105); note
       which way the impossible half leaned (spec section 8); `STATE.md`,
       `TODO.md`.

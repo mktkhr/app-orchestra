@@ -7345,3 +7345,51 @@ becomes the corpus reference from here. `e2e/eval/cases.ts`'s doc comment
 on this case still describes the old band and should be updated when the
 case is next touched. The local-llm change is uncommitted in that
 repository, as its other entries are, by the user's choice.
+
+## 2026-09-17 Midsizing: the first mid run
+
+`make eval-mid` (`docs/plans/midsizing.md` Task 4), against the thirty-
+operation, three-service fixture (sales, purchasing, attendance; ids
+`so-`/`po-`/`att-`) and its sixty questions (40 answerable, 20
+impossible), under the same defaults as the other two instruments - two
+stages, `v6-unmatched-filter`, thinking off, narrowing K=20, llama-server
+without chunk cache reuse: **answerable 40: correct@1 38, false refusal
+1; impossible 20: refused 17, forced 3; forms 24: fabricated 0; latency
+mean 1274 ms, p50 1229, pick mean 390 ms.**
+
+Every miss read row by row, none widened - all genuine:
+
+- `m24` 「att-102の連絡先を直して」→ `getAttendanceEmployee` (update was
+  the right verb).
+- `m29` 「att-019の休暇申請の日程を変更したい」→ `none`, the run's one
+  false refusal (update was expected).
+- `m41` 「受注を集計したい」→ forced `listSalesOrders`.
+- `m42` 「取引先を承認したい」→ forced a `createSalesPartner` form.
+- `m44` 「休暇申請書を印刷したい」→ forced `listAttendanceLeaveRequests`.
+
+Reading (spec section 8): the impossible half's verb-not-there family is
+the hard one - 3 of its 5 forced an operation. Resource-not-there,
+out-of-domain and capability questions were all refused or listed
+correctly, 17/17 of those.
+
+Two instrument limits found, recorded rather than fixed:
+
+1. The fabricated count first read 11/24 because enum members
+   (`status: "active"`, `"pending"`) were counted as invented. Fixed in
+   `7adb5b7`: the scorer now reads each operation's own enums from the
+   fixture before judging a value fabricated.
+2. Three forms echo the id straight into a `name` field - `m04`
+   (`name: "so-0007"`), `m09` (`"so-0064の取引先"`), `m19`
+   (`"po-40の仕入先"`). The value is a literal substring of the question,
+   so neither the scorer's "appears in the question" rule nor the
+   platform's own drop rule (`a2c7503`) reads it as invented, but a
+   non-id field holding the id is exactly as fabricated as one that
+   doesn't. The mechanical substring test has this blind spot in both
+   places. Candidate rule: a non-id field equal to, or containing, the
+   record's own id counts as fabricated. Not fixed here - `TODO.md`.
+
+Alongside the other two instruments as measured today: corpus 78/79 (no
+chunk reuse), real cases 16/16 (`no-enum-value-attendance` stable at last
+run). From here, every planning decision this project makes is checked
+against all three - corpus, real cases, and mid - not any one alone
+(`docs/specs/midsizing.md` M6).

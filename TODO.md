@@ -100,6 +100,17 @@ _Nothing in progress._
    agree row for row (78 / 79). What remains: `e2e/eval/cases.ts`'s doc
    comment on this case still describes the old band - update it when
    the case is next touched. See `DECISIONS.md`, 2026-09-17.
+9. **The fabrication check's "appears in the question" rule has an
+   id-echo blind spot.** Found on the mid instrument's first run
+   (`DECISIONS.md`, 2026-09-17, "Midsizing: the first mid run"): three
+   forms put the record's own id straight into a `name` field (`m04`
+   `name: "so-0007"`; `m09` `"so-0064の取引先"`; `m19`
+   `"po-40の仕入先"`). Because the id is a literal substring of the
+   question, neither the mid scorer's rule nor the platform's own drop
+   rule (`a2c7503`) reads it as invented, though a non-id field holding
+   the id is exactly as fabricated as any other guessed value. Candidate
+   fix, in both places: a non-id field equal to, or containing, the id
+   counts as fabricated. Unscheduled.
 
 ## Done
 
