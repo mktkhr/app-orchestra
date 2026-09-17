@@ -291,3 +291,28 @@ func TestPickCompletedLogCarriesConfidenceTokensAndProvider(t *testing.T) {
 	assert.Equal(t, "jev", completed["pick_provider"])
 	assert.Equal(t, "listInventoryItems", completed["pick_operation_id"])
 }
+
+// TestPickCompletedLogCarriesTheFullProbabilityDistribution is the Jev
+// trial measurement's own need (2026-09-17): a run's platform log alone
+// must be enough to reconstruct each pick's full per-candidate
+// distribution, not just the winning choice's own confidence.
+func TestPickCompletedLogCarriesTheFullProbabilityDistribution(t *testing.T) {
+	buf := captureLogs(t)
+	body := `{"model":"jev-1.13.0","answers":{"pick":{"type":"choice","choice":"listInventoryItems",` +
+		`"confidence":0.87,"probabilities":{"listInventoryItems":0.87,"listAttendanceRecords":0.1,"none":0.03}}},` +
+		`"usage":{"input_tokens":700,"output_tokens":3}}`
+	server := stubServer(t, http.StatusOK, body)
+	picker := jev.New(server.URL, "test-key", nil)
+
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, shortlistCatalog())
+	require.NoError(t, err)
+
+	completed := logLineWith(t, buf, "pick_probabilities")
+	require.NotNil(t, completed, "expected a \"pick completed\" log line carrying pick_probabilities")
+
+	probabilities, ok := completed["pick_probabilities"].(map[string]any)
+	require.True(t, ok)
+	assert.InDelta(t, 0.87, probabilities["listInventoryItems"], 0.0001)
+	assert.InDelta(t, 0.1, probabilities["listAttendanceRecords"], 0.0001)
+	assert.InDelta(t, 0.03, probabilities["none"], 0.0001)
+}

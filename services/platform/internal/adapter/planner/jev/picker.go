@@ -93,7 +93,14 @@ func (p *Picker) Pick(
 		slog.Float64("pick_confidence", answer.Confidence),
 		slog.Int("pick_input_tokens", resp.Usage.InputTokens),
 		slog.Int("pick_output_tokens", resp.Usage.OutputTokens),
-		slog.String("pick_provider", "jev"))
+		slog.String("pick_provider", "jev"),
+		// pick_probabilities is Jev's own per-candidate probability
+		// distribution for this "pick" answer - added 2026-09-17 for the
+		// Jev trial measurement (docs/specs/staging.md S4's confidence
+		// work), so a run's platform log alone is enough to reconstruct
+		// each pick's full distribution without a second, debug-only
+		// line to correlate against.
+		slog.Any("pick_probabilities", answer.Probabilities))
 
 	return result, nil
 }
