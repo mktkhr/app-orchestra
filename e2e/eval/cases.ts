@@ -249,6 +249,24 @@ export const cases: readonly Case[] = [
     // "asked or guessed" set docs/specs/eval.md section 4 called noise -
     // are gone; reject is still the metric this case is judged on, for the
     // same reason as before.
+    //
+    // Re-baselined 2026-09-17 (ORCHESTRA_PLANNER_TODAY=2026-09-16, this
+    // codebase at c4d3dfc plus the env/runner changes above): 10/10 ask,
+    // 0/10 reject - the historical 7-9/10 reject this comment's first
+    // paragraph describes predates the AC-B-105 restore just above and no
+    // longer reproduces. Read literally, that would say the defect this
+    // case exists to watch is gone; it is not proven gone, only unseen in
+    // ten runs on one date. The reject outcome this case names is still a
+    // real failure mode the guard cannot see even in principle: it fires
+    // only on an intercepted *guess* (some value present to replace with
+    // an ask), and a silent drop is a guess never made - the args come
+    // back with no `kind` key at all, nothing for orchestrator_enum_guess.go
+    // to intercept. A fix would need the fill step itself to notice a
+    // required-enum-shaped param missing from its own output (not from the
+    // model volunteering a guess) and route that to the same ask, before
+    // the guard's own guess-shaped check ever runs. Left open; this case
+    // stays reject-metric so a future run's reject count above 0 is seen,
+    // not silently re-absorbed into "mostly ask" the way accept once was.
     id: "no-enum-value-attendance",
     question: "有給の勤怠はある？",
     metric: "reject",
