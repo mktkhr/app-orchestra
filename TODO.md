@@ -4,20 +4,25 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-- **The Jev trial: v1 measured and not adopted, v2 being built.** A second
-  `usecase.Picker` over TypeSafe's Jev (`ORCHESTRA_PICKER=jev`, behind
-  `ORCHESTRA_PLANNER_STAGES=2`) scored 69/100 against the local picker's
-  78/100 on the shortlist corpus, with two eval regressions
-  (`follow-up-other-service` 0/10 - no conversation state;
-  `real-attendance-detail` 2/10-6/10 - genuine confidence instability in
-  the 0.37-0.50 band even on a narrowed, single-service shortlist) - see
-  `DECISIONS.md`, 2026-09-17 ("Jev as the pick stage, v1: measured, not
-  adopted") and `docs/measurements/jev-picker-v1.md`. The local picker
-  stays the default. v2 (richer per-operation criteria - `what`/
-  `examples`/`not_for`) is in progress in
-  `internal/adapter/planner/jev/`; v3 (Jev's own gates for refusal and for
-  an unapplied restriction, item 7 below) and v4 (conversation state) are
-  planned after it, each measured on the same three instruments.
+- **The Jev trial: v1 and v2 measured and not adopted, v3 in progress.**
+  A second `usecase.Picker` over TypeSafe's Jev (`ORCHESTRA_PICKER=jev`,
+  behind `ORCHESTRA_PLANNER_STAGES=2`) scored 69/100 on the shortlist
+  corpus under both v1 (one-line criteria) and v2 (richer `what`/
+  `examples`/`not_for` criteria) against the local picker's 78/100; v2's
+  richer criteria fixed most of v1's homonym-refusal losses (`none` on
+  collision, 11→1) but traded them for a new `list*`-vs-`get*` confusion
+  at about the same rate, so the corpus score did not move, while the
+  mid subset reached this trial's best score anywhere (39/40) and the
+  same two eval regressions persisted (`follow-up-other-service` 0/10 -
+  no conversation state; `real-attendance-detail` 2/10-5/10 - genuine
+  confidence instability) - see `DECISIONS.md`, 2026-09-17 ("Jev as the
+  pick stage, v1: measured, not adopted" and "...v2: measured, not
+  adopted either") and `docs/measurements/jev-picker-v1.md` /
+  `jev-picker-v2.md`. The local picker stays the default. v3 (a `noul`
+  refusal gate in front of the local pick - Jev for the typed yes/no,
+  local for the choosing) is in progress in
+  `internal/adapter/planner/jev/`; v4 (conversation state) is planned
+  after it, each measured on the same three instruments.
 
 ## Next
 

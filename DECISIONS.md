@@ -7508,3 +7508,86 @@ make today's numbers directly comparable to 2026-09-16's; llama-server's
 (`TODO.md` item 8, 2026-09-17), so the local-picker reference numbers
 above reproduce exactly rather than drifting within the near-tie band
 described elsewhere in this file ("Measurement determinism").
+
+## 2026-09-17 Jev as the pick stage, v2: measured, not adopted either
+
+v2 sends a richer per-operation criterion (`ORCHESTRA_JEV_CRITERIA=v2`,
+`criteriaForV2` in
+`services/platform/internal/adapter/planner/jev/mapping.go`): `what`
+(v1's one-liner plus the operation's Description first line when it
+adds something), `examples` (the operation's own
+`x-orchestra-examples`), `not_for` (the display names of every other
+shortlist entry that collides on `DisplayName` or the same leading noun
+of `Summary`) - all three mechanically derived from the OpenAPI contract
+and the shortlist itself, nothing hand-written per question. Full
+record, every command, every file name, the confidence histograms and
+the row-by-row loss/gain lists: `docs/measurements/jev-picker-v2.md`.
+
+**The three instruments, v2 vs v1 vs local, same tree, same day:**
+
+|                        | jev v2 (today)                                                           | jev v1                | local, STAGES=2                              |
+| ---------------------- | ------------------------------------------------------------------------ | --------------------- | -------------------------------------------- |
+| shortlist corpus (100) | 69/100 correct@1, 73/100 correct@shown                                   | 69/100, 72/100        | 78/79                                        |
+| mid (60, 3 services)   | 39/40 answerable · 1 false refusal · 16/20 impossible refused · 4 forced | 37/40 · 3 · 16/20 · 4 | 38/40 · 1 · 17/20 · 3 (local's recorded ref) |
+| eval (34 cases)        | 32/34 at baseline (same two regressions)                                 | 32/34 at baseline     | 34/34                                        |
+
+correct@1 on the shortlist corpus is **unchanged from v1 (69/100)**, but
+its shape moved a lot underneath: per axis, B +12pp and D +13pp (v1's
+two weakest axes) against A −4pp, C −8pp, E −20pp (2 rows on a
+10-question axis). The `none`-on-homonym failure mode `not_for` targeted
+dropped from 11/100 to 1/100 - three of v1's four 承認 losses now
+resolve correctly - but a new, unhypothesized failure mode appeared
+alongside it: v2 several times names a `get*` (singular-record)
+operation where v1 correctly named the matching
+`list*`/`search*`/`summarize*` one, on phrasings genuinely ambiguous
+between "the list" and "one record's state" (8 of 9 net losses share
+this shape) - not a cross-service collision, so `not_for` was never
+going to catch it. Net effect on correct@1: a wash.
+
+Mid subset: **39/40 answerable correct@1, this trial's best score
+anywhere** (beating both v1's 37/40 and local's own recorded 38/40),
+with false refusal down to 1/40 (matching local) and forms fabricated
+still 0. Impossible/forced held exactly at v1's 16/20 · 4.
+
+Eval suite: 32/34 at baseline again, the same two regressions v1 found,
+unchanged in kind: `follow-up-other-service` 0/10 (jev still has no
+conversation state, so a follow-up onto the other service's operation
+never lands - both runs landed on `list_capabilities` every time);
+`real-attendance-detail` 2/10 then 5/10 across the two runs (v1: 2/10
+then 6/10) - the same genuine near-tie instability, not moved in any
+clear direction by richer criteria.
+
+**Confidence rose everywhere without accuracy following - a calibration
+caution.** Median confidence: shortlist 0.65 (v1 0.59), mid 0.96 (v1 not
+separately tracked at this precision but higher throughout), eval-suite
+run 0.98 (v1 0.92). v2 is more confident on every instrument measured,
+independent of whether it got more answers right there - worth keeping
+in mind for the article and for any future reading of Jev's own
+confidence as a correctness proxy.
+
+**Cost.** Richer criteria cost more to send: 1.8-2.3× v1's tokens/pick
+(shortlist 2,474 vs 1,127/pick, 2.2×; mid 2,208 vs 967, 2.3×; eval-suite
+1,151 vs 652, 1.76×). $0.0508 this round (880 calls, 1,208,522 input /
+135,734 output tokens) against v1's $0.0218, for **$0.0726 cumulative**
+against the $2 budget - still under 4% of it.
+
+**Decision (mine): Jev v2 is not adopted either. The pick stage stays
+local** (`ORCHESTRA_PICKER` unset). The targeted hypothesis - homonym
+collisions are recoverable with a `not_for` field - was partially borne
+out (11→1 on the corpus, best-anywhere mid score), but the corpus's own
+overall correct@1 did not move, because richer criteria traded one
+failure mode for a new, unhypothesized one (`list*` vs `get*`
+confusion) at roughly the same rate it fixed the old one, and both of
+v1's eval regressions persist unchanged. Cost and latency remain
+excellent and are still not the blocker.
+
+**What v3 tries next:** not another criteria rewrite, but a different
+shape - a `noul` refusal gate in front of the local pick, per
+`docs.typesafe.ai/primitives/refusal`: Jev answers the typed yes/no
+("is this question answerable with what's in scope at all") ahead of
+the pick, and the local picker keeps doing the actual choosing among
+candidates. This targets the eval regressions and the homonym-refusal
+shape without reintroducing the `list*`/`get*` confusion v2's richer
+per-candidate criteria caused, since the local picker's own prompt
+already resolves that distinction correctly. Measured the same way, on
+the same three instruments, when it lands.

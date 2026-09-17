@@ -1,6 +1,6 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-17 (the Jev picker v1 trial: measured against all three instruments, not adopted; v2 in progress)_
+_Last updated: 2026-09-17 (the Jev picker v2 trial: measured against all three instruments, not adopted either; v3 in progress)_
 
 ## Summary
 
@@ -14,7 +14,16 @@ two regressions (`follow-up-other-service` 0/10 - no conversation state;
 0.37-0.50 band even on a narrowed shortlist), at $0.0218 for 622 calls and
 231ms mean pick latency; full record in `docs/measurements/jev-picker-v1.md`
 and `DECISIONS.md`, 2026-09-17 ("Jev as the pick stage, v1: measured, not
-adopted"). v2 (richer criteria) is in progress (`TODO.md`).
+adopted"). v2 (richer `what`/`examples`/`not_for` criteria) was also
+measured and not adopted: same 69/100 corpus score (a homonym-refusal
+fix traded for a new `list*`-vs-`get*` confusion), mid's best score
+anywhere (39/40), the same two eval regressions unchanged, and higher
+confidence throughout without accuracy following, at $0.0508 for this
+round ($0.0726 cumulative); full record in
+`docs/measurements/jev-picker-v2.md` and `DECISIONS.md`, 2026-09-17
+("Jev as the pick stage, v2: measured, not adopted either"). v3 (a
+`noul` refusal gate in front of the local pick) is in progress
+(`TODO.md`).
 
 **2026-09-17 - the mid instrument's first run: 38/40 answerable, 17/20 impossible refused, 0/24 fabricated.** `make eval-mid` (`docs/specs/midsizing.md`, `docs/plans/midsizing.md` all four tasks) exists: a thirty-operation, three-service fixture (sales, purchasing, attendance; ids `so-`/`po-`/`att-`, `pattern`-bearing) and sixty questions (40 answerable, 20 impossible) run through the real platform, scored for correct@1, false refusal, refused, forced, fabricated, and latency. First run under the shared defaults (two stages, `v6-unmatched-filter`, thinking off, narrowing K=20, no chunk cache reuse): answerable 40 correct@1 38 / false refusal 1; impossible 20 refused 17 / forced 3; forms 24 fabricated 0; latency mean 1274 ms. All five misses read row by row and left as genuine (`m24`, `m29`, `m41`, `m42`, `m44`); the impossible half's verb-not-there family took 3 of the run's 3 forced picks. Two instrument limits found and recorded, not fixed: the scorer's enum-vs-fabrication confusion (fixed in `7adb5b7`), and forms that echo an id into a `name` field past both the scorer's and the platform's own "appears in the question" rule (`TODO.md`). From here every planning decision is checked against all three instruments together - shortlist corpus (78/79), real-catalogue cases (16/16), and mid (38/40, 17/20, 0/24) - not any one alone. Full account in `DECISIONS.md`, 2026-09-17 ("Midsizing: the first mid run").
 
