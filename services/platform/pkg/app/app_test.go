@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -580,6 +581,105 @@ func TestNewWithLLMStagesTwoBuildsAndServesAQuestion(t *testing.T) {
 	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// capturingChatServer is fixtureChatServerCapturingRequests' own result:
+// a running fixture server and the requests it has recorded so far -
+// bundled into one struct, rather than two unnamed returns, the same
+// reasoning plannerRepeatPenalty (internal/infra/config/config.go) already
+// applies to its own pair of results.
+type capturingChatServer struct {
+	server   *httptest.Server
+	requests *[]map[string]any
+}
+
+// fixtureChatServerCapturingRequests is fixtureChatServer plus a slice
+// every decoded request body is appended to - what
+// TestNewWithLLMTodayPinsTheToolCallPlannersClock needs to read the date
+// line app.newPlanner's toolcall.WithClock wiring actually sent, not just
+// that the call succeeded.
+func fixtureChatServerCapturingRequests(t *testing.T) capturingChatServer {
+	t.Helper()
+
+	const response = `{
+    "choices": [{
+      "finish_reason": "tool_calls",
+      "message": {
+        "role": "assistant",
+        "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "ListWidgets", "arguments": "{}"}}]
+      }
+    }]
+  }`
+
+	requests := &[]map[string]any{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var decoded map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&decoded); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		*requests = append(*requests, decoded)
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(response)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	return capturingChatServer{server: server, requests: requests}
+}
+
+// TestNewWithLLMTodayPinsTheToolCallPlannersClock is app.newPlanner's own
+// wiring test for Config.LLM.Today (ORCHESTRA_PLANNER_TODAY, config.go):
+// with it set, the toolcall planner's date line reads that fixed date -
+// 2026-09-16, a Wednesday (水) - not whatever day the test actually runs
+// on. internal/adapter/planner/toolcall/planner_clock_test.go already
+// proves toolcall.WithClock itself renders the weekday correctly; this
+// test is only about app.New actually passing it through.
+func TestNewWithLLMTodayPinsTheToolCallPlannersClock(t *testing.T) {
+	fixture := fixtureService(t)
+	capturing := fixtureChatServerCapturingRequests(t)
+	today := time.Date(2026, time.September, 16, 0, 0, 0, 0, time.Local)
+
+	handler, err := app.New(&app.Config{
+		Services:      []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:           app.LLM{BaseURL: capturing.server.URL, Model: "test-model", Today: &today},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotEmpty(t, *capturing.requests)
+
+	messages, ok := (*capturing.requests)[0]["messages"].([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, messages)
+
+	last, ok := messages[len(messages)-1].(map[string]any)
+	require.True(t, ok)
+
+	content, ok := last["content"].(string)
+	require.True(t, ok)
+	assert.Equal(t, "今日は 2026-09-16（水）です。\n\nwidgets please", content)
 }
 
 // fixtureJSONChatServer answers every chat-completions request with a

@@ -30,6 +30,17 @@ const ADMIN_PASSWORD = "shortlist-eval-admin-password";
 const LLM_BASE_URL = "http://localhost:11435/v1";
 const LLM_MODEL = "qwen3.5-9b-q8";
 
+/**
+ * The fixed "today" every shortlist measurement run pins the platform's
+ * planners to (`ORCHESTRA_PLANNER_TODAY`, config.go) - 2026-09-16, the
+ * date the corpus reference 78/79 was taken with in the prompt. Without
+ * this, every planning call's user content starts with 「今日は
+ * YYYY-MM-DD（曜）です。」 off the real clock, so a run on a different
+ * calendar day is a different request and a near-tie row (such as
+ * real-attendance-detail) can move on its own.
+ */
+const PLANNER_TODAY = "2026-09-16";
+
 /** Narrowing on, K=20 - the shortlist measurement's own setting (docs/plans/shortlisting.md Task 4), shared by run.ts's plain/wording passes and run-mid.ts's mid pass (docs/plans/midsizing.md Task 3) so the two never drift apart. */
 export const NARROWING: NarrowingOptions = {
   embedModel: "e5-large-q8",
@@ -140,6 +151,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       ORCHESTRA_LLM_BASE_URL: LLM_BASE_URL,
       ORCHESTRA_LLM_MODEL: LLM_MODEL,
       ORCHESTRA_SECURE_COOKIE: "false",
+      ORCHESTRA_PLANNER_TODAY: PLANNER_TODAY,
       ...(options.narrowing === undefined
         ? {}
         : {

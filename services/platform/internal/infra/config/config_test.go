@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -706,4 +707,45 @@ func TestLoadRejectsAnInvalidPlannerRepeatLastN(t *testing.T) {
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, config.ErrInvalidPlannerRepeatLastN)
+}
+
+// TestLoadPlannerTodayDefaultsToUnset documents that an unset
+// ORCHESTRA_PLANNER_TODAY leaves the real clock in place - the toolcall
+// and jsonmode planners' own default (time.Now), unchanged since before
+// this option existed.
+func TestLoadPlannerTodayDefaultsToUnset(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_TODAY", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Nil(t, cfg.PlannerToday)
+}
+
+// TestLoadPlannerTodayParsesADate documents the fixed-date case a
+// measurement run relies on: ORCHESTRA_PLANNER_TODAY=2026-09-16 resolves
+// to local midnight on that date.
+func TestLoadPlannerTodayParsesADate(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_TODAY", "2026-09-16")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	require.NotNil(t, cfg.PlannerToday)
+	assert.True(t, cfg.PlannerToday.Equal(time.Date(2026, time.September, 16, 0, 0, 0, 0, time.Local)))
+}
+
+func TestLoadRejectsAnInvalidPlannerToday(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PLANNER_TODAY", "16-09-2026")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidPlannerToday)
 }

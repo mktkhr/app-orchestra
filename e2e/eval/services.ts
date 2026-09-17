@@ -24,6 +24,18 @@ let platform: RunningService | undefined;
 const adminPassword = "eval-admin-password";
 
 /**
+ * The fixed "today" every eval run pins the platform's planners to
+ * (`ORCHESTRA_PLANNER_TODAY`, config.go) - 2026-09-16, the date the eval
+ * baseline (`e2e/eval/baseline.json`) and the corpus reference 78/79 were
+ * both taken with in the prompt. Without this, every planning call's user
+ * content starts with 「今日は YYYY-MM-DD（曜）です。」 off the real
+ * clock (`toolcall.WithClock`/`jsonmode.WithClock`'s own default), so a
+ * run on a different day is a different request and a near-tie row can
+ * move on its own - not because the corpus changed.
+ */
+const PLANNER_TODAY = "2026-09-16";
+
+/**
  * Starts both dummy services and the platform from their built binaries -
  * the same way `e2e/src/*.test.ts` do - except the platform is started with
  * `llmBaseURL`/`llmModel` set (docs/specs/eval.md, E5/section 5), so it
@@ -73,6 +85,7 @@ export async function startEvalPlatform(
       // Plain HTTP (127.0.0.1, no TLS): see e2e/src/orchestration.test.ts's
       // own comment on this variable.
       ORCHESTRA_SECURE_COOKIE: "false",
+      ORCHESTRA_PLANNER_TODAY: PLANNER_TODAY,
       // docs/specs/wording.md Q4: the wording that would become the default
       // is checked against these eighteen cases too. Passed through only
       // when set, so the default run is byte-identical to before.

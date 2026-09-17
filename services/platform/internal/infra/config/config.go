@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/wording"
 )
@@ -63,6 +64,13 @@ var ErrInvalidPlannerRepeatLastN = errors.New("ORCHESTRA_PLANNER_REPEAT_LAST_N m
 // same reasoning ErrInvalidPlannerThinking already applies to
 // ORCHESTRA_PLANNER_THINKING (docs/specs/staging.md, section 6).
 var ErrInvalidPlannerStages = errors.New("ORCHESTRA_PLANNER_STAGES must be 1 or 2")
+
+// ErrInvalidPlannerToday is wrapped into the error returned when
+// ORCHESTRA_PLANNER_TODAY does not parse as a YYYY-MM-DD date - the same
+// reasoning ErrInvalidPlannerThinking already applies to
+// ORCHESTRA_PLANNER_THINKING: a typo'd date should fail startup, not
+// silently fall back to the real clock.
+var ErrInvalidPlannerToday = errors.New("ORCHESTRA_PLANNER_TODAY must be YYYY-MM-DD")
 
 // ErrMissingDBPath is returned when ORCHESTRA_DB_PATH is unset. Workspaces
 // live in the SQLite file it names (docs/specs/workspaces.md, W3); a
@@ -272,6 +280,16 @@ type Config struct {
 	// decide whether to also build a usecase.Picker (pick.New) and pass
 	// usecase.WithPicker alongside usecase.WithStages.
 	PlannerStages int
+	// PlannerToday pins the planners' "today" (toolcall.WithClock,
+	// jsonmode.WithClock) to local midnight on this date, read from
+	// ORCHESTRA_PLANNER_TODAY (a YYYY-MM-DD date). nil (unset) means the
+	// real clock - production's default. A measurement run pins this so
+	// that two runs on different calendar days send byte-identical
+	// requests: every planning call's user content starts with 「今日は
+	// YYYY-MM-DD（曜）です。」 (see WithClock's own doc comment), so
+	// without a fixed date, a near-tie eval or shortlist row can move day
+	// to day for no reason the corpus itself changed.
+	PlannerToday *time.Time
 	// PlanFixtures configures the stub planner's table when LLMBaseURL is
 	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
 	// never sets this - an operator sets ORCHESTRA_LLM_BASE_URL instead,
@@ -574,6 +592,38 @@ func parsePlannerStages(raw string) (int, error) {
 	}
 }
 
+// plannerTodayLayout is the date layout ORCHESTRA_PLANNER_TODAY is parsed
+// with - the same "YYYY-MM-DD" the date line itself renders (see
+// toolcall.WithClock's own doc comment).
+const plannerTodayLayout = "2006-01-02"
+
+// plannerToday is parsePlannerToday's result: value is only meaningful
+// when set is true. A struct, not a nilable *time.Time, for the same
+// reason plannerRepeatPenalty is one rather than a *float64 - see its own
+// doc comment.
+type plannerToday struct {
+	value time.Time
+	set   bool
+}
+
+// parsePlannerToday reads ORCHESTRA_PLANNER_TODAY: the zero plannerToday
+// (the real clock) when unset, set with local midnight on the named date
+// otherwise - anything else fails startup rather than silently falling
+// back to the real clock, the same reasoning parsePlannerThinking already
+// applies to ORCHESTRA_PLANNER_THINKING.
+func parsePlannerToday(raw string) (plannerToday, error) {
+	if raw == "" {
+		return plannerToday{}, nil
+	}
+
+	today, err := time.ParseInLocation(plannerTodayLayout, raw, time.Local)
+	if err != nil {
+		return plannerToday{}, fmt.Errorf("%w: %q", ErrInvalidPlannerToday, raw)
+	}
+
+	return plannerToday{value: today, set: true}, nil
+}
+
 // parseContextTurns reads ORCHESTRA_CONTEXT_TURNS: defaultContextTurns when
 // unset or empty, or the positive integer it names otherwise. See
 // ErrInvalidContextTurns for why anything else fails startup instead of
@@ -658,6 +708,15 @@ func loadLLM(cfg *Config) error {
 	}
 
 	cfg.PlannerStages = stages
+
+	today, err := parsePlannerToday(os.Getenv("ORCHESTRA_PLANNER_TODAY"))
+	if err != nil {
+		return err
+	}
+
+	if today.set {
+		cfg.PlannerToday = &today.value
+	}
 
 	return nil
 }

@@ -188,6 +188,15 @@ type LLM struct {
 	// pass usecase.WithPicker/WithStages(2) to NewOrchestrator
 	// (docs/specs/staging.md, S1, S6).
 	Stages int
+	// Today mirrors config.Config.PlannerToday: nil (every test and
+	// caller that predates this option) leaves both planners on the real
+	// clock (toolcall.New/jsonmode.New's own default, time.Now); set,
+	// newPlanner passes toolcall.WithClock/jsonmode.WithClock a clock
+	// that always returns this instant, so every planning call's date
+	// line is pinned regardless of which day the process actually runs
+	// on (docs/specs/staging.md's own reasoning for a fixed measurement
+	// date).
+	Today *time.Time
 }
 
 // Narrowing configures the llama-swap-backed usecase.Narrower
@@ -707,7 +716,7 @@ func newPlanner(cfg *Config, catalog domain.Catalog) (usecase.Planner, error) {
 
 		return toolcall.New(client, catalog, toolcallOptions(cfg, &w)...), nil
 	case ModeJSON:
-		return jsonmode.New(client, catalog), nil
+		return jsonmode.New(client, catalog, jsonmodeOptions(cfg)...), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidLLMMode, cfg.LLM.Mode)
 	}
@@ -760,7 +769,31 @@ func toolcallOptions(cfg *Config, w *wording.Wording) []toolcall.Option {
 		opts = append(opts, toolcall.WithRepeatPenalty(*cfg.LLM.RepeatPenalty, cfg.LLM.RepeatLastN))
 	}
 
+	if cfg.LLM.Today != nil {
+		opts = append(opts, toolcall.WithClock(fixedClock(*cfg.LLM.Today)))
+	}
+
 	return opts
+}
+
+// jsonmodeOptions builds the jsonmode.Option list newPlanner passes to
+// jsonmode.New: WithClock when cfg.LLM.Today is set, left off entirely
+// otherwise so New's own default (time.Now) applies exactly as it did
+// before this option existed - the same reasoning toolcallOptions already
+// applies to toolcall.WithClock.
+func jsonmodeOptions(cfg *Config) []jsonmode.Option {
+	if cfg.LLM.Today == nil {
+		return nil
+	}
+
+	return []jsonmode.Option{jsonmode.WithClock(fixedClock(*cfg.LLM.Today))}
+}
+
+// fixedClock returns a clock func that always answers today, regardless
+// of when it is called - what toolcall.WithClock/jsonmode.WithClock need
+// from Config.LLM.Today.
+func fixedClock(today time.Time) func() time.Time {
+	return func() time.Time { return today }
 }
 
 // resolveWording looks name up via wording.ByName, treating "" as
