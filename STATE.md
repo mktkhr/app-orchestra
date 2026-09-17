@@ -1,8 +1,23 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-18 (a fourth instrument: multi-turn dialogues, `make eval-dialogue`)_
+_Last updated: 2026-09-18 (Jev on the whole catalogue, measured; propose_panel now offered to the pick only with a workspace)_
 
 ## Summary
+
+**2026-09-18 - Jev given the whole 1000-operation catalogue (the shape
+TypeSafe's own docs recommend, hierarchical over 255 options) reads 27
+correct@1 against the local picker's 78, because the built-in `none` wins
+the service question in 58 of 100 rows; with built-ins set aside the same
+run reads 70, and its **service** decision is right in 90 of 98 rows and
+25 of 25 on axis B (cross-service homonyms), ahead of both the local
+picker and Jev-on-20.** Not adopted; `ORCHESTRA_PICKER` stays unset, the
+hierarchical request stays behind config. A defect found on the way and
+fixed (`eeb23fa`): every picker, including the local one, offered
+`propose_panel` on questions with no workspace, and a `propose_panel`
+pick falls back to a whole-catalogue single call - so some rows credited
+to a Jev run had been answered by the local model. Corpus after the fix:
+local 78/80, Jev-on-20 69/71. See `DECISIONS.md`, 2026-09-18, and
+`docs/measurements/jev-full-catalogue.md`.
 
 **2026-09-18 - a fourth instrument, `make eval-dialogue`, measures
 follow-up questions with turns chained from the platform's own answers

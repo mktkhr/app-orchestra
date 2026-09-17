@@ -8101,3 +8101,63 @@ the service's 400 became a `none` through `usecase.ServiceError`
 record - the instrument logs `/api/plan`'s request and response, not
 the invoke's own arguments. The expected outcomes were not widened to
 fit the run. Open in `TODO.md`.
+
+## 2026-09-18 Jev with the whole catalogue: the service question wins, the pick does not
+
+Full record: `docs/measurements/jev-full-catalogue.md`, raw per-question
+data in `jev-full-catalogue-picks.jsonl`.
+
+Every Jev round before this gave Jev the local narrowing stage's own 20
+candidates. TypeSafe's documentation recommends the opposite - the full
+list, up to 255 options per Choice question, and above that the
+hierarchical cookbook's staged questions scored by the geometric mean of
+each edge's probability. The 255 ceiling, recorded as unverified in
+`jev-field-report.md`, is now confirmed from the primary source
+(`docs.typesafe.ai/primitives/choice`). So the shape every earlier round
+measured was the one the vendor advises against.
+
+**A defect the two-question smoke found first.** Both smoke questions came
+back `propose_panel` (p=0.79, p=0.70) from the service question; a
+`propose_panel` pick falls back to `planOrdinary` over the whole
+catalogue, so the answer came from the local model rather than the pick
+under test. Cause: every picker - Jev flat, Jev hierarchical, and the
+local one - offered `propose_panel` on every question, while
+`usecase.ToolsFor` offers it only with a workspace
+(`docs/specs/offering.md`). `eeb23fa` threads `PlanContext` through
+`usecase.Picker.Pick` and drops the option, and its sentence in the
+instructions, when no workspace is present; a workspace-present request
+is asserted byte-identical. Corpus effect: local 78/79 → 78/80, Jev flat
+69/72 → 69/71 - no score moved outside the near-tie band, but a path by
+which the local model silently answered rows credited to Jev is closed.
+
+**The measurement.** 100 questions, two stages, v1 criteria, one call
+each. Jev on the whole 1000-operation catalogue reads **27** correct@1,
+against the local picker's 78 and Jev-on-20's 69. The cause is
+structural, not Jev's ability: `none` won the service question in 58 of
+100 rows at ~0.85, and a built-in is one decision scored against an
+operation's two-decision geometric mean.
+
+**What the same run says with built-ins set aside** (recovered offline
+from each pick's own logged top-three paths, exact for 98 of 100 rows):
+70 correct@1 overall - but the axes disagree sharply. Axis B, the
+cross-service homonyms, reads **23/25** against the local picker's 21 and
+Jev-on-20's 18; axis D reads 11/15 against 10 and 7. Axes A and E fall
+well below the local picker (16/25 vs 22, 6/10 vs 9) - exactly where a
+reranked 20-candidate shortlist hands the picker an easy list.
+
+**The service question itself is accurate**: the chosen path's service
+matched the answer's service in **90 of 98** rows, and 25 of 25 on axis
+B.
+
+Cost 33,944 input tokens per call, $0.143 for the run, $0.3558
+cumulative of the $2 budget. Jev's pick latency was 715 ms mean on 1000
+candidates against 1,131 ms on 20 in the same round - fifty times the
+options for well under double the time, no size or rate error.
+
+**Not adopted.** `ORCHESTRA_PICKER` stays unset; the hierarchical
+request stays behind config for shortlists over 255 options. The reading
+this leaves for a later round, and the only place the data shows Jev
+clearly ahead of the local stack, is the **service** decision, not the
+operation: Jev naming the service and the existing local narrowing and
+pick running inside it - the same slot `idAffinity` already occupies
+(`orchestrator_staging.go`). Untried.

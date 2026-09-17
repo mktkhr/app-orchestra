@@ -143,7 +143,31 @@ _Nothing in progress right now._
    with the local pick fixed and Jev called only for ordering, and a
    decision on the extra call per question.
 
+1. **Let Jev name the service, and keep the pick local inside it.** The
+   whole-catalogue round (`DECISIONS.md`, 2026-09-18) found Jev's service
+   decision right in 90 of 98 rows and 25 of 25 on axis B, while its
+   operation decision stayed below the local picker. The slot exists:
+   `idAffinity` already narrows the pick's catalogue to one service
+   (`orchestrator_staging.go`). A service-only Choice question is five
+   options plus built-ins - a few hundred tokens a question, under $0.01
+   for the corpus. Win condition to set before running: 80 or more
+   correct@1 on the corpus (the local picker reads 78), with mid and
+   `make eval` not regressing.
+1. **The built-ins distort a hierarchical Jev request.** `none` won the
+   service question in 58 of 100 rows at ~0.85, because a built-in is one
+   decision scored against an operation's two-decision geometric mean.
+   Any later hierarchical round needs a rule for this (built-ins at the
+   leaf level, a depth-matched score, or no built-ins in the tree at
+   all); the 70 recovered offline assumes they are simply removed.
+
 ## Done
+
+- **Jev on the whole catalogue: measured, not adopted** (2026-09-18).
+  27 correct@1 as built, 70 with built-ins set aside, against the local
+  picker's 78 - but the service decision alone reads 90/98. $0.143 for
+  the round, $0.3558 cumulative. Also fixed on the way: every picker
+  offered `propose_panel` without a workspace (`eeb23fa`). See
+  `DECISIONS.md`, 2026-09-18, and `docs/measurements/jev-full-catalogue.md`.
 
 - **A multi-turn instrument exists: `make eval-dialogue`** (`137e8f6`).
   Twelve dialogues, twenty-seven questions, turns chained from the
