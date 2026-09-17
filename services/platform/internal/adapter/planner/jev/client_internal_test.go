@@ -30,6 +30,13 @@ func choiceResponseBody(choice string) string {
 		`","confidence":0.9}},"usage":{"input_tokens":1,"output_tokens":1}}`
 }
 
+// noulResponseBodyInternal is a fixed "noul" answer body - gate's own
+// counterpart to choiceResponseBody, used only to exercise client.gate's
+// shared retry core (post/doOnce), not to assert on the noul value
+// itself (gate_test.go does that, through the exported Gate type).
+const noulResponseBodyInternal = `{"model":"jev-1.13.0","answers":{"gate":{"type":"noul","noul":0.9}},` +
+	`"usage":{"input_tokens":1,"output_tokens":1}}`
+
 // TestClientPickRetries429ThenSucceeds is the contract's own "429, then
 // retried, then success": two failures at 429, the third attempt answers
 // 200, and pick returns that answer rather than an error.
@@ -95,6 +102,51 @@ func TestClientPickDoesNotRetryANonRetryableStatus(t *testing.T) {
 	_, err := c.pick(context.Background(), wireRequest{})
 	require.Error(t, err)
 	assert.Equal(t, int32(1), attempts.Load())
+}
+
+// TestClientGateRetries429ThenSucceeds mirrors TestClientPickRetries429
+// ThenSucceeds for client.gate: the same shared retry core (post/doOnce)
+// pick already exercises, proven here against gate's own request/response
+// types too.
+func TestClientGateRetries429ThenSucceeds(t *testing.T) {
+	var attempts atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if attempts.Add(1) <= maxRetries {
+			w.WriteHeader(http.StatusTooManyRequests)
+
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(noulResponseBodyInternal)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	c := newTestClient(server)
+
+	resp, err := c.gate(context.Background(), gateWireRequest{})
+	require.NoError(t, err)
+	assert.InDelta(t, 0.9, resp.Answers["gate"].Noul, 0.0001)
+	assert.Equal(t, int32(maxRetries+1), attempts.Load())
+}
+
+// TestClientGateNonTwoHundredIsAnError mirrors TestClientPickDoesNotRetry
+// ANonRetryableStatus for client.gate: a non-retryable status fails on
+// the first attempt.
+func TestClientGateNonTwoHundredIsAnError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	c := newTestClient(server)
+
+	_, err := c.gate(context.Background(), gateWireRequest{})
+	require.Error(t, err)
 }
 
 // TestStatusErrorNeverCarriesTheAPIKey guards the "401 -> error naming the

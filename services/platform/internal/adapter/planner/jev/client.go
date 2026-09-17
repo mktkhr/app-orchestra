@@ -5,6 +5,11 @@
 // fixed built-ins as one "choice" question and reads Jev's own judged
 // confidence back as S4's Ambiguous, rather than the local picker's
 // "ambiguous" text token.
+//
+// It also implements usecase.Gate (gate.go), the v3 trial's "noul
+// refusal gate" (docs/measurements/jev-picker-v3.md), selected by
+// ORCHESTRA_GATE=jev - a separate call over the same endpoint, asked
+// before the pick, judging whether a question is answerable at all.
 package jev
 
 import (
@@ -157,34 +162,78 @@ func (c *client) pick(ctx context.Context, req wireRequest) (wireResponse, error
 		return wireResponse{}, fmt.Errorf("encoding jev request: %w", err)
 	}
 
+	respBody, err := c.post(ctx, body)
+	if err != nil {
+		return wireResponse{}, err
+	}
+
+	var wire wireResponse
+	if err := json.Unmarshal(respBody, &wire); err != nil {
+		return wireResponse{}, fmt.Errorf("decoding jev response: %w", err)
+	}
+
+	return wire, nil
+}
+
+// gate sends req to the same POST /v1/systemone endpoint as pick, with
+// its own wire shape (gateWireRequest's object state, gateWireResponse's
+// "noul" answer) - see gate.go. Retrying and error handling are shared
+// with pick through post, below; only the request/response JSON types
+// differ (mapping.go's buildRequest/wireRequest/wireResponse vs. gate.go's
+// buildGateRequest/gateWireRequest/gateWireResponse).
+func (c *client) gate(ctx context.Context, req gateWireRequest) (gateWireResponse, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return gateWireResponse{}, fmt.Errorf("encoding jev gate request: %w", err)
+	}
+
+	respBody, err := c.post(ctx, body)
+	if err != nil {
+		return gateWireResponse{}, err
+	}
+
+	var wire gateWireResponse
+	if err := json.Unmarshal(respBody, &wire); err != nil {
+		return gateWireResponse{}, fmt.Errorf("decoding jev gate response: %w", err)
+	}
+
+	return wire, nil
+}
+
+// post sends body to pickPath, retrying a 429/529 answer up to maxRetries
+// times before returning the last error - the shared retry/backoff/status
+// core pick and gate both build their own typed request/response around,
+// so this package's one retry policy lives in exactly one place.
+func (c *client) post(ctx context.Context, body []byte) ([]byte, error) {
 	var lastErr error
 
 	for attempt := 0; ; attempt++ {
-		resp, err := c.doOnce(ctx, body)
+		respBody, err := c.doOnce(ctx, body)
 		if err == nil {
-			return resp, nil
+			return respBody, nil
 		}
 
 		lastErr = err
 
 		var se *statusError
 		if !errors.As(err, &se) || !se.retryable() || attempt >= maxRetries {
-			return wireResponse{}, lastErr
+			return nil, lastErr
 		}
 
 		select {
 		case <-ctx.Done():
-			return wireResponse{}, fmt.Errorf("jev request: %w", ctx.Err())
+			return nil, fmt.Errorf("jev request: %w", ctx.Err())
 		case <-time.After(c.backoffs[attempt]):
 		}
 	}
 }
 
-// doOnce sends body once and decodes a successful response.
-func (c *client) doOnce(ctx context.Context, body []byte) (wireResponse, error) {
+// doOnce sends body once and returns a successful response's raw bytes,
+// undecoded - pick and gate each decode into their own wire type.
+func (c *client) doOnce(ctx context.Context, body []byte) ([]byte, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+pickPath, bytes.NewReader(body))
 	if err != nil {
-		return wireResponse{}, fmt.Errorf("building jev request: %w", err)
+		return nil, fmt.Errorf("building jev request: %w", err)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -192,7 +241,7 @@ func (c *client) doOnce(ctx context.Context, body []byte) (wireResponse, error) 
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
-		return wireResponse{}, fmt.Errorf("requesting %s: %w", httpReq.URL, err)
+		return nil, fmt.Errorf("requesting %s: %w", httpReq.URL, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -202,13 +251,13 @@ func (c *client) doOnce(ctx context.Context, body []byte) (wireResponse, error) 
 			detail = nil
 		}
 
-		return wireResponse{}, &statusError{status: resp.StatusCode, detail: detail}
+		return nil, &statusError{status: resp.StatusCode, detail: detail}
 	}
 
-	var wire wireResponse
-	if err := json.NewDecoder(resp.Body).Decode(&wire); err != nil {
-		return wireResponse{}, fmt.Errorf("decoding jev response: %w", err)
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading jev response: %w", err)
 	}
 
-	return wire, nil
+	return respBody, nil
 }
