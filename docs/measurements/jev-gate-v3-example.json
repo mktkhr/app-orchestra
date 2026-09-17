@@ -1,0 +1,39 @@
+{
+  "request": {
+    "state": {
+      "question": "休暇申請書を印刷したい",
+      "operations": [
+        {
+          "id": "listInventoryPickLists",
+          "service": "inventory",
+          "summary": "ピッキングリストの一覧を返す"
+        },
+        {
+          "id": "getInventoryPickList",
+          "service": "inventory",
+          "summary": "ピッキングリストの詳細を返す"
+        },
+        {
+          "id": "createInventoryPickList",
+          "service": "inventory",
+          "summary": "ピッキングリストを作成する"
+        }
+      ]
+    },
+    "model": "jev-latest",
+    "questions": {
+      "gate": {
+        "type": "noul",
+        "instructions": "この質問は、列挙された操作のどれでも実現できないことを求めているか（例: 一覧しかない資源の集計・承認・印刷、列挙に無い資源、業務と無関係な話題）。能力を尋ねる質問（何ができる？）は「いいえ」。"
+      }
+    }
+  },
+  "response_status": 200,
+  "response_body": {
+    "model": "jev-1.13.0",
+    "answers": { "gate": { "type": "noul", "noul": 0.94 } },
+    "usage": { "input_tokens": 521, "output_tokens": 20 }
+  },
+  "latency_ms": 539,
+  "note": "captured with a standalone script hitting the real endpoint with jev.NewGate's exact request shape (mirrors v1 record section 1); Authorization header redacted before saving anywhere. The question text ('休暇申請書を印刷したい') is m44 from the mid corpus, sent here against an illustrative 3-endpoint inventory shortlist rather than the real 30-operation mid subset, to keep the example short; m44's own real run (mid-default-gate.log) scored noul 0.86 against its real 20-endpoint post-narrowing shortlist - both comfortably above the 0.7 threshold, so the picker/service composition of the shortlist does not change the qualitative reading of this example."
+}
