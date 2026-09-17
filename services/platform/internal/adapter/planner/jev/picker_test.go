@@ -290,6 +290,26 @@ func TestPickCompletedLogCarriesConfidenceTokensAndProvider(t *testing.T) {
 	assert.InDelta(t, float64(3), completed["pick_output_tokens"], 0)
 	assert.Equal(t, "jev", completed["pick_provider"])
 	assert.Equal(t, "listInventoryItems", completed["pick_operation_id"])
+	assert.Equal(t, "listInventoryItems", completed["pick_choice"])
+}
+
+// TestPickCompletedLogCarriesTheRawChoiceForABuiltin documents why
+// pick_choice exists alongside pick_operation_id: a built-in kind leaves
+// pick_operation_id empty (usecase.Pick's own shape - see mapAnswer), so
+// pick_choice is the only field in the log line that still names what
+// Jev actually answered.
+func TestPickCompletedLogCarriesTheRawChoiceForABuiltin(t *testing.T) {
+	buf := captureLogs(t)
+	server := stubServer(t, http.StatusOK, responseWith(t, pick.IDNone, 0.9))
+	picker := jev.New(server.URL, "test-key", nil)
+
+	_, err := picker.Pick(context.Background(), "今日の天気は？", nil, shortlistCatalog())
+	require.NoError(t, err)
+
+	completed := logLineWith(t, buf, "pick_choice")
+	require.NotNil(t, completed, "expected a \"pick completed\" log line")
+	assert.Equal(t, pick.IDNone, completed["pick_choice"])
+	assert.Empty(t, completed["pick_operation_id"])
 }
 
 // TestPickCompletedLogCarriesTheFullProbabilityDistribution is the Jev

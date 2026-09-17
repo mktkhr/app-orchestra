@@ -88,6 +88,11 @@ func (p *Picker) Pick(
 
 	slog.Default().InfoContext(ctx, "pick completed",
 		slog.String("pick_operation_id", result.OperationID),
+		// pick_choice is Jev's own raw answer - unlike pick_operation_id,
+		// never empty, so a log line for a built-in (list_capabilities,
+		// propose_panel, none) still names what was chosen, not just
+		// what usecase.Pick.OperationID leaves blank for those kinds.
+		slog.String("pick_choice", answer.Choice),
 		slog.Bool("pick_ambiguous", result.Ambiguous),
 		slog.Int64("pick_ms", time.Since(start).Milliseconds()),
 		slog.Float64("pick_confidence", answer.Confidence),
