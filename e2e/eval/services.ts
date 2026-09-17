@@ -11,6 +11,31 @@ import {
   type RunningService,
 } from "../src/helpers/process.ts";
 
+/**
+ * Drains a spawned process's stdout/stderr so neither ever backs up.
+ * `startBinary` (`e2e/src/helpers/process.ts`) pipes both
+ * (`stdio: ["ignore", "pipe", "pipe"]`); a piped stream nobody reads stays
+ * paused, and once its OS pipe buffer (64KiB on Linux) fills, the child's
+ * own write to stdout/stderr blocks - and, for the platform, so does
+ * whatever request was mid-`slog` write when that happened, forever, since
+ * nothing here was ever going to read the rest.
+ *
+ * Found 2026-09-17, `PICKER=jev make eval`: the jev picker logs one extra
+ * "pick completed" line per pick (`pick_probabilities` included) beside
+ * the orchestrator's own, on top of a real run's several hundred requests
+ * - enough log volume, unlike the local picker's, to fill the pipe within
+ * a `make eval` run and hang a request outright (an unrelated-looking
+ * `UND_ERR_HEADERS_TIMEOUT` about 5 minutes in, undici's own
+ * `headersTimeout` - reproduced twice, absent from a same-day control run
+ * with the local picker). The discarded output was never captured by this
+ * file to begin with (unlike `e2e/shortlist/boot.ts`'s own `logFile`
+ * option) - draining it costs nothing this suite already had.
+ */
+function drainStdio(child: RunningService["process"]): void {
+  child.stdout?.resume();
+  child.stderr?.resume();
+}
+
 /** The real, running platform an eval run measures against, and the session to call it with. */
 export interface EvalPlatform {
   readonly baseUrl: string;
@@ -58,12 +83,15 @@ export async function startEvalPlatform(
     }),
     port: inventoryPort,
   };
+  drainStdio(inventory.process);
+
   attendance = {
     process: startBinary("../services/attendance/bin/api", {
       ORCHESTRA_PORT: String(attendancePort),
     }),
     port: attendancePort,
   };
+  drainStdio(attendance.process);
 
   await Promise.all([
     waitForReady(`http://127.0.0.1:${inventoryPort}/openapi.yaml`, 10_000),
@@ -114,6 +142,7 @@ export async function startEvalPlatform(
     }),
     port: platformPort,
   };
+  drainStdio(platform.process);
 
   await waitForReady(`http://127.0.0.1:${platformPort}/api/health`, 15_000);
 
