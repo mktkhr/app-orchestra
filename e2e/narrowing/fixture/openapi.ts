@@ -13,6 +13,7 @@ import { SCHEMAS } from "./openapi-document.ts";
 import type {
   OpenAPIDocument,
   Operation,
+  Parameter,
   PathItem,
   RequestBody,
   Response,
@@ -124,19 +125,35 @@ const CRUD_RESPONSES: Readonly<Record<Verb, Readonly<Record<string, Response>>>>
   },
 };
 
-function crudOperation(service: string, resource: Resource, verb: Verb): Operation {
+/** The `id` path parameter with a `pattern` constraint, for the mid subset's id affinity (M2). */
+function idParameter(idPrefix: string): Parameter {
+  return {
+    name: "id",
+    in: "path",
+    required: true,
+    schema: { type: "string", pattern: `^${idPrefix}[0-9]+$` },
+  };
+}
+
+const ID_VERBS: ReadonlySet<Verb> = new Set(["get", "update", "delete"]);
+
+function crudOperation(fixture: ServiceFixture, resource: Resource, verb: Verb): Operation {
   const idPart = verb === "list" ? resource.plural : resource.id;
   const examples = resource.examples?.[verb];
+  const { idPrefix } = fixture;
 
   return {
-    operationId: `${verb}${qualify(service, idPart)}`,
+    operationId: `${verb}${qualify(fixture.name, idPart)}`,
     summary: crudSummary(verb, resource.noun),
     description: descriptionOf(resource, verb),
-    tags: [service],
+    tags: [fixture.name],
     "x-orchestra-expose": true,
     "x-ui-hint": { displayName: crudDisplayName(verb, baseDisplayOf(resource)) },
     ...(verb === "create" || verb === "update"
       ? { requestBody: requestBodyOf("NewFixtureRecord") }
+      : {}),
+    ...(idPrefix !== undefined && ID_VERBS.has(verb)
+      ? { parameters: [idParameter(idPrefix)] }
       : {}),
     responses: CRUD_RESPONSES[verb],
     ...(examples === undefined ? {} : { "x-orchestra-examples": examples }),
@@ -144,20 +161,23 @@ function crudOperation(service: string, resource: Resource, verb: Verb): Operati
 }
 
 /** A resource's two paths: the collection, and one member by id. */
-function resourcePaths(service: string, resource: Resource): Readonly<Record<string, PathItem>> {
-  const base = `/api/${service}/${kebabOf(resource.plural)}`;
+function resourcePaths(
+  fixture: ServiceFixture,
+  resource: Resource,
+): Readonly<Record<string, PathItem>> {
+  const base = `/api/${fixture.name}/${kebabOf(resource.plural)}`;
   const byId = `${base}/{id}`;
   const has = (v: Verb): boolean => resource.verbs.includes(v);
 
   return {
     [base]: {
-      ...(has("list") ? { get: crudOperation(service, resource, "list") } : {}),
-      ...(has("create") ? { post: crudOperation(service, resource, "create") } : {}),
+      ...(has("list") ? { get: crudOperation(fixture, resource, "list") } : {}),
+      ...(has("create") ? { post: crudOperation(fixture, resource, "create") } : {}),
     },
     [byId]: {
-      ...(has("get") ? { get: crudOperation(service, resource, "get") } : {}),
-      ...(has("update") ? { put: crudOperation(service, resource, "update") } : {}),
-      ...(has("delete") ? { delete: crudOperation(service, resource, "delete") } : {}),
+      ...(has("get") ? { get: crudOperation(fixture, resource, "get") } : {}),
+      ...(has("update") ? { put: crudOperation(fixture, resource, "update") } : {}),
+      ...(has("delete") ? { delete: crudOperation(fixture, resource, "delete") } : {}),
     },
   };
 }
@@ -245,7 +265,7 @@ export function toOpenAPI(fixture: ServiceFixture): OpenAPIDocument {
     Object.assign(paths, more);
   };
 
-  for (const resource of fixture.resources) merge(resourcePaths(fixture.name, resource));
+  for (const resource of fixture.resources) merge(resourcePaths(fixture, resource));
   for (const aggregate of fixture.aggregates) merge(aggregatePath(fixture.name, aggregate));
   for (const setting of fixture.settings) merge(settingPath(fixture.name, setting));
   for (const workflow of fixture.workflows) merge(workflowPaths(fixture.name, workflow));

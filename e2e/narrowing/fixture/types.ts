@@ -81,4 +81,12 @@ export interface ServiceFixture {
   readonly aggregates: readonly Aggregate[];
   readonly settings: readonly Setting[];
   readonly workflows: readonly Workflow[];
+  /**
+   * The mid subset's per-service id prefix (docs/specs/midsizing.md, M2):
+   * when set, `toOpenAPI` declares `pattern: "^<idPrefix>[0-9]+$"` on the
+   * `id` path parameter of every `get`/`update`/`delete` operation this
+   * fixture generates. Undefined for the full fixture's five services, so
+   * their generated documents are unchanged.
+   */
+  readonly idPrefix?: string;
 }

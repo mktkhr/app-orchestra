@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 
-import { operationsOf, services } from "./fixture/index.ts";
+import { midServices, operationsOf, services } from "./fixture/index.ts";
 import { toOpenAPI } from "./fixture/openapi.ts";
 import type { OpenAPIDocument, Operation, SchemaObject } from "./fixture/openapi.ts";
+import type { ServiceFixture } from "./fixture/types.ts";
 import { start, type Serving } from "./serve.ts";
 
 /**
@@ -223,4 +224,60 @@ test("404s a GET under a known service's /api path that matches no declared oper
   const response = await fetch(`${baseUrl}/api/${firstServiceName()}/not-a-real-endpoint`);
 
   expect(response.status).toBe(404);
+});
+
+/** The mid subset's sales fixture - present by construction, never absent at runtime. */
+function midSalesFixture(): ServiceFixture {
+  const found = midServices().find((s) => s.name === "sales");
+
+  if (found === undefined) throw new Error("mid subset is missing sales");
+
+  return found;
+}
+
+describe("start(port, served) with an explicit subset (docs/plans/midsizing.md Task 1)", () => {
+  let midServing: Serving;
+  let midBaseUrl: string;
+
+  async function fetchMidOperationIds(name: string): Promise<Set<string>> {
+    const response = await fetch(`${midBaseUrl}/${name}/openapi.yaml`);
+    const body: unknown = JSON.parse(await response.text());
+
+    return collectOperationIds(body, new Set());
+  }
+
+  beforeAll(async () => {
+    midServing = await start(0, midServices());
+    const address = midServing.server.address();
+
+    if (!isRecord(address)) {
+      throw new Error("the mid fixture server did not report a listening address");
+    }
+
+    midBaseUrl = `http://127.0.0.1:${String(address["port"])}`;
+  });
+
+  afterAll(async () => {
+    await midServing.stop();
+  });
+
+  test("serves only the subset's three services, ten operations each", async () => {
+    const ids = await fetchMidOperationIds("sales");
+
+    expect(ids.size).toBe(10);
+  });
+
+  test("answers GET /sales/api/sales/orders with a schema-valid body", async () => {
+    const doc = toOpenAPI(midSalesFixture());
+    const outcomes = await fetchGetOutcomes(midBaseUrl, "sales", doc);
+
+    expect(getInvokes(doc).length).toBeGreaterThan(0);
+    expect(allValid(outcomes)).toBe(true);
+  });
+
+  test("404s for a full-fixture service not in the subset", async () => {
+    const response = await fetch(`${midBaseUrl}/inventory/openapi.yaml`);
+
+    expect(response.status).toBe(404);
+  });
 });

@@ -4,6 +4,7 @@ import { isRecord } from "../src/helpers/wire.ts";
 import { services } from "./fixture/index.ts";
 import { toOpenAPI } from "./fixture/openapi.ts";
 import type { Operation, PathItem, SchemaObject } from "./fixture/openapi.ts";
+import type { ServiceFixture } from "./fixture/types.ts";
 
 /**
  * Serves the five fixture contracts over HTTP, the way a real service
@@ -120,9 +121,12 @@ function findGetOperation(
   return candidates[0]?.[1].get;
 }
 
-/** Starts the fixture server on port, resolving once it is listening. */
-export function start(port: number): Promise<Serving> {
-  const byName = new Map(services().map((service) => [service.name, service]));
+/** Starts the fixture server on port, serving `served` (the full five services by default). */
+export function start(
+  port: number,
+  served: readonly ServiceFixture[] = services(),
+): Promise<Serving> {
+  const byName = new Map(served.map((service) => [service.name, service]));
 
   const server = createServer((req, res) => {
     const pathname = (req.url ?? "").split("?")[0] ?? "";

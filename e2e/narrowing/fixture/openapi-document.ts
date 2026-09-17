@@ -14,6 +14,14 @@ export interface RequestBody {
   readonly content: { readonly "application/json": { readonly schema: SchemaRef } };
 }
 
+/** A path parameter carrying a `pattern` constraint (the mid subset's id affinity, M2). */
+export interface Parameter {
+  readonly name: string;
+  readonly in: "path";
+  readonly required: true;
+  readonly schema: { readonly type: "string"; readonly pattern: string };
+}
+
 export interface Operation {
   readonly operationId: string;
   readonly summary: string;
@@ -22,6 +30,7 @@ export interface Operation {
   readonly "x-orchestra-expose": true;
   readonly "x-ui-hint": { readonly displayName: string };
   readonly requestBody?: RequestBody;
+  readonly parameters?: readonly Parameter[];
   readonly responses: Readonly<Record<string, Response>>;
   /**
    * Things a person might type when they want this operation
