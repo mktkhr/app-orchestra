@@ -85,13 +85,22 @@ export function corpusArg(): "mid" | undefined {
 }
 
 /**
- * The `-nothink` / `-rp<value>` / `-stages2` suffix a variant's output
- * files carry (run.ts's own doc comment, docs/plans/staging.md;
+ * The `-nothink` / `-rp<value>` / `-stages2` / `-jev` suffix a variant's
+ * output files carry (run.ts's own doc comment, docs/plans/staging.md;
  * docs/plans/midsizing.md Task 3 reuses it for `--corpus mid`'s
  * `mid-<variant>.jsonl`) - "" for a plain wording pass, unchanged from
  * before any of the three flags existed. `stages` of `1` or `undefined`
  * carries no suffix - `STAGES=1` reproduces the plain pass byte for byte
  * (docs/plans/staging.md, AC-S-101).
+ *
+ * `-jev` is read straight from `ORCHESTRA_JEV_API_KEY`, unlike the other
+ * three which come from `run.ts`'s own `--flag` parsing above: the
+ * picker is chosen through the platform's own environment
+ * (`ORCHESTRA_PICKER`, `e2e/eval/services.ts`/`e2e/shortlist/boot.ts`
+ * pass it through the same way), not a run.ts flag, so this reads that
+ * one environment variable directly rather than growing a fourth
+ * parameter every call site would have to thread through for a name
+ * nothing else here needs.
  */
 export function variantSuffix(
   thinking?: "on" | "off",
@@ -104,6 +113,7 @@ export function variantSuffix(
   const nothink = thinking === undefined ? "" : thinkSuffix[thinking];
   const rp = repeatPenalty === undefined ? "" : `-rp${String(repeatPenalty)}`;
   const st = stages === undefined || stages === 1 ? "" : `-stages${String(stages)}`;
+  const jev = process.env["ORCHESTRA_PICKER"] === "jev" ? "-jev" : "";
 
-  return `${nothink}${rp}${st}`;
+  return `${nothink}${rp}${st}${jev}`;
 }
