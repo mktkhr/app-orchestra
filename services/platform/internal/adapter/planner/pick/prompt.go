@@ -116,15 +116,21 @@ const builtinLineCount = 3
 // userMessage builds the pick's one user message: the framing line, then -
 // only when answers is non-empty (added 2026-09-16 alongside the ask_user
 // degradation fix, docs/specs/staging.md section 4) - one "回答:
-// <param>=<value>" line per answer, then the blank line, one candidate line
-// per shortlist endpoint in shortlist order, then the three fixed lines of
-// S3.
+// <param>=<value>" line per answer, then - only when turns is non-empty
+// (added 2026-09-17, docs/measurements/jev-v5.md's isolation result: giving
+// the pick stage the turns recovered follow-up-other-service from 0/10 to
+// 10/10 for the Jev picker) - one "直前: ..." line per turn (turnLines),
+// then the blank line, one candidate line per shortlist endpoint in
+// shortlist order, then the three fixed lines of S3.
 //
-// When answers is empty this must build byte-identical output to before
-// the answers parameter existed: AC-S-103's own measurement, and the
-// stages2 comparison it feeds, both depend on the pick seeing exactly the
-// same prompt it always has whenever there is nothing new to tell it.
-func userMessage(query string, answers []usecase.Answer, shortlist domain.Catalog) string {
+// When both answers and turns are empty this must build byte-identical
+// output to before either parameter existed: AC-S-103's own measurement,
+// and the stages2 comparison it feeds, both depend on the pick seeing
+// exactly the same prompt it always has whenever there is nothing new to
+// tell it - TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted
+// (prompt_internal_test.go) and TestPickByteIdenticalWithNoTurns
+// (picker_test.go) are the regression guards for that.
+func userMessage(query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog) string {
 	lines := make([]string, 0, len(shortlist.Endpoints)+builtinLineCount)
 
 	for i := range shortlist.Endpoints {
@@ -133,7 +139,48 @@ func userMessage(query string, answers []usecase.Answer, shortlist domain.Catalo
 
 	lines = append(lines, lineListCapabilities, lineProposePanel, lineNone)
 
-	return "質問: " + query + "\n" + answerLines(answers) + "\n候補:\n" + strings.Join(lines, "\n")
+	return "質問: " + query + "\n" + answerLines(answers) + turnLines(turns, shortlist) + "\n候補:\n" +
+		strings.Join(lines, "\n")
+}
+
+// turnLine renders one turn in the pick's own terse style (the same style
+// answerLines uses for 回答 lines): "直前: <serviceDisplayName> / <operation
+// display name>（<the person's question>）". shortlist - the pick's own
+// narrowed catalogue, not the full one - is searched for the turn's
+// (Service, OperationID) to read its display names; when not found (a
+// narrowing has since dropped the operation from the shortlist, or the turn
+// has none at all, e.g. a past ask/none) turnLine falls back to the turn's
+// own raw Service/OperationID, the same fallback-to-raw pattern
+// internal/adapter/planner/jev/mapping.go's turnsFor uses for the same
+// lookup.
+func turnLine(t usecase.Turn, shortlist domain.Catalog) string {
+	service, operation := t.Service, t.OperationID
+
+	if e, ok := shortlist.Find(t.Service, t.OperationID); ok {
+		service = e.ServiceDisplayNameOr(t.Service)
+		operation = e.DisplayNameOr(t.OperationID)
+	}
+
+	return "直前: " + service + " / " + operation + "（" + t.Question + "）"
+}
+
+// turnLines renders turns as turnLine lines, oldest first (the order
+// truncateTurns, internal/usecase/orchestrator.go, already leaves them in),
+// each terminated by its own newline - the same shape answerLines gives
+// answers, so userMessage's surrounding "\n" + ... + "\n候補:" keeps
+// producing exactly one blank line before 候補: regardless of how many of
+// answers and turns are non-empty.
+func turnLines(turns []usecase.Turn, shortlist domain.Catalog) string {
+	if len(turns) == 0 {
+		return ""
+	}
+
+	lines := make([]string, len(turns))
+	for i, t := range turns {
+		lines[i] = turnLine(t, shortlist)
+	}
+
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // answerLines renders answers as the pick's own "回答: <param>=<value>"

@@ -125,49 +125,71 @@ func TestPickSendsTheExactRequestTheStandInPickerSent(t *testing.T) {
 	)
 }
 
-// TestPickIgnoresTurns is the explicit assertion usecase.Picker's own doc
-// comment (docs/measurements/jev-picker-v5.md) asks for: Pick's request
-// body is byte-identical whether turns is nil or carries entries -
-// userMessage (prompt.go) has nothing to render turns into, and
-// SystemPrompt must stay byte-identical to
-// e2e/narrowing/pick/client.ts's own PICK_SYSTEM_PROMPT (S2's
-// cross-language comparison, prompt_test.go), so this picker takes turns
-// only to satisfy usecase.Picker's signature.
-func TestPickIgnoresTurns(t *testing.T) {
-	capture := func(turns []usecase.Turn) string {
-		var got string
+// captureRequestBody drives one Pick call with the given turns against a
+// fixture server and returns the raw request body it sent - the shared
+// setup TestPickByteIdenticalWithNoTurns and
+// TestPickRendersTurnsIntoTheUserMessage both need, factored out so golangci
+// (dupl) sees one copy, not two.
+func captureRequestBody(t *testing.T, turns []usecase.Turn) string {
+	t.Helper()
 
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			raw, err := io.ReadAll(r.Body)
-			if err != nil {
-				t.Errorf("reading request body: %v", err)
-			}
+	var got string
 
-			got = string(raw)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("reading request body: %v", err)
+		}
 
-			w.Header().Set("Content-Type", "application/json")
+		got = string(raw)
 
-			if _, err := w.Write([]byte(responseWith("listInventoryItems certain"))); err != nil {
-				t.Errorf("writing fixture response: %v", err)
-			}
-		}))
-		t.Cleanup(server.Close)
+		w.Header().Set("Content-Type", "application/json")
 
-		client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
-		picker := pick.New(client, "qwen3.5-9b-q8")
+		if _, err := w.Write([]byte(responseWith("listInventoryItems certain"))); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
 
-		_, err := picker.Pick(context.Background(), "在庫を見せて", nil, turns, shortlistCatalog())
-		require.NoError(t, err)
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	picker := pick.New(client, "qwen3.5-9b-q8")
 
-		return got
-	}
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, turns, shortlistCatalog())
+	require.NoError(t, err)
 
-	withoutTurns := capture(nil)
-	withTurns := capture([]usecase.Turn{
+	return got
+}
+
+// TestPickByteIdenticalWithNoTurns is TestPickIgnoresTurns narrowed to what
+// is still true since docs/measurements/jev-v5.md's isolation result:
+// userMessage now renders turns (turnLines, prompt.go), so Pick's request
+// body is no longer byte-identical whenever turns carries entries - but a
+// request built with an explicitly empty, non-nil turns slice must still be
+// byte-identical to one built with nil, the same guarantee answers already
+// has (TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted,
+// prompt_internal_test.go). SystemPrompt is unaffected either way - it must
+// stay byte-identical to e2e/narrowing/pick/client.ts's own
+// PICK_SYSTEM_PROMPT (S2's cross-language comparison, prompt_test.go).
+func TestPickByteIdenticalWithNoTurns(t *testing.T) {
+	assert.Equal(t, captureRequestBody(t, nil), captureRequestBody(t, []usecase.Turn{}),
+		"an empty, non-nil turns slice must build the same request as nil")
+}
+
+// TestPickRendersTurnsIntoTheUserMessage is the with-turns counterpart:
+// a request built with turns carries turnLines' "直前: ..." line and so
+// differs from one built without, proving Pick no longer discards turns the
+// way it did before docs/measurements/jev-v5.md's isolation result (the
+// Jev picker recovered follow-up-other-service from 0/10 to 10/10 by
+// seeing them; the local pick had the same blindness).
+func TestPickRendersTurnsIntoTheUserMessage(t *testing.T) {
+	withoutTurns := captureRequestBody(t, nil)
+	withTurns := captureRequestBody(t, []usecase.Turn{
 		{Question: "前の質問", Kind: usecase.ResultKindResult, Service: "inventory", OperationID: "listInventoryItems"},
 	})
 
-	assert.Equal(t, withoutTurns, withTurns)
+	assert.NotEqual(t, withoutTurns, withTurns)
+	assert.Contains(t, withTurns, "直前:")
+	assert.Contains(t, withTurns, "前の質問")
 }
 
 func TestPickParsesACertainOperation(t *testing.T) {

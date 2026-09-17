@@ -34,19 +34,23 @@ func New(client *chat.Client, model string) *Picker {
 	return &Picker{client: client, model: model}
 }
 
-// Pick sends query, answers and shortlist to the model in the pick's own
-// format (userMessage) and parses the one line it answers with back into a
-// usecase.Pick. An empty shortlist is PickNone without calling the model
-// at all - there is nothing to pick from.
+// Pick sends query, answers, turns and shortlist to the model in the
+// pick's own format (userMessage) and parses the one line it answers with
+// back into a usecase.Pick. An empty shortlist is PickNone without calling
+// the model at all - there is nothing to pick from.
 //
-// turns is accepted (usecase.Picker's own signature) but never read:
-// userMessage has nothing to render it into, and SystemPrompt must stay
-// byte-identical to e2e/narrowing/pick/client.ts's own PICK_SYSTEM_PROMPT
-// (S2's cross-language comparison, prompt_test.go) - see
-// TestPickIgnoresTurns for the explicit assertion that a request built
-// with turns is byte-identical to one built without.
+// turns is rendered into the user message (turnLines) since 2026-09-17
+// (docs/measurements/jev-v5.md's isolation result: giving the pick stage
+// the turns recovered follow-up-other-service from 0/10 to 10/10 for the
+// Jev picker - the local pick had the same blindness). SystemPrompt still
+// stays byte-identical to e2e/narrowing/pick/client.ts's own
+// PICK_SYSTEM_PROMPT (S2's cross-language comparison, prompt_test.go): only
+// the user message changes, and only when turns is non-empty -
+// TestPickByteIdenticalWithNoTurns (picker_test.go) is the explicit
+// assertion that a request built with no turns is still byte-identical to
+// one built before turns existed.
 func (p *Picker) Pick(
-	ctx context.Context, query string, answers []usecase.Answer, _ []usecase.Turn, shortlist domain.Catalog,
+	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
 ) (usecase.Pick, error) {
 	if len(shortlist.Endpoints) == 0 {
 		return usecase.Pick{Kind: usecase.PickNone}, nil
@@ -58,7 +62,7 @@ func (p *Picker) Pick(
 		Model: p.model,
 		Messages: []chat.Message{
 			{Role: "system", Content: SystemPrompt},
-			{Role: "user", Content: userMessage(query, answers, shortlist)},
+			{Role: "user", Content: userMessage(query, answers, turns, shortlist)},
 		},
 		Temperature:        chat.Zero(),
 		MaxTokens:          &maxTokens,

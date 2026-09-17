@@ -24,23 +24,23 @@ func userMessageCatalog() domain.Catalog {
 	}}
 }
 
-// TestUserMessageWithNoAnswersIsByteIdenticalToBeforeAnswersExisted is the
-// regression guard docs/specs/staging.md section 4 (added 2026-09-16
-// alongside the ask_user degradation fix) calls for: AC-S-103's own
-// measurement, and the stages2 comparison it feeds, depend on the pick
-// seeing exactly the same prompt as before whenever there is nothing new to
-// tell it - so an empty (or nil) answers must never add so much as one
-// byte.
-func TestUserMessageWithNoAnswersIsByteIdenticalToBeforeAnswersExisted(t *testing.T) {
+// TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted is
+// the regression guard docs/specs/staging.md section 4 calls for (added
+// 2026-09-16 alongside the ask_user degradation fix, extended 2026-09-17
+// when turns joined it): AC-S-103's own measurement, and the stages2
+// comparison it feeds, depend on the pick seeing exactly the same prompt as
+// before whenever there is nothing new to tell it - so empty (or nil)
+// answers and turns must never add so much as one byte.
+func TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted(t *testing.T) {
 	catalog := userMessageCatalog()
 
 	want := "質問: 在庫を見せて\n\n候補:\n" +
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("在庫を見せて", nil, catalog))
-	assert.Equal(t, want, userMessage("在庫を見せて", []usecase.Answer{}, catalog),
-		"an empty, non-nil answers slice must build the same message as nil")
+	assert.Equal(t, want, userMessage("在庫を見せて", nil, nil, catalog))
+	assert.Equal(t, want, userMessage("在庫を見せて", []usecase.Answer{}, []usecase.Turn{}, catalog),
+		"empty, non-nil answers and turns slices must build the same message as nil")
 }
 
 // TestUserMessageWithAnswersAddsOneLinePerAnswerBeforeTheCandidates is the
@@ -61,5 +61,36 @@ func TestUserMessageWithAnswersAddsOneLinePerAnswerBeforeTheCandidates(t *testin
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("注文を見たい", answers, catalog))
+	assert.Equal(t, want, userMessage("注文を見たい", answers, nil, catalog))
+}
+
+// TestUserMessageWithTurnsAddsOneLinePerTurnAfterAnswers is the with-turns
+// case docs/measurements/jev-v5.md's isolation result adds (2026-09-17):
+// one "直前: <serviceDisplayName> / <operation display name>（<question>）"
+// line per turn, oldest first, after any 回答 lines and before the blank
+// line and 候補: line. The second turn's operation ("listAttendances") is
+// not in the shortlist, so its display names fall back to the turn's own
+// raw Service/OperationID (turnLine's documented fallback).
+func TestUserMessageWithTurnsAddsOneLinePerTurnAfterAnswers(t *testing.T) {
+	catalog := userMessageCatalog()
+
+	turns := []usecase.Turn{
+		{
+			Question: "在庫の一覧を見せて", Kind: usecase.ResultKindResult,
+			Service: "inventory", OperationID: "listInventoryItems",
+		},
+		{
+			Question: "勤怠の方も見せて", Kind: usecase.ResultKindResult,
+			Service: "attendance", OperationID: "listAttendances",
+		},
+	}
+
+	want := "質問: itm-001の詳細\n" +
+		"直前: 在庫管理 / listInventoryItems（在庫の一覧を見せて）\n" +
+		"直前: attendance / listAttendances（勤怠の方も見せて）\n" +
+		"\n候補:\n" +
+		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
+		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
+
+	assert.Equal(t, want, userMessage("itm-001の詳細", nil, turns, catalog))
 }

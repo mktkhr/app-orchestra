@@ -112,6 +112,15 @@ The adapter builds exactly what `pick/client.ts` builds:
   one `回答: <param>=<value>` line per answer, in order, right after the
   question line and before the blank line and `候補:` line; when `answers`
   is empty the message is byte-identical to before this addition.
+- When the request carries `turns` - one `直前: <serviceDisplayName> /
+<operation display name>（<the person's question>）` line per turn,
+  oldest first, right after any `回答:` lines and before the blank line and
+  `候補:` line, truncated with the same window the orchestrator already
+  applies; when `turns` is empty the message is byte-identical to before
+  this addition (2026-09-17). Added because `docs/measurements/jev-v5.md`'s
+  isolation runs showed the Jev picker recovering `follow-up-other-service`
+  from 0/10 to 10/10 once the pick stage saw the turns - the local pick had
+  the same blindness, and this closes it the same way.
 
 Parsing is the measured rule: the first candidate id that appears in the
 response, longest id first so one id being a substring of another cannot
