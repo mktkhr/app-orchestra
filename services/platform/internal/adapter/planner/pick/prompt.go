@@ -47,19 +47,36 @@ ambiguous のときも、最も可能性の高い operationId を必ず1つ挙�
 // both `unanswerable` and kept `capability` at 10/10
 // (ORCHESTRA_PLANNER_STAGES=2 make eval), so the other two attempts
 // section 7 allowed were never needed.
+//
+// Exported (IDListCapabilities etc.) so internal/adapter/planner/jev's
+// Picker - the second usecase.Picker implementation, behind
+// ORCHESTRA_PICKER=jev - can name the same three built-ins in its own
+// criteria map without inventing a second copy of the ids.
 const (
-	idListCapabilities = "list_capabilities"
-	idProposePanel     = "propose_panel"
-	idNone             = "none"
+	IDListCapabilities = "list_capabilities"
+	IDProposePanel     = "propose_panel"
+	IDNone             = "none"
 )
 
-// The three fixed candidate lines, in S3's order, built from the ids above
-// so the id a response is matched against (parse.go) and the id shown in
-// the prompt can never drift apart.
+// The three fixed built-ins' own Japanese phrasing, exported for the same
+// reason the ids above are: internal/adapter/planner/jev's Picker shows
+// them as criteria descriptions rather than as candidateLine's
+// tab-separated column, but the wording itself - and the reasoning above
+// for why it reads the way it does - must stay the one copy both pickers
+// share.
 const (
-	lineListCapabilities = idListCapabilities + "\tplatform\t使える操作の一覧を知りたい"
-	lineProposePanel     = idProposePanel + "\tplatform\t画面に出したい"
-	lineNone             = idNone + "\tplatform\tどの候補も質問に合わない（業務と無関係な質問）"
+	PhraseListCapabilities = "使える操作の一覧を知りたい"
+	PhraseProposePanel     = "画面に出したい"
+	PhraseNone             = "どの候補も質問に合わない（業務と無関係な質問）"
+)
+
+// The three fixed candidate lines, in S3's order, built from the ids and
+// phrases above so the id a response is matched against (parse.go) and
+// the id shown in the prompt can never drift apart.
+const (
+	lineListCapabilities = IDListCapabilities + "\tplatform\t" + PhraseListCapabilities
+	lineProposePanel     = IDProposePanel + "\tplatform\t" + PhraseProposePanel
+	lineNone             = IDNone + "\tplatform\t" + PhraseNone
 )
 
 // summaryFor is an endpoint's summary column: its own Summary, or - when

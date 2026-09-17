@@ -38,9 +38,9 @@ func candidatesFor(shortlist domain.Catalog) []candidate {
 	}
 
 	return append(candidates,
-		candidate{id: idListCapabilities, service: platformService},
-		candidate{id: idProposePanel, service: platformService},
-		candidate{id: idNone, service: platformService},
+		candidate{id: IDListCapabilities, service: platformService},
+		candidate{id: IDProposePanel, service: platformService},
+		candidate{id: IDNone, service: platformService},
 	)
 }
 
@@ -76,11 +76,11 @@ func parse(content string, candidates []candidate) usecase.Pick {
 		}
 
 		switch id {
-		case idListCapabilities:
+		case IDListCapabilities:
 			return usecase.Pick{Kind: usecase.PickListCapabilities, Ambiguous: ambiguous}
-		case idProposePanel:
+		case IDProposePanel:
 			return usecase.Pick{Kind: usecase.PickProposePanel, Ambiguous: ambiguous}
-		case idNone:
+		case IDNone:
 			return usecase.Pick{Kind: usecase.PickNone, Ambiguous: ambiguous}
 		default:
 			c := byID[id]
