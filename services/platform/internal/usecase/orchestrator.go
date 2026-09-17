@@ -445,6 +445,19 @@ func (o *Orchestrator) call(
 		return Result{}, fmt.Errorf("%w: %s/%s", ErrEndpointNotFound, decision.Service, decision.OperationID)
 	}
 
+	// Restoring AC-B-105 under two-stage planning (docs/plans/staging.md;
+	// DECISIONS.md 2026-09-17): a guessed enum argument is asked about, on
+	// a safe operation, or dropped so an unsafe operation's form shows its
+	// select empty rather than pre-filled with a value nobody said (see
+	// orchestrator_enum_guess.go).
+	if guesses := guessedEnumArgs(&endpoint, decision.Args, query, answers); len(guesses) > 0 {
+		if endpoint.IsSafe() {
+			return askForEnumGuess(ctx, &endpoint, guesses[0]), nil
+		}
+
+		decision = dropEnumGuesses(ctx, decision, guesses)
+	}
+
 	if !endpoint.IsSafe() {
 		return formFor(&endpoint, decision, query, answers), nil
 	}
