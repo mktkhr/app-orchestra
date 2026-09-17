@@ -177,6 +177,10 @@ func (p *Picker) Pick(
 
 	start := time.Now()
 
+	if needsHierarchical(shortlist) {
+		return p.pickHierarchical(ctx, query, answers, turns, shortlist, start)
+	}
+
 	req := buildRequest(query, answers, turns, shortlist, p.criteria, p.objectInstructions)
 	if p.fanOutGate {
 		addImpossibleQuestion(&req)
@@ -233,6 +237,83 @@ func (p *Picker) Pick(
 		// each pick's full distribution without a second, debug-only
 		// line to correlate against.
 		slog.Any("pick_probabilities", answer.Probabilities))
+
+	return result, nil
+}
+
+// pickHierarchical is Pick's own path when needsHierarchical(shortlist) is
+// true (hierarchical.go): builds and sends buildHierarchicalRequest instead
+// of buildRequest, then scores every candidate the response names
+// (hierarchicalCandidates) and maps the highest-scoring one
+// (mapHierarchicalChosen) - the hierarchical trial's own counterpart to
+// Pick's flat buildRequest/mapAnswer pair. WithFanOutGate's own "impossible"
+// question is folded into this request the same way Pick's own flat path
+// folds it into buildRequest's.
+func (p *Picker) pickHierarchical(
+	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
+	start time.Time,
+) (usecase.Pick, error) {
+	req, err := buildHierarchicalRequest(query, answers, turns, shortlist, p.criteria, p.objectInstructions)
+	if err != nil {
+		return usecase.Pick{}, fmt.Errorf("building hierarchical jev request: %w", err)
+	}
+
+	if p.fanOutGate {
+		addImpossibleQuestion(&req)
+	}
+
+	resp, err := p.client.pick(ctx, req)
+	if err != nil {
+		return usecase.Pick{}, fmt.Errorf("jev picking: %w", err)
+	}
+
+	if p.fanOutGate {
+		if impossible, ok := resp.Answers[impossibleQuestionName]; ok {
+			gateImpossible := impossible.Noul >= p.gateThreshold
+
+			slog.Default().InfoContext(ctx, "gate completed",
+				slog.Bool("gate_fanout", true),
+				slog.Float64("gate_noul", impossible.Noul),
+				slog.Bool("gate_impossible", gateImpossible),
+				slog.Int64("gate_ms", time.Since(start).Milliseconds()))
+
+			if gateImpossible {
+				return usecase.Pick{Kind: usecase.PickNone}, nil
+			}
+		}
+	}
+
+	candidates := hierarchicalCandidates(resp, shortlist)
+	if len(candidates) == 0 {
+		slog.Default().WarnContext(ctx, "jev hierarchical pick response named no usable answer")
+
+		return usecase.Pick{Kind: usecase.PickNone}, nil
+	}
+
+	sortHierarchicalCandidates(candidates)
+
+	chosen := candidates[0]
+	result := mapHierarchicalChosen(chosen, p.ambiguityThreshold)
+
+	slog.Default().InfoContext(ctx, "pick completed",
+		slog.String("pick_operation_id", result.OperationID),
+		slog.String("pick_choice", chosen.ID),
+		slog.Bool("pick_ambiguous", result.Ambiguous),
+		slog.Int64("pick_ms", time.Since(start).Milliseconds()),
+		slog.Float64("pick_confidence", result.Confidence),
+		slog.Int("pick_input_tokens", resp.Usage.InputTokens),
+		slog.Int("pick_output_tokens", resp.Usage.OutputTokens),
+		slog.String("pick_provider", "jev-hierarchical"),
+		// pick_service/pick_service_probability/pick_op_probability/
+		// pick_path_score let a hierarchical run's platform log alone
+		// reconstruct how the winning path was scored, the same job
+		// pick_probabilities already does for the flat path (Pick's own
+		// log line, above).
+		slog.String("pick_service", chosen.Service),
+		slog.Float64("pick_service_probability", chosen.ServiceProb),
+		slog.Float64("pick_op_probability", chosen.OpProb),
+		slog.Float64("pick_path_score", chosen.Score),
+		slog.Any("pick_top3_paths", topPaths(candidates, topPathCount)))
 
 	return result, nil
 }

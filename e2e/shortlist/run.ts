@@ -1,4 +1,11 @@
-import { corpusArg, repeatPenaltyArg, stagesArg, thinkingArg, wordingNames } from "./flags.ts";
+import {
+  corpusArg,
+  narrowingArg,
+  repeatPenaltyArg,
+  stagesArg,
+  thinkingArg,
+  wordingNames,
+} from "./flags.ts";
 import { runMid } from "./run-mid.ts";
 import { runShortlist } from "./run-shortlist.ts";
 
@@ -23,6 +30,7 @@ async function main(): Promise<void> {
   const repeatPenalty = repeatPenaltyArg();
   const stages = stagesArg();
   const corpus = corpusArg();
+  const narrowing = narrowingArg();
 
   if (corpus === "mid") {
     // `--corpus mid` composes with `--wording` / `--thinking` / `--stages`
@@ -30,8 +38,11 @@ async function main(): Promise<void> {
     // one plain "default" pass when `--wording` was not given. No `v1`
     // forcing here - that is `runShortlist`'s own baseline convention for
     // the shortlist corpus, not part of the mid measurement
-    // (docs/specs/midsizing.md M5/M6).
-    await runMid(names, thinking, repeatPenalty, stages);
+    // (docs/specs/midsizing.md M5/M6). `--narrowing off` is the full-catalogue
+    // Jev trial's own flag (internal/adapter/planner/jev/hierarchical.go) -
+    // `runShortlist` has no equivalent flag; its own `--on-only`/`--off-only`
+    // already run both narrowing passes.
+    await runMid(names, thinking, repeatPenalty, stages, narrowing);
 
     return;
   }

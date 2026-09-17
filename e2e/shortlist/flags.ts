@@ -85,6 +85,30 @@ export function corpusArg(): "mid" | undefined {
 }
 
 /**
+ * `--narrowing on|off`: the full-catalogue Jev trial's own flag (the
+ * hierarchical pick request, internal/adapter/planner/jev/hierarchical.go)
+ * - `run-mid.ts`'s own mid pass always ran with narrowing on, K=20 (the
+ * shortlist measurement's own setting, `boot.ts`'s `NARROWING`) until this
+ * flag existed; `--narrowing off` gives Jev the mid fixture's full,
+ * un-narrowed catalogue instead. `undefined` (the flag not given at all)
+ * keeps `runMid`'s own previous, byte-identical default - narrowing on -
+ * so an invocation that predates this flag behaves exactly as it always
+ * has. Validated the same way `--thinking`/`--corpus` are: anything but
+ * "on"/"off" is a usage error, not a silent no-op.
+ */
+export function narrowingArg(): "on" | "off" | undefined {
+  const raw = flagValue("--narrowing");
+
+  if (raw === undefined) return undefined;
+
+  if (raw !== "on" && raw !== "off") {
+    throw new Error(`--narrowing must be "on" or "off", got ${JSON.stringify(raw)}`);
+  }
+
+  return raw;
+}
+
+/**
  * The `-nothink` / `-rp<value>` / `-stages2` / `-jev` / `-v2` / `-gate`
  * suffix a variant's output files carry (run.ts's own doc comment,
  * docs/plans/staging.md; docs/plans/midsizing.md Task 3 reuses it for

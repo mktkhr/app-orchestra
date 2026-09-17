@@ -169,6 +169,14 @@ func impossibleCriteria() map[string]string {
 // wireResponse.Answers use.
 const questionName = "pick"
 
+// choiceQuestionType is wireQuestion.Type's own value for every "choice"
+// question this package sends - the flat "pick" question (buildRequest,
+// below) and, under needsHierarchical, hierarchical.go's own "service" and
+// "op_<service>" questions - factored into one constant so golangci-lint's
+// goconst rule (harness/quality/go/golangci.yml) does not need three
+// separate literal "choice" strings to agree with each other.
+const choiceQuestionType = "choice"
+
 // builtinCriteriaCount is how many fixed entries criteriaFor appends
 // after the shortlist, named so the capacity hint below isn't a bare
 // magic number (mnd, harness/quality/go/golangci.yml).
@@ -466,7 +474,7 @@ func buildRequest(
 		Model: modelName,
 		Questions: map[string]wireQuestion{
 			questionName: {
-				Type:         "choice",
+				Type:         choiceQuestionType,
 				Instructions: wireQuestionInstructions,
 				Criteria:     wireCriteria,
 			},

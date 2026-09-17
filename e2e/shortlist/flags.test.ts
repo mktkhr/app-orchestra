@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
 
-import { corpusArg, variantSuffix } from "./flags.ts";
+import { corpusArg, narrowingArg, variantSuffix } from "./flags.ts";
 
 /**
  * flags.ts's own tests: `--corpus` parsing (docs/plans/midsizing.md Task
@@ -47,6 +47,28 @@ test("--corpus with anything else is a usage error", () => {
   process.argv = [...process.argv, "--corpus", "shortlist"];
 
   expect(() => corpusArg()).toThrow(/--corpus must be "mid"/u);
+});
+
+test("--narrowing is undefined when not given", () => {
+  expect(narrowingArg()).toBeUndefined();
+});
+
+test("--narrowing on parses", () => {
+  process.argv = [...process.argv, "--narrowing", "on"];
+
+  expect(narrowingArg()).toBe("on");
+});
+
+test("--narrowing off parses", () => {
+  process.argv = [...process.argv, "--narrowing", "off"];
+
+  expect(narrowingArg()).toBe("off");
+});
+
+test("--narrowing with anything else is a usage error", () => {
+  process.argv = [...process.argv, "--narrowing", "maybe"];
+
+  expect(() => narrowingArg()).toThrow(/--narrowing must be "on" or "off"/u);
 });
 
 test("variantSuffix is empty for the plain pass (nothing given)", () => {

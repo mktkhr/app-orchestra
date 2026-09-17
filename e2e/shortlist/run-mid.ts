@@ -68,24 +68,34 @@ async function runMidQuestions(
 
 /**
  * One mid pass for one named wording (or "default" when `name` is
- * undefined): narrowing on, K=20, the mid fixture, plus whatever of
- * `thinking` / `repeatPenalty` / `stages` was given - the platform's own
- * defaults otherwise (`make eval-mid`'s: two stages, `v6-unmatched-filter`,
- * thinking off, narrowing on - docs/plans/midsizing.md Task 4). Rows go to
+ * undefined): narrowing on, K=20 by default, the mid fixture, plus
+ * whatever of `thinking` / `repeatPenalty` / `stages` was given - the
+ * platform's own defaults otherwise (`make eval-mid`'s: two stages,
+ * `v6-unmatched-filter`, thinking off, narrowing on -
+ * docs/plans/midsizing.md Task 4). `narrowing: "off"` (the full-catalogue
+ * Jev trial's own flag, `--narrowing off`) boots with narrowing off
+ * instead - `{}` in place of `narrowing: NARROWING`, the same "off" shape
+ * `run-shortlist.ts`'s own `runPass("off")` passes `boot()`. `undefined`
+ * (the flag not given at all) keeps this byte-identical to every call
+ * before `--narrowing` existed - narrowing on. Rows go to
  * `out/mid-<variant>.jsonl`; the platform's own stdout/stderr to
- * `out/mid-<variant>.log`, read back for `pick_ms` by `pick-log.ts`.
+ * `out/mid-<variant>.log`, read back for `pick_ms` by `pick-log.ts` - both
+ * names carry a `-narrowing-off` suffix under `--narrowing off` so neither
+ * output collides with the narrowing-on pass's own files.
  */
 async function runMidPass(
   name: string | undefined,
   thinking?: "on" | "off",
   repeatPenalty?: number,
   stages?: 1 | 2,
+  narrowing?: "on" | "off",
 ): Promise<void> {
   const wordingLabel = name ?? "default";
-  const variant = `${wordingLabel}${variantSuffix(thinking, repeatPenalty, stages)}`;
+  const narrowingSuffix = narrowing === "off" ? "-narrowing-off" : "";
+  const variant = `${wordingLabel}${variantSuffix(thinking, repeatPenalty, stages)}${narrowingSuffix}`;
   const outputName = `mid-${variant}`;
   const booted: Booted = await boot({
-    narrowing: NARROWING,
+    ...(narrowing === "off" ? {} : { narrowing: NARROWING }),
     fixture: "mid",
     // "default" is a label for the output file, not a wording the platform
     // knows - leave ORCHESTRA_PLANNER_WORDING unset so the platform's own
@@ -106,12 +116,13 @@ async function runMidPass(
   }
 }
 
-/** `--corpus mid`'s entry point: one pass per name in `names`, or a single "default" pass when `names` is undefined or empty (no `--wording` given). */
+/** `--corpus mid`'s entry point: one pass per name in `names`, or a single "default" pass when `names` is undefined or empty (no `--wording` given). `narrowing` is `--narrowing`'s own value, forwarded to every pass unchanged (see `runMidPass`'s own doc comment). */
 export async function runMid(
   names: readonly string[] | undefined,
   thinking?: "on" | "off",
   repeatPenalty?: number,
   stages?: 1 | 2,
+  narrowing?: "on" | "off",
 ): Promise<void> {
   const targets: readonly (string | undefined)[] =
     names === undefined || names.length === 0 ? [undefined] : names;
@@ -119,6 +130,6 @@ export async function runMid(
   for (const name of targets) {
     // Sequential and deliberate, exactly as run.ts's main: one platform
     // boot per wording, one at a time.
-    await runMidPass(name, thinking, repeatPenalty, stages);
+    await runMidPass(name, thinking, repeatPenalty, stages, narrowing);
   }
 }
