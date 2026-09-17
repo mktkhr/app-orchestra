@@ -38,8 +38,15 @@ func New(client *chat.Client, model string) *Picker {
 // format (userMessage) and parses the one line it answers with back into a
 // usecase.Pick. An empty shortlist is PickNone without calling the model
 // at all - there is nothing to pick from.
+//
+// turns is accepted (usecase.Picker's own signature) but never read:
+// userMessage has nothing to render it into, and SystemPrompt must stay
+// byte-identical to e2e/narrowing/pick/client.ts's own PICK_SYSTEM_PROMPT
+// (S2's cross-language comparison, prompt_test.go) - see
+// TestPickIgnoresTurns for the explicit assertion that a request built
+// with turns is byte-identical to one built without.
 func (p *Picker) Pick(
-	ctx context.Context, query string, answers []usecase.Answer, shortlist domain.Catalog,
+	ctx context.Context, query string, answers []usecase.Answer, _ []usecase.Turn, shortlist domain.Catalog,
 ) (usecase.Pick, error) {
 	if len(shortlist.Endpoints) == 0 {
 		return usecase.Pick{Kind: usecase.PickNone}, nil

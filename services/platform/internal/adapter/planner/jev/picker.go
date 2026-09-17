@@ -59,6 +59,35 @@ func WithCriteria(criteria string) Option {
 	}
 }
 
+// WithFanOutGate turns on the v5 trial's own fan-out
+// (docs/measurements/jev-picker-v5.md, "fan-out, not extra calls"): every
+// Pick call adds the "impossible" noul question (addImpossibleQuestion)
+// to the same request as "pick", and Pick itself judges Impossible - at or
+// above threshold - and short-circuits to usecase.Pick{Kind: PickNone}
+// without ever examining the pick answer, the same outcome
+// planStaged reaches today by calling a standalone usecase.Gate first
+// (orchestrator_staging.go) - but in one HTTP call, not two. threshold <=
+// 0 is treated as "keep the default" (defaultGateThreshold, the same
+// number jev.NewGate's own zero-threshold convention uses,
+// pkg/app.newGate's doc comment) rather than a threshold no answer could
+// ever clear.
+//
+// This is Picker's own alternative to pairing it with a standalone Gate
+// (WithGate, orchestrator.go): pkg/app.stagingOptions builds a Picker with
+// this option, and skips usecase.WithGate entirely, exactly when both
+// Picker.Name and Gate.Name are "jev" - GateJev paired with the local
+// picker still goes through jev.Gate, the standalone port, since there is
+// no single request to fold it into there.
+func WithFanOutGate(threshold float64) Option {
+	return func(p *Picker) {
+		p.fanOutGate = true
+
+		if threshold > 0 {
+			p.gateThreshold = threshold
+		}
+	}
+}
+
 // Picker implements usecase.Picker over TypeSafe's Jev API: the shortlist
 // and the three fixed built-ins (see criteriaFor) as one "choice"
 // question, with Jev's own judged confidence read back as S4's Ambiguous
@@ -71,6 +100,11 @@ type Picker struct {
 	// criteria is CriteriaV1 or CriteriaV2, set by WithCriteria; the zero
 	// value ("") is treated as CriteriaV1 by buildRequest.
 	criteria string
+	// fanOutGate and gateThreshold are WithFanOutGate's own fields: fold
+	// the "impossible" noul question into every Pick request, and judge it
+	// Impossible at or above gateThreshold.
+	fanOutGate    bool
+	gateThreshold float64
 }
 
 var _ usecase.Picker = (*Picker)(nil)
@@ -81,6 +115,7 @@ func New(baseURL, apiKey string, httpClient *http.Client, opts ...Option) *Picke
 	p := &Picker{
 		client:             newClient(baseURL, apiKey, httpClient),
 		ambiguityThreshold: defaultAmbiguityThreshold,
+		gateThreshold:      defaultGateThreshold,
 	}
 
 	for _, opt := range opts {
@@ -90,14 +125,15 @@ func New(baseURL, apiKey string, httpClient *http.Client, opts ...Option) *Picke
 	return p
 }
 
-// Pick sends query, answers and shortlist to Jev as one "choice" question
-// (buildRequest) and maps its answer back into a usecase.Pick
-// (mapAnswer). An empty shortlist is PickNone without calling the API at
-// all - the same short-circuit internal/adapter/planner/pick.Picker takes
-// - and the call is bounded to requestTimeout regardless of ctx's own
-// deadline.
+// Pick sends query, answers, turns and shortlist to Jev as one "choice"
+// question (buildRequest) - plus, under WithFanOutGate, the "impossible"
+// noul question in the same request (addImpossibleQuestion) - and maps
+// the "pick" answer back into a usecase.Pick (mapAnswer). An empty
+// shortlist is PickNone without calling the API at all - the same
+// short-circuit internal/adapter/planner/pick.Picker takes - and the call
+// is bounded to requestTimeout regardless of ctx's own deadline.
 func (p *Picker) Pick(
-	ctx context.Context, query string, answers []usecase.Answer, shortlist domain.Catalog,
+	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
 ) (usecase.Pick, error) {
 	if len(shortlist.Endpoints) == 0 {
 		return usecase.Pick{Kind: usecase.PickNone}, nil
@@ -108,9 +144,30 @@ func (p *Picker) Pick(
 
 	start := time.Now()
 
-	resp, err := p.client.pick(ctx, buildRequest(query, answers, shortlist, p.criteria))
+	req := buildRequest(query, answers, turns, shortlist, p.criteria)
+	if p.fanOutGate {
+		addImpossibleQuestion(&req)
+	}
+
+	resp, err := p.client.pick(ctx, req)
 	if err != nil {
 		return usecase.Pick{}, fmt.Errorf("jev picking: %w", err)
+	}
+
+	if p.fanOutGate {
+		if impossible, ok := resp.Answers[impossibleQuestionName]; ok {
+			gateImpossible := impossible.Noul >= p.gateThreshold
+
+			slog.Default().InfoContext(ctx, "gate completed",
+				slog.Bool("gate_fanout", true),
+				slog.Float64("gate_noul", impossible.Noul),
+				slog.Bool("gate_impossible", gateImpossible),
+				slog.Int64("gate_ms", time.Since(start).Milliseconds()))
+
+			if gateImpossible {
+				return usecase.Pick{Kind: usecase.PickNone}, nil
+			}
+		}
 	}
 
 	answer, ok := resp.Answers[questionName]

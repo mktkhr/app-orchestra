@@ -66,7 +66,7 @@ func TestPickWithCriteriaV2SendsWhatExamplesAndNotFor(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil, jev.WithCriteria(jev.CriteriaV2))
 
-	_, err := picker.Pick(context.Background(), "発注を承認したい", nil, collisionShortlist())
+	_, err := picker.Pick(context.Background(), "発注を承認したい", nil, nil, collisionShortlist())
 	require.NoError(t, err)
 
 	questions, ok := gotBody["questions"].(map[string]any)
@@ -74,8 +74,10 @@ func TestPickWithCriteriaV2SendsWhatExamplesAndNotFor(t *testing.T) {
 
 	pickQuestion, ok := questions["pick"].(map[string]any)
 	require.True(t, ok)
-	assert.Contains(t, pickQuestion["instructions"], "examples")
-	assert.Contains(t, pickQuestion["instructions"], "not_for")
+	instructions, ok := pickQuestion["instructions"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, instructions["note"], "examples")
+	assert.Contains(t, instructions["note"], "not_for")
 
 	criteria, ok := pickQuestion["criteria"].(map[string]any)
 	require.True(t, ok)
@@ -136,7 +138,7 @@ func TestPickWithNoCriteriaOptionSendsCriteriaV1ByteForByte(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "発注を承認したい", nil, collisionShortlist())
+	_, err := picker.Pick(context.Background(), "発注を承認したい", nil, nil, collisionShortlist())
 	require.NoError(t, err)
 
 	questions, ok := gotBody["questions"].(map[string]any)

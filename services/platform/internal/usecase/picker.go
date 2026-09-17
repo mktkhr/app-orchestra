@@ -53,6 +53,19 @@ type Pick struct {
 // case (no ask has happened yet), and pick/prompt.go's own user-message
 // builder must produce byte-identical output to before whenever answers is
 // empty.
+//
+// turns is the conversation before query, already truncated to
+// Orchestrator.contextWindow the same way Planner.Plan's own turns is
+// (orchestrator_staging.go's planStaged calls truncateTurns before either
+// call) - the v5 Jev trial's own hypothesis (docs/measurements/jev-picker-v5.md):
+// the fill (planPreferred) already receives turns, but before this the
+// pick never did, so a follow-up naming no service or operation of its
+// own ("勤怠でも同じことして") had nothing to resolve "同じこと" against
+// at the pick stage. internal/adapter/planner/pick's Picker ignores turns
+// entirely (its prompt, byte-identical to e2e/narrowing/pick/client.ts's
+// own PICK_SYSTEM_PROMPT, has nothing to render them into - S2's
+// cross-language comparison depends on that staying true);
+// internal/adapter/planner/jev's Picker sends them inside its own request.
 type Picker interface {
-	Pick(ctx context.Context, query string, answers []Answer, shortlist domain.Catalog) (Pick, error)
+	Pick(ctx context.Context, query string, answers []Answer, turns []Turn, shortlist domain.Catalog) (Pick, error)
 }

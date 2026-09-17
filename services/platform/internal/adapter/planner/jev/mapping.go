@@ -8,27 +8,110 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
-// instructions is Jev's "pick" question instructions: the same framing
-// pick.SystemPrompt gives the local picker, plus one sentence spelling
-// out what each of the three built-ins is for - Jev is asked to choose
-// from a criteria map, not to read a fixed-format prompt, so the built-
-// ins need their purpose stated instead of relying on pick's own
-// candidate-line wording alone.
-const instructions = "社内APIの振り分け役。質問に対して、候補の中から呼ぶべき操作を1つ選ぶ。" +
-	"list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、" +
+// instructionsQuestion is the "pick" question's own framing - the same
+// opening sentence this package's instructions carried before the v5
+// trial (docs/measurements/jev-picker-v5.md), now one field of
+// instructionsFor's object rather than the head of one concatenated
+// paragraph.
+const instructionsQuestion = "社内APIの振り分け役。候補の中から呼ぶべき操作を1つ選ぶ。"
+
+// instructionsFocus is the v5 trial's own addition
+// (docs/measurements/jev-picker-v5.md, "what the API offers that v1-v4
+// did not use", point 3): v2 measured a new failure mode - Jev naming a
+// get* (singular-record) operation where a list*/search*/summarize*/
+// aggregate* one was right, or the reverse - that notForV2 was never
+// built to catch, since it is not a cross-service collision at all. A
+// second instructions field named for exactly this is the lever
+// docs.typesafe.ai/primitives/choice's free-form instructions object
+// invites for it.
+const instructionsFocus = "質問が求めている操作そのものに注目すること。動詞（一覧/詳細/作成/更新/削除）と" +
+	"対象resourceの両方を、選ぶ候補と一致させる。"
+
+// instructionsBuiltins spells out what each of the three built-ins is
+// for - byte for byte the sentence this package's pre-v5 instructions
+// constant carried after its own framing sentence, moved into its own
+// object field.
+const instructionsBuiltins = "list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、" +
 	"noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。"
 
-// instructionsV2 is instructions plus one line spelling out the two
-// extra fields CriteriaV2's criterionV2 objects carry beyond v1's plain
-// string, since Jev is never told what a criterion's own field names
-// mean on its own (docs.typesafe.ai/primitives/choice: "the model
-// receives both field names and values").
-const instructionsV2 = instructions +
-	"候補には examples（その操作に対して人がよく尋ねる質問）と" +
+// instructionsNoteV2 is CriteriaV2's own addition, unchanged since v2
+// (docs/measurements/jev-picker-v2.md, section 0): what a criterion's
+// examples and not_for fields mean, since Jev is never told a field's own
+// name carries meaning beyond its value
+// (docs.typesafe.ai/primitives/choice).
+const instructionsNoteV2 = "候補には examples（その操作に対して人がよく尋ねる質問）と" +
 	"not_for（混同しやすい別の操作）がある。"
 
-// questionName is the one key this adapter's wireRequest.Questions and
-// wireResponse.Answers ever use.
+// instructionsContext is the v5 trial's own hypothesis
+// (docs/measurements/jev-picker-v5.md), stated to the model rather than
+// left implicit - point 4, "backtick state paths"
+// (docs.typesafe.ai/primitives/choice documents instructions referencing
+// structured state paths such as `state.turns[0].question`). Added only
+// when turns is non-empty (instructionsFor), so a request with no turns
+// never gains a field pointing at an array that would be empty.
+const instructionsContext = "直前の会話は `state.turns` にある。そこで扱った操作の続きなら、" +
+	"その操作か同じ資源の別操作を選ぶ。"
+
+// wireInstructionsObject is the "pick" question's own instructions value: an
+// object, not this package's pre-v5 plain string - field names are
+// free-form and read by the model as data
+// (docs.typesafe.ai/primitives/choice: "The field names ... are not part
+// of the API, and none are reserved. You choose them"), chosen here for
+// what each says.
+type wireInstructionsObject struct {
+	Question string `json:"question"`
+	Focus    string `json:"focus"`
+	Builtins string `json:"builtins"`
+	Note     string `json:"note,omitempty"`
+	Context  string `json:"context,omitempty"`
+}
+
+// instructionsFor builds the "pick" question's instructions object:
+// instructionsNoteV2 only under CriteriaV2, instructionsContext only when
+// hasTurns (the request carries a non-empty turns list).
+func instructionsFor(criteria string, hasTurns bool) wireInstructionsObject {
+	wi := wireInstructionsObject{Question: instructionsQuestion, Focus: instructionsFocus, Builtins: instructionsBuiltins}
+
+	if criteria == CriteriaV2 {
+		wi.Note = instructionsNoteV2
+	}
+
+	if hasTurns {
+		wi.Context = instructionsContext
+	}
+
+	return wi
+}
+
+// impossibleQuestionName is the fan-out question WithFanOutGate adds
+// alongside questionName in the same request
+// (docs/measurements/jev-picker-v5.md, "fan-out, not extra calls": Jev
+// evaluates every question of one request in parallel, and counts input
+// tokens once per request, so this is not a second call the way gate.go's
+// own standalone Gate.Gate makes one).
+const impossibleQuestionName = "impossible"
+
+// impossibleInstructions is the fan-out "noul" question's own framing -
+// the same judgment gate.go's gateInstructions asks, worded for its own
+// true/false criteria (impossibleCriteria) rather than a bare yes/no.
+const impossibleInstructions = "この質問は、列挙された候補のどれでも実現できないことを求めているか" +
+	"（例: 一覧しかない資源の集計・承認・印刷、候補に無い資源、業務と無関係な話題）。" +
+	"能力を尋ねる質問（何ができる？）はfalse。"
+
+// impossibleCriteria is the fan-out "noul" question's own criteria object
+// (docs.typesafe.ai/primitives/noul; point 2 of
+// docs/measurements/jev-picker-v5.md's "what the API offers that v1-v4
+// did not use" - v3's own gateInstructions gave noul only instructions,
+// never criteria).
+func impossibleCriteria() map[string]string {
+	return map[string]string{
+		"true":  "質問が求める操作が候補一覧に無い（一覧しかない資源の集計・承認・印刷、一覧に無い資源、業務と無関係）",
+		"false": "候補のどれかで答えられる、または「何ができるか」を尋ねている",
+	}
+}
+
+// questionName is the "pick" key this adapter's wireRequest.Questions and
+// wireResponse.Answers use.
 const questionName = "pick"
 
 // builtinCriteriaCount is how many fixed entries criteriaFor appends
@@ -195,49 +278,144 @@ func criteriaFor(shortlist domain.Catalog) map[string]string {
 	return criteria
 }
 
-// stateFor builds the "state" Jev is asked about: query alone, or -
-// when answers is non-empty - query followed by one "回答:
-// <param>=<value>" line per answer, the same lines
-// internal/adapter/planner/pick/prompt.go's own answerLines appends to
-// the local picker's own user message.
-func stateFor(query string, answers []usecase.Answer) string {
-	if len(answers) == 0 {
-		return query
-	}
-
+// answerLinesFor renders answers as one "回答: <param>=<value>" line per
+// answer, the same lines internal/adapter/planner/pick/prompt.go's own
+// answerLines appends to the local picker's own user message. Always a
+// non-nil slice (len(answers)==0 gives a non-nil, zero-length one, so
+// wireStateWithTurns.Answers marshals as "[]", never "null") - stateFor
+// and stateValue are its only two callers.
+func answerLinesFor(answers []usecase.Answer) []string {
 	lines := make([]string, len(answers))
 	for i, a := range answers {
 		lines[i] = "回答: " + a.Param + "=" + a.Value
 	}
 
+	return lines
+}
+
+// stateFor builds the "state" Jev is asked about when there are no turns
+// to report: query alone, or - when answers is non-empty - query followed
+// by one "回答: <param>=<value>" line per answer (answerLinesFor). Byte
+// for byte what every request this adapter sent before the v5 trial built
+// (docs/measurements/jev-picker-v5.md) - stateValue's own no-turns branch.
+func stateFor(query string, answers []usecase.Answer) string {
+	lines := answerLinesFor(answers)
+	if len(lines) == 0 {
+		return query
+	}
+
 	return query + "\n" + strings.Join(lines, "\n")
 }
 
-// buildRequest builds the one wireRequest Picker.Pick sends for query,
-// answers and shortlist. criteria selects CriteriaV1 (criteriaFor,
-// instructions) or CriteriaV2 (criteriaForV2, instructionsV2); anything
-// other than CriteriaV2 - including "", Picker.criteria's zero value -
-// is CriteriaV1, matching WithCriteria's own fallback.
-func buildRequest(query string, answers []usecase.Answer, shortlist domain.Catalog, criteria string) wireRequest {
-	wireInstructions := instructions
+// wireTurn is one entry of wireStateWithTurns.Turns: a prior turn's own
+// question, and - when the turn named an operation - the service and
+// operation display names the shortlist's own criteria lines already use
+// (whatForV2/criteriaFor's own "<serviceDisplayName> / ..."), so Jev reads
+// the same vocabulary for a turn's operation as it does for a candidate's.
+// Service and Operation are both omitted (omitempty) for a turn with no
+// operation of its own (usecase.Turn.Service == "", e.g. a past "ask" or
+// "none") - turnsFor never sets one without the other.
+type wireTurn struct {
+	Question  string `json:"question"`
+	Service   string `json:"service,omitempty"`
+	Operation string `json:"operation,omitempty"`
+}
 
+// turnsFor builds wireStateWithTurns.Turns: one wireTurn per turn, in
+// order. shortlist is searched for each turn's own (Service, OperationID)
+// to read its display names (Endpoint.ServiceDisplayNameOr/DisplayNameOr,
+// the same fallback-to-raw-id pattern
+// internal/usecase/orchestrator.go's own serviceDisplay/operationDisplay
+// use); shortlist is the pick's own narrowed catalogue, not the full one,
+// so a turn naming an operation idAffinity or narrowing has since dropped
+// from it falls back to the turn's own raw Service/OperationID rather
+// than losing the operation entirely - still enough for Jev to tell "the
+// same operation" from "a different one".
+func turnsFor(turns []usecase.Turn, shortlist domain.Catalog) []wireTurn {
+	if len(turns) == 0 {
+		return nil
+	}
+
+	wireTurns := make([]wireTurn, len(turns))
+
+	for i, t := range turns {
+		wt := wireTurn{Question: t.Question}
+
+		if t.Service != "" {
+			wt.Service, wt.Operation = t.Service, t.OperationID
+
+			if e, ok := shortlist.Find(t.Service, t.OperationID); ok {
+				wt.Service = e.ServiceDisplayNameOr(t.Service)
+				wt.Operation = e.DisplayNameOr(t.OperationID)
+			}
+		}
+
+		wireTurns[i] = wt
+	}
+
+	return wireTurns
+}
+
+// wireStateWithTurns is the "state" Jev is asked about when turns is
+// non-empty: an object, not stateFor's plain string - Question and
+// Answers carry exactly what stateFor would have folded into one string
+// (Answers as answerLinesFor's own lines, not stateFor's joined text, so
+// Turns can sit beside them rather than after them in one blob), plus
+// Turns (turnsFor). instructionsContext's own `state.turns[0].question`
+// reference (docs.typesafe.ai/primitives/choice) is this field.
+type wireStateWithTurns struct {
+	Question string     `json:"question"`
+	Answers  []string   `json:"answers"`
+	Turns    []wireTurn `json:"turns"`
+}
+
+// stateValue builds wireRequest.State: stateFor's plain string when turns
+// is empty (byte-identical to every pre-v5 request,
+// docs/measurements/jev-picker-v5.md), or a wireStateWithTurns object
+// otherwise.
+func stateValue(query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog) any {
+	if len(turns) == 0 {
+		return stateFor(query, answers)
+	}
+
+	return wireStateWithTurns{Question: query, Answers: answerLinesFor(answers), Turns: turnsFor(turns, shortlist)}
+}
+
+// buildRequest builds the one wireRequest Picker.Pick sends for query,
+// answers, turns and shortlist. criteria selects CriteriaV1 (criteriaFor)
+// or CriteriaV2 (criteriaForV2); anything other than CriteriaV2 -
+// including "", Picker.criteria's zero value - is CriteriaV1, matching
+// WithCriteria's own fallback. instructionsFor folds criteria and
+// len(turns)>0 into the "pick" question's own instructions object.
+func buildRequest(query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog, criteria string) wireRequest {
 	var wireCriteria any = criteriaFor(shortlist)
 
 	if criteria == CriteriaV2 {
-		wireInstructions = instructionsV2
 		wireCriteria = criteriaForV2(shortlist)
 	}
 
 	return wireRequest{
-		State: stateFor(query, answers),
+		State: stateValue(query, answers, turns, shortlist),
 		Model: modelName,
 		Questions: map[string]wireQuestion{
 			questionName: {
 				Type:         "choice",
-				Instructions: wireInstructions,
+				Instructions: instructionsFor(criteria, len(turns) > 0),
 				Criteria:     wireCriteria,
 			},
 		},
+	}
+}
+
+// addImpossibleQuestion adds the fan-out "impossible" question
+// (impossibleQuestionName, impossibleInstructions, impossibleCriteria) to
+// req.Questions - Picker.Pick's own WithFanOutGate path, called after
+// buildRequest rather than folded into it, so buildRequest's own golden
+// tests (the "pick" question alone) stay unaffected by whether fan-out is
+// on.
+func addImpossibleQuestion(req *wireRequest) {
+	req.Questions[impossibleQuestionName] = wireQuestion{
+		Type: "noul", Instructions: impossibleInstructions, Criteria: impossibleCriteria(),
 	}
 }
 

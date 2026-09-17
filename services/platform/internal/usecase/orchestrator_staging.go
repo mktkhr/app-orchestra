@@ -62,6 +62,13 @@ const staged = 2
 // the planner whole, had staging been off, and what planPicked's own
 // alternativesFor reads (H5).
 //
+// o.picker.Pick is given turns too (truncateTurns(turns, o.contextWindow),
+// the same window planOrdinary and planPicked's own planPreferred call
+// truncate turns to before the planner) - the v5 Jev trial's own
+// hypothesis (docs/measurements/jev-picker-v5.md): before this, only the
+// fill ever saw the conversation, so a pick over a follow-up naming no
+// service or operation of its own had nothing to resolve it against.
+//
 // The pick's own outcome is logged at info - pick_operation_id,
 // pick_ambiguous and pick_ms (S4: recorded, not acted on; snake_case keys
 // per sloglint, part of the fixed harness policy,
@@ -116,7 +123,7 @@ func (o *Orchestrator) planStaged(
 		}
 	}
 
-	p, err := o.picker.Pick(ctx, query, answers, pickCatalog)
+	p, err := o.picker.Pick(ctx, query, answers, truncateTurns(turns, o.contextWindow), pickCatalog)
 	if err != nil {
 		return Result{}, fmt.Errorf("picking: %w", err)
 	}

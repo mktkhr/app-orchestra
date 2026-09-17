@@ -3,6 +3,7 @@ package pick_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -87,7 +88,7 @@ func TestPickSendsTheExactRequestTheStandInPickerSent(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	picker := pick.New(client, "qwen3.5-9b-q8")
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
 
 	temperature, ok := gotBody["temperature"].(float64)
@@ -124,10 +125,55 @@ func TestPickSendsTheExactRequestTheStandInPickerSent(t *testing.T) {
 	)
 }
 
+// TestPickIgnoresTurns is the explicit assertion usecase.Picker's own doc
+// comment (docs/measurements/jev-picker-v5.md) asks for: Pick's request
+// body is byte-identical whether turns is nil or carries entries -
+// userMessage (prompt.go) has nothing to render turns into, and
+// SystemPrompt must stay byte-identical to
+// e2e/narrowing/pick/client.ts's own PICK_SYSTEM_PROMPT (S2's
+// cross-language comparison, prompt_test.go), so this picker takes turns
+// only to satisfy usecase.Picker's signature.
+func TestPickIgnoresTurns(t *testing.T) {
+	capture := func(turns []usecase.Turn) string {
+		var got string
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			raw, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("reading request body: %v", err)
+			}
+
+			got = string(raw)
+
+			w.Header().Set("Content-Type", "application/json")
+
+			if _, err := w.Write([]byte(responseWith("listInventoryItems certain"))); err != nil {
+				t.Errorf("writing fixture response: %v", err)
+			}
+		}))
+		t.Cleanup(server.Close)
+
+		client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+		picker := pick.New(client, "qwen3.5-9b-q8")
+
+		_, err := picker.Pick(context.Background(), "在庫を見せて", nil, turns, shortlistCatalog())
+		require.NoError(t, err)
+
+		return got
+	}
+
+	withoutTurns := capture(nil)
+	withTurns := capture([]usecase.Turn{
+		{Question: "前の質問", Kind: usecase.ResultKindResult, Service: "inventory", OperationID: "listInventoryItems"},
+	})
+
+	assert.Equal(t, withoutTurns, withTurns)
+}
+
 func TestPickParsesACertainOperation(t *testing.T) {
 	picker := newPicker(t, responseWith("listInventoryItems certain"))
 
-	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickOperation, Service: "inventory", OperationID: "listInventoryItems"}, got)
@@ -136,7 +182,7 @@ func TestPickParsesACertainOperation(t *testing.T) {
 func TestPickParsesAnAmbiguousOperation(t *testing.T) {
 	picker := newPicker(t, responseWith("listInventoryItems ambiguous"))
 
-	got, err := picker.Pick(context.Background(), "見せて", nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "見せて", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{
@@ -154,7 +200,7 @@ func TestPickPicksTheLongestIdWhenOneIsASubstringOfAnother(t *testing.T) {
 
 	picker := newPicker(t, responseWith("listInventoryItems certain"))
 
-	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, shortlist)
+	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlist)
 	require.NoError(t, err)
 
 	assert.Equal(t, "listInventoryItems", got.OperationID)
@@ -163,7 +209,7 @@ func TestPickPicksTheLongestIdWhenOneIsASubstringOfAnother(t *testing.T) {
 func TestPickParsesListCapabilities(t *testing.T) {
 	picker := newPicker(t, responseWith("list_capabilities certain"))
 
-	got, err := picker.Pick(context.Background(), "何ができるの？", nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "何ができるの？", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickListCapabilities}, got)
@@ -172,7 +218,7 @@ func TestPickParsesListCapabilities(t *testing.T) {
 func TestPickParsesProposePanel(t *testing.T) {
 	picker := newPicker(t, responseWith("propose_panel certain"))
 
-	got, err := picker.Pick(context.Background(), "画面に置いて", nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "画面に置いて", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickProposePanel}, got)
@@ -181,7 +227,7 @@ func TestPickParsesProposePanel(t *testing.T) {
 func TestPickParsesNoneExplicitly(t *testing.T) {
 	picker := newPicker(t, responseWith("none certain"))
 
-	got, err := picker.Pick(context.Background(), "今日の天気は？", nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)
@@ -190,7 +236,7 @@ func TestPickParsesNoneExplicitly(t *testing.T) {
 func TestPickWithNoRecognisableIdAtAllIsNone(t *testing.T) {
 	picker := newPicker(t, responseWith("わかりません"))
 
-	got, err := picker.Pick(context.Background(), "今日の天気は？", nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)
@@ -203,7 +249,7 @@ func TestPickTruncatedByMaxTokensIsNone(t *testing.T) {
 	body := `{"choices": [{"finish_reason": "length", "message": {"role": "assistant", "content": "listInventoryIt"}}]}`
 	picker := newPicker(t, body)
 
-	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)
@@ -215,7 +261,7 @@ func TestPickWrapsATransportError(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: "http://127.0.0.1:0", Model: "test-model"})
 	picker := pick.New(client, "qwen3.5-9b-q8")
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
 	require.Error(t, err)
 }
 
@@ -251,7 +297,7 @@ func TestPickCandidateLineFallsBackToTheDescriptionsFirstLineWhenSummaryIsEmpty(
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	picker := pick.New(client, "qwen3.5-9b-q8")
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, shortlist)
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlist)
 	require.NoError(t, err)
 
 	messages, ok := gotBody["messages"].([]any)
@@ -278,7 +324,7 @@ func TestPickOnEmptyShortlistNeverCallsTheModel(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	picker := pick.New(client, "qwen3.5-9b-q8")
 
-	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, domain.Catalog{})
+	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, domain.Catalog{})
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)

@@ -42,13 +42,17 @@ type fakePicker struct {
 
 	query   string
 	answers []usecase.Answer
+	turns   []usecase.Turn
 	catalog domain.Catalog
 	calls   int
 }
 
-func (f *fakePicker) Pick(_ context.Context, query string, answers []usecase.Answer, catalog domain.Catalog) (usecase.Pick, error) {
+func (f *fakePicker) Pick(
+	_ context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, catalog domain.Catalog,
+) (usecase.Pick, error) {
 	f.query = query
 	f.answers = answers
+	f.turns = turns
 	f.catalog = catalog
 	f.calls++
 

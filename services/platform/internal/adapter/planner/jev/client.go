@@ -62,23 +62,39 @@ const (
 // its own.
 var ErrRequestFailed = errors.New("jev request failed")
 
-// wireRequest is the JSON body POST /v1/systemone expects.
+// wireRequest is the JSON body POST /v1/systemone expects. State is `any`,
+// not `string`: stateValue (mapping.go) sends the plain string stateFor
+// builds when there are no turns to report (byte-identical to every
+// request this adapter sent before the v5 trial,
+// docs/measurements/jev-picker-v5.md) or, when turns is non-empty, a
+// wireStateWithTurns object instead - the same "an object over the wire is
+// fine, the model reads field names as data" latitude gate.go's own
+// gateState already relies on (docs.typesafe.ai/primitives/noul).
 type wireRequest struct {
-	State     string                  `json:"state"`
+	State     any                     `json:"state"`
 	Model     string                  `json:"model"`
 	Questions map[string]wireQuestion `json:"questions"`
 }
 
-// wireQuestion is one entry of wireRequest.Questions: this adapter only
-// ever sends the one named "pick". Criteria is `any` rather than
-// map[string]string because CriteriaV2 sends a criterionV2 object (per
-// docs.typesafe.ai/primitives/choice's own object form) as each entry's
-// value instead of CriteriaV1's plain string - mapping.go's criteriaFor
-// and criteriaForV2 are the only two callers, and each builds a map of
-// one concrete value type, never a mix of the two within one request.
+// wireQuestion is one entry of wireRequest.Questions: "pick" always, and -
+// under WithFanOutGate - "impossible" alongside it in the same request
+// (docs/measurements/jev-picker-v5.md, "fan-out": Jev evaluates every
+// question of one request in parallel and counts input tokens once, so a
+// second question in the same call is not a second call). Criteria is
+// `any` rather than map[string]string because CriteriaV2 sends a
+// criterionV2 object (per docs.typesafe.ai/primitives/choice's own object
+// form) as each entry's value instead of CriteriaV1's plain string, and
+// the "impossible" question's own criteria (impossibleCriteria) is a plain
+// map[string]string keyed "true"/"false" (per
+// docs.typesafe.ai/primitives/noul's own criteria object) - three shapes,
+// one field, never mixed within a single wireQuestion value. Instructions
+// is `any` for the same reason: the "pick" question's own instructions is
+// an object (instructionsFor, docs.typesafe.ai/primitives/choice: "field
+// names are not part of the API ... you choose them") while "impossible"
+// keeps a plain string.
 type wireQuestion struct {
 	Type         string `json:"type"`
-	Instructions string `json:"instructions"`
+	Instructions any    `json:"instructions"`
 	Criteria     any    `json:"criteria"`
 }
 
@@ -89,12 +105,17 @@ type wireResponse struct {
 	Usage   wireUsage             `json:"usage"`
 }
 
-// wireAnswer is one entry of wireResponse.Answers.
+// wireAnswer is one entry of wireResponse.Answers - shared by both
+// question types this package ever sends, "choice" ("pick") and "noul"
+// ("impossible" under WithFanOutGate, and gate.go's own standalone
+// "gate"): Choice/Probabilities are empty for a noul answer, Noul is 0 for
+// a choice answer, and Type says which is which.
 type wireAnswer struct {
 	Type          string             `json:"type"`
 	Choice        string             `json:"choice"`
 	Confidence    float64            `json:"confidence"`
 	Probabilities map[string]float64 `json:"probabilities"`
+	Noul          float64            `json:"noul"`
 }
 
 // wireUsage is the token accounting Jev returns alongside its answer -
