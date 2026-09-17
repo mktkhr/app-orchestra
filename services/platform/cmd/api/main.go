@@ -46,10 +46,11 @@ func main() {
 			K:           cfg.NarrowingK,
 		},
 		Picker: app.Picker{
-			Name:        cfg.Picker,
-			JevAPIKey:   cfg.JevAPIKey,
-			JevBaseURL:  cfg.JevBaseURL,
-			JevCriteria: cfg.JevCriteria,
+			Name:                  cfg.Picker,
+			JevAPIKey:             cfg.JevAPIKey,
+			JevBaseURL:            cfg.JevBaseURL,
+			JevCriteria:           cfg.JevCriteria,
+			JevLegacyInstructions: cfg.JevLegacyInstructions,
 		},
 		Gate: app.Gate{
 			Name:             cfg.Gate,

@@ -331,3 +331,62 @@ func TestPickWithFanOutGateLogsTheGateVerdictAtInfo(t *testing.T) {
 	assert.Equal(t, false, line["gate_impossible"])
 	assert.Equal(t, true, line["gate_fanout"])
 }
+
+// TestPickWithLegacyInstructionsSendsThePlainV2StringWithTurnsStillInState
+// is run B's own isolation switch (docs/measurements/jev-v5.md,
+// WithLegacyInstructions): turns still reach "state" as an object, but
+// the "pick" question's own instructions reverts to the plain string
+// v1/v2 always sent - byte for byte legacyInstructionsV2, no `focus`, no
+// `context`, no object at all.
+func TestPickWithLegacyInstructionsSendsThePlainV2StringWithTurnsStillInState(t *testing.T) {
+	server, gotBody := captureRequestBody(t, responseWith(t, "ListAttendanceRecords", 0.9))
+
+	picker := jev.New(server.URL, "test-key", nil, jev.WithCriteria(jev.CriteriaV2), jev.WithLegacyInstructions())
+
+	turns := []usecase.Turn{
+		{Question: "勤怠を見せて", Kind: usecase.ResultKindResult, Service: "attendance", OperationID: "ListAttendanceRecords"},
+	}
+
+	_, err := picker.Pick(context.Background(), "続けて", nil, turns, turnsShortlist())
+	require.NoError(t, err)
+
+	state, ok := gotBody.body["state"].(map[string]any)
+	require.True(t, ok, "turns still reach state as an object under WithLegacyInstructions")
+
+	gotTurns, ok := state["turns"].([]any)
+	require.True(t, ok)
+	assert.Len(t, gotTurns, 1)
+
+	questions, ok := gotBody.body["questions"].(map[string]any)
+	require.True(t, ok)
+	pickQuestion, ok := questions["pick"].(map[string]any)
+	require.True(t, ok)
+
+	instructions, ok := pickQuestion["instructions"].(string)
+	require.True(t, ok, "instructions must be a plain string under WithLegacyInstructions, not an object")
+	assert.Contains(t, instructions, "examples")
+	assert.Contains(t, instructions, "not_for")
+	assert.NotContains(t, instructions, "動詞", "the v5 focus field's own wording must not appear")
+}
+
+// TestPickWithoutLegacyInstructionsSendsTheV5ObjectByDefault guards the
+// default: a Picker built with no WithLegacyInstructions option sends the
+// v5 object form exactly as every other test in this file already checks
+// - this test exists only to name the contrast explicitly, next to the
+// option that changes it.
+func TestPickWithoutLegacyInstructionsSendsTheV5ObjectByDefault(t *testing.T) {
+	server, gotBody := captureRequestBody(t, responseWith(t, "listInventoryItems", 0.9))
+
+	picker := jev.New(server.URL, "test-key", nil)
+
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	require.NoError(t, err)
+
+	questions, ok := gotBody.body["questions"].(map[string]any)
+	require.True(t, ok)
+	pickQuestion, ok := questions["pick"].(map[string]any)
+	require.True(t, ok)
+
+	_, isObject := pickQuestion["instructions"].(map[string]any)
+	assert.True(t, isObject, "instructions must be an object by default")
+}

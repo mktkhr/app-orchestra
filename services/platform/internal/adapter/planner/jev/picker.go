@@ -88,6 +88,18 @@ func WithFanOutGate(threshold float64) Option {
 	}
 }
 
+// WithLegacyInstructions makes Pick send legacyInstructionsFor's plain
+// string as the "pick" question's own instructions, instead of
+// instructionsFor's v5 object - a temporary isolation switch
+// (docs/measurements/jev-v5.md, run B): turns still reach "state"
+// unchanged, so a run built with this option tells the v5 round's object
+// instructions apart from its turns-in-state change as the cause of
+// real-attendance-detail's new regression. ORCHESTRA_JEV_LEGACY_INSTRUCTIONS
+// (internal/infra/config) is this option's own env-var switch.
+func WithLegacyInstructions() Option {
+	return func(p *Picker) { p.legacyInstructions = true }
+}
+
 // Picker implements usecase.Picker over TypeSafe's Jev API: the shortlist
 // and the three fixed built-ins (see criteriaFor) as one "choice"
 // question, with Jev's own judged confidence read back as S4's Ambiguous
@@ -105,6 +117,8 @@ type Picker struct {
 	// Impossible at or above gateThreshold.
 	fanOutGate    bool
 	gateThreshold float64
+	// legacyInstructions is WithLegacyInstructions' own field.
+	legacyInstructions bool
 }
 
 var _ usecase.Picker = (*Picker)(nil)
@@ -144,7 +158,7 @@ func (p *Picker) Pick(
 
 	start := time.Now()
 
-	req := buildRequest(query, answers, turns, shortlist, p.criteria)
+	req := buildRequest(query, answers, turns, shortlist, p.criteria, p.legacyInstructions)
 	if p.fanOutGate {
 		addImpossibleQuestion(&req)
 	}

@@ -66,6 +66,33 @@ type wireInstructionsObject struct {
 	Context  string `json:"context,omitempty"`
 }
 
+// legacyInstructions and legacyInstructionsV2 are byte-identical to this
+// package's own pre-v5 "instructions"/"instructionsV2" constants
+// (docs/measurements/jev-picker-v2.md) - kept only for
+// WithLegacyInstructions, run B of the v5 trial's own isolation
+// (docs/measurements/jev-v5.md): turns still reach "state" unchanged, but
+// "pick"'s own instructions revert to the plain string v1/v2 always sent,
+// to tell the v5 round's object instructions apart from its turns-in-state
+// change as the cause of real-attendance-detail's new regression.
+const legacyInstructions = "社内APIの振り分け役。質問に対して、候補の中から呼ぶべき操作を1つ選ぶ。" +
+	"list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、" +
+	"noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。"
+
+const legacyInstructionsV2 = legacyInstructions +
+	"候補には examples（その操作に対して人がよく尋ねる質問）と" +
+	"not_for（混同しやすい別の操作）がある。"
+
+// legacyInstructionsFor returns legacyInstructions or legacyInstructionsV2
+// depending on criteria - WithLegacyInstructions' own counterpart to
+// instructionsFor.
+func legacyInstructionsFor(criteria string) string {
+	if criteria == CriteriaV2 {
+		return legacyInstructionsV2
+	}
+
+	return legacyInstructions
+}
+
 // instructionsFor builds the "pick" question's instructions object:
 // instructionsNoteV2 only under CriteriaV2, instructionsContext only when
 // hasTurns (the request carries a non-empty turns list).
@@ -386,12 +413,24 @@ func stateValue(query string, answers []usecase.Answer, turns []usecase.Turn, sh
 // or CriteriaV2 (criteriaForV2); anything other than CriteriaV2 -
 // including "", Picker.criteria's zero value - is CriteriaV1, matching
 // WithCriteria's own fallback. instructionsFor folds criteria and
-// len(turns)>0 into the "pick" question's own instructions object.
-func buildRequest(query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog, criteria string) wireRequest {
+// len(turns)>0 into the "pick" question's own instructions object, unless
+// legacyInstructions is true (WithLegacyInstructions), in which case
+// legacyInstructionsFor's plain string is sent instead - state still
+// carries turns exactly as it does when legacyInstructions is false; only
+// the "pick" question's own instructions value changes.
+func buildRequest(
+	query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
+	criteria string, legacyInstructions bool,
+) wireRequest {
 	var wireCriteria any = criteriaFor(shortlist)
 
 	if criteria == CriteriaV2 {
 		wireCriteria = criteriaForV2(shortlist)
+	}
+
+	var wireQuestionInstructions any = instructionsFor(criteria, len(turns) > 0)
+	if legacyInstructions {
+		wireQuestionInstructions = legacyInstructionsFor(criteria)
 	}
 
 	return wireRequest{
@@ -400,7 +439,7 @@ func buildRequest(query string, answers []usecase.Answer, turns []usecase.Turn, 
 		Questions: map[string]wireQuestion{
 			questionName: {
 				Type:         "choice",
-				Instructions: instructionsFor(criteria, len(turns) > 0),
+				Instructions: wireQuestionInstructions,
 				Criteria:     wireCriteria,
 			},
 		},

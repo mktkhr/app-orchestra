@@ -365,6 +365,16 @@ type Config struct {
 	// line per option) or JevCriteriaV2 (a `what`/`examples`/`not_for`
 	// object per option). Ignored when Picker is not PickerJev.
 	JevCriteria string
+	// JevLegacyInstructions reverts internal/adapter/planner/jev's "pick"
+	// question instructions to the plain string v1/v2 always sent
+	// (instead of the v5 trial's own object form,
+	// docs/measurements/jev-v5.md), while turns still reach "state"
+	// unchanged - a temporary isolation switch, read from
+	// ORCHESTRA_JEV_LEGACY_INSTRUCTIONS (any non-empty value means true),
+	// built for v5's own run B: telling the object instructions' own
+	// effect on real-attendance-detail apart from turns-in-state's.
+	// Ignored when Picker is not PickerJev.
+	JevLegacyInstructions bool
 	// Gate selects which usecase.Gate implementation pkg/app.build builds,
 	// read from ORCHESTRA_GATE: GateNone (the default, no gate at all) or
 	// GateJev (internal/adapter/planner/jev's "noul refusal gate",
@@ -926,6 +936,8 @@ func loadPicker(cfg *Config) error {
 	}
 
 	cfg.JevCriteria = criteria
+
+	cfg.JevLegacyInstructions = os.Getenv("ORCHESTRA_JEV_LEGACY_INSTRUCTIONS") != ""
 
 	return nil
 }
