@@ -138,6 +138,12 @@ _Nothing in progress right now._
    when requested. Unscheduled - not touched here since this task's own
    files were `DECISIONS.md`/`TODO.md`/`STATE.md`/`PRODUCT.md`/
    `docs/measurements/`, not `e2e/`.
+1. **Order the 「違いましたか？」 chips by Jev's probabilities, built-ins
+   excluded** - measured +7 on `correct@shown` offline
+   (`docs/measurements/jev-chip-order.md`, `DECISIONS.md`, 2026-09-17,
+   "Jev, follow-ups: where it could win, measured"). Needs a measurement
+   with the local pick fixed and Jev called only for ordering, and a
+   decision on the extra call per question.
 
 ## Done
 
@@ -165,6 +171,33 @@ _Nothing in progress right now._
   v5: the pick needed the conversation, not a better model", "The local
   pick gets the conversation too") and `docs/measurements/jev-v5.md`.
   $0.1688 cumulative across all five Jev rounds, 8.4% of the $2 budget.
+
+- **The Jev trial: four follow-ups measured, still not adopted.**
+  Ordering the 「違いましたか？」 chips by Jev's own probabilities (zero
+  model calls, offline) reads `correct@shown` 79 → 85 at two chips, 86 at
+  three or with built-ins excluded, zero rows lost. Confidence tracks
+  accuracy in the same direction the threshold is raised, but the
+  Jev-if-confident-else-local arithmetic never beats the local-only
+  78/100, only ties it, at ~half the questions delegated. Jev's own
+  latency is flat from 1 to 13 questions per call (244-283ms mean) -
+  v5's 311ms-vs-220ms reading (above) does not reproduce and was noise -
+  and stays flat under concurrency (p90 292 → 359ms, 1 to 8 in flight)
+  while the local pick saturates the one GPU (p90 138 → 931ms) and
+  overtakes Jev's p90 by 4 in flight. The hybrid picker built on this
+  (`ORCHESTRA_PICKER=hybrid`, Jev first at an 800ms timeout, used only
+  above 0.7 confidence, fail-open, commits `5e1b6cc`/`6d79378`) held
+  correctness across all three instruments (corpus 78/78, mid a wash,
+  eval 34/34 unchanged) but delegated below the predicted ~50% rate
+  (27%/42%/45%) and showed **no end-to-end speed gain under
+  concurrency** - both builds held ~0.7 req/s, because the pick is a
+  small fraction of a question that still runs its fill on the one
+  shared GPU. Not adopted; hybrid stays in the tree behind config,
+  `ORCHESTRA_PICKER` unset by default. See `DECISIONS.md`, 2026-09-17
+  ("Jev, follow-ups: where it could win, measured") and
+  `docs/measurements/jev-chip-order.md` / `jev-confidence.md` /
+  `jev-thresholds.md` / `latency-bench.md` / `jev-hybrid.md`. $0.2057
+  cumulative Jev spend against the $2 budget, per the hybrid record's
+  own running total.
 
 - **The Jev trial: four rounds measured, none adopted.** v1 (one-line
   criteria) and v2 (richer `what`/`examples`/`not_for` criteria), both a

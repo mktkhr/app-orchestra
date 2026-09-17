@@ -7940,3 +7940,115 @@ the starting point for what it would need to drive.
 
 Commit: `b4ac66c` ("feat(pick): local picker renders prior turns into
 its user message").
+
+## 2026-09-17 Jev, follow-ups: where it could win, measured
+
+Three offline-or-nearly-offline follow-ups to the five-round trial
+above, plus a fourth that shipped code: does Jev's own probability
+distribution improve the 「違いましたか？」 chips; does its confidence
+track accuracy well enough to build a Jev-if-confident-else-local
+picker on; what does Jev cost under concurrency against the local
+stack; and, having built that hybrid picker, does it actually win
+anything end to end. Full records: `docs/measurements/jev-chip-order.md`,
+`jev-confidence.md`, `jev-thresholds.md`, `latency-bench.md`,
+`jev-hybrid.md`; context from the original trial in
+`jev-chip-order.md`'s own citations and `jev-field-report.md`.
+
+**1. Chip order by Jev's probabilities (`jev-chip-order.md`, zero model
+calls).** `docs/specs/shortlisting.md` H5's 「違いましたか？」 chips are
+today the shortlist's next two in reranker order; against the 100-row
+corpus that is `correct@1` 78, `correct@shown` 79 - the chips rescue one
+row. Reordering those same two chips by the v2 trial's own recorded
+probability distribution instead (same corpus, same local pick, chips
+only) reads `correct@shown` 85 at two chips, 86 at three, with zero rows
+lost against the reranker's ordering - the same six rows are rescued
+whether v1's or v2's distribution is used (`a21`, `b06`, `c02`, `c13`,
+`d06`, `e03`). Built-in options (`none`/`list_capabilities`/
+`propose_panel`) crowd into the probability order's own top two in 52 of
+the 73 chip-bearing rows; excluding built-ins from the ranking before
+taking the top two still reads 86. Caveat carried over from the record
+itself: these probabilities were produced by a call in which Jev was
+choosing the operation, not one conditioned on the local pick's own
+already-made choice - a legitimate counterfactual on the rows as they
+exist, not proof a distribution asked only to rank around a fixed pick
+would look the same.
+
+**2. Confidence tracks accuracy, and the hybrid arithmetic
+(`jev-confidence.md`, `jev-thresholds.md`).** Both records re-derive the
+same relationship from the same v1/v2 corpus picks by the same method -
+`jev-thresholds.md` is a duplicate run of the same instruction as
+`jev-confidence.md`, and additionally covers the refusal gate's own
+`noul` threshold, which `jev-confidence.md` does not touch; the gate
+findings below are taken from `jev-thresholds.md` alone. Accuracy above
+the confidence threshold rises as the threshold rises - v1 67%→95% and
+v2 74%→90% from threshold 0.5 to 0.95, non-monotonic band by band on a
+corpus this size but the overall direction holds both times. The
+Jev-if-confident-else-local arithmetic (act on Jev above the threshold,
+fall back to the local pick's own final answer below it) never beats the
+local-only 78/100 at any threshold tried, in either trial run; it ties
+78 at threshold 0.7-0.8 (v1) or 0.7 (v2), with roughly half the
+questions delegated to Jev at the tying threshold (49/100 in the v2
+run). On the gate side, `jev-thresholds.md` finds the current
+`noul >= 0.7` default catches only the clearly verb/resource-not-there
+refusals and never the two cases the task brief named as decisive
+(集計/aggregate `noul` 0.16, 承認/approve `noul` 0.37 - both stay under
+threshold at every value from 0.5 to 0.9); 0.8 is the safest value it
+can confirm (it clears the one confirmed false refusal at 0.78 while
+costing two more missed impossibles), but no threshold in range rescues
+the aggregate/approve pair.
+
+**3. Latency (`latency-bench.md`).** Jev's own pick-call latency is flat
+from 1 to 13 questions per request - mean 244-283ms across all five
+sizes tested, no elbow in that range; input tokens roughly double and
+output tokens roughly triple over the same range while latency does not
+track either. **This corrects the v5 entry's own reading, above**: the
+one prior observation of a per-question latency penalty (311ms mean for
+a fan-out call carrying two questions against 220ms for one) does not
+reproduce here and reads as noise from a single noisy pair of calls, not
+a real cost of adding a question to a Jev call. Under concurrency (level
+1/2/4/8, 40 requests per level) Jev's own p90 barely moves, 292 → 359ms,
+while its throughput scales close to linearly, 3.9 → 18.7 req/s; the
+local pick saturates the one GPU by level 2 (~8.5 req/s flat from there)
+with p90 138 → 931ms, overtaking Jev's own p90 at level 4. The fuller
+local end-to-end path (narrowing + fill + pick, one llama-server) is
+worse still: p90 729ms at level 1 rising to 3,486ms at level 8, already
+past Jev's p90 at level 1.
+
+**4. The hybrid picker (`jev-hybrid.md`, commits `5e1b6cc`,
+`6d79378`).** `internal/adapter/planner/hybrid.Picker` calls Jev first
+under an 800ms timeout (`ORCHESTRA_HYBRID_JEV_TIMEOUT`), uses its answer
+only when it names a catalogue operation at confidence >= 0.7
+(`ORCHESTRA_HYBRID_THRESHOLD`, the band `jev-thresholds.md` found
+calibrated), and falls back to the local pick on a built-in, low
+confidence, a timeout, or any error - fail-open throughout. Selected by
+`ORCHESTRA_PICKER=hybrid`, off by default. Correctness held across all
+three instruments: corpus 78/100 against baseline's 78/100 (one fix
+`d11`, one regression `b19`, a wash), mid 39/40 · 1 · 16/20 · 4 · 0
+against baseline's 38/40 · 1 · 17/20 · 3 · 0 (a small offsetting move),
+eval suite 34/34 unchanged. Delegation to Jev came in below the ~50%
+the threshold arithmetic in step 2 predicted at every step measured:
+27% on the corpus, 42% on mid, 45% under concurrency (72/160 decisions).
+One `timeout` fallback out of 160 concurrent picks, otherwise only
+`builtin`/`low_confidence` fallbacks. **No end-to-end speed gain under
+concurrency**: both the hybrid and local-only builds held at about
+0.7 req/s at every level with p90s within noise of each other, because
+the pick itself is only ~0.13-0.25s of a question that runs ~1.5s end
+to end (narrowing + fill still run on the one shared GPU regardless of
+which picker answered). Caveat carried over from the record: the two
+concurrency targets ran different builds - the shared `:8080` process
+predates the hybrid commits and was not restarted, so its numbers
+describe the local picker as built before this round's shared-wiring
+changes, not re-checked against a rebuilt local-only instance.
+
+**5. Decision (mine) and reading.** Not adopted - `ORCHESTRA_PICKER`
+stays unset by default; the hybrid picker stays in the tree behind
+config, exactly as it landed in `5e1b6cc`/`6d79378`. Where Jev could
+still win, on this evidence, is replacing a stage that actually
+dominates the time - the fill, not the pick - and that is a poor fit for
+today's typed questions, because a fill's free-text arguments (names,
+ids) are not a fixed set of choices a `choice` primitive can be asked to
+select among. The one measured win without that problem is the chip
+reordering in step 1, which touches display only, not the answer.
+Cumulative Jev spend, from the scratchpad ledger behind these follow-ups
+(not fully reconstructable from the committed records alone): $0.2057 of
+the $2 budget, per the hybrid record's own running total.

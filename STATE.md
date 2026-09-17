@@ -1,8 +1,21 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-17 (Jev v5: the pick stage now gets the conversation's turns by default; the local pick gets them too)_
+_Last updated: 2026-09-17 (Jev follow-ups measured: chip ordering, confidence/hybrid arithmetic, latency, and the hybrid picker itself)_
 
 ## Summary
+
+**2026-09-17 - four follow-up measurements closed the open questions from
+the five-round Jev trial: probability-ordered chips gain +6-7 on
+`correct@shown` offline, confidence tracks accuracy but the
+Jev-if-confident-else-local arithmetic only ties the local-only score,
+Jev's own latency stays flat under load while the local stack saturates
+the GPU, and the hybrid picker built on those findings
+(`ORCHESTRA_PICKER=hybrid`) held correctness but showed no end-to-end
+speed gain, so it is not adopted and stays in the tree behind config.**
+See `DECISIONS.md`, 2026-09-17 ("Jev, follow-ups: where it could win,
+measured") and `docs/measurements/jev-chip-order.md` /
+`jev-confidence.md` / `jev-thresholds.md` / `latency-bench.md` /
+`jev-hybrid.md`.
 
 **2026-09-17 - Jev's pick stage now always sends the conversation's
 prior turns in `state.turns` (plain-string `instructions` by default,
