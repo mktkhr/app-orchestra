@@ -85,22 +85,23 @@ export function corpusArg(): "mid" | undefined {
 }
 
 /**
- * The `-nothink` / `-rp<value>` / `-stages2` / `-jev` suffix a variant's
- * output files carry (run.ts's own doc comment, docs/plans/staging.md;
- * docs/plans/midsizing.md Task 3 reuses it for `--corpus mid`'s
- * `mid-<variant>.jsonl`) - "" for a plain wording pass, unchanged from
- * before any of the three flags existed. `stages` of `1` or `undefined`
- * carries no suffix - `STAGES=1` reproduces the plain pass byte for byte
- * (docs/plans/staging.md, AC-S-101).
+ * The `-nothink` / `-rp<value>` / `-stages2` / `-jev` / `-v2` / `-gate`
+ * suffix a variant's output files carry (run.ts's own doc comment,
+ * docs/plans/staging.md; docs/plans/midsizing.md Task 3 reuses it for
+ * `--corpus mid`'s `mid-<variant>.jsonl`) - "" for a plain wording pass,
+ * unchanged from before any of these flags existed. `stages` of `1` or
+ * `undefined` carries no suffix - `STAGES=1` reproduces the plain pass
+ * byte for byte (docs/plans/staging.md, AC-S-101).
  *
- * `-jev` is read straight from `ORCHESTRA_JEV_API_KEY`, unlike the other
- * three which come from `run.ts`'s own `--flag` parsing above: the
- * picker is chosen through the platform's own environment
- * (`ORCHESTRA_PICKER`, `e2e/eval/services.ts`/`e2e/shortlist/boot.ts`
- * pass it through the same way), not a run.ts flag, so this reads that
- * one environment variable directly rather than growing a fourth
- * parameter every call site would have to thread through for a name
- * nothing else here needs.
+ * `-jev`, `-v2` and `-gate` are read straight from `ORCHESTRA_PICKER`/
+ * `ORCHESTRA_JEV_CRITERIA`/`ORCHESTRA_GATE`, unlike the other three
+ * which come from `run.ts`'s own `--flag` parsing above: the picker and
+ * the gate are each chosen through the platform's own environment
+ * (`e2e/eval/services.ts`/`e2e/shortlist/boot.ts` pass all three
+ * through the same way), not a run.ts flag, so this reads those
+ * environment variables directly rather than growing more parameters
+ * every call site would have to thread through for names nothing else
+ * here needs.
  */
 export function variantSuffix(
   thinking?: "on" | "off",
@@ -123,6 +124,13 @@ export function variantSuffix(
   // presence is what names the variant. "v1" (the default) carries no
   // suffix, matching `st`'s own no-suffix-for-the-default rule.
   const criteria = process.env["ORCHESTRA_JEV_CRITERIA"] === "v2" ? "-v2" : "";
+  // The v3 Jev trial (2026-09-17, "a noul refusal gate in front of the
+  // local pick"): ORCHESTRA_GATE, read the same direct way as
+  // ORCHESTRA_PICKER/ORCHESTRA_JEV_CRITERIA just above - the gate is
+  // chosen through the platform's own environment, not a run.ts flag.
+  // Only "jev" carries a suffix; "none" (the default) does not, matching
+  // every other suffix here.
+  const gate = process.env["ORCHESTRA_GATE"] === "jev" ? "-gate" : "";
 
-  return `${nothink}${rp}${st}${jev}${criteria}`;
+  return `${nothink}${rp}${st}${jev}${criteria}${gate}`;
 }

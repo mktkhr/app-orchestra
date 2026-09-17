@@ -77,12 +77,15 @@ var ErrInvalidPlannerToday = errors.New("ORCHESTRA_PLANNER_TODAY must be YYYY-MM
 // ErrInvalidLLMMode already applies to ORCHESTRA_LLM_MODE.
 var ErrInvalidPicker = errors.New("ORCHESTRA_PICKER must be local or jev")
 
-// ErrMissingJevAPIKey is returned when ORCHESTRA_PICKER is PickerJev but
-// ORCHESTRA_JEV_API_KEY is unset or empty - internal/adapter/planner/jev
-// has no route to Jev without one, the same reasoning ErrMissingDBPath
-// already applies to ORCHESTRA_DB_PATH: a platform that started anyway
-// would fail on the first pick instead of at startup.
-var ErrMissingJevAPIKey = errors.New("ORCHESTRA_JEV_API_KEY is required when ORCHESTRA_PICKER=jev")
+// ErrMissingJevAPIKey is returned when ORCHESTRA_PICKER is PickerJev, or
+// ORCHESTRA_GATE is GateJev, but ORCHESTRA_JEV_API_KEY is unset or empty
+// - internal/adapter/planner/jev has no route to Jev without one, the
+// same reasoning ErrMissingDBPath already applies to ORCHESTRA_DB_PATH: a
+// platform that started anyway would fail on the first pick (or gate
+// call) instead of at startup. The picker and the gate share one key -
+// there is no separate ORCHESTRA_JEV_GATE_API_KEY. See config_gate.go's
+// loadGate for the ORCHESTRA_GATE=jev half of this check.
+var ErrMissingJevAPIKey = errors.New("ORCHESTRA_JEV_API_KEY is required when ORCHESTRA_PICKER=jev or ORCHESTRA_GATE=jev")
 
 // ErrInvalidJevCriteria is wrapped into the error returned when
 // ORCHESTRA_JEV_CRITERIA is set to something other than JevCriteriaV1 or
@@ -165,6 +168,12 @@ const (
 
 // defaultJevCriteria is used when ORCHESTRA_JEV_CRITERIA is unset.
 const defaultJevCriteria = JevCriteriaV1
+
+// GateNone, GateJev and defaultJevGateThreshold live in config_gate.go
+// (guard-filelen, harness/quality/filelen.sh - this file was already at
+// its own 1000-line cap before the v3 Jev trial's gate existed), the
+// same split app_picker_test.go's own doc comment describes for
+// pkg/app's test files.
 
 // Service is one entry of ORCHESTRA_SERVICES: a service's name and the base
 // URL its /openapi.yaml is fetched from.
@@ -356,6 +365,18 @@ type Config struct {
 	// line per option) or JevCriteriaV2 (a `what`/`examples`/`not_for`
 	// object per option). Ignored when Picker is not PickerJev.
 	JevCriteria string
+	// Gate selects which usecase.Gate implementation pkg/app.build builds,
+	// read from ORCHESTRA_GATE: GateNone (the default, no gate at all) or
+	// GateJev (internal/adapter/planner/jev's "noul refusal gate",
+	// docs/measurements/jev-picker-v3.md). Only meaningful when
+	// PlannerStages is 2 - the same reasoning Picker's own doc comment
+	// gives.
+	Gate string
+	// JevGateThreshold is the noul probability at or above which the jev
+	// Gate judges a question impossible, read from
+	// ORCHESTRA_JEV_GATE_THRESHOLD. Defaults to defaultJevGateThreshold
+	// (0.7) when unset. Ignored when Gate is not GateJev.
+	JevGateThreshold float64
 	// PlanFixtures configures the stub planner's table when LLMBaseURL is
 	// empty, read as a JSON array from ORCHESTRA_PLAN_FIXTURES. Production
 	// never sets this - an operator sets ORCHESTRA_LLM_BASE_URL instead,
@@ -464,7 +485,7 @@ func Load() (Config, error) {
 		return Config{}, narrowingErr
 	}
 
-	if pickerErr := loadPicker(&cfg); pickerErr != nil {
+	if pickerErr := loadPickerAndGate(&cfg); pickerErr != nil {
 		return Config{}, pickerErr
 	}
 
@@ -871,9 +892,12 @@ func parseJevCriteria(raw string) (string, error) {
 // cfg, isolating Load itself from both the os.Getenv calls and their own
 // validation (funlen, harness/quality/go/golangci.yml) - the same reason
 // loadNarrowing and loadLLM exist. ORCHESTRA_JEV_API_KEY is required
-// exactly when the picker is PickerJev (ErrMissingJevAPIKey); a value
-// left set for PickerLocal is read but never validated, so switching
-// back to the local picker never needs the key removed.
+// exactly when the picker is PickerJev (ErrMissingJevAPIKey) - loadGate
+// (config_gate.go), called right after this from Load, adds its own
+// requiredness check for ORCHESTRA_GATE=jev over the same cfg.JevAPIKey
+// this function sets. A value left set when neither is jev is read but
+// never validated, so switching either back to its local/none default
+// never needs the key removed.
 func loadPicker(cfg *Config) error {
 	picker, err := parsePicker(os.Getenv("ORCHESTRA_PICKER"))
 	if err != nil {
@@ -904,6 +928,20 @@ func loadPicker(cfg *Config) error {
 	cfg.JevCriteria = criteria
 
 	return nil
+}
+
+// loadPickerAndGate calls loadPicker then loadGate (config_gate.go), in
+// that order - loadGate's own ORCHESTRA_JEV_API_KEY requiredness check
+// reads cfg.JevAPIKey, which loadPicker is what sets. One function, not
+// two calls inlined into Load, keeps Load's own cyclomatic complexity
+// under gocyclo's cap (harness/quality/go/golangci.yml) - the same
+// funlen/gocyclo reasoning loadNarrowing and loadLLM already exist for.
+func loadPickerAndGate(cfg *Config) error {
+	if err := loadPicker(cfg); err != nil {
+		return err
+	}
+
+	return loadGate(cfg)
 }
 
 // parsePlanFixtures reads ORCHESTRA_PLAN_FIXTURES: a JSON array of

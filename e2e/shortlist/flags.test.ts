@@ -12,21 +12,25 @@ import { corpusArg, variantSuffix } from "./flags.ts";
 const originalArgv = process.argv;
 const originalPicker = process.env["ORCHESTRA_PICKER"];
 const originalJevCriteria = process.env["ORCHESTRA_JEV_CRITERIA"];
+const originalGate = process.env["ORCHESTRA_GATE"];
 
 beforeEach(() => {
   process.argv = [...originalArgv];
   delete process.env["ORCHESTRA_PICKER"];
   delete process.env["ORCHESTRA_JEV_CRITERIA"];
+  delete process.env["ORCHESTRA_GATE"];
 });
 
 afterEach(() => {
   process.argv = originalArgv;
   delete process.env["ORCHESTRA_PICKER"];
   delete process.env["ORCHESTRA_JEV_CRITERIA"];
+  delete process.env["ORCHESTRA_GATE"];
 
   if (originalPicker !== undefined) process.env["ORCHESTRA_PICKER"] = originalPicker;
   if (originalJevCriteria !== undefined)
     process.env["ORCHESTRA_JEV_CRITERIA"] = originalJevCriteria;
+  if (originalGate !== undefined) process.env["ORCHESTRA_GATE"] = originalGate;
 });
 
 test("--corpus is undefined when not given", () => {
@@ -90,5 +94,30 @@ test("variantSuffix appends nothing for ORCHESTRA_JEV_CRITERIA=v1 (the default)"
 });
 
 test("variantSuffix appends nothing when ORCHESTRA_JEV_CRITERIA is unset", () => {
+  expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends -gate when ORCHESTRA_GATE=jev", () => {
+  process.env["ORCHESTRA_GATE"] = "jev";
+
+  expect(variantSuffix()).toBe("-gate");
+  expect(variantSuffix("off", 1.1, 2)).toBe("-nothink-rp1.1-stages2-gate");
+});
+
+test("variantSuffix appends -gate after -jev-v2 when all three are set", () => {
+  process.env["ORCHESTRA_PICKER"] = "jev";
+  process.env["ORCHESTRA_JEV_CRITERIA"] = "v2";
+  process.env["ORCHESTRA_GATE"] = "jev";
+
+  expect(variantSuffix()).toBe("-jev-v2-gate");
+});
+
+test("variantSuffix appends nothing for ORCHESTRA_GATE=none (the default)", () => {
+  process.env["ORCHESTRA_GATE"] = "none";
+
+  expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends nothing when ORCHESTRA_GATE is unset", () => {
   expect(variantSuffix()).toBe("");
 });

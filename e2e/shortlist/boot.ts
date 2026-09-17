@@ -184,6 +184,13 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       ...(process.env["ORCHESTRA_JEV_CRITERIA"] === undefined
         ? {}
         : { ORCHESTRA_JEV_CRITERIA: process.env["ORCHESTRA_JEV_CRITERIA"] }),
+      // The v3 Jev trial (2026-09-17, "a noul refusal gate in front of
+      // the local pick"): ORCHESTRA_GATE, same pass-through as
+      // ORCHESTRA_PICKER above - unset means the platform's own default
+      // (none, no gate at all).
+      ...(process.env["ORCHESTRA_GATE"] === undefined
+        ? {}
+        : { ORCHESTRA_GATE: process.env["ORCHESTRA_GATE"] }),
     }),
     port: platformPort,
   };

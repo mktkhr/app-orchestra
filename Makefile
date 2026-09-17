@@ -322,8 +322,8 @@ browsers: ## Download the Chromium build Playwright is pinned to
 	$(Q) browsers pnpm -C e2e exec playwright install chromium
 
 ## ---------------------------------------------------------------- eval (docs/specs/eval.md; never part of make check)
-eval: build ## Run the eval suite against the real planner and compare to the recorded baseline (not quiet: it prints its own report; ORCHESTRA_EVAL_MODEL, default qwen3.5-9b-q8; PICKER=jev for the Jev trial, ORCHESTRA_JEV_API_KEY from the caller's own environment, JEV_CRITERIA=v2 for its second round)
-	cd e2e && $(if $(PICKER),ORCHESTRA_PICKER=$(PICKER) )$(if $(JEV_CRITERIA),ORCHESTRA_JEV_CRITERIA=$(JEV_CRITERIA) )node eval/run.ts
+eval: build ## Run the eval suite against the real planner and compare to the recorded baseline (not quiet: it prints its own report; ORCHESTRA_EVAL_MODEL, default qwen3.5-9b-q8; PICKER=jev for the Jev trial, ORCHESTRA_JEV_API_KEY from the caller's own environment, JEV_CRITERIA=v2 for its second round, GATE=jev for its v3 noul refusal gate)
+	cd e2e && $(if $(PICKER),ORCHESTRA_PICKER=$(PICKER) )$(if $(JEV_CRITERIA),ORCHESTRA_JEV_CRITERIA=$(JEV_CRITERIA) )$(if $(GATE),ORCHESTRA_GATE=$(GATE) )node eval/run.ts
 
 eval-accept: build ## Run the eval suite and rewrite eval/baseline.json from it (AC-E-204: the only target that does)
 	cd e2e && node eval/run.ts --accept
@@ -332,12 +332,12 @@ eval-accept: build ## Run the eval suite and rewrite eval/baseline.json from it 
 narrowing: ## Measure the lexical baseline's recall@K over the narrowing fixture (not quiet: it prints its own report; no LLM, no build)
 	cd e2e && node narrowing/measure.ts
 
-eval-shortlist: build ## Measure the product's own planner on the narrowing corpus, narrowing on and off, or per wording with WORDING=a,b,c, THINKING=on|off, REPEAT_PENALTY=<float> and STAGES=1|2 (docs/specs/shortlisting.md, docs/plans/wording.md, docs/plans/staging.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts); PICKER=jev for the Jev trial, ORCHESTRA_JEV_API_KEY from the caller's own environment, JEV_CRITERIA=v2 for its second round
-	cd e2e && $(if $(PICKER),ORCHESTRA_PICKER=$(PICKER) )$(if $(JEV_CRITERIA),ORCHESTRA_JEV_CRITERIA=$(JEV_CRITERIA) )node shortlist/run.ts $(if $(WORDING),--wording $(WORDING),) $(if $(THINKING),--thinking $(THINKING),) $(if $(REPEAT_PENALTY),--repeat-penalty $(REPEAT_PENALTY),) $(if $(STAGES),--stages $(STAGES),)
+eval-shortlist: build ## Measure the product's own planner on the narrowing corpus, narrowing on and off, or per wording with WORDING=a,b,c, THINKING=on|off, REPEAT_PENALTY=<float> and STAGES=1|2 (docs/specs/shortlisting.md, docs/plans/wording.md, docs/plans/staging.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts); PICKER=jev for the Jev trial, ORCHESTRA_JEV_API_KEY from the caller's own environment, JEV_CRITERIA=v2 for its second round, GATE=jev for its v3 noul refusal gate
+	cd e2e && $(if $(PICKER),ORCHESTRA_PICKER=$(PICKER) )$(if $(JEV_CRITERIA),ORCHESTRA_JEV_CRITERIA=$(JEV_CRITERIA) )$(if $(GATE),ORCHESTRA_GATE=$(GATE) )node shortlist/run.ts $(if $(WORDING),--wording $(WORDING),) $(if $(THINKING),--thinking $(THINKING),) $(if $(REPEAT_PENALTY),--repeat-penalty $(REPEAT_PENALTY),) $(if $(STAGES),--stages $(STAGES),)
 	cd e2e && node shortlist/print-report.ts
 
-eval-mid: build ## Measure the product's own planner on the thirty-operation mid subset, sixty questions, narrowing on - composes with WORDING=a,b,c, THINKING=on|off, REPEAT_PENALTY=<float> and STAGES=1|2 (docs/specs/midsizing.md, docs/plans/midsizing.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts); PICKER=jev for the Jev trial, ORCHESTRA_JEV_API_KEY from the caller's own environment, JEV_CRITERIA=v2 for its second round
-	cd e2e && $(if $(PICKER),ORCHESTRA_PICKER=$(PICKER) )$(if $(JEV_CRITERIA),ORCHESTRA_JEV_CRITERIA=$(JEV_CRITERIA) )node shortlist/run.ts --corpus mid $(if $(WORDING),--wording $(WORDING),) $(if $(THINKING),--thinking $(THINKING),) $(if $(REPEAT_PENALTY),--repeat-penalty $(REPEAT_PENALTY),) $(if $(STAGES),--stages $(STAGES),)
+eval-mid: build ## Measure the product's own planner on the thirty-operation mid subset, sixty questions, narrowing on - composes with WORDING=a,b,c, THINKING=on|off, REPEAT_PENALTY=<float> and STAGES=1|2 (docs/specs/midsizing.md, docs/plans/midsizing.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts); PICKER=jev for the Jev trial, ORCHESTRA_JEV_API_KEY from the caller's own environment, JEV_CRITERIA=v2 for its second round, GATE=jev for its v3 noul refusal gate
+	cd e2e && $(if $(PICKER),ORCHESTRA_PICKER=$(PICKER) )$(if $(JEV_CRITERIA),ORCHESTRA_JEV_CRITERIA=$(JEV_CRITERIA) )$(if $(GATE),ORCHESTRA_GATE=$(GATE) )node shortlist/run.ts --corpus mid $(if $(WORDING),--wording $(WORDING),) $(if $(THINKING),--thinking $(THINKING),) $(if $(REPEAT_PENALTY),--repeat-penalty $(REPEAT_PENALTY),) $(if $(STAGES),--stages $(STAGES),)
 	cd e2e && node shortlist/print-report.ts
 
 ## ---------------------------------------------------------------- misc

@@ -271,6 +271,43 @@ const (
 	PickerJev   = "jev"
 )
 
+// Gate configures which usecase.Gate implementation stagingOptions builds
+// when LLM.Stages is 2 (the v3 Jev trial's own "noul refusal gate",
+// docs/measurements/jev-picker-v3.md; unused under Stages 1, the same
+// reasoning Picker's own doc comment gives). Mirrors config.Config's own
+// Gate/JevAPIKey/JevBaseURL/JevGateThreshold fields the way Picker
+// mirrors Picker/JevAPIKey et al.
+type Gate struct {
+	// Name is "" or GateNone (no gate at all - the default) or GateJev
+	// (internal/adapter/planner/jev.Gate).
+	Name string
+	// JevAPIKey is sent as internal/adapter/planner/jev's bearer token.
+	// Required when Name is GateJev (ErrMissingJevAPIKey) - the same key
+	// Picker.JevAPIKey sends; there is no separate gate key.
+	JevAPIKey string
+	// JevBaseURL is the base URL internal/adapter/planner/jev calls,
+	// mirroring Picker.JevBaseURL's own doc comment.
+	JevBaseURL string
+	// JevGateThreshold is the noul probability at or above which the jev
+	// Gate judges a question impossible. cmd/api always sets it from
+	// config.Config.JevGateThreshold, which already defaults to 0.7 when
+	// ORCHESTRA_JEV_GATE_THRESHOLD is unset. 0 (Go's own float64 zero
+	// value, and never a threshold a real deployment would choose - it
+	// would judge every question impossible) is treated by newGate as
+	// "not set": jev.WithGateThreshold is then never given, and
+	// jev.NewGate's own default (0.7, the same number) applies - the
+	// same "zero value means default" shape Picker.JevCriteria's own ""
+	// already gives WithCriteria.
+	JevGateThreshold float64
+}
+
+// GateNone and GateJev are Gate.Name's two non-empty values, mirroring
+// internal/infra/config.GateNone/GateJev.
+const (
+	GateNone = "none"
+	GateJev  = "jev"
+)
+
 // ErrInvalidLLMMode is returned by New when Config.LLM.Mode is set to
 // anything other than "" (the default), ModeToolCall or ModeJSON -
 // mirroring internal/infra/config.ErrInvalidLLMMode's own refusal to fall
@@ -296,8 +333,18 @@ var ErrInvalidPicker = errors.New("invalid Picker.Name, want \"\", \"local\" or 
 // ErrMissingJevAPIKey is returned by New when Config.Picker.Name is
 // PickerJev but Config.Picker.JevAPIKey is empty - mirroring
 // config.ErrMissingJevAPIKey the same way ErrInvalidPicker mirrors
-// config.ErrInvalidPicker.
-var ErrMissingJevAPIKey = errors.New("Picker.JevAPIKey is required when Picker.Name is \"jev\"")
+// config.ErrInvalidPicker. Also returned when Config.Gate.Name is GateJev
+// and Config.Gate.JevAPIKey is empty - the picker and the gate share one
+// error and one required key.
+var ErrMissingJevAPIKey = errors.New(
+	"Picker.JevAPIKey is required when Picker.Name is \"jev\", or Gate.JevAPIKey when Gate.Name is \"jev\"",
+)
+
+// ErrInvalidGate is returned by New when Config.Gate.Name is set to
+// anything other than "" (GateNone), GateNone or GateJev - mirroring
+// ErrInvalidPicker's own defence-in-depth: cmd/api always goes through
+// config.Load's own validation first (config.ErrInvalidGate).
+var ErrInvalidGate = errors.New("invalid Gate.Name, want \"\", \"none\" or \"jev\"")
 
 // ErrMissingDBPath is returned by New when Config.DBPath is empty. There
 // is no legitimate use of this platform without a database - workspaces
@@ -380,6 +427,11 @@ type Config struct {
 	// PickerLocal - every test and caller that predates this subproject
 	// keeps today's behaviour unchanged.
 	Picker Picker
+	// Gate selects which usecase.Gate implementation stagingOptions
+	// builds when LLM.Stages is 2. Its zero value (Name == "") is
+	// GateNone (no gate at all) - every test and caller that predates
+	// this subproject keeps today's behaviour unchanged.
+	Gate Gate
 }
 
 // SeedAccount is one account for New to put in place via SeedAccounts,
@@ -812,7 +864,18 @@ func stagingOptions(cfg *Config) ([]usecase.Option, error) {
 		return nil, err
 	}
 
-	return []usecase.Option{usecase.WithPicker(picker), usecase.WithStages(stagesTwo)}, nil
+	opts := []usecase.Option{usecase.WithPicker(picker), usecase.WithStages(stagesTwo)}
+
+	if cfg.Gate.Name != "" && cfg.Gate.Name != GateNone {
+		gate, err := newGate(cfg)
+		if err != nil {
+			return nil, err
+		}
+
+		opts = append(opts, usecase.WithGate(gate))
+	}
+
+	return opts, nil
 }
 
 // newPicker builds the usecase.Picker stagingOptions passes to
@@ -839,6 +902,36 @@ func newPicker(cfg *Config) (usecase.Picker, error) {
 		return jev.New(cfg.Picker.JevBaseURL, cfg.Picker.JevAPIKey, nil, jev.WithCriteria(cfg.Picker.JevCriteria)), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidPicker, cfg.Picker.Name)
+	}
+}
+
+// newGate builds the usecase.Gate stagingOptions passes to usecase.WithGate
+// - the v3 Jev trial's own "noul refusal gate"
+// (docs/measurements/jev-picker-v3.md). Only called by stagingOptions when
+// cfg.Gate.Name is neither "" nor GateNone - that (the default; every
+// test and caller that predates this subproject) skips this function
+// entirely, so usecase.WithGate is never called and planStaged's gate
+// step is skipped exactly as if this subproject did not exist. GateJev
+// builds jev.NewGate against Gate.JevBaseURL/JevAPIKey - the same key
+// Picker's own JevAPIKey sends, unrelated to which Picker is configured
+// (a gate can run ahead of the local picker just as well as the jev
+// one). See Gate.JevGateThreshold's own doc comment for why a zero
+// threshold omits jev.WithGateThreshold rather than passing 0 through.
+func newGate(cfg *Config) (usecase.Gate, error) {
+	switch cfg.Gate.Name {
+	case GateJev:
+		if cfg.Gate.JevAPIKey == "" {
+			return nil, ErrMissingJevAPIKey
+		}
+
+		opts := []jev.GateOption{}
+		if cfg.Gate.JevGateThreshold != 0 {
+			opts = append(opts, jev.WithGateThreshold(cfg.Gate.JevGateThreshold))
+		}
+
+		return jev.NewGate(cfg.Gate.JevBaseURL, cfg.Gate.JevAPIKey, nil, opts...), nil
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrInvalidGate, cfg.Gate.Name)
 	}
 }
 

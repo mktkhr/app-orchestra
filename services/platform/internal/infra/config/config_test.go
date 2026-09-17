@@ -849,3 +849,90 @@ func TestLoadRejectsAnUnknownJevCriteria(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, config.ErrInvalidJevCriteria)
 }
+
+// TestLoadGateDefaultsToNone documents that an unset ORCHESTRA_GATE
+// resolves to config.GateNone, with no Jev key required on its own (the
+// v3 trial never happening for a caller that never mentions it).
+func TestLoadGateDefaultsToNone(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.GateNone, cfg.Gate)
+	assert.InDelta(t, 0.7, cfg.JevGateThreshold, 0.0001)
+}
+
+func TestLoadGateJevWithoutAKeyIsAnError(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_GATE", "jev")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrMissingJevAPIKey)
+}
+
+// TestLoadGateJevWithoutAKeyIsAnErrorEvenWithPickerLocal proves the key is
+// required for Gate=jev on its own - not only when Picker is also jev.
+func TestLoadGateJevWithoutAKeyIsAnErrorEvenWithPickerLocal(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_PICKER", "local")
+	t.Setenv("ORCHESTRA_GATE", "jev")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrMissingJevAPIKey)
+}
+
+func TestLoadGateJevWithAKeyReadsIt(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_GATE", "jev")
+	t.Setenv("ORCHESTRA_JEV_API_KEY", "test-key")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.GateJev, cfg.Gate)
+	assert.Equal(t, "test-key", cfg.JevAPIKey)
+}
+
+func TestLoadRejectsAnUnknownGate(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_GATE", "remote")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidGate)
+}
+
+func TestLoadJevGateThresholdReadsACustomValue(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_GATE", "jev")
+	t.Setenv("ORCHESTRA_JEV_API_KEY", "test-key")
+	t.Setenv("ORCHESTRA_JEV_GATE_THRESHOLD", "0.6")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.InDelta(t, 0.6, cfg.JevGateThreshold, 0.0001)
+}
+
+func TestLoadRejectsAnInvalidJevGateThreshold(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_JEV_GATE_THRESHOLD", "not-a-number")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidJevGateThreshold)
+}

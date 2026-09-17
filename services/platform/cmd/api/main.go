@@ -51,6 +51,12 @@ func main() {
 			JevBaseURL:  cfg.JevBaseURL,
 			JevCriteria: cfg.JevCriteria,
 		},
+		Gate: app.Gate{
+			Name:             cfg.Gate,
+			JevAPIKey:        cfg.JevAPIKey,
+			JevBaseURL:       cfg.JevBaseURL,
+			JevGateThreshold: cfg.JevGateThreshold,
+		},
 	})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))
