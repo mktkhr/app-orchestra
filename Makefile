@@ -48,7 +48,7 @@ GENERATED := $(addsuffix /internal/adapter/openapi/openapi.gen.go,$(SERVICE_DIRS
         web-fmt web-fmt-check web-lint web-typecheck web-test web-build web-dev \
         guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication guard-coverage guard-browser guard-a11y guard-layout guard-protected guard-test \
         acceptance-services acceptance-web acceptance-e2e acceptance-browser browsers \
-        eval eval-accept narrowing eval-shortlist
+        eval eval-accept narrowing eval-shortlist eval-mid
 
 ## ---------------------------------------------------------------- overview
 help: ## Show this help
@@ -334,6 +334,10 @@ narrowing: ## Measure the lexical baseline's recall@K over the narrowing fixture
 
 eval-shortlist: build ## Measure the product's own planner on the narrowing corpus, narrowing on and off, or per wording with WORDING=a,b,c, THINKING=on|off, REPEAT_PENALTY=<float> and STAGES=1|2 (docs/specs/shortlisting.md, docs/plans/wording.md, docs/plans/staging.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts)
 	cd e2e && node shortlist/run.ts $(if $(WORDING),--wording $(WORDING),) $(if $(THINKING),--thinking $(THINKING),) $(if $(REPEAT_PENALTY),--repeat-penalty $(REPEAT_PENALTY),) $(if $(STAGES),--stages $(STAGES),)
+	cd e2e && node shortlist/print-report.ts
+
+eval-mid: build ## Measure the product's own planner on the thirty-operation mid subset, sixty questions, narrowing on - composes with WORDING=a,b,c, THINKING=on|off, REPEAT_PENALTY=<float> and STAGES=1|2 (docs/specs/midsizing.md, docs/plans/midsizing.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts)
+	cd e2e && node shortlist/run.ts --corpus mid $(if $(WORDING),--wording $(WORDING),) $(if $(THINKING),--thinking $(THINKING),) $(if $(REPEAT_PENALTY),--repeat-penalty $(REPEAT_PENALTY),) $(if $(STAGES),--stages $(STAGES),)
 	cd e2e && node shortlist/print-report.ts
 
 ## ---------------------------------------------------------------- misc
