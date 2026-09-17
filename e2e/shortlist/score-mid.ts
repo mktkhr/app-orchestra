@@ -20,9 +20,15 @@
  * - An impossible row is forced iff `kind ∈ {result, form}` and its
  *   `operationId` is one of the thirty catalogue operations.
  * - A form (any row, either half) is fabricated when any of its
- *   `initial` string values - not date-shaped `\d{4}-\d{2}-\d{2}` - is
+ *   `initial` string values - not date-shaped `\d{4}-\d{2}-\d{2}`, not an
+ *   enum member of the target operation's own request body schema - is
  *   absent from the question text, compared case-insensitively for ASCII.
+ *   (The enum exclusion was missing from the first `make eval-mid` run,
+ *   Task 3 review: 8 of 11 counted "fabrications" were `status: "active"`
+ *   / `"pending"`, `openapi-document.ts`'s shared `FixtureStatus` enum on
+ *   every create/update operation's request body - not invented strings.)
  */
+import type { MidOperationInfo } from "../narrowing/fixture/index.ts";
 import { latencyStats, type Kind, type LatencyStats, type QuestionResult } from "./score.ts";
 
 /** A date-shaped `initial` value (`YYYY-MM-DD`) is never counted as fabricated - the plan excludes it by construction, not by comparing it against the question text. */
@@ -33,6 +39,9 @@ export interface CountOf {
   readonly total: number;
   readonly count: number;
 }
+
+/** `operationId -> its own enum values`, so the fabrication check can tell a schema-declared enum member from an invented string - `fixture/mid.ts`'s `midOperationInfo()` builds this from `midCatalog()`'s own operations. */
+export type MidCatalogue = ReadonlyMap<string, MidOperationInfo>;
 
 export interface MidScoreboard {
   readonly answerable: { readonly correctAt1: CountOf; readonly falseRefusal: CountOf };
@@ -66,8 +75,8 @@ function isCorrectAt1(row: QuestionResult): boolean {
 }
 
 /** forced for an impossible row: a pick naming one of the thirty catalogue operations. */
-function isForced(row: QuestionResult, catalogIds: ReadonlySet<string>): boolean {
-  return isPick(row) && row.operationId !== undefined && catalogIds.has(row.operationId);
+function isForced(row: QuestionResult, catalogue: MidCatalogue): boolean {
+  return isPick(row) && row.operationId !== undefined && catalogue.has(row.operationId);
 }
 
 /** True when value, lowercased, appears in text, lowercased - ASCII case-insensitivity; non-ASCII text is compared as-is either side. */
@@ -75,11 +84,23 @@ function appearsIn(text: string, value: string): boolean {
   return text.toLowerCase().includes(value.toLowerCase());
 }
 
-/** A `form` row is fabricated when any non-date-shaped `initial` string value is absent from its own question text. */
-function isFabricated(row: QuestionResult): boolean {
+/** True when value is one of the target operation's own request body enum values - a row with no operationId, or one the catalogue does not know, has none. */
+function isEnumValue(row: QuestionResult, catalogue: MidCatalogue, value: string): boolean {
+  const info = row.operationId === undefined ? undefined : catalogue.get(row.operationId);
+
+  return info !== undefined && info.enumValues.has(value);
+}
+
+/** A `form` row is fabricated when any of its `initial` string values is neither date-shaped, nor an enum member of the operation it targets, nor present in its own question text. */
+function isFabricated(row: QuestionResult, catalogue: MidCatalogue): boolean {
   const values = Object.values(row.initial ?? {});
 
-  return values.some((value) => !DATE_SHAPED.test(value) && !appearsIn(row.text, value));
+  return values.some(
+    (value) =>
+      !DATE_SHAPED.test(value) &&
+      !isEnumValue(row, catalogue, value) &&
+      !appearsIn(row.text, value),
+  );
 }
 
 function countOf(
@@ -98,17 +119,14 @@ function toMiss(row: QuestionResult): MidMiss {
   };
 }
 
-/** Scores a full mid run (any mix of answerable/impossible rows) into the five numbers plus latency and a misses list, given the thirty catalogue operation ids (`midCatalog()`'s own operation ids). */
-export function scoreMid(
-  rows: readonly QuestionResult[],
-  catalogIds: ReadonlySet<string>,
-): MidScoreboard {
+/** Scores a full mid run (any mix of answerable/impossible rows) into the five numbers plus latency and a misses list, given the thirty catalogue operations and their own enum values (`fixture/mid.ts`'s `midOperationInfo()`). */
+export function scoreMid(rows: readonly QuestionResult[], catalogue: MidCatalogue): MidScoreboard {
   const answerableRows = rows.filter((row) => row.expect === "answerable");
   const impossibleRows = rows.filter((row) => row.expect === "impossible");
   const formRows = rows.filter((row) => row.kind === "form");
 
   const answerableMisses = answerableRows.filter((row) => !isCorrectAt1(row));
-  const forcedImpossibles = impossibleRows.filter((row) => isForced(row, catalogIds));
+  const forcedImpossibles = impossibleRows.filter((row) => isForced(row, catalogue));
 
   return {
     answerable: {
@@ -117,9 +135,9 @@ export function scoreMid(
     },
     impossible: {
       refused: countOf(impossibleRows, isRefusal),
-      forced: countOf(impossibleRows, (row) => isForced(row, catalogIds)),
+      forced: countOf(impossibleRows, (row) => isForced(row, catalogue)),
     },
-    forms: { fabricated: countOf(formRows, isFabricated) },
+    forms: { fabricated: countOf(formRows, (row) => isFabricated(row, catalogue)) },
     latency: latencyStats(rows.map((row) => row.latencyMs)),
     misses: [...answerableMisses, ...forcedImpossibles].map((row) => toMiss(row)),
   };

@@ -12,7 +12,8 @@ import { purchasing } from "./purchasing.ts";
 import { sales } from "./sales.ts";
 import type { ServiceFixture } from "./types.ts";
 
-export { midCatalog, midServices } from "./mid.ts";
+export { midCatalog, midOperationInfo, midServices } from "./mid.ts";
+export type { MidOperationInfo } from "./mid.ts";
 export { operationsOf } from "./operations.ts";
 export type { FixtureOperation } from "./operations.ts";
 

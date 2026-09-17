@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { midCatalog } from "../narrowing/fixture/index.ts";
+import { midOperationInfo } from "../narrowing/fixture/index.ts";
 import { readResults } from "./parse-result.ts";
 import { pickMeanMs } from "./pick-log.ts";
 import { renderMidSection } from "./report-mid.ts";
@@ -55,11 +55,11 @@ function midVariantNames(): readonly string[] {
 }
 
 function printMidReport(names: readonly string[]): void {
-  const catalogIds = new Set(midCatalog().map((operation) => operation.operationId));
+  const catalogue = midOperationInfo();
 
   for (const name of names) {
     const rows = readResults(path.join(outDir, `mid-${name}.jsonl`));
-    const board = scoreMid(rows, catalogIds);
+    const board = scoreMid(rows, catalogue);
     const pickMean = pickMeanMs(path.join(outDir, `mid-${name}.log`));
 
     console.log(`# mid ${name}`);

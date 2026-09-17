@@ -1,14 +1,19 @@
 import { expect, test } from "vite-plus/test";
 
-import { scoreMid } from "./score-mid.ts";
+import { scoreMid, type MidCatalogue } from "./score-mid.ts";
 import type { QuestionResult } from "./score.ts";
 
 /**
  * score-mid.ts's own tests: fake QuestionResults only, no server, no
- * model (docs/plans/midsizing.md Task 3, AC-M-104).
+ * model (docs/plans/midsizing.md Task 3, AC-M-104; the enum exclusion
+ * added in the Task 3 review).
  */
 
-const CATALOG_IDS = new Set(["listSalesOrders", "getSalesOrder", "createSalesOrder"]);
+const CATALOG: MidCatalogue = new Map([
+  ["listSalesOrders", { enumValues: new Set() }],
+  ["getSalesOrder", { enumValues: new Set() }],
+  ["createSalesOrder", { enumValues: new Set(["active", "pending"]) }],
+]);
 
 function answerableRow(overrides: Partial<QuestionResult> = {}): QuestionResult {
   return {
@@ -38,20 +43,20 @@ function impossibleRow(overrides: Partial<QuestionResult> = {}): QuestionResult 
 }
 
 test("an answerable result naming its answer is correct@1", () => {
-  const board = scoreMid([answerableRow()], CATALOG_IDS);
+  const board = scoreMid([answerableRow()], CATALOG);
 
   expect(board.answerable.correctAt1).toEqual({ total: 1, count: 1 });
 });
 
 test("an answerable form naming its answer is correct@1 too", () => {
-  const board = scoreMid([answerableRow({ kind: "form" })], CATALOG_IDS);
+  const board = scoreMid([answerableRow({ kind: "form" })], CATALOG);
 
   expect(board.answerable.correctAt1).toEqual({ total: 1, count: 1 });
 });
 
 test("an answerable none is a false refusal, not correct@1", () => {
   const { operationId: _operationId, ...withoutOperationId } = answerableRow();
-  const board = scoreMid([{ ...withoutOperationId, kind: "none" }], CATALOG_IDS);
+  const board = scoreMid([{ ...withoutOperationId, kind: "none" }], CATALOG);
 
   expect(board.answerable.correctAt1).toEqual({ total: 1, count: 0 });
   expect(board.answerable.falseRefusal).toEqual({ total: 1, count: 1 });
@@ -60,14 +65,14 @@ test("an answerable none is a false refusal, not correct@1", () => {
 test("an answerable list_capabilities is a false refusal", () => {
   const board = scoreMid(
     [answerableRow({ kind: "result", operationId: "list_capabilities" })],
-    CATALOG_IDS,
+    CATALOG,
   );
 
   expect(board.answerable.falseRefusal).toEqual({ total: 1, count: 1 });
 });
 
 test("an impossible none is refused", () => {
-  const board = scoreMid([impossibleRow()], CATALOG_IDS);
+  const board = scoreMid([impossibleRow()], CATALOG);
 
   expect(board.impossible.refused).toEqual({ total: 1, count: 1 });
 });
@@ -75,7 +80,7 @@ test("an impossible none is refused", () => {
 test("an impossible list_capabilities is refused for a capability question", () => {
   const board = scoreMid(
     [impossibleRow({ kind: "result", operationId: "list_capabilities", capability: true })],
-    CATALOG_IDS,
+    CATALOG,
   );
 
   expect(board.impossible.refused).toEqual({ total: 1, count: 1 });
@@ -84,7 +89,7 @@ test("an impossible list_capabilities is refused for a capability question", () 
 test("an impossible list_capabilities is refused for a non-capability question too", () => {
   const board = scoreMid(
     [impossibleRow({ kind: "result", operationId: "list_capabilities" })],
-    CATALOG_IDS,
+    CATALOG,
   );
 
   expect(board.impossible.refused).toEqual({ total: 1, count: 1 });
@@ -93,7 +98,7 @@ test("an impossible list_capabilities is refused for a non-capability question t
 test("an impossible result naming a catalogue operation is forced", () => {
   const board = scoreMid(
     [impossibleRow({ kind: "result", operationId: "listSalesOrders" })],
-    CATALOG_IDS,
+    CATALOG,
   );
 
   expect(board.impossible.forced).toEqual({ total: 1, count: 1 });
@@ -102,14 +107,14 @@ test("an impossible result naming a catalogue operation is forced", () => {
 test("an impossible form naming a catalogue operation is forced too", () => {
   const board = scoreMid(
     [impossibleRow({ kind: "form", operationId: "createSalesOrder" })],
-    CATALOG_IDS,
+    CATALOG,
   );
 
   expect(board.impossible.forced).toEqual({ total: 1, count: 1 });
 });
 
 test("an impossible ask is neither refused nor forced", () => {
-  const board = scoreMid([impossibleRow({ kind: "ask" })], CATALOG_IDS);
+  const board = scoreMid([impossibleRow({ kind: "ask" })], CATALOG);
 
   expect(board.impossible.refused).toEqual({ total: 1, count: 0 });
   expect(board.impossible.forced).toEqual({ total: 1, count: 0 });
@@ -123,7 +128,7 @@ test("a form whose initial string value appears in the question is not fabricate
     answers: ["createSalesOrder"],
     initial: { partnerName: "青葉商事" },
   });
-  const board = scoreMid([row], CATALOG_IDS);
+  const board = scoreMid([row], CATALOG);
 
   expect(board.forms.fabricated).toEqual({ total: 1, count: 0 });
 });
@@ -136,7 +141,7 @@ test("a form whose initial string value is absent from the question is fabricate
     answers: ["createSalesOrder"],
     initial: { partnerName: "invented商事" },
   });
-  const board = scoreMid([row], CATALOG_IDS);
+  const board = scoreMid([row], CATALOG);
 
   expect(board.forms.fabricated).toEqual({ total: 1, count: 1 });
 });
@@ -149,9 +154,49 @@ test("a form's date-shaped initial value is never counted as fabricated", () => 
     answers: ["createSalesOrder"],
     initial: { dueDate: "2026-09-17" },
   });
-  const board = scoreMid([row], CATALOG_IDS);
+  const board = scoreMid([row], CATALOG);
 
   expect(board.forms.fabricated).toEqual({ total: 1, count: 0 });
+});
+
+test("an initial value that is an enum member of the target operation is never fabricated", () => {
+  const row = answerableRow({
+    kind: "form",
+    operationId: "createSalesOrder",
+    text: "受注を追加して",
+    answers: ["createSalesOrder"],
+    initial: { status: "active" },
+  });
+  const board = scoreMid([row], CATALOG);
+
+  expect(board.forms.fabricated).toEqual({ total: 1, count: 0 });
+});
+
+test("a non-enum string absent from the question still counts as fabricated, even when it looks like a real value", () => {
+  const row = answerableRow({
+    id: "m04",
+    kind: "form",
+    operationId: "createSalesOrder",
+    text: "受注を追加して",
+    answers: ["createSalesOrder"],
+    initial: { name: "so-0007" },
+  });
+  const board = scoreMid([row], CATALOG);
+
+  expect(board.forms.fabricated).toEqual({ total: 1, count: 1 });
+});
+
+test("an enum value for one operation is not exempt on a row targeting a different operation", () => {
+  const row = answerableRow({
+    kind: "form",
+    operationId: "getSalesOrder",
+    text: "受注を1件取得したい",
+    answers: ["getSalesOrder"],
+    initial: { status: "active" },
+  });
+  const board = scoreMid([row], CATALOG);
+
+  expect(board.forms.fabricated).toEqual({ total: 1, count: 1 });
 });
 
 test("fabrication is compared case-insensitively for ASCII", () => {
@@ -162,13 +207,13 @@ test("fabrication is compared case-insensitively for ASCII", () => {
     answers: ["createSalesOrder"],
     initial: { id: "so-0012" },
   });
-  const board = scoreMid([row], CATALOG_IDS);
+  const board = scoreMid([row], CATALOG);
 
   expect(board.forms.fabricated).toEqual({ total: 1, count: 0 });
 });
 
 test("a non-form row is never counted toward forms, fabricated or not", () => {
-  const board = scoreMid([answerableRow({ kind: "result" })], CATALOG_IDS);
+  const board = scoreMid([answerableRow({ kind: "result" })], CATALOG);
 
   expect(board.forms.fabricated).toEqual({ total: 0, count: 0 });
 });
@@ -181,7 +226,7 @@ test("misses list every answerable miss and every forced impossible, nothing els
     impossibleRow({ id: "m41" }),
     impossibleRow({ id: "m42", kind: "result", operationId: "listSalesOrders" }),
   ];
-  const board = scoreMid(rows, CATALOG_IDS);
+  const board = scoreMid(rows, CATALOG);
 
   expect(board.misses.map((miss) => miss.id)).toEqual(["m02", "m42"]);
 });
@@ -189,7 +234,7 @@ test("misses list every answerable miss and every forced impossible, nothing els
 test("latency is computed across every row regardless of expect", () => {
   const board = scoreMid(
     [answerableRow({ latencyMs: 100 }), impossibleRow({ latencyMs: 300 })],
-    CATALOG_IDS,
+    CATALOG,
   );
 
   expect(board.latency.meanMs).toBe(200);
