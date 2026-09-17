@@ -7393,3 +7393,118 @@ chunk reuse), real cases 16/16 (`no-enum-value-attendance` stable at last
 run). From here, every planning decision this project makes is checked
 against all three - corpus, real cases, and mid - not any one alone
 (`docs/specs/midsizing.md` M6).
+
+## 2026-09-17 Jev as the pick stage, v1: measured, not adopted
+
+A second `usecase.Picker`, over TypeSafe's Jev (`POST /v1/systemone`, a
+`choice` primitive, `jev-latest` → answered as `jev-1.13.0`), selectable
+by `ORCHESTRA_PICKER=jev` behind `ORCHESTRA_PLANNER_STAGES=2`. Criteria
+sent per candidate: one line, 「\<サービス\> / \<summary\>」, plus the
+three fixed options (`list_capabilities`/`propose_panel`/`none`);
+`Ambiguous = confidence < 0.5`, the adapter's own default, never
+overridden in this trial. Commits `cb59717` (adapter), `ffc1704`
+(probabilities log), `37f0842` (`variantSuffix` `-jev`), `6618f78`
+(config/app wiring), `c1e1c47` (Makefile/eval pass-through), `8ffcdfe`
+(`pick_choice` log); runner fix `04f1748` (below). Full record, with the
+raw request/response, every command, every file name and the confidence
+histograms: `docs/measurements/jev-picker-v1.md` (raw picks beside it,
+`jev-picker-v1-corpus-picks.jsonl`).
+
+**The three instruments, jev vs the local picker, same tree, same day**
+(`ORCHESTRA_PLANNER_TODAY=2026-09-16`, so today's numbers are comparable
+to 2026-09-16's):
+
+|                        | jev (today)                                                                                | local (today, same tree)                    |
+| ---------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| shortlist corpus (100) | 69/100 correct@1, 72/100 correct@shown                                                     | 78/79                                       |
+| mid (60, 3 services)   | 37/40 answerable · 3 false refusal · 16/20 impossible refused · 4 forced · 0/23 fabricated | 38/40 · 1 · 17/20 · 3 · 0/24                |
+| eval (34 cases)        | 32/34 at baseline                                                                          | 34/34 (no `PICKER` control run at baseline) |
+
+**Loss pattern (corpus, 25 rows changed correct@1: 17 lost, 8 gained,
+net −9, 78−9=69).** 8 of the 17 losses resolve to jev answering `none`
+on a cross-service homonym (承認 in three services, etc.) - the same
+shape as the local picker's own known weak spot for multi-service
+homonyms, except jev is more willing to refuse there where the local
+picker guesses and is right more often on this corpus. Axis D (cross-
+service homonyms) reads 40% for jev against 60/60 local.
+
+**Two eval regressions, both diagnosed, not just observed.**
+`follow-up-other-service` (0/10, baseline 10/10): jev sees no
+conversation state at all, so a follow-up onto the other service's
+operation never lands - 5× `list_capabilities`, 5× `none`, never the
+right call, in ten tries. `real-attendance-detail`: 2/10 then 6/10
+across two runs (baseline 10/10) - not shortlist narrowing (`idAffinity`
+narrowed every one of the 20 combined runs to attendance-only) but
+genuine model instability: paired against the platform log, jev's
+confidence on this exact question sits in a 0.37-0.50 band on every
+single try, correct (`GetAttendanceRecord`) 6 times and `none` 4 times
+across the two runs, with no code or environment difference between
+runs. `real-inventory-detail`, narrowed to inventory the same way, held
+10/10 across all 10 of its own runs - the instability is specific to
+this question's read against `GetAttendanceRecord`'s criteria text, not
+a general weakness of narrow shortlists.
+
+**Determinism observation:** `confidence` is not always
+`max(probabilities)` for the chosen answer (seen directly in the one
+captured real request/response, section 1 of the record) - the contract
+never promised they'd agree, and `Ambiguous` is computed from
+`confidence` alone as documented, but the two diverge often enough to be
+worth knowing before treating them as interchangeable.
+
+**Cost and latency.** 622 real calls across the whole trial, 519,211
+input tokens, $0.0218 total at the stated $0.042/MTok input (output
+free) - a rounding error against the $2 budget. Pick-stage latency: 231ms
+mean (corpus), 238ms (mid), 230.5ms (eval, 360 picks) - all well under
+the documented ~600ms figure and well under the local picker's own
+~390ms pick-equivalent. Zero API errors in 622 calls (no 401/422/429/529
+seen anywhere).
+
+**Deviations from the documented contract:** (1) `confidence` ≠
+`max(probabilities)`, above. (2) Pick latency measured 3-4x faster than
+the ~600ms the docs describe - possibly a different load pattern, cold
+start, or criteria set than this trial used. (3) The retry-on-429/529
+path (`internal/adapter/planner/jev/client.go`) was exercised only by
+its own unit tests - never triggered for real in 622 calls.
+
+**The runner bug this trial found and fixed, not a Jev defect.**
+`e2e/eval/services.ts` spawns every service with
+`stdio: ["ignore", "pipe", "pipe"]` and, before this trial, never read
+either piped stream; an unread pipe fills its 64KiB OS buffer, at which
+point the child's own synchronous `slog` write blocks forever, hanging
+whatever request happened to be logging at that moment. The local picker's
+short log lines never filled it; jev's extra `"pick completed"` line per
+pick (`pick_probabilities`, a full per-candidate map, the largest field in
+the line) did, within the eval suite's ~360 requests. Fixed by draining
+(`.resume()`) stdout/stderr for every spawned service, `04f1748`; verified
+`make check` (including `acceptance-browser`) still green, and the eval
+suite no longer hangs under `PICKER=jev`. This is a pre-existing gap in
+the harness that a more talkative picker was the first to actually hit -
+see `TODO.md` for whether `e2e/shortlist/boot.ts` shares the same shape.
+
+**Decision (mine): Jev v1 is not adopted. The local picker stays the
+default pick stage** (`ORCHESTRA_PICKER` unset). 69 against 78 on the
+corpus, two live regressions with root causes that are structural to
+this v1 (no conversation state, no per-candidate confidence stability
+guarantee) rather than one-off bugs, and a criteria format (one line per
+operation, no `what`/`examples`/`not_for`) that gives Jev far less to
+work with than what the local picker's own prompt provides. Cost and
+latency are not the blocker - both are excellent - the accuracy and
+regression profile are. The trial continues rather than stopping here:
+**v2** gives Jev richer per-operation criteria (`what`/`examples`/
+`not_for`, closer to what the written-examples layer already gives the
+local picker); **v3** uses Jev's own gates for refusal and for an
+unapplied restriction (`TODO.md` item 7) instead of the fixed three-
+option shape; **v4** gives Jev conversation state, closing the
+`follow-up-other-service` regression at its root rather than working
+around it. Each step is measured on the same three instruments
+(shortlist corpus, mid, eval) and recorded the same way as this entry.
+
+Process note for anyone reproducing this: the Jev API key lives outside
+the repository, in the process environment only, exported inline per
+command and never written into the repo, a log, or this record; the
+pinned `ORCHESTRA_PLANNER_TODAY` and the three fixed instruments are what
+make today's numbers directly comparable to 2026-09-16's; llama-server's
+`--cache-reuse` had already been disabled the day before this trial
+(`TODO.md` item 8, 2026-09-17), so the local-picker reference numbers
+above reproduce exactly rather than drifting within the near-tie band
+described elsewhere in this file ("Measurement determinism").

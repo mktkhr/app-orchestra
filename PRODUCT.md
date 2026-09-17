@@ -49,6 +49,9 @@ answer, and the written examples that close the vocabulary gap - and a
 deployment that wants those turns it on. The default binary, unconfigured,
 behaves exactly as D2 says.
 
+2026-09-17: a System-One decision model (Jev) tried as the pick stage - 69
+vs 78 on the corpus, not adopted; trial continues (`DECISIONS.md`).
+
 ## 3. Scope of the first vertical slice
 
 In scope: two dummy services with three endpoints each (list, detail, create);

@@ -4,7 +4,20 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-_Nothing in progress._
+- **The Jev trial: v1 measured and not adopted, v2 being built.** A second
+  `usecase.Picker` over TypeSafe's Jev (`ORCHESTRA_PICKER=jev`, behind
+  `ORCHESTRA_PLANNER_STAGES=2`) scored 69/100 against the local picker's
+  78/100 on the shortlist corpus, with two eval regressions
+  (`follow-up-other-service` 0/10 - no conversation state;
+  `real-attendance-detail` 2/10-6/10 - genuine confidence instability in
+  the 0.37-0.50 band even on a narrowed, single-service shortlist) - see
+  `DECISIONS.md`, 2026-09-17 ("Jev as the pick stage, v1: measured, not
+  adopted") and `docs/measurements/jev-picker-v1.md`. The local picker
+  stays the default. v2 (richer per-operation criteria - `what`/
+  `examples`/`not_for`) is in progress in
+  `internal/adapter/planner/jev/`; v3 (Jev's own gates for refusal and for
+  an unapplied restriction, item 7 below) and v4 (conversation state) are
+  planned after it, each measured on the same three instruments.
 
 ## Next
 
@@ -111,6 +124,23 @@ _Nothing in progress._
    the id is exactly as fabricated as any other guessed value. Candidate
    fix, in both places: a non-id field equal to, or containing, the id
    counts as fabricated. Unscheduled.
+10. **`e2e/shortlist/boot.ts` has the same unconsumed-stdio shape
+    `e2e/eval/services.ts` had before `04f1748`.** Checked while recording
+    the Jev trial (`DECISIONS.md`, 2026-09-17, "Jev as the pick stage, v1:
+    measured, not adopted"): both call the same
+    `startBinary` (`e2e/src/helpers/process.ts`, `stdio: ["ignore", "pipe",
+"pipe"]`), but `boot.ts` only drains the platform's stdout/stderr when
+    the caller passes `logFile` (piping into a write stream); with no
+    `logFile` - the default for every `make eval-shortlist`/`eval-mid` run,
+    including every jev run in this trial - neither stream is read at all.
+    The jev corpus and mid runs did not hang, so the buffer never filled
+    this time, but the mechanism is identical to the eval suite's hang and
+    a more talkative picker or a longer run could hit it the same way.
+    Candidate fix: `.resume()` both streams unconditionally in `boot()`,
+    the same as `04f1748`'s fix, with `logFile`'s `.pipe()` layered on top
+    when requested. Unscheduled - not touched here since this task's own
+    files were `DECISIONS.md`/`TODO.md`/`STATE.md`/`PRODUCT.md`/
+    `docs/measurements/`, not `e2e/`.
 
 ## Done
 
