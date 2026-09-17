@@ -86,18 +86,37 @@ _Nothing in progress._
    under the full system prompt and regressed three unrelated `make eval`
    rows; see `DECISIONS.md`. (c) a synthetic optional argument on every
    catalogue tool, schema only, no prompt text, is untried. Unscheduled.
-8. **`real-attendance-detail` (att-002の内容) fails 0/10 in the real-
-   catalogue eval.** The pick sends `att-002` to
-   `inventory/GetInventoryItem` instead of
-   `attendance/GetAttendanceRecord`; the service's 404 correctly becomes
-   `none` (`9d64d69`), but the answer is a refusal to a question with a
-   real answer. Found accepting the `real-*` baseline (`DECISIONS.md`,
-   2026-09-17, "The real-catalogue refusal set is now part of `make
-eval`"). The pick ignores an id's service prefix - a pick that reads id
-   prefixes, or a fill that retries the same operation on the other
-   service after a 404, are the candidates. Unscheduled.
+8. **`no-enum-value-attendance` (有給の勤怠はある？) is a near-tie whose
+   `make eval` outcome tracks llama-server's own cache state, not the
+   code.** Read 10/10 reject in one run against the 0/10-reject baseline
+   `v6-unmatched-filter` closed 2026-09-16, with no code change able to
+   explain it (verified: a pre-change binary against the same
+   llama-server answers the same both ways). Traced to `--cache-reuse
+256` on the `qwen3.5-9b-q8` local-llm entry - chunked KV reuse changes
+   near-tie numerics depending on request history, the same
+   "determinism band" recorded 2026-09-16. Fixed the same day by dropping
+   `--cache-reuse 256` from the local-llm entry: the probe answers the
+   same after any request history, and the corpus's two runner paths
+   agree row for row (78 / 79). What remains: `e2e/eval/cases.ts`'s doc
+   comment on this case still describes the old band - update it when
+   the case is next touched. See `DECISIONS.md`, 2026-09-17.
 
 ## Done
+
+- **Id affinity closes `real-attendance-detail`** (`dc1f465`, `2020f58`,
+  2026-09-17). The pick sent `att-002` to `inventory/GetInventoryItem`
+  instead of `attendance/GetAttendanceRecord`, ignoring the id's own
+  service prefix. A new `orchestrator_affinity.go` (`idAffinity`) reads
+  each id path parameter's own OpenAPI `pattern` (already declared by
+  both dummy services, `^att-[0-9]+$`/`^itm-[0-9]+$`) and narrows the
+  pick's shortlist to the one service whose pattern matches a token in
+  the question, when exactly one service matches; no match, two services,
+  `preferred`, or a single call (`STAGES=1`) all leave the shortlist
+  untouched. `make eval`'s `real-attendance-detail` moves 0/10 → 10/10
+  accept. Side effect: the `pattern` also turned on request validation in
+  the generated servers, so `e2e/src/service-error.test.ts` now asks for
+  `itm-999` (the right shape, still absent) instead of `999`. See
+  `DECISIONS.md`, 2026-09-17 ("Id affinity closes `real-attendance-detail`").
 
 - **The web shows the platform's own message when a plan request fails**
   (`5ac3660`, 2026-09-17). Since a service's 4xx is a `none` answer

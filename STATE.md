@@ -1,8 +1,10 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-17 (real-catalogue refusal eval added; propose_panel under two stages fixed)_
+_Last updated: 2026-09-17 (id affinity closes the real-catalogue eval to 16/16 bar one history-dependent case; mid-sizing instrument being built)_
 
 ## Summary
+
+**2026-09-17 - id affinity, and the real-catalogue eval's remaining case read.** A new `idAffinity` rule (`dc1f465`, `2020f58`) narrows the pick's shortlist to the one service whose id `pattern` matches a token in the question, closing `real-attendance-detail` (0/10 → 10/10) and bringing the 16 `real-*` cases to 16/16; separately, `no-enum-value-attendance`'s own flip between runs was traced by hand to llama-server's `--cache-reuse 256` chunked-KV numerics rather than to any code change, so its baseline is not re-accepted (`DECISIONS.md`, 2026-09-17, both entries). The mid-sizing instrument (`docs/specs/midsizing.md`) is in progress, its plan's Tasks 1-2 being built.
 
 **2026-09-17 - the eval now has 16 real-catalogue cases (15 pass,
 att-002 open); proposals work under two stages again.** `e2e/eval/

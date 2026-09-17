@@ -7266,3 +7266,82 @@ corpus alone said "unchanged" while three unrelated eval rows had already
 moved.
 
 `TODO.md` item 7 left open, amended with this attempt.
+
+## 2026-09-17 Id affinity closes `real-attendance-detail` (`dc1f465`, `2020f58`)
+
+`TODO.md` item 8: `att-002の内容` sent `att-002` to
+`inventory/GetInventoryItem` instead of `attendance/GetAttendanceRecord` -
+the pick ignored an id's own service prefix.
+
+Fix: the dummy services already declare their id shape with OpenAPI's
+standard `pattern` (`^att-[0-9]+$`, `^itm-[0-9]+$`) on the id path
+parameter and the item schema's `id`; `domain.Schema.Pattern` is parsed
+from it. Before the pick (`orchestrator_staging.go` → new
+`orchestrator_affinity.go`, `idAffinity`), every token `[A-Za-z0-9_-]+` of
+the question is tested against every offered parameter's pattern; when
+the matching endpoints belong to exactly one service, the pick's
+shortlist is narrowed to that service alone. No match, or matches split
+across two services, leaves the shortlist untouched; `preferred` bypasses
+it entirely; a single call (`STAGES=1`) is never narrowed, having no pick
+stage to narrow. Deterministic, no model call, no prompt text.
+
+Measured: `make eval`'s `real-attendance-detail` moves 0/10 → 10/10
+accept; against the dev stack, 「att-002の内容」now answers
+`GetAttendanceRecord {id: att-002}`'s own detail instead of the inventory
+service's 404-turned-`none`. Not run against the shortlist corpus - the
+corpus fixture carries no `pattern` on any id (the mid-sizing fixture
+under `docs/specs/midsizing.md` will, once built).
+
+Side effect: turning `pattern` on also turned on request validation in
+the generated servers, so a request for an id of the wrong shape now 400s
+before reaching either service's own handler. `e2e/src/service-error.test.ts`'s
+"unknown id" case used `999`, which no longer resembles a real id at
+all - moved to `itm-999` (the right shape, still absent).
+
+`TODO.md` item 8 closes.
+
+## 2026-09-17 `no-enum-value-attendance` flips with llama-server's cache state, not the code
+
+In the same `make eval` run, `no-enum-value-attendance` (有給の勤怠はあ
+る？) read 10/10 reject against the 0/10 baseline `v6-unmatched-filter`
+closed on 2026-09-16 - the same case the withdrawn note attempt above
+also saw move. The id-affinity change above cannot touch this request at
+all: no id token appears in it, and the request sent to the model is
+byte-identical to before.
+
+Checked by hand: a platform built from `9ce97e7` (before the affinity
+change) answered the same question with `ListAttendanceRecords {}` three
+times running, against the same llama-server; the current binary does the
+same. 破損した在庫はある？(`no-enum-value`, the inventory case) answered
+`status: quarantined` both ways, accepted both times. So the flip is not
+a function of the commit under test - it is a function of llama-server's
+own cache state, which lives in the server process and outlives a
+platform restart. The `qwen3.5-9b-q8` entry in the local-llm config
+carries `--cache-reuse 256`; chunked KV reuse changes the numerics of a
+near-tie completion depending on what came before it in the server's
+context cache - the same "determinism band" recorded 2026-09-16
+(`DECISIONS.md`, "Measurement determinism"), now observed landing on a
+`make eval` case rather than only on the shortlist corpus's near-tie
+rows.
+
+Consequence: this case is a near-tie between the accepted call and the
+rejected one, and its baseline value is not a property of the code under
+test. The 10/10 reject reading is not re-accepted as a new baseline.
+Fix tried the same day, with the user's go-ahead (the local-llm config is
+theirs): `--cache-reuse 256` dropped from the `qwen3.5-9b-q8` entry
+(exact-prefix caching stays; only chunk reuse - the part that changes
+numerics - goes), llama-swap restarted. Result: 「有給の勤怠はある？」
+answered the same after three different request histories (fresh, after
+the 30-question script, after unrelated raw chat requests) -
+`ListAttendanceRecords {kind: compensatory}`, an accepted outcome of the
+case (a guessed enum value, like `quarantined` for 破損). And the corpus's
+two runner paths, which had differed by seven rows under chunk reuse
+(2026-09-16, "determinism band"), now agree row for row: `STAGES=2`
+explicit and the classic on-pass both read **78 / 79**, zero rows apart;
+against the last run under chunk reuse (77 / 79) only b19 moved. Latency
+mean 1317 ms on the classic pass, unchanged within noise. The band is
+gone; a change that moves one row is now distinguishable. The 78 / 79
+becomes the corpus reference from here. `e2e/eval/cases.ts`'s doc comment
+on this case still describes the old band and should be updated when the
+case is next touched. The local-llm change is uncommitted in that
+repository, as its other entries are, by the user's choice.
