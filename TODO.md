@@ -8,11 +8,11 @@ _Nothing in progress right now._
 
 ## Next
 
-1. Jev v4: conversation state / hierarchical choice - only if a round
+1. Jev v5: conversation state / hierarchical choice - only if a round
    with a concrete hypothesis is wanted. `follow-up-other-service`
-   remains a picker-only regression neither v1/v2's richer criteria nor
-   v3's gate touched, since none of the three rounds gave Jev any memory
-   of the prior turn.
+   remains a picker-only regression none of v1-v4 touched (v4 ruled out
+   language as the cause of the losses, not this regression), since no
+   round so far has given Jev any memory of the prior turn.
 1. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
@@ -136,7 +136,7 @@ _Nothing in progress right now._
 
 ## Done
 
-- **The Jev trial: three rounds measured, none adopted.** v1 (one-line
+- **The Jev trial: four rounds measured, none adopted.** v1 (one-line
   criteria) and v2 (richer `what`/`examples`/`not_for` criteria), both a
   second `usecase.Picker` over TypeSafe's Jev (`ORCHESTRA_PICKER=jev`),
   scored 69/100 on the shortlist corpus against the local picker's
@@ -162,8 +162,17 @@ _Nothing in progress right now._
   `jev-picker-v2.md` / `jev-gate-v3.md`. The local picker stays the
   default and the gate stays off by default (`ORCHESTRA_GATE` unset);
   the adapter, gate port, and config wiring stay in the tree for a later
-  round. $0.0896 cumulative across all three rounds, under 5% of the $2
-  budget.
+  round. **v4 language spike: not supported** - 50 rows (17 lost + 8
+  gained + 25 controls from v1) translated JA→EN by the local
+  `qwen3.5-9b-q8` (Anthropic spend $0.00, key invalid that day) and run
+  through four Jev passes (JA-1/JA-2/EN-1/EN-2, 200 calls, $0.0185):
+  English scored below Japanese on all 50 rows (31/30 vs 36/35), 1 net
+  recovery against 2 net regressions inside the 17 losses, 3 previously-
+  stable controls broken - the losses are the task's shape (cross-
+  service homonyms, list-vs-get slips, no conversation state), not the
+  language. See `DECISIONS.md`, 2026-09-17 ("Jev, v4: is Japanese the
+  cause? - not supported") and `docs/measurements/jev-language-v4.md`.
+  $0.108 cumulative across all four rounds, under 6% of the $2 budget.
 
 - **Id affinity closes `real-attendance-detail`** (`dc1f465`, `2020f58`,
   2026-09-17). The pick sent `att-002` to `inventory/GetInventoryItem`

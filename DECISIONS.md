@@ -7426,7 +7426,11 @@ on a cross-service homonym (承認 in three services, etc.) - the same
 shape as the local picker's own known weak spot for multi-service
 homonyms, except jev is more willing to refuse there where the local
 picker guesses and is right more often on this corpus. Axis D (cross-
-service homonyms) reads 40% for jev against 60/60 local.
+service homonyms) reads 40% for jev against 60/60 local. (Correction,
+2026-09-17: this 69/100 is **end-to-end** correct@1 with the local
+picker's fallback folded in on a `propose_panel`/`none` pick - grading
+Jev's raw pick alone, as v4's spike does, gives 59/100; see the v4
+entry below for the distinction.)
 
 **Two eval regressions, both diagnosed, not just observed.**
 `follow-up-other-service` (0/10, baseline 10/10): jev sees no
@@ -7700,3 +7704,87 @@ just above threshold on a question a human would call obviously
 answerable. See `docs/measurements/jev-picker-v1.md`,
 `jev-picker-v2.md`, and `jev-gate-v3.md` for the full record behind each
 claim.
+
+## 2026-09-17 Jev, v4: is Japanese the cause? - not supported
+
+**Hypothesis.** Jev's losses on the shortlist corpus (`jev-picker-v1.md`:
+17 rows the local picker got right and Jev v1 got wrong) are caused by
+Japanese - the corpus's questions and the criteria sent to Jev are all
+Japanese, and Jev may be English-centred. If true, translating the same
+rows to English should recover most of the 17 losses without breaking
+rows Jev already gets right.
+
+**Design.** 50 rows: the 17 lost + 8 gained (ids taken verbatim from
+`jev-picker-v1.md`'s own tally) + 25 controls, with each row's shortlist
+rebuilt from `jev-picker-v1-corpus-picks.jsonl`'s recorded
+`probabilities` and criteria built v2-style (`what`/`examples`/
+`not_for`). Controls are the first 25, in corpus id order, of the pool
+of rows both local and Jev v1 got right (a deliberate substitute for a
+literal "every 4th row," recorded in the full record rather than
+silently applied). Everything sent to Jev was translated to English by
+the local model `qwen3.5-9b-q8` (via llama-swap, free) rather than
+Anthropic Haiku 4.5: the stored Anthropic key was invalid that day
+(confirmed by a bare `curl`, not a script bug), so Anthropic spend on
+this round is **$0.00**. Four Jev passes over the same 50 rows - JA-1,
+JA-2, EN-1, EN-2, two per language to separate a language effect from
+Jev's own known run-to-run noise - 200 calls, **$0.0185**.
+
+**Results - the 2×2 table (correct count per group × pass):**
+
+| group        | JA-1   | JA-2   | EN-1   | EN-2   |
+| ------------ | ------ | ------ | ------ | ------ |
+| lost (17)    | 8      | 8      | 8      | 8      |
+| gained (8)   | 6      | 5      | 4      | 3      |
+| control (25) | 22     | 22     | 19     | 19     |
+| **total**    | **36** | **35** | **31** | **30** |
+
+Both EN passes score below both JA passes on all 50 rows - English is a
+regression, not an improvement, on Jev's own pick-only accuracy.
+
+**Net recovery 1, net regressions 2.** Of the 17 lost rows, only d09
+("wants a refund") is wrong in both JA passes and right in both EN
+passes - the hypothesis's one clean win. Against it, two rows go the
+other way: a20 and c05, each correct in one JA pass, wrong in both EN
+passes. The other 14 of 17 are unchanged by language.
+
+**3 previously-stable controls break in English**, a01, a14, and a24 -
+all correct in both JA passes, wrong in both EN passes; two of the
+three (a14, and the "gained" group's a19) are the same list-vs-get slip
+`jev-picker-v2.md` already named for v1→v2, this time triggered by
+translation rather than richer criteria.
+
+**Noise band:** JA-1 vs JA-2 flip 3/50 rows (6%), EN-1 vs EN-2 flip
+2/50 (4%) - the same order of run-to-run noise `jev-picker-v1.md`
+already documented for near-ties. The JA→EN gap (36/35 vs 31/30) is
+about the same size as this noise band but consistently in the same
+direction across both pass-pairs, which pure noise would not reliably
+produce.
+
+**A correction to how v1's headline 69/100 should be read.** Recomputing
+"Jev v1 got it right" directly from `jev-picker-v1-corpus-picks.jsonl`'s
+own recorded `choice` gives only 59/100, not the 69/100 `jev-picker-v1.md`
+reports - because that 69 is **end-to-end** correct@1 (a
+`propose_panel`/`none` pick falls back to the local picker's own
+single-call resolution, which sometimes lands the right operation),
+while this spike calls Jev directly and grades the raw **pick-only**
+answer. The local single-call fallback rescued 10 of Jev v1's 100 rows;
+pick-only 59 vs end-to-end 69 are both correct, they are just not the
+same measurement, and every number in this entry is pick-only throughout
+so the JA/EN comparison is internally consistent.
+
+**Verdict: not supported.** Translating to English does not recover
+Jev's Japanese losses on this corpus - 1 recovery against 2 regressions
+inside the 17 losses the hypothesis is about, 3 of 22 previously-stable
+controls broken, and a lower overall score (31/30 vs 36/35) than
+Japanese on this run. The losses read as the task's own shape -
+cross-service homonyms, list-vs-get slips, no conversation state -
+carried unchanged across both languages, not as a language effect.
+Caveat: translation was machine-made by a 9B local model, not a human
+or a larger model, so translation quality is a live confound this spike
+cannot rule out. Full record, per-row table, and script appendix:
+`docs/measurements/jev-language-v4.md` (raw picks beside it,
+`jev-language-v4-picks.jsonl`).
+
+**Cost: $0.00 Anthropic + $0.0185 Jev this round, $0.108 cumulative**
+across all four Jev rounds (v1 $0.0218 + v2 $0.0508 + v3 $0.0170 + v4
+$0.0185 = $0.1081), still under 6% of the $2 Jev budget.

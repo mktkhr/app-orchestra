@@ -33,9 +33,12 @@ as before), and this trial's first false refusal on the eval suite
 record in `docs/measurements/jev-gate-v3.md` and `DECISIONS.md`,
 2026-09-17 ("Jev as a refusal gate, v3: recommended, to be confirmed").
 `ORCHESTRA_GATE` stays unset by default; the adapter, gate port, and
-config wiring stay in the tree for a later round. $0.0896 cumulative
-across all three rounds. Next, if picked back up: v4 (conversation
-state), only with a concrete hypothesis (`TODO.md`).
+config wiring stay in the tree for a later round. v4, a language spike
+testing whether Japanese caused Jev's losses, found it did not (English
+scored lower than Japanese on the same 50 rows, $0.108 cumulative;
+`DECISIONS.md`, 2026-09-17, "Jev, v4: is Japanese the cause? - not
+supported"). Next, if picked back up: v5 (conversation state), only
+with a concrete hypothesis (`TODO.md`).
 
 **2026-09-17 - the mid instrument's first run: 38/40 answerable, 17/20 impossible refused, 0/24 fabricated.** `make eval-mid` (`docs/specs/midsizing.md`, `docs/plans/midsizing.md` all four tasks) exists: a thirty-operation, three-service fixture (sales, purchasing, attendance; ids `so-`/`po-`/`att-`, `pattern`-bearing) and sixty questions (40 answerable, 20 impossible) run through the real platform, scored for correct@1, false refusal, refused, forced, fabricated, and latency. First run under the shared defaults (two stages, `v6-unmatched-filter`, thinking off, narrowing K=20, no chunk cache reuse): answerable 40 correct@1 38 / false refusal 1; impossible 20 refused 17 / forced 3; forms 24 fabricated 0; latency mean 1274 ms. All five misses read row by row and left as genuine (`m24`, `m29`, `m41`, `m42`, `m44`); the impossible half's verb-not-there family took 3 of the run's 3 forced picks. Two instrument limits found and recorded, not fixed: the scorer's enum-vs-fabrication confusion (fixed in `7adb5b7`), and forms that echo an id into a `name` field past both the scorer's and the platform's own "appears in the question" rule (`TODO.md`). From here every planning decision is checked against all three instruments together - shortlist corpus (78/79), real-catalogue cases (16/16), and mid (38/40, 17/20, 0/24) - not any one alone. Full account in `DECISIONS.md`, 2026-09-17 ("Midsizing: the first mid run").
 
