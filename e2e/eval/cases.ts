@@ -46,26 +46,17 @@ export const cases: readonly Case[] = [
     // model asks or guesses the enum value is not what this case watches,
     // and that split is free to swing. What must not increase is the silent
     // drop this case's reject outcome names.
-    metric: "reject",
-    // Run at 30, not the corpus default of 10 (measured, DECISIONS.md): at
-    // n=10 the reject rate itself swung as widely as accept did (5-9/10
-    // across six samples), which is not narrow enough to tell noise from a
-    // real regression at any tolerance worth setting. n=30 is narrower but
-    // not narrow: nine samples spread 15-22/30, a band 0.23 wide, which the
-    // 0.3 tolerance sits just outside. That is enough to catch the filter
-    // dropping outright and not enough to settle anything smaller - see
-    // docs/specs/eval.md section 4a, which supersedes an earlier note in
-    // DECISIONS.md that read 0.10 from only three samples.
+    //
+    // accept narrowed to ask alone (2026-09-17, restoring AC-B-105's own
+    // "returns kind: ask" under two-stage planning): a guessed
+    // status:quarantined is no longer an accepted outcome at all - the
+    // enum-guess guard (services/platform/internal/usecase/orchestrator_enum_guess.go)
+    // turns every such guess into this same ask before it ever reaches a
+    // result, so the wide "asked or guessed" band this case's own doc
+    // comment used to describe is gone: this is deterministic 30/30 now,
+    // not noise the metric had to route around.
     runs: 30,
-    accept: [
-      { kind: "ask", param: "status" },
-      {
-        kind: "result",
-        service: "inventory",
-        operationId: "ListInventoryItems",
-        args: { status: "quarantined" },
-      },
-    ],
+    accept: [{ kind: "ask", param: "status" }],
     reject: [{ kind: "result", service: "inventory", operationId: "ListInventoryItems", args: {} }],
   },
   {
@@ -247,40 +238,21 @@ export const cases: readonly Case[] = [
     // fail a run. It is not a check; it is a number printed on every run
     // (AC-E-203 prints reject counts whether or not the judged rate held),
     // and a person reading 7/10 there is reading that the defect is still
-    // live. Leaving it judged on reject rather than on accept is deliberate
-    // - accept here is the wide "asked or guessed" set that
-    // docs/specs/eval.md section 4 explains is noise, not signal - and
-    // raising `runs` would not help: section 4a has the band.
+    // live.
+    //
+    // accept narrowed to ask alone (2026-09-17, restoring AC-B-105 under
+    // two-stage planning): a guessed kind - compensatory, most often
+    // measured - is no longer accepted as a result at all, the same
+    // tightening as no-enum-value's own twin above. The enum-guess guard
+    // turns any such guess into this ask deterministically, so the four
+    // guessed-result entries this accept list used to carry - the wide
+    // "asked or guessed" set docs/specs/eval.md section 4 called noise -
+    // are gone; reject is still the metric this case is judged on, for the
+    // same reason as before.
     id: "no-enum-value-attendance",
     question: "有給の勤怠はある？",
     metric: "reject",
-    accept: [
-      { kind: "ask", param: "kind" },
-      {
-        kind: "result",
-        service: "attendance",
-        operationId: "ListAttendanceRecords",
-        args: { kind: "deemed" },
-      },
-      {
-        kind: "result",
-        service: "attendance",
-        operationId: "ListAttendanceRecords",
-        args: { kind: "substitute" },
-      },
-      {
-        kind: "result",
-        service: "attendance",
-        operationId: "ListAttendanceRecords",
-        args: { kind: "compensatory" },
-      },
-      {
-        kind: "result",
-        service: "attendance",
-        operationId: "ListAttendanceRecords",
-        args: { kind: "on_call" },
-      },
-    ],
+    accept: [{ kind: "ask", param: "kind" }],
     reject: [
       { kind: "result", service: "attendance", operationId: "ListAttendanceRecords", args: {} },
     ],
