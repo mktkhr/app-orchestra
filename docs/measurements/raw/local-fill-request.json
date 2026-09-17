@@ -1,0 +1,108 @@
+{
+  "model": "qwen3.5-9b-q8",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are given a set of tools, one per operation of a catalogue of internal services, plus ask_user, list_capabilities and propose_panel. Read the user's question, in Japanese, and either call exactly one tool that answers it, call list_capabilities when the question asks what can be done rather than asking to do something, call ask_user when a parameter's value cannot be told from the question, call propose_panel when the question asks to put something on the workspace's screen rather than asking to look something up, or call no tool at all when nothing in the catalogue answers the question. When any of the offered tools plausibly serves the question, call it - do not answer with list_capabilities, or with no tool at all, merely because you are unsure which one fits best. list_capabilities is for a person asking what the system can do, in general or for one named service, never for a question one of the offered tools could already answer. When the question restricts by a state, kind or category - a word like 破損, 有給, 未処理 - and the operation you would call has a parameter with a fixed set of allowed values for exactly that restriction, but the word matches none of those values or their Japanese labels, do not call the operation with that parameter left out - that silently answers a different question (every row, not the restricted ones). Call ask_user for that parameter instead, so the person can pick from the set, or, only when one value clearly means the same thing the question's word does, use that value. This does not apply when the question does not restrict at all (call with no filter for a question like \"在庫を全部見せて\"), and it does not apply to a free-text parameter that has no fixed set of values. Leaving a restricting filter out because its word did not match is not \"committing\" - it is answering a different question than the one asked."
+    },
+    {
+      "role": "user",
+      "content": "今日は 2026-09-17（木）です。\n\n在庫の一覧を見せて"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "ListInventoryItems",
+        "description": "List stock items, optionally filtered by status.",
+        "parameters": {
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "description": "Where a stock item sits in the inventory workflow. allocated=引当済 / staged=出荷準備完了 / quarantined=検品保留 / consigned=預託在庫",
+              "enum": ["allocated", "staged", "quarantined", "consigned"],
+              "enumLabels": {
+                "allocated": "引当済",
+                "consigned": "預託在庫",
+                "quarantined": "検品保留",
+                "staged": "出荷準備完了"
+              },
+              "title": "ステータス",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "strict": false
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "ask_user",
+        "description": "Call this ONLY when the question does not tell you which value to use for a parameter that declares a fixed set of allowed values (an enum), and you need the person to pick one from that set. Do NOT call this for a free-text parameter (for example a name) that has no declared set of values - there is nothing to pick from, so this tool cannot help; leave that parameter out of your call instead. Also call this when the question's restricting word (a state, kind or category) matches none of an enum parameter's values or their Japanese labels - dropping the filter and calling the operation without it is not an option, since that would answer a different, wider question than the one asked.",
+        "parameters": {
+          "additionalProperties": false,
+          "properties": {
+            "operationId": {
+              "description": "The operation id of the call you were about to make before the parameter's value stopped you - i.e. the tool you would have called instead of ask_user. Its service is looked up automatically; do not name it yourself.",
+              "type": "string"
+            },
+            "options": {
+              "description": "The candidate values, each with its Japanese label, for the person to pick from.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": ["value", "label"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "param": {
+              "description": "The name of the parameter the answer will fill in.",
+              "type": "string"
+            },
+            "question": {
+              "description": "The question to show the person, in Japanese.",
+              "type": "string"
+            }
+          },
+          "required": ["question", "operationId", "param", "options"],
+          "type": "object"
+        },
+        "strict": true
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "list_capabilities",
+        "description": "Call this when the question asks what operations are available - in general (\"何ができるの？\") or for one named service (\"在庫について、どういう操作ができる？\") - rather than asking to actually look something up or change something. Returns the catalogue's own list of operations, so it never risks naming a capability that does not exist. Never call this for a question that one of the offered tools could answer directly - list_capabilities is for \"what can this do\", not for \"do this\".",
+        "parameters": {
+          "additionalProperties": false,
+          "properties": {
+            "service": {
+              "description": "Optional. Restrict the answer to one service, named exactly as it is used elsewhere in this catalogue (for example \"inventory\" or \"attendance\"). Omit it to list every service's operations.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "strict": false
+      }
+    }
+  ],
+  "temperature": 0,
+  "max_tokens": 1024,
+  "chat_template_kwargs": {
+    "enable_thinking": false
+  }
+}

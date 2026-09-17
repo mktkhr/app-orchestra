@@ -1,0 +1,44 @@
+{
+  "request": {
+    "state": "ピッキングリストが知りたい",
+    "model": "jev-latest",
+    "questions": {
+      "pick": {
+        "type": "choice",
+        "instructions": "社内APIの振り分け役。質問に対して、候補の中から呼ぶべき操作を1つ選ぶ。list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。",
+        "criteria": {
+          "listInventoryPickLists": "在庫管理 / ピッキングリストの一覧を返す",
+          "getInventoryPickList": "在庫管理 / ピッキングリストの詳細を返す",
+          "createInventoryPickList": "在庫管理 / ピッキングリストを作成する",
+          "list_capabilities": "使える操作の一覧を知りたい",
+          "propose_panel": "画面に出したい",
+          "none": "どの候補も質問に合わない（業務と無関係な質問）"
+        }
+      }
+    }
+  },
+  "response_status": 200,
+  "response_body": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "pick": {
+        "type": "choice",
+        "choice": "listInventoryPickLists",
+        "confidence": 0.35,
+        "probabilities": {
+          "none": 0.02,
+          "listInventoryPickLists": 0.46,
+          "propose_panel": 0.14,
+          "list_capabilities": 0.01,
+          "createInventoryPickList": 0,
+          "getInventoryPickList": 0.37
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 594,
+      "output_tokens": 89
+    }
+  },
+  "latency_ms": 598
+}

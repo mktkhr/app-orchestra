@@ -1,0 +1,21 @@
+{
+  "state": "在庫の一覧を見せて",
+  "model": "jev-latest",
+  "questions": {
+    "pick": {
+      "type": "choice",
+      "instructions": "社内APIの振り分け役。質問に対して、候補の中から呼ぶべき操作を1つ選ぶ。list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。",
+      "criteria": {
+        "CreateAttendanceRecord": "勤怠管理 / Create an attendance record.",
+        "CreateInventoryItem": "在庫管理 / Create a stock item.",
+        "GetAttendanceRecord": "勤怠管理 / Get one attendance record by id.",
+        "GetInventoryItem": "在庫管理 / Get one stock item by id.",
+        "ListAttendanceRecords": "勤怠管理 / List attendance records, optionally filtered by kind.",
+        "ListInventoryItems": "在庫管理 / List stock items, optionally filtered by status.",
+        "list_capabilities": "使える操作の一覧を知りたい",
+        "none": "どの候補も質問に合わない（業務と無関係な質問）",
+        "propose_panel": "画面に出したい"
+      }
+    }
+  }
+}

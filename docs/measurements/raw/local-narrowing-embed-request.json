@@ -1,0 +1,4 @@
+{
+  "model": "e5-large-q8",
+  "input": ["query: 在庫の一覧を見せて"]
+}

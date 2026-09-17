@@ -1,0 +1,12 @@
+{
+  "model": "bge-reranker-v2-m3-q8",
+  "query": "在庫の一覧を見せて",
+  "documents": [
+    "List stock items, optionally filtered by status.\nReturns every stock item known to the service. The optional status query parameter narrows the result to items in that status.\n\n在庫一覧\n在庫管理\n在庫を見せて\n今の在庫状況を教えて\n引当済の在庫だけ見たい",
+    "Get one stock item by id.\nReturns a single stock item, or 404 when the id is unknown.\n在庫アイテムの詳細\n在庫管理\nこのアイテムの詳細を教えて\nこの在庫の中身を見たい",
+    "Create a stock item.\nAdds a new stock item to the service's in-memory store. Its id is assigned by the service.\n\n在庫アイテムの作成\n在庫管理\n新しい在庫アイテムを登録して\n在庫を追加したい",
+    "List attendance records, optionally filtered by kind.\nReturns every attendance record known to the service. The optional kind query parameter narrows the result to records of that kind.\n\n勤怠記録一覧\n勤怠管理\n勤怠記録を見せて\n今月の出勤状況を教えて\n振替休日の記録だけ見たい",
+    "Get one attendance record by id.\nReturns a single attendance record, or 404 when the id is unknown.\n勤怠記録の詳細\n勤怠管理\nこの記録の詳細を教えて\nこの勤怠の中身を見たい",
+    "Create an attendance record.\nAdds a new attendance record to the service's in-memory store. Its id is assigned by the service.\n\n勤怠記録の作成\n勤怠管理\n勤怠記録を登録して\n振替休日を申請したい"
+  ]
+}

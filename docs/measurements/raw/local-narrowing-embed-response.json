@@ -1,0 +1,19 @@
+{
+  "model": "e5-large-q8",
+  "object": "list",
+  "usage": {
+    "prompt_tokens": 11,
+    "total_tokens": 11
+  },
+  "data": [
+    {
+      "embedding": [
+        0.05355043709278107, 0.0006573179271072149, -0.018406804651021957, -0.05151968449354172,
+        0.02243921533226967, -0.03938885033130646, -0.01718590408563614, 0.05666900426149368
+      ],
+      "index": 0,
+      "object": "embedding"
+    }
+  ],
+  "_truncated_note": "embedding vector truncated to its first 8 of 1024 dimensions for readability; the model (e5-large-q8) emits 1024-dim vectors"
+}

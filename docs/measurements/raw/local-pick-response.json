@@ -1,0 +1,36 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "ListInventoryItems certain"
+      }
+    }
+  ],
+  "created": 1789650650,
+  "model": "unsloth/Qwen3.5-9B-GGUF:Q8_0",
+  "system_fingerprint": "b10920-eafe15a5e",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 5,
+    "prompt_tokens": 266,
+    "total_tokens": 271,
+    "prompt_tokens_details": {
+      "cached_tokens": 262
+    }
+  },
+  "id": "chatcmpl-lurotzMtHRzzIOVijPu23jLIIHZZ2dsM",
+  "timings": {
+    "cache_n": 262,
+    "prompt_n": 4,
+    "prompt_ms": 57.157,
+    "prompt_per_token_ms": 14.28925,
+    "prompt_per_second": 69.9826792868765,
+    "predicted_n": 5,
+    "predicted_ms": 62.592,
+    "predicted_per_token_ms": 15.648,
+    "predicted_per_second": 63.90593047034765
+  }
+}

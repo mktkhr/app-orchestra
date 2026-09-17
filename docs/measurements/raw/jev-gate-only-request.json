@@ -1,0 +1,44 @@
+{
+  "state": {
+    "question": "在庫の一覧を見せて",
+    "operations": [
+      {
+        "id": "ListInventoryItems",
+        "service": "inventory",
+        "summary": "List stock items, optionally filtered by status."
+      },
+      {
+        "id": "CreateInventoryItem",
+        "service": "inventory",
+        "summary": "Create a stock item."
+      },
+      {
+        "id": "GetInventoryItem",
+        "service": "inventory",
+        "summary": "Get one stock item by id."
+      },
+      {
+        "id": "ListAttendanceRecords",
+        "service": "attendance",
+        "summary": "List attendance records, optionally filtered by kind."
+      },
+      {
+        "id": "CreateAttendanceRecord",
+        "service": "attendance",
+        "summary": "Create an attendance record."
+      },
+      {
+        "id": "GetAttendanceRecord",
+        "service": "attendance",
+        "summary": "Get one attendance record by id."
+      }
+    ]
+  },
+  "model": "jev-latest",
+  "questions": {
+    "gate": {
+      "type": "noul",
+      "instructions": "この質問は、列挙された操作のどれでも実現できないことを求めているか（例: 一覧しかない資源の集計・承認・印刷、列挙に無い資源、業務と無関係な話題）。能力を尋ねる質問（何ができる？）は「いいえ」。"
+    }
+  }
+}

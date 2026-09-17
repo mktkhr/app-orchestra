@@ -1,0 +1,55 @@
+{
+  "state": "在庫の一覧を見せて",
+  "model": "jev-latest",
+  "questions": {
+    "impossible": {
+      "type": "noul",
+      "instructions": "この質問は、列挙された候補のどれでも実現できないことを求めているか（例: 一覧しかない資源の集計・承認・印刷、候補に無い資源、業務と無関係な話題）。能力を尋ねる質問（何ができる？）はfalse。",
+      "criteria": {
+        "false": "候補のどれかで答えられる、または「何ができるか」を尋ねている",
+        "true": "質問が求める操作が候補一覧に無い（一覧しかない資源の集計・承認・印刷、一覧に無い資源、業務と無関係）"
+      }
+    },
+    "pick": {
+      "type": "choice",
+      "instructions": "社内APIの振り分け役。質問に対して、候補の中から呼ぶべき操作を1つ選ぶ。list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。候補には examples（その操作に対して人がよく尋ねる質問）とnot_for（混同しやすい別の操作）がある。",
+      "criteria": {
+        "CreateAttendanceRecord": {
+          "what": "勤怠管理 / Create an attendance record.。Adds a new attendance record to the service's in-memory store. Its id is assigned by the service.",
+          "examples": ["勤怠記録を登録して", "振替休日を申請したい"]
+        },
+        "CreateInventoryItem": {
+          "what": "在庫管理 / Create a stock item.。Adds a new stock item to the service's in-memory store. Its id is assigned by the service.",
+          "examples": ["新しい在庫アイテムを登録して", "在庫を追加したい"]
+        },
+        "GetAttendanceRecord": {
+          "what": "勤怠管理 / Get one attendance record by id.。Returns a single attendance record, or 404 when the id is unknown.",
+          "examples": ["この記録の詳細を教えて", "この勤怠の中身を見たい"]
+        },
+        "GetInventoryItem": {
+          "what": "在庫管理 / Get one stock item by id.。Returns a single stock item, or 404 when the id is unknown.",
+          "examples": ["このアイテムの詳細を教えて", "この在庫の中身を見たい"]
+        },
+        "ListAttendanceRecords": {
+          "what": "勤怠管理 / List attendance records, optionally filtered by kind.。Returns every attendance record known to the service. The optional kind query parameter narrows the result to records of that kind.",
+          "examples": ["勤怠記録を見せて", "今月の出勤状況を教えて", "振替休日の記録だけ見たい"]
+        },
+        "ListInventoryItems": {
+          "what": "在庫管理 / List stock items, optionally filtered by status.。Returns every stock item known to the service. The optional status query parameter narrows the result to items in that status.",
+          "examples": ["在庫を見せて", "今の在庫状況を教えて", "引当済の在庫だけ見たい"]
+        },
+        "list_capabilities": {
+          "what": "使える操作の一覧を知りたい",
+          "examples": ["何ができるの？"]
+        },
+        "none": {
+          "what": "どの候補も質問に合わない（業務と無関係な質問）",
+          "examples": ["今日の天気は？", "好きな食べ物は何？", "システムを再起動して"]
+        },
+        "propose_panel": {
+          "what": "画面に出したい"
+        }
+      }
+    }
+  }
+}

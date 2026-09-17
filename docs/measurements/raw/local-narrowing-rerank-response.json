@@ -1,0 +1,34 @@
+{
+  "model": "bge-reranker-v2-m3-q8",
+  "object": "list",
+  "usage": {
+    "prompt_tokens": 399,
+    "total_tokens": 399
+  },
+  "results": [
+    {
+      "index": 0,
+      "relevance_score": 2.8117949962615967
+    },
+    {
+      "index": 1,
+      "relevance_score": -2.7176661491394043
+    },
+    {
+      "index": 3,
+      "relevance_score": -6.251639366149902
+    },
+    {
+      "index": 2,
+      "relevance_score": -8.018550872802734
+    },
+    {
+      "index": 4,
+      "relevance_score": -10.510234832763672
+    },
+    {
+      "index": 5,
+      "relevance_score": -11.005973815917969
+    }
+  ]
+}

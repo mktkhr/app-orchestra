@@ -1,0 +1,18 @@
+{
+  "model": "qwen3.5-9b-q8",
+  "messages": [
+    {
+      "role": "system",
+      "content": "あなたは社内APIの振り分け役。質問に対して、候補一覧の中から呼ぶべきAPIを1つ選ぶ。\n\n出力は次の形式の1行だけ。説明もタグも書かない。\nlistInventoryItems certain\n\n1語目は候補一覧にある operationId をそのまま。2語目は certain か ambiguous。\nambiguous は「質問文だけでは候補を1つに決められない」場合。自信の有無ではなく、質問が足りていない場合。\nambiguous のときも、最も可能性の高い operationId を必ず1つ挙げること。"
+    },
+    {
+      "role": "user",
+      "content": "質問: 勤怠の方も見せて\n直前: 在庫管理 / 在庫一覧（在庫の一覧を見せて）\n\n候補:\nListAttendanceRecords\t勤怠管理\tList attendance records, optionally filtered by kind.\nGetAttendanceRecord\t勤怠管理\tGet one attendance record by id.\nCreateAttendanceRecord\t勤怠管理\tCreate an attendance record.\nListInventoryItems\t在庫管理\tList stock items, optionally filtered by status.\nGetInventoryItem\t在庫管理\tGet one stock item by id.\nCreateInventoryItem\t在庫管理\tCreate a stock item.\nlist_capabilities\tplatform\t使える操作の一覧を知りたい\npropose_panel\tplatform\t画面に出したい\nnone\tplatform\tどの候補も質問に合わない（業務と無関係な質問）"
+    }
+  ],
+  "temperature": 0,
+  "max_tokens": 200,
+  "chat_template_kwargs": {
+    "enable_thinking": false
+  }
+}

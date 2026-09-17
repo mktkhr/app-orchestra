@@ -1,0 +1,25 @@
+{
+  "model": "e5-large-q8",
+  "input": [
+    "passage: List stock items, optionally filtered by status.\nReturns every stock item known to the service. The optional status query parameter narrows the result to items in that status.\n\n在庫一覧\n在庫管理",
+    "passage: 在庫を見せて",
+    "passage: 今の在庫状況を教えて",
+    "passage: 引当済の在庫だけ見たい",
+    "passage: Create a stock item.\nAdds a new stock item to the service's in-memory store. Its id is assigned by the service.\n\n在庫アイテムの作成\n在庫管理",
+    "passage: 新しい在庫アイテムを登録して",
+    "passage: 在庫を追加したい",
+    "passage: Get one stock item by id.\nReturns a single stock item, or 404 when the id is unknown.\n在庫アイテムの詳細\n在庫管理",
+    "passage: このアイテムの詳細を教えて",
+    "passage: この在庫の中身を見たい",
+    "passage: List attendance records, optionally filtered by kind.\nReturns every attendance record known to the service. The optional kind query parameter narrows the result to records of that kind.\n\n勤怠記録一覧\n勤怠管理",
+    "passage: 勤怠記録を見せて",
+    "passage: 今月の出勤状況を教えて",
+    "passage: 振替休日の記録だけ見たい",
+    "passage: Create an attendance record.\nAdds a new attendance record to the service's in-memory store. Its id is assigned by the service.\n\n勤怠記録の作成\n勤怠管理",
+    "passage: 勤怠記録を登録して",
+    "passage: 振替休日を申請したい",
+    "passage: Get one attendance record by id.\nReturns a single attendance record, or 404 when the id is unknown.\n勤怠記録の詳細\n勤怠管理",
+    "passage: この記録の詳細を教えて",
+    "passage: この勤怠の中身を見たい"
+  ]
+}

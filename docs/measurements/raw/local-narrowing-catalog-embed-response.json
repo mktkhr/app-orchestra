@@ -1,0 +1,35 @@
+{
+  "model": "e5-large-q8",
+  "object": "list",
+  "usage": {
+    "prompt_tokens": 425,
+    "total_tokens": 425
+  },
+  "data": [
+    {
+      "embedding": [
+        0.046699609607458115, -0.005200082436203957, -0.03049471415579319, -0.04566285386681557,
+        0.02763034962117672, -0.05312124639749527, -0.03322189673781395, 0.06618280708789825
+      ],
+      "index": 0,
+      "object": "embedding"
+    },
+    {
+      "embedding": [
+        0.025984302163124084, 0.02051885612308979, -0.0119366105645895, -0.04297347739338875,
+        0.018771983683109283, -0.01878587156534195, -0.0066236527636647224, 0.051032282412052155
+      ],
+      "index": 1,
+      "object": "embedding"
+    },
+    {
+      "embedding": [
+        0.027969738468527794, 0.019852159544825554, -0.021632982417941093, -0.03989171236753464,
+        0.014380712993443012, -0.02578210085630417, -0.016430795192718506, 0.05598783493041992
+      ],
+      "index": 2,
+      "object": "embedding"
+    }
+  ],
+  "_truncated_note": "truncated for readability: only the first 3 of 20 document vectors are kept (one per catalogue passage - 6 operations x 3 example lines + 2 own-summary lines = 20 passages the dev inventory+attendance catalogue produces), and each kept vector's embedding is cut to its first 8 of 1024 dimensions."
+}
