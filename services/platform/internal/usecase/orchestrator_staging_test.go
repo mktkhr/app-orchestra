@@ -555,3 +555,141 @@ func TestPlanStagedWrapsAPickerError(t *testing.T) {
 
 	require.ErrorIs(t, err, boom)
 }
+
+// fakeGate is a test double for usecase.Gate: it always returns the fixed
+// verdict (or error) it was built with, and records the query, answers
+// and catalogue it was called with - the Gate counterpart of fakePicker.
+type fakeGate struct {
+	verdict usecase.GateVerdict
+	err     error
+
+	query   string
+	answers []usecase.Answer
+	catalog domain.Catalog
+	calls   int
+}
+
+func (f *fakeGate) Gate(
+	_ context.Context, query string, answers []usecase.Answer, catalog domain.Catalog,
+) (usecase.GateVerdict, error) {
+	f.query = query
+	f.answers = answers
+	f.catalog = catalog
+	f.calls++
+
+	return f.verdict, f.err
+}
+
+// stagedOrchestratorWithGate mirrors stagedOrchestrator, with usecase.WithGate
+// added - the v3 Jev trial's own gate (docs/measurements/jev-picker-v3.md).
+func stagedOrchestratorWithGate(
+	t *testing.T, gate usecase.Gate, picker usecase.Picker, planner usecase.Planner, invoker usecase.Invoker,
+) *usecase.Orchestrator {
+	t.Helper()
+
+	shortlist := stagingShortlist()
+	narrower := &fakeNarrower{catalog: shortlist}
+
+	return usecase.NewOrchestrator(
+		shortlist, planner, invoker, &fakePermissionStore{},
+		usecase.WithNarrower(narrower, 20), usecase.WithPicker(picker), usecase.WithGate(gate), usecase.WithStages(2),
+	)
+}
+
+// TestPlanStagedWithNoGateConfiguredNeverCallsOne proves the default (no
+// WithGate) leaves planStaged byte for byte as it was before Gate existed
+// - the picker alone decides, exactly as TestPlanWithNoPickerConfigured
+// NeverCallsOne already proves for the picker's own default.
+func TestPlanStagedWithNoGateConfiguredNeverCallsOne(t *testing.T) {
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
+	invoker := &fakeInvoker{data: map[string]any{}}
+
+	orchestrator := stagedOrchestrator(t, picker, planner, invoker)
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, picker.calls)
+	assert.Equal(t, usecase.ResultKindResult, result.Kind)
+}
+
+// TestPlanStagedOnGateImpossibleAnswersNoneWithoutThePickerOrThePlanner is
+// the gate's own reason to exist: an Impossible verdict answers none, the
+// same ResultKindNone planOrdinary gives, and neither the picker nor the
+// planner (the fill) is ever called - a gate refusal is cheaper than a
+// pick that would itself have answered none, and never risks a wrong
+// guess on the way there.
+func TestPlanStagedOnGateImpossibleAnswersNoneWithoutThePickerOrThePlanner(t *testing.T) {
+	gate := &fakeGate{verdict: usecase.GateVerdict{Impossible: true, Probability: 0.92}}
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
+
+	orchestrator := stagedOrchestratorWithGate(t, gate, picker, planner, &fakeInvoker{})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "在庫を集計したい", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, gate.calls)
+	assert.Equal(t, 0, picker.calls, "the pick must not run once the gate has refused")
+	assert.Equal(t, 0, planner.calls, "the fill must not run once the gate has refused")
+	assert.Equal(t, usecase.ResultKindNone, result.Kind)
+}
+
+// TestPlanStagedOnGatePossibleProceedsToThePicker proves a Possible
+// verdict (Impossible: false) is inert: planStaged falls through to the
+// picker exactly as if no gate were configured.
+func TestPlanStagedOnGatePossibleProceedsToThePicker(t *testing.T) {
+	gate := &fakeGate{verdict: usecase.GateVerdict{Impossible: false, Probability: 0.1}}
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
+
+	orchestrator := stagedOrchestratorWithGate(t, gate, picker, planner, &fakeInvoker{data: map[string]any{}})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, gate.calls)
+	assert.Equal(t, 1, picker.calls)
+	assert.Equal(t, usecase.ResultKindResult, result.Kind)
+}
+
+// TestPlanStagedOnGateErrorFailsOpenAndStillCallsThePicker is the fail-
+// open contract planStaged's own doc comment promises: a Jev outage on
+// the gate must never turn into a planning failure - the error is
+// swallowed (logged, see TestPlanStagedOnGateErrorLogsAWarning below) and
+// the picker still runs, exactly as if the gate had answered Possible.
+func TestPlanStagedOnGateErrorFailsOpenAndStillCallsThePicker(t *testing.T) {
+	gate := &fakeGate{err: assert.AnError}
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
+
+	orchestrator := stagedOrchestratorWithGate(t, gate, picker, planner, &fakeInvoker{data: map[string]any{}})
+
+	result, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "", nil)
+
+	require.NoError(t, err, "a gate outage must not fail the request")
+	assert.Equal(t, 1, picker.calls)
+	assert.Equal(t, usecase.ResultKindResult, result.Kind)
+}
+
+// TestPlanStagedOnGateErrorLogsAWarning proves the swallowed gate error
+// is not silent - it reaches the operator through the same slog.Default()
+// line TestPlanStagedLogsThePicksOperationIdAndAmbiguousAtInfo already
+// captures for the pick.
+func TestPlanStagedOnGateErrorLogsAWarning(t *testing.T) {
+	buf := withCapturedDefaultLogger(t)
+
+	gate := &fakeGate{err: assert.AnError}
+	picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+	planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
+
+	orchestrator := stagedOrchestratorWithGate(t, gate, picker, planner, &fakeInvoker{data: map[string]any{}})
+
+	_, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, "", "", nil)
+	require.NoError(t, err)
+
+	logged := buf.String()
+	assert.Contains(t, logged, `"level":"WARN"`)
+	assert.Contains(t, logged, "gate failed")
+}

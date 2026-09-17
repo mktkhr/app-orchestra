@@ -81,6 +81,17 @@ const staged = 2
 // counterpart under planOrdinary (WithStages unset or 1): a single call
 // over the whole shortlist is never narrowed this way; a later item may
 // apply the same affinity there.
+//
+// After idAffinity and before the pick, o.gate - when configured
+// (WithGate; nil is the default and skips this entirely) - is asked the
+// one typed yes/no question the pick is worst at: whether pickCatalog can
+// answer query at all (docs/measurements/jev-picker-v3.md, the v3 "noul
+// refusal gate"). A gate verdict of Impossible answers none, exactly as
+// planOrdinary does for DecisionNone, without ever calling the picker or
+// the fill. A gate error is logged at warn and swallowed - o.gate is
+// consulted only, never required: an outage on Jev's side must not turn
+// into a planning failure, so this falls through to the pick exactly as
+// if no gate were configured at all.
 func (o *Orchestrator) planStaged(
 	ctx context.Context, catalog domain.Catalog, query string, answers []Answer, turns []Turn, workspaceID string,
 	thinking *bool,
@@ -94,6 +105,15 @@ func (o *Orchestrator) planStaged(
 
 		slog.Default().InfoContext(ctx, "pick affinity narrowed shortlist to one service",
 			slog.String("pick_affinity_service", service))
+	}
+
+	if o.gate != nil {
+		verdict, gateErr := o.gate.Gate(ctx, query, answers, pickCatalog)
+		if gateErr != nil {
+			slog.Default().WarnContext(ctx, "gate failed, proceeding to the pick", slog.Any("error", gateErr))
+		} else if verdict.Impossible {
+			return Result{Kind: ResultKindNone, Message: messageNoEndpoint}, nil
+		}
 	}
 
 	p, err := o.picker.Pick(ctx, query, answers, pickCatalog)

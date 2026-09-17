@@ -164,6 +164,12 @@ type Orchestrator struct {
 	// orchestrator_staging.go); picker is consulted only when stages is 2.
 	picker Picker
 	stages int
+	// gate is the v3 Jev trial's own field (docs/measurements/jev-picker-v3.md):
+	// consulted by planStaged, only when stages is 2, immediately before
+	// picker - nil (the default: WithGate never given) skips the gate
+	// entirely, byte for byte the same planStaged path as before this
+	// field existed.
+	gate Gate
 }
 
 // Option configures an Orchestrator built by NewOrchestrator, beyond its
@@ -199,6 +205,17 @@ func WithNarrower(n Narrower, k int) Option {
 // WithNarrower's narrowK is inert under Preferred.
 func WithPicker(p Picker) Option {
 	return func(o *Orchestrator) { o.picker = p }
+}
+
+// WithGate configures the usecase.Gate planStaged consults immediately
+// before o.picker, under WithStages(2) (docs/measurements/jev-picker-v3.md).
+// Meaningless without WithStages(2), the same way WithPicker is - and,
+// unlike WithPicker, also meaningless on its own without WithPicker: a
+// gate with no picker behind it can still refuse a question, but
+// WithStages(2) already requires WithPicker (ErrStagesRequirePicker), so
+// this can never be the only staging option given.
+func WithGate(g Gate) Option {
+	return func(o *Orchestrator) { o.gate = g }
 }
 
 // WithStages selects how many model calls Plan makes to resolve an
