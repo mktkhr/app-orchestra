@@ -8052,3 +8052,52 @@ reordering in step 1, which touches display only, not the answer.
 Cumulative Jev spend, from the scratchpad ledger behind these follow-ups
 (not fully reconstructable from the committed records alone): $0.2057 of
 the $2 budget, per the hybrid record's own running total.
+
+## 2026-09-18 A multi-turn instrument: `make eval-dialogue`
+
+Every earlier instrument asks one question at a time; the two
+`follow-up-*` cases in `make eval` carry hand-written `turns`, not the
+platform's own earlier answers. `e2e/dialogue/` (`137e8f6`) runs twelve
+dialogues, twenty-seven questions, against the real inventory and
+attendance services, one conversation each, once each (the stack is
+deterministic since `--cache-reuse` was dropped). Decided with the user
+before building:
+
+- **Turns are chained from real answers**, by the same rule the web
+  client uses (`toContextTurns.ts`: the question, the answer's `kind`,
+  and `service`/`operationId`/`args` from `source ?? target`), so an
+  early miss propagates the way it would for a person. The report
+  separates the propagation from the follow-up itself: all turns,
+  turns 2+, turns 2+ whose every earlier turn was correct, and
+  dialogues with every turn correct.
+- **The real two-service catalogue**, not the mid fixture: the fixture
+  serves contracts only, so a chained turn would lose its `args`.
+- **Its own runner and `make` target**, reusing `e2e/eval`'s
+  boot/post/match modules (`plan-client.ts` gained `postPlanRaw`;
+  `postPlan` is unchanged). The one-target `Makefile` change was made
+  with `ORCHESTRA_ALLOW_HARNESS_CHANGE=1`, with the user's agreement.
+- **No baseline file yet** - the first run is recorded here, not
+  enforced.
+
+The twelve dialogues cover: narrowing within one service (d01, d05,
+d06), switching service by name (d02, d12), switching service by id
+(d03, d04), a third turn that reaches back two turns (d07), a topic
+change the previous turn must not pull on (d08, d09), and a follow-up
+the turns cannot fully answer (d10: employee names are not in `turns`;
+d11: no id was ever named).
+
+**First run (local picker, defaults):** all turns 26/27; turns 2+
+14/15; turns 2+ after correct earlier turns 14/15 (every first turn was
+correct, so the two agree); dialogues all correct 11/12; mean 958ms,
+p50 986ms. Output kept outside the tree as
+`dialogue-2026-09-17T15-19-32-646Z.{jsonl,txt}` (session scratchpad).
+
+**The one miss, d11 turn 2** (在庫の一覧 → 詳細を見せて): expected a
+form for `GetInventoryItem` or an `ask` for `id`; the platform answered
+`kind: "none"`, message 「在庫管理 の 在庫アイテムの詳細 は 400 を返しました。」.
+Read: the safe `GetInventoryItem` was invoked without a valid `id` and
+the service's 400 became a `none` through `usecase.ServiceError`
+(`9d64d69`). Whether the id was absent or malformed is not in the
+record - the instrument logs `/api/plan`'s request and response, not
+the invoke's own arguments. The expected outcomes were not widened to
+fit the run. Open in `TODO.md`.

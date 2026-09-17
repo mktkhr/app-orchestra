@@ -8,16 +8,14 @@ _Nothing in progress right now._
 
 ## Next
 
-1. **A multi-turn instrument is missing.** The shortlist corpus, the mid
-   runner, and `make eval`'s own cases each ask one question at a time;
-   Jev v5's isolation and the local pick's own turns fix (`DECISIONS.md`,
-   2026-09-17, "Jev, v5: the pick needed the conversation, not a better
-   model" and "The local pick gets the conversation too") were both
-   measured with ad hoc two-turn sequences run by hand against the dev
-   stack, not a repeatable instrument. A starting point: the live probe
-   script that round used (在庫の一覧→勤怠の方も見せて,
-   itm-001の詳細→att-002は？), generalised into a runner that drives a
-   sequence of questions through one conversation and scores each turn.
+1. **A safe read with no usable id is invoked anyway, and its 400 becomes
+   `none`.** `make eval-dialogue`'s d11 (在庫の一覧 → 詳細を見せて):
+   expected a form for `GetInventoryItem` or an `ask` for `id`; got
+   `kind: "none"`, 「在庫管理 の 在庫アイテムの詳細 は 400 を返しました。」.
+   First step: find out whether the fill sent no `id` or a malformed one
+   (the instrument does not log the invoke's arguments), and whether the
+   single question 在庫の詳細を見せて does the same. `DECISIONS.md`,
+   2026-09-18, "A multi-turn instrument".
 1. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
@@ -146,6 +144,13 @@ _Nothing in progress right now._
    decision on the extra call per question.
 
 ## Done
+
+- **A multi-turn instrument exists: `make eval-dialogue`** (`137e8f6`).
+  Twelve dialogues, twenty-seven questions, turns chained from the
+  platform's own answers the way the web client builds them, against
+  the real two services. First run: 26/27 turns, 14/15 follow-ups,
+  11/12 dialogues, mean 958ms; the one miss is the new Next item 1.
+  See `DECISIONS.md`, 2026-09-18, "A multi-turn instrument".
 
 - **The Jev trial: five rounds measured, none adopted; the pick's own
   shape changed.** v5 gave the pick stage the conversation's prior turns

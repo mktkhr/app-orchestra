@@ -1,8 +1,19 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-17 (Jev follow-ups measured: chip ordering, confidence/hybrid arithmetic, latency, and the hybrid picker itself)_
+_Last updated: 2026-09-18 (a fourth instrument: multi-turn dialogues, `make eval-dialogue`)_
 
 ## Summary
+
+**2026-09-18 - a fourth instrument, `make eval-dialogue`, measures
+follow-up questions with turns chained from the platform's own answers
+(`e2e/dialogue/`, `137e8f6`).** Twelve dialogues, twenty-seven questions,
+real inventory/attendance services, once each. First run under the
+defaults: 26/27 turns, 14/15 follow-ups, 11/12 dialogues all correct,
+mean 958ms. The miss (d11, 詳細を見せて with no id) answers `none` from a
+400 instead of asking - open in `TODO.md`. Planning decisions are now
+checked against four instruments: shortlist corpus (78/79), mid
+(38/40, 17/20, 0/24), `make eval` (34/34), dialogues (26/27). See
+`DECISIONS.md`, 2026-09-18.
 
 **2026-09-17 - four follow-up measurements closed the open questions from
 the five-round Jev trial: probability-ordered chips gain +6-7 on
