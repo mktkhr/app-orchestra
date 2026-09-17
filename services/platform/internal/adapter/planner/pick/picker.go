@@ -51,10 +51,13 @@ func New(client *chat.Client, model string) *Picker {
 // one built before turns existed.
 func (p *Picker) Pick(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
+	planCtx usecase.PlanContext,
 ) (usecase.Pick, error) {
 	if len(shortlist.Endpoints) == 0 {
 		return usecase.Pick{Kind: usecase.PickNone}, nil
 	}
+
+	offerProposePanel := planCtx.WorkspaceID != ""
 
 	maxTokens := pickMaxTokens
 
@@ -62,7 +65,7 @@ func (p *Picker) Pick(
 		Model: p.model,
 		Messages: []chat.Message{
 			{Role: "system", Content: SystemPrompt},
-			{Role: "user", Content: userMessage(query, answers, turns, shortlist)},
+			{Role: "user", Content: userMessage(query, answers, turns, shortlist, offerProposePanel)},
 		},
 		Temperature:        chat.Zero(),
 		MaxTokens:          &maxTokens,
@@ -83,5 +86,5 @@ func (p *Picker) Pick(
 		return usecase.Pick{Kind: usecase.PickNone}, nil
 	}
 
-	return parse(resp.Message.Content, candidatesFor(shortlist)), nil
+	return parse(resp.Message.Content, candidatesFor(shortlist, offerProposePanel)), nil
 }

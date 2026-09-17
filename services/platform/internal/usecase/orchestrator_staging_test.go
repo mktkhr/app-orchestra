@@ -44,16 +44,19 @@ type fakePicker struct {
 	answers []usecase.Answer
 	turns   []usecase.Turn
 	catalog domain.Catalog
+	planCtx usecase.PlanContext
 	calls   int
 }
 
 func (f *fakePicker) Pick(
 	_ context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, catalog domain.Catalog,
+	planCtx usecase.PlanContext,
 ) (usecase.Pick, error) {
 	f.query = query
 	f.answers = answers
 	f.turns = turns
 	f.catalog = catalog
+	f.planCtx = planCtx
 	f.calls++
 
 	return f.pick, f.err
@@ -156,6 +159,32 @@ func TestPlanStagedOnPickOperationCallsThePlannerWithThePickedToolAskUserAndList
 		{OperationID: "Opb", DisplayName: "操作b", Service: "svc-b"},
 		{OperationID: "Opc", DisplayName: "操作c", Service: "svc-c"},
 	}, result.Alternatives)
+}
+
+// TestPlanStagedPassesTheRequestsOwnWorkspaceToThePicker is the pick
+// stage's own counterpart to O3 (docs/specs/offering.md): planStaged builds
+// PlanContext from the request's own workspaceID, exactly as planOrdinary
+// already does for ToolsFor, and hands it to o.picker.Pick - so a picker
+// adapter can apply the same "propose_panel only with a workspace" rule
+// ToolsFor itself already enforces for planOrdinary/planPreferred, rather
+// than every adapter learning about it independently. picker.planCtx is
+// fakePicker's own record of what it was called with.
+func TestPlanStagedPassesTheRequestsOwnWorkspaceToThePicker(t *testing.T) {
+	tests := map[string]string{"no workspace": "", "workspace": "ws-1"}
+
+	for name, workspaceID := range tests {
+		t.Run(name, func(t *testing.T) {
+			picker := &fakePicker{pick: usecase.Pick{Kind: usecase.PickOperation, Service: "svc-a", OperationID: "Opa"}}
+			planner := &fakePlanner{decision: usecase.Decision{Kind: usecase.DecisionCall, Service: "svc-a", OperationID: "Opa"}}
+
+			orchestrator := stagedOrchestrator(t, picker, planner, &fakeInvoker{data: map[string]any{}})
+
+			_, err := orchestrator.Plan(t.Context(), adminUser(), "質問", nil, nil, workspaceID, "", nil)
+
+			require.NoError(t, err)
+			assert.Equal(t, usecase.PlanContext{WorkspaceID: workspaceID}, picker.planCtx)
+		})
+	}
 }
 
 // TestPlanStagedOnPickOperationWithRequiredParameterCallsThePlannerAndForms

@@ -127,7 +127,7 @@ func TestPickSendsStateInstructionsAndCriteria(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, "在庫を見せて", gotBody["state"])
@@ -157,6 +157,62 @@ func TestPickSendsStateInstructionsAndCriteria(t *testing.T) {
 	assert.Equal(t, pick.PhraseNone, criteria[pick.IDNone])
 }
 
+// TestPickWithNoWorkspaceOmitsProposePanelFromCriteriaAndInstructions is O3
+// (docs/specs/offering.md): a request carrying no workspace
+// (usecase.PlanContext{}, WorkspaceID "") must never mention propose_panel
+// anywhere in the "pick" question - not in criteria, not in instructions -
+// list_capabilities and none stay, unconditionally, exactly as
+// usecase.ToolsFor already excludes the built-in tool of the same name for
+// planOrdinary/planPreferred rather than merely describing it as
+// unavailable. Run for both CriteriaV1 (the default) and CriteriaV2, since
+// each builds its own criteria and instructions independently.
+func TestPickWithNoWorkspaceOmitsProposePanelFromCriteriaAndInstructions(t *testing.T) {
+	for name, opts := range map[string][]jev.Option{
+		"CriteriaV1": nil,
+		"CriteriaV2": {jev.WithCriteria(jev.CriteriaV2)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var gotBody map[string]any
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+					t.Errorf("decoding request body: %v", err)
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+
+				if _, err := w.Write([]byte(responseWith(t, "listInventoryItems", 0.9))); err != nil {
+					t.Errorf("writing fixture response: %v", err)
+				}
+			}))
+			t.Cleanup(server.Close)
+
+			picker := jev.New(server.URL, "test-key", nil, opts...)
+
+			_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{})
+			require.NoError(t, err)
+
+			questions, ok := gotBody["questions"].(map[string]any)
+			require.True(t, ok)
+
+			pickQuestion, ok := questions["pick"].(map[string]any)
+			require.True(t, ok)
+
+			instructions, ok := pickQuestion["instructions"].(string)
+			require.True(t, ok)
+			assert.Contains(t, instructions, "list_capabilities")
+			assert.NotContains(t, instructions, "propose_panel")
+			assert.Contains(t, instructions, "none")
+
+			criteria, ok := pickQuestion["criteria"].(map[string]any)
+			require.True(t, ok)
+			assert.Contains(t, criteria, pick.IDListCapabilities)
+			assert.NotContains(t, criteria, pick.IDProposePanel)
+			assert.Contains(t, criteria, pick.IDNone)
+		})
+	}
+}
+
 func TestPickAppendsOneAnswerLinePerAnswer(t *testing.T) {
 	var gotBody map[string]any
 
@@ -177,7 +233,7 @@ func TestPickAppendsOneAnswerLinePerAnswer(t *testing.T) {
 
 	answers := []usecase.Answer{{Param: "status", Value: "active"}, {Param: "type", Value: "A"}}
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", answers, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", answers, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, "在庫を見せて\n回答: status=active\n回答: type=A", gotBody["state"])
@@ -187,7 +243,7 @@ func TestPickMapsChoiceToShortlistEndpoint(t *testing.T) {
 	server := stubServer(t, http.StatusOK, responseWith(t, "listAttendanceRecords", 0.9))
 	picker := jev.New(server.URL, "test-key", nil)
 
-	result, err := picker.Pick(context.Background(), "勤怠を見せて", nil, nil, shortlistCatalog())
+	result, err := picker.Pick(context.Background(), "勤怠を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.Equal(t, usecase.Pick{
 		Kind: usecase.PickOperation, Service: "attendance", OperationID: "listAttendanceRecords",
@@ -207,7 +263,7 @@ func TestPickMapsEachBuiltinChoice(t *testing.T) {
 			server := stubServer(t, http.StatusOK, responseWith(t, choice, 0.9))
 			picker := jev.New(server.URL, "test-key", nil)
 
-			result, err := picker.Pick(context.Background(), "何ができる？", nil, nil, shortlistCatalog())
+			result, err := picker.Pick(context.Background(), "何ができる？", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 			require.NoError(t, err)
 			assert.Equal(t, want, result.Kind)
 			assert.False(t, result.Ambiguous)
@@ -219,7 +275,7 @@ func TestPickConfidenceBelowThresholdIsAmbiguous(t *testing.T) {
 	server := stubServer(t, http.StatusOK, responseWith(t, "listInventoryItems", 0.4))
 	picker := jev.New(server.URL, "test-key", nil)
 
-	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.True(t, result.Ambiguous)
 }
@@ -228,7 +284,7 @@ func TestPickConfidenceAtOrAboveThresholdIsNotAmbiguous(t *testing.T) {
 	server := stubServer(t, http.StatusOK, responseWith(t, "listInventoryItems", 0.5))
 	picker := jev.New(server.URL, "test-key", nil)
 
-	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.False(t, result.Ambiguous)
 }
@@ -237,7 +293,7 @@ func TestPickWithAmbiguityThresholdOverridesTheDefault(t *testing.T) {
 	server := stubServer(t, http.StatusOK, responseWith(t, "listInventoryItems", 0.8))
 	picker := jev.New(server.URL, "test-key", nil, jev.WithAmbiguityThreshold(0.9))
 
-	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.True(t, result.Ambiguous)
 }
@@ -246,7 +302,7 @@ func TestPickUnauthorizedNamesTheStatusWithoutTheKey(t *testing.T) {
 	server := stubServer(t, http.StatusUnauthorized, `{"error":"invalid api key"}`)
 	picker := jev.New(server.URL, "super-secret-key", nil)
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "401")
 	assert.NotContains(t, err.Error(), "super-secret-key")
@@ -257,7 +313,7 @@ func TestPickUnknownChoiceIsPickNoneWithAWarnLog(t *testing.T) {
 	server := stubServer(t, http.StatusOK, responseWith(t, "noSuchOperation", 0.9))
 	picker := jev.New(server.URL, "test-key", nil)
 
-	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.Equal(t, usecase.PickNone, result.Kind)
 
@@ -275,7 +331,7 @@ func TestPickEmptyShortlistIsPickNoneWithoutACall(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil)
 
-	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, domain.Catalog{})
+	result, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, domain.Catalog{}, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, result)
 	assert.False(t, called, "expected no call to the API for an empty shortlist")
@@ -286,7 +342,7 @@ func TestPickCompletedLogCarriesConfidenceTokensAndProvider(t *testing.T) {
 	server := stubServer(t, http.StatusOK, responseWith(t, "listInventoryItems", 0.87))
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	completed := logLineWith(t, buf, "pick_confidence")
@@ -309,7 +365,7 @@ func TestPickCompletedLogCarriesTheRawChoiceForABuiltin(t *testing.T) {
 	server := stubServer(t, http.StatusOK, responseWith(t, pick.IDNone, 0.9))
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	completed := logLineWith(t, buf, "pick_choice")
@@ -330,7 +386,7 @@ func TestPickCompletedLogCarriesTheFullProbabilityDistribution(t *testing.T) {
 	server := stubServer(t, http.StatusOK, body)
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	completed := logLineWith(t, buf, "pick_probabilities")

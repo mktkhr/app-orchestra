@@ -19,24 +19,32 @@ import (
 // invoked - the one assertion this whole suite leans on to prove the
 // unused side of a fallback decision was never called at all.
 type fakePicker struct {
-	pick  func(ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog) (usecase.Pick, error)
-	calls int
+	pick func(
+		ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
+		planCtx usecase.PlanContext,
+	) (usecase.Pick, error)
+	calls   int
+	planCtx usecase.PlanContext
 }
 
 func (f *fakePicker) Pick(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
+	planCtx usecase.PlanContext,
 ) (usecase.Pick, error) {
 	f.calls++
+	f.planCtx = planCtx
 
-	return f.pick(ctx, query, answers, turns, shortlist)
+	return f.pick(ctx, query, answers, turns, shortlist, planCtx)
 }
 
 var _ usecase.Picker = (*fakePicker)(nil)
 
 func fixedPick(result usecase.Pick, err error) func(
-	context.Context, string, []usecase.Answer, []usecase.Turn, domain.Catalog,
+	context.Context, string, []usecase.Answer, []usecase.Turn, domain.Catalog, usecase.PlanContext,
 ) (usecase.Pick, error) {
-	return func(context.Context, string, []usecase.Answer, []usecase.Turn, domain.Catalog) (usecase.Pick, error) {
+	return func(
+		context.Context, string, []usecase.Answer, []usecase.Turn, domain.Catalog, usecase.PlanContext,
+	) (usecase.Pick, error) {
 		return result, err
 	}
 }
@@ -48,7 +56,7 @@ func TestPickUsesJevWhenConfidentCatalogueOperationAndNeverCallsLocal(t *testing
 
 	p := hybrid.New(jev, local)
 
-	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{})
+	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{}, usecase.PlanContext{})
 	require.NoError(t, err)
 	assert.Equal(t, jevPick, got)
 	assert.Equal(t, 0, local.calls, "local picker must not be called when Jev is confident")
@@ -62,7 +70,7 @@ func TestPickFallsBackToLocalOnLowConfidence(t *testing.T) {
 
 	p := hybrid.New(jev, local, hybrid.WithThreshold(0.7))
 
-	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{})
+	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{}, usecase.PlanContext{})
 	require.NoError(t, err)
 	assert.Equal(t, localPick, got)
 	assert.Equal(t, 1, local.calls)
@@ -76,7 +84,7 @@ func TestPickFallsBackToLocalOnBuiltinRegardlessOfConfidence(t *testing.T) {
 
 	p := hybrid.New(jev, local)
 
-	got, err := p.Pick(t.Context(), "何ができる？", nil, nil, domain.Catalog{})
+	got, err := p.Pick(t.Context(), "何ができる？", nil, nil, domain.Catalog{}, usecase.PlanContext{})
 	require.NoError(t, err)
 	assert.Equal(t, localPick, got)
 	assert.Equal(t, 1, local.calls)
@@ -89,7 +97,7 @@ func TestPickFallsBackToLocalOnJevError(t *testing.T) {
 
 	p := hybrid.New(jev, local)
 
-	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{})
+	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{}, usecase.PlanContext{})
 	require.NoError(t, err)
 	assert.Equal(t, localPick, got)
 	assert.Equal(t, 1, local.calls)
@@ -100,7 +108,7 @@ func TestPickFallsBackToLocalOnTimeoutWithinTestBudget(t *testing.T) {
 	localPick := usecase.Pick{Kind: usecase.PickOperation, Service: "inventory", OperationID: "listInventoryItems"}
 
 	jev := &fakePicker{pick: func(
-		ctx context.Context, _ string, _ []usecase.Answer, _ []usecase.Turn, _ domain.Catalog,
+		ctx context.Context, _ string, _ []usecase.Answer, _ []usecase.Turn, _ domain.Catalog, _ usecase.PlanContext,
 	) (usecase.Pick, error) {
 		select {
 		case <-time.After(blockFor):
@@ -114,7 +122,7 @@ func TestPickFallsBackToLocalOnTimeoutWithinTestBudget(t *testing.T) {
 	p := hybrid.New(jev, local, hybrid.WithJevTimeout(30*time.Millisecond))
 
 	start := time.Now()
-	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{})
+	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{}, usecase.PlanContext{})
 	elapsed := time.Since(start)
 
 	require.NoError(t, err)
@@ -129,9 +137,29 @@ func TestPickReturnsNoneWithoutErrorWhenBothFail(t *testing.T) {
 
 	p := hybrid.New(jev, local)
 
-	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{})
+	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{}, usecase.PlanContext{})
 	require.NoError(t, err)
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)
+}
+
+// TestPickPassesPlanContextToBothInnerPickers proves this package holds
+// none of the O3 workspace logic itself (docs/specs/offering.md,
+// package doc comment): Pick just forwards the planCtx it was given,
+// unchanged, to both the Jev half and, on fallback, the local half - each
+// inner picker applies "propose_panel only with a workspace" on its own.
+func TestPickPassesPlanContextToBothInnerPickers(t *testing.T) {
+	planCtx := usecase.PlanContext{WorkspaceID: "ws-1"}
+	jevPick := usecase.Pick{Kind: usecase.PickNone, Confidence: 0.99}
+	localPick := usecase.Pick{Kind: usecase.PickOperation, OperationID: "listInventoryItems"}
+	jev := &fakePicker{pick: fixedPick(jevPick, nil)}
+	local := &fakePicker{pick: fixedPick(localPick, nil)}
+
+	p := hybrid.New(jev, local)
+
+	_, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{}, planCtx)
+	require.NoError(t, err)
+	assert.Equal(t, planCtx, jev.planCtx)
+	assert.Equal(t, planCtx, local.planCtx, "the fallback call must carry the same planCtx too")
 }
 
 func TestNewDefaultsTimeoutAndThresholdWhenOptionsGiveZeroOrNone(t *testing.T) {
@@ -144,7 +172,7 @@ func TestNewDefaultsTimeoutAndThresholdWhenOptionsGiveZeroOrNone(t *testing.T) {
 
 	p := hybrid.New(jev, local, hybrid.WithJevTimeout(0))
 
-	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{})
+	got, err := p.Pick(t.Context(), "在庫を見せて", nil, nil, domain.Catalog{}, usecase.PlanContext{})
 	require.NoError(t, err)
 	assert.Equal(t, jevPick, got)
 	assert.Equal(t, 0, local.calls)

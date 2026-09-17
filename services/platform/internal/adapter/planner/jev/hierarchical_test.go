@@ -107,17 +107,27 @@ func hierarchicalStubServer(t *testing.T, body string) *httptest.Server {
 	return server
 }
 
-// TestPickHierarchicalRequestShape asserts the >255 request's own shape:
-// one "service" question naming every service present plus the three
-// built-ins, one "op_<service>" question per service naming that service's
-// own endpoints only - no built-ins.
-func TestPickHierarchicalRequestShape(t *testing.T) {
-	catalog := bigCatalog(3, 90) // 270 endpoints + 3 built-ins > 255
+// capturedShapeRequest holds one requestShapeServer request's decoded body -
+// a struct, not a bare *map[string]any, since gocritic's ptrToRefParam flags
+// a pointer to an already-reference map type even as a return value (the
+// same reasoning mapping_v5_test.go's own capturedRequest gives).
+type capturedShapeRequest struct {
+	body map[string]any
+}
 
-	var gotBody map[string]any
+// requestShapeServer starts a server answering every request with a fixed
+// three-service hierarchical response body (one svc0 candidate favoured),
+// decoding each request it receives into the returned capturedShapeRequest
+// - the shared setup TestPickHierarchicalRequestShape and
+// TestPickHierarchicalWithNoWorkspaceOmitsProposePanelFromTheServiceQuestion
+// both need, factored out so golangci's dupl check sees one copy, not two.
+func requestShapeServer(t *testing.T) (*httptest.Server, *capturedShapeRequest) {
+	t.Helper()
+
+	captured := &capturedShapeRequest{}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&captured.body); err != nil {
 			t.Errorf("decoding request body: %v", err)
 		}
 
@@ -131,10 +141,23 @@ func TestPickHierarchicalRequestShape(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
+	return server, captured
+}
+
+// TestPickHierarchicalRequestShape asserts the >255 request's own shape:
+// one "service" question naming every service present plus the three
+// built-ins, one "op_<service>" question per service naming that service's
+// own endpoints only - no built-ins.
+func TestPickHierarchicalRequestShape(t *testing.T) {
+	catalog := bigCatalog(3, 90) // 270 endpoints + 3 built-ins > 255
+
+	server, captured := requestShapeServer(t)
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, catalog)
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, catalog, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
+
+	gotBody := captured.body
 
 	questions, ok := gotBody["questions"].(map[string]any)
 	require.True(t, ok)
@@ -169,6 +192,41 @@ func TestPickHierarchicalRequestShape(t *testing.T) {
 	}
 }
 
+// TestPickHierarchicalWithNoWorkspaceOmitsProposePanelFromTheServiceQuestion
+// is O3 (docs/specs/offering.md) for the hierarchical path: the "service"
+// question's own criteria must never carry propose_panel with no workspace
+// - list_capabilities and none stay, unconditionally. Every "op_<service>"
+// question already carries no built-ins at all regardless
+// (TestPickHierarchicalRequestShape, above), so this test only needs to
+// check "service".
+func TestPickHierarchicalWithNoWorkspaceOmitsProposePanelFromTheServiceQuestion(t *testing.T) {
+	catalog := bigCatalog(3, 90) // 270 endpoints + 3 built-ins > 255
+
+	server, captured := requestShapeServer(t)
+	picker := jev.New(server.URL, "test-key", nil)
+
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, catalog, usecase.PlanContext{})
+	require.NoError(t, err)
+
+	gotBody := captured.body
+
+	questions, ok := gotBody["questions"].(map[string]any)
+	require.True(t, ok)
+
+	serviceQuestion, ok := questions["service"].(map[string]any)
+	require.True(t, ok)
+
+	serviceCriteria, ok := serviceQuestion["criteria"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, serviceCriteria, pick.IDListCapabilities)
+	assert.NotContains(t, serviceCriteria, pick.IDProposePanel)
+	assert.Contains(t, serviceCriteria, pick.IDNone)
+
+	instructions, ok := serviceQuestion["instructions"].(string)
+	require.True(t, ok)
+	assert.NotContains(t, instructions, "propose_panel")
+}
+
 // TestPickHierarchicalCombinesServiceAndOpProbabilities: the winning
 // endpoint is the one whose sqrt(P(service) * P(op|service)) is highest -
 // not simply the endpoint with the single highest raw probability in
@@ -188,7 +246,7 @@ func TestPickHierarchicalCombinesServiceAndOpProbabilities(t *testing.T) {
 	server := hierarchicalStubServer(t, body)
 	picker := jev.New(server.URL, "test-key", nil)
 
-	result, err := picker.Pick(context.Background(), "何かを見せて", nil, nil, catalog)
+	result, err := picker.Pick(context.Background(), "何かを見せて", nil, nil, catalog, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.Equal(t, usecase.Pick{
 		Kind: usecase.PickOperation, Service: "svc1", OperationID: "op1_0",
@@ -212,7 +270,7 @@ func TestPickHierarchicalBuiltinCanWin(t *testing.T) {
 	server := hierarchicalStubServer(t, body)
 	picker := jev.New(server.URL, "test-key", nil)
 
-	result, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, catalog)
+	result, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, catalog, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.Equal(t, usecase.PickNone, result.Kind)
 	assert.Empty(t, result.OperationID)
@@ -233,7 +291,7 @@ func TestPickHierarchicalLowScoreIsAmbiguous(t *testing.T) {
 	server := hierarchicalStubServer(t, body)
 	picker := jev.New(server.URL, "test-key", nil)
 
-	result, err := picker.Pick(context.Background(), "何かを見せて", nil, nil, catalog)
+	result, err := picker.Pick(context.Background(), "何かを見せて", nil, nil, catalog, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	// sqrt(0.5*0.5) = 0.5, at the default 0.5 threshold - not ambiguous;
 	// confirm the boundary is treated the same way mapAnswer's own S4 rule
@@ -242,7 +300,7 @@ func TestPickHierarchicalLowScoreIsAmbiguous(t *testing.T) {
 
 	picker = jev.New(server.URL, "test-key", nil, jev.WithAmbiguityThreshold(0.9))
 
-	result, err = picker.Pick(context.Background(), "何かを見せて", nil, nil, catalog)
+	result, err = picker.Pick(context.Background(), "何かを見せて", nil, nil, catalog, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.True(t, result.Ambiguous)
 }
@@ -262,7 +320,7 @@ func TestPickHierarchicalServiceTooLargeErrors(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, catalog)
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, catalog, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.Error(t, err)
 	require.ErrorIs(t, err, jev.ErrServiceTooLarge)
 	assert.False(t, called, "expected no call to the API when a service alone exceeds 255 endpoints")
@@ -302,7 +360,7 @@ func TestPick20EndpointRequestIsUnchanged(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, catalog)
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, catalog, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	questions, ok := gotBody["questions"].(map[string]any)

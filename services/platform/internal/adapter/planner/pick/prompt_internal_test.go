@@ -38,9 +38,25 @@ func TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted(t *te
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("在庫を見せて", nil, nil, catalog))
-	assert.Equal(t, want, userMessage("在庫を見せて", []usecase.Answer{}, []usecase.Turn{}, catalog),
+	assert.Equal(t, want, userMessage("在庫を見せて", nil, nil, catalog, true))
+	assert.Equal(t, want, userMessage("在庫を見せて", []usecase.Answer{}, []usecase.Turn{}, catalog, true),
 		"empty, non-nil answers and turns slices must build the same message as nil")
+}
+
+// TestUserMessageWithoutOfferProposePanelOmitsItsLine is O3
+// (docs/specs/offering.md): with offerProposePanel false, lineProposePanel
+// is absent from the candidate list entirely - list_capabilities and none
+// stay, unconditionally.
+func TestUserMessageWithoutOfferProposePanelOmitsItsLine(t *testing.T) {
+	catalog := userMessageCatalog()
+
+	want := "質問: 在庫を見せて\n\n候補:\n" +
+		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
+		lineListCapabilities + "\n" + lineNone
+
+	got := userMessage("在庫を見せて", nil, nil, catalog, false)
+	assert.Equal(t, want, got)
+	assert.NotContains(t, got, "propose_panel")
 }
 
 // TestUserMessageWithAnswersAddsOneLinePerAnswerBeforeTheCandidates is the
@@ -61,7 +77,7 @@ func TestUserMessageWithAnswersAddsOneLinePerAnswerBeforeTheCandidates(t *testin
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("注文を見たい", answers, nil, catalog))
+	assert.Equal(t, want, userMessage("注文を見たい", answers, nil, catalog, true))
 }
 
 // TestUserMessageWithTurnsAddsOneLinePerTurnAfterAnswers is the with-turns
@@ -92,5 +108,5 @@ func TestUserMessageWithTurnsAddsOneLinePerTurnAfterAnswers(t *testing.T) {
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("itm-001の詳細", nil, turns, catalog))
+	assert.Equal(t, want, userMessage("itm-001の詳細", nil, turns, catalog, true))
 }

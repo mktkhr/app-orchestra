@@ -8,11 +8,53 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
-// defaultInstructions and defaultInstructionsV2 are the "pick" question's
-// own default instructions: a plain string, byte-identical to this
-// package's own pre-v5 "instructions"/"instructionsV2" constants
-// (docs/measurements/jev-picker-v2.md). This is the default again as of
-// v5's own isolation (docs/measurements/jev-v5.md, "per-variable
+// instructionsPrefix is defaultInstructionsFor's own opening sentence,
+// byte-identical to this package's pre-v5 "instructions" constant's own
+// first sentence (docs/measurements/jev-picker-v2.md) - unaffected by
+// which built-ins instructionsBuiltinsFor goes on to name.
+const instructionsPrefix = "社内APIの振り分け役。質問に対して、候補の中から呼ぶべき操作を1つ選ぶ。"
+
+// instructionsListCapabilitiesClause and instructionsNoneClause are
+// instructionsBuiltinsFor's own two always-present clauses;
+// instructionsProposePanelClause is the third, included only when
+// offerProposePanel is true - added 2026-09-18 so instructionsBuiltinsFor
+// can compose the sentence from whichever built-ins the request actually
+// offers (O3, docs/specs/offering.md: propose_panel only with a workspace,
+// exactly as usecase.ToolsFor's own appliesFromWorkspace already
+// restricts the built-in tool of the same name) rather than editing a
+// fixed string. Concatenated, with offerProposePanel true, these three
+// clauses are byte-identical to the pre-2026-09-18 fixed
+// "instructionsBuiltins" string every caller before this sent.
+const (
+	instructionsListCapabilitiesClause = "list_capabilitiesは「何ができるか」を尋ねる質問のとき"
+	instructionsProposePanelClause     = "propose_panelは画面に何かを出したい質問のとき"
+	instructionsNoneClause             = "noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。"
+)
+
+// instructionsBuiltinsFor builds the sentence explaining each built-in the
+// request actually offers: instructionsListCapabilitiesClause and
+// instructionsNoneClause always, instructionsProposePanelClause between
+// them only when offerProposePanel is true - see its own doc comment for
+// why. Read by both defaultInstructionsFor (the plain-string form) and
+// instructionsFor (the object form's own Builtins field), so the two never
+// describe a different set of built-ins from what criteriaFor/criteriaForV2
+// (or their hierarchical serviceCriteriaV1/V2 counterparts) actually put in
+// the request beside it.
+func instructionsBuiltinsFor(offerProposePanel bool) string {
+	clauses := []string{instructionsListCapabilitiesClause}
+
+	if offerProposePanel {
+		clauses = append(clauses, instructionsProposePanelClause)
+	}
+
+	return strings.Join(clauses, "、") + "、" + instructionsNoneClause
+}
+
+// defaultInstructionsFor builds the "pick" question's own default
+// instructions - a plain string, byte-identical (when offerProposePanel is
+// true) to this package's own pre-v5 "instructions"/"instructionsV2"
+// constants (docs/measurements/jev-picker-v2.md). This is the default again
+// as of v5's own isolation (docs/measurements/jev-v5.md, "per-variable
 // isolation"): the v5 trial's own object-shaped alternative
 // (wireInstructionsObject, below) measured worse on real-attendance-detail
 // (10/10 baseline -> 0/10 under the object form; reverting to this plain
@@ -22,29 +64,21 @@ import (
 // own new failure mode) was not confirmed to work either. See
 // wireInstructionsObject's own doc comment for why the object form is
 // kept, behind WithObjectInstructions, rather than deleted outright.
-const defaultInstructions = "社内APIの振り分け役。質問に対して、候補の中から呼ぶべき操作を1つ選ぶ。" +
-	"list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、" +
-	"noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。"
+// offerProposePanel is instructionsBuiltinsFor's own switch (O3).
+func defaultInstructionsFor(criteria string, offerProposePanel bool) string {
+	instructions := instructionsPrefix + instructionsBuiltinsFor(offerProposePanel)
 
-// defaultInstructionsV2 is defaultInstructions plus CriteriaV2's own
-// addition, unchanged since v2 (docs/measurements/jev-picker-v2.md,
-// section 0): what a criterion's examples and not_for fields mean, since
-// Jev is never told a field's own name carries meaning beyond its value
-// (docs.typesafe.ai/primitives/choice).
-const defaultInstructionsV2 = defaultInstructions +
-	"候補には examples（その操作に対して人がよく尋ねる質問）と" +
-	"not_for（混同しやすい別の操作）がある。"
-
-// defaultInstructionsFor returns defaultInstructions or
-// defaultInstructionsV2 depending on criteria - buildRequest's own
-// instructions value whenever WithObjectInstructions is not given (the
-// default, since v5's own isolation, docs/measurements/jev-v5.md).
-func defaultInstructionsFor(criteria string) string {
 	if criteria == CriteriaV2 {
-		return defaultInstructionsV2
+		// instructionsNoteV2 is defined below, alongside the
+		// object-instructions form's own copy of this same addition -
+		// unchanged since v2 (docs/measurements/jev-picker-v2.md, section
+		// 0): what a criterion's examples and not_for fields mean, since
+		// Jev is never told a field's own name carries meaning beyond its
+		// value (docs.typesafe.ai/primitives/choice).
+		instructions += instructionsNoteV2
 	}
 
-	return defaultInstructions
+	return instructions
 }
 
 // instructionsQuestion is the object-instructions form's own opening
@@ -68,13 +102,6 @@ const instructionsQuestion = "社内APIの振り分け役。候補の中から�
 // WithObjectInstructions for anyone re-testing a narrower version of it.
 const instructionsFocus = "質問が求めている操作そのものに注目すること。動詞（一覧/詳細/作成/更新/削除）と" +
 	"対象resourceの両方を、選ぶ候補と一致させる。"
-
-// instructionsBuiltins spells out what each of the three built-ins is
-// for - byte for byte the sentence defaultInstructions carries after its
-// own framing sentence, moved into its own object field for the
-// object-instructions form.
-const instructionsBuiltins = "list_capabilitiesは「何ができるか」を尋ねる質問のとき、propose_panelは画面に何かを出したい質問のとき、" +
-	"noneはどの候補も質問に合わない、または質問が業務と無関係なときに選ぶ。"
 
 // instructionsNoteV2 is the object-instructions form's own counterpart to
 // defaultInstructionsV2's own CriteriaV2 addition - unchanged wording,
@@ -123,9 +150,13 @@ type wireInstructionsObject struct {
 // instructionsFor builds the "pick" question's instructions object, sent
 // only under WithObjectInstructions: instructionsNoteV2 only under
 // CriteriaV2, instructionsContext only when hasTurns (the request carries
-// a non-empty turns list).
-func instructionsFor(criteria string, hasTurns bool) wireInstructionsObject {
-	wi := wireInstructionsObject{Question: instructionsQuestion, Focus: instructionsFocus, Builtins: instructionsBuiltins}
+// a non-empty turns list), and Builtins from instructionsBuiltinsFor - the
+// object form's own copy of defaultInstructionsFor's O3 switch
+// (offerProposePanel).
+func instructionsFor(criteria string, hasTurns, offerProposePanel bool) wireInstructionsObject {
+	wi := wireInstructionsObject{
+		Question: instructionsQuestion, Focus: instructionsFocus, Builtins: instructionsBuiltinsFor(offerProposePanel),
+	}
 
 	if criteria == CriteriaV2 {
 		wi.Note = instructionsNoteV2
@@ -296,11 +327,14 @@ func notForV2(e *domain.Endpoint, shortlist domain.Catalog) string {
 
 // criteriaForV2 builds the "pick" question's CriteriaV2 criteria: one
 // object per shortlist endpoint (whatForV2, the endpoint's own
-// x-orchestra-examples when it declares any, notForV2), then the three
-// fixed built-ins with their v1 phrases as "what", "none" and
-// "list_capabilities" given their own fixed examples (noneExamplesV2,
-// one 「何ができるの？」) - the CriteriaV2 counterpart to criteriaFor.
-func criteriaForV2(shortlist domain.Catalog) map[string]criterionV2 {
+// x-orchestra-examples when it declares any, notForV2), then the fixed
+// built-ins with their v1 phrases as "what", "none" and "list_capabilities"
+// given their own fixed examples (noneExamplesV2, one 「何ができるの？」) -
+// the CriteriaV2 counterpart to criteriaFor. propose_panel is included only
+// when offerProposePanel is true (O3, docs/specs/offering.md - the same
+// condition usecase.ToolsFor's own appliesFromWorkspace already applies to
+// the built-in tool of the same name).
+func criteriaForV2(shortlist domain.Catalog, offerProposePanel bool) map[string]criterionV2 {
 	criteria := make(map[string]criterionV2, len(shortlist.Endpoints)+builtinCriteriaCount)
 
 	for i := range shortlist.Endpoints {
@@ -315,7 +349,11 @@ func criteriaForV2(shortlist domain.Catalog) map[string]criterionV2 {
 	criteria[pick.IDListCapabilities] = criterionV2{
 		What: pick.PhraseListCapabilities, Examples: []string{"何ができるの？"},
 	}
-	criteria[pick.IDProposePanel] = criterionV2{What: pick.PhraseProposePanel}
+
+	if offerProposePanel {
+		criteria[pick.IDProposePanel] = criterionV2{What: pick.PhraseProposePanel}
+	}
+
 	criteria[pick.IDNone] = criterionV2{What: pick.PhraseNone, Examples: noneExamplesV2()}
 
 	return criteria
@@ -324,9 +362,11 @@ func criteriaForV2(shortlist domain.Catalog) map[string]criterionV2 {
 // criteriaFor builds the "pick" question's criteria: one entry per
 // shortlist endpoint, keyed by its own OperationID, valued
 // "<serviceDisplayName> / <summary>" - the same two columns
-// pick.candidateLine shows the local picker - then the three fixed
-// built-ins, keyed and phrased exactly as pick.IDListCapabilities et al.
-func criteriaFor(shortlist domain.Catalog) map[string]string {
+// pick.candidateLine shows the local picker - then the fixed built-ins,
+// keyed and phrased exactly as pick.IDListCapabilities et al.
+// propose_panel is included only when offerProposePanel is true - see
+// criteriaForV2's own doc comment for why.
+func criteriaFor(shortlist domain.Catalog, offerProposePanel bool) map[string]string {
 	criteria := make(map[string]string, len(shortlist.Endpoints)+builtinCriteriaCount)
 
 	for i := range shortlist.Endpoints {
@@ -335,7 +375,10 @@ func criteriaFor(shortlist domain.Catalog) map[string]string {
 	}
 
 	criteria[pick.IDListCapabilities] = pick.PhraseListCapabilities
-	criteria[pick.IDProposePanel] = pick.PhraseProposePanel
+
+	if offerProposePanel {
+		criteria[pick.IDProposePanel] = pick.PhraseProposePanel
+	}
 	criteria[pick.IDNone] = pick.PhraseNone
 
 	return criteria
@@ -453,20 +496,27 @@ func stateValue(query string, answers []usecase.Answer, turns []usecase.Turn, sh
 // docs/measurements/jev-v5.md), or instructionsFor's object when
 // objectInstructions is true (WithObjectInstructions) - state always
 // carries turns the same way regardless of this switch; only the "pick"
-// question's own instructions value changes.
+// question's own instructions value changes. planCtx.WorkspaceID != "" is
+// this request's own offerProposePanel (O3, docs/specs/offering.md):
+// propose_panel is left out of both the criteria and the instructions
+// entirely, not merely described as unavailable, whenever it is "" - the
+// same exclusion usecase.ToolsFor already applies to the built-in tool of
+// the same name for planOrdinary/planPreferred.
 func buildRequest(
 	query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
-	criteria string, objectInstructions bool,
+	criteria string, objectInstructions bool, planCtx usecase.PlanContext,
 ) wireRequest {
-	var wireCriteria any = criteriaFor(shortlist)
+	offerProposePanel := planCtx.WorkspaceID != ""
+
+	var wireCriteria any = criteriaFor(shortlist, offerProposePanel)
 
 	if criteria == CriteriaV2 {
-		wireCriteria = criteriaForV2(shortlist)
+		wireCriteria = criteriaForV2(shortlist, offerProposePanel)
 	}
 
-	var wireQuestionInstructions any = defaultInstructionsFor(criteria)
+	var wireQuestionInstructions any = defaultInstructionsFor(criteria, offerProposePanel)
 	if objectInstructions {
-		wireQuestionInstructions = instructionsFor(criteria, len(turns) > 0)
+		wireQuestionInstructions = instructionsFor(criteria, len(turns) > 0, offerProposePanel)
 	}
 
 	return wireRequest{

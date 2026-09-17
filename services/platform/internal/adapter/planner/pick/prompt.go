@@ -123,21 +123,35 @@ const builtinLineCount = 3
 // then the blank line, one candidate line per shortlist endpoint in
 // shortlist order, then the three fixed lines of S3.
 //
-// When both answers and turns are empty this must build byte-identical
-// output to before either parameter existed: AC-S-103's own measurement,
-// and the stages2 comparison it feeds, both depend on the pick seeing
-// exactly the same prompt it always has whenever there is nothing new to
-// tell it - TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted
+// When both answers and turns are empty and offerProposePanel is true this
+// must build byte-identical output to before either parameter existed:
+// AC-S-103's own measurement, and the stages2 comparison it feeds, both
+// depend on the pick seeing exactly the same prompt it always has whenever
+// there is nothing new to tell it -
+// TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted
 // (prompt_internal_test.go) and TestPickByteIdenticalWithNoTurns
-// (picker_test.go) are the regression guards for that.
-func userMessage(query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog) string {
+// (picker_test.go) are the regression guards for that. offerProposePanel is
+// Picker.Pick's own O3 switch (docs/specs/offering.md - the same condition
+// usecase.ToolsFor's own appliesFromWorkspace already applies to the
+// built-in tool of the same name): lineProposePanel is left out of the
+// candidate list entirely, not merely described as unavailable, whenever
+// it is false.
+func userMessage(
+	query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog, offerProposePanel bool,
+) string {
 	lines := make([]string, 0, len(shortlist.Endpoints)+builtinLineCount)
 
 	for i := range shortlist.Endpoints {
 		lines = append(lines, candidateLine(&shortlist.Endpoints[i]))
 	}
 
-	lines = append(lines, lineListCapabilities, lineProposePanel, lineNone)
+	lines = append(lines, lineListCapabilities)
+
+	if offerProposePanel {
+		lines = append(lines, lineProposePanel)
+	}
+
+	lines = append(lines, lineNone)
 
 	return "質問: " + query + "\n" + answerLines(answers) + turnLines(turns, shortlist) + "\n候補:\n" +
 		strings.Join(lines, "\n")

@@ -76,6 +76,20 @@ type Pick struct {
 // own PICK_SYSTEM_PROMPT, has nothing to render them into - S2's
 // cross-language comparison depends on that staying true);
 // internal/adapter/planner/jev's Picker sends them inside its own request.
+//
+// planCtx is the same PlanContext ToolsFor already reads (O2,
+// docs/specs/offering.md) - built once in Orchestrator.planStaged from the
+// request's own workspace, never from the conversation's content, the same
+// exclusion ToolsFor's own doc comment states. Added 2026-09-18 so the pick
+// stage can apply O3 itself: propose_panel is offered to a picker only when
+// planCtx.WorkspaceID is non-empty, exactly as ToolsFor already restricts
+// the built-in tool of the same name for planOrdinary/planPreferred - before
+// this, every Picker offered propose_panel unconditionally, so a
+// workspace-less question could pick it and fall back through
+// planOrdinary's own ErrToolNotOffered-guarded call into the whole
+// catalogue, defeating the pick stage entirely.
 type Picker interface {
-	Pick(ctx context.Context, query string, answers []Answer, turns []Turn, shortlist domain.Catalog) (Pick, error)
+	Pick(
+		ctx context.Context, query string, answers []Answer, turns []Turn, shortlist domain.Catalog, planCtx PlanContext,
+	) (Pick, error)
 }

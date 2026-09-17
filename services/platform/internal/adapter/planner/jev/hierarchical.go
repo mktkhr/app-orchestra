@@ -164,9 +164,10 @@ func serviceDisplayNameOf(shortlist domain.Catalog, service string) string {
 // service in services (serviceOpSummaries, 、-joined - the same
 // "<display> / <summary>" shape criteriaFor's own per-endpoint line uses,
 // so a person reading both questions' criteria side by side sees the same
-// vocabulary), plus the same three fixed built-ins criteriaFor itself
-// appends.
-func serviceCriteriaV1(shortlist domain.Catalog, services []string) map[string]string {
+// vocabulary), plus the same fixed built-ins criteriaFor itself appends -
+// propose_panel only when offerProposePanel is true (O3, the same switch
+// buildRequest's own criteriaFor call already applies).
+func serviceCriteriaV1(shortlist domain.Catalog, services []string, offerProposePanel bool) map[string]string {
 	criteria := make(map[string]string, len(services)+builtinCriteriaCount)
 
 	for _, svc := range services {
@@ -174,7 +175,11 @@ func serviceCriteriaV1(shortlist domain.Catalog, services []string) map[string]s
 	}
 
 	criteria[pick.IDListCapabilities] = pick.PhraseListCapabilities
-	criteria[pick.IDProposePanel] = pick.PhraseProposePanel
+
+	if offerProposePanel {
+		criteria[pick.IDProposePanel] = pick.PhraseProposePanel
+	}
+
 	criteria[pick.IDNone] = pick.PhraseNone
 
 	return criteria
@@ -184,9 +189,10 @@ func serviceCriteriaV1(shortlist domain.Catalog, services []string) map[string]s
 // service's own criterionV2 carries its display name as What and
 // serviceOpSummaries as Examples - the object form's own "what a person
 // might want from this service" slot, filled the same deterministic way as
-// serviceCriteriaV1's joined line - plus the same three fixed built-ins
-// criteriaForV2 itself appends.
-func serviceCriteriaV2(shortlist domain.Catalog, services []string) map[string]criterionV2 {
+// serviceCriteriaV1's joined line - plus the same fixed built-ins
+// criteriaForV2 itself appends, propose_panel only when offerProposePanel
+// is true (see serviceCriteriaV1's own doc comment).
+func serviceCriteriaV2(shortlist domain.Catalog, services []string, offerProposePanel bool) map[string]criterionV2 {
 	criteria := make(map[string]criterionV2, len(services)+builtinCriteriaCount)
 
 	for _, svc := range services {
@@ -194,7 +200,11 @@ func serviceCriteriaV2(shortlist domain.Catalog, services []string) map[string]c
 	}
 
 	criteria[pick.IDListCapabilities] = criterionV2{What: pick.PhraseListCapabilities, Examples: []string{"何ができるの？"}}
-	criteria[pick.IDProposePanel] = criterionV2{What: pick.PhraseProposePanel}
+
+	if offerProposePanel {
+		criteria[pick.IDProposePanel] = criterionV2{What: pick.PhraseProposePanel}
+	}
+
 	criteria[pick.IDNone] = criterionV2{What: pick.PhraseNone, Examples: noneExamplesV2()}
 
 	return criteria
@@ -213,8 +223,12 @@ func serviceCriteriaV2(shortlist domain.Catalog, services []string) map[string]c
 // built-ins; op questions never carry built-ins (this file's own doc
 // comment), so those three keys are deleted again right after building.
 func opCriteriaFor(endpoints domain.Catalog, criteria string) any {
+	// offerProposePanel is passed true here regardless of the request's own
+	// O3 switch: the entry is deleted again immediately below either way,
+	// so which value criteriaFor/criteriaForV2 build it with never reaches
+	// the wire.
 	if criteria == CriteriaV2 {
-		c := criteriaForV2(endpoints)
+		c := criteriaForV2(endpoints, true)
 		delete(c, pick.IDListCapabilities)
 		delete(c, pick.IDProposePanel)
 		delete(c, pick.IDNone)
@@ -222,7 +236,7 @@ func opCriteriaFor(endpoints domain.Catalog, criteria string) any {
 		return c
 	}
 
-	c := criteriaFor(endpoints)
+	c := criteriaFor(endpoints, true)
 	delete(c, pick.IDListCapabilities)
 	delete(c, pick.IDProposePanel)
 	delete(c, pick.IDNone)
@@ -239,21 +253,27 @@ func opCriteriaFor(endpoints domain.Catalog, criteria string) any {
 // it once), one "service" question (serviceCriteriaV1/V2) and one
 // "op_<service>" question per service present in shortlist (opCriteriaFor).
 // Returns ErrServiceTooLarge if any one service's own endpoints alone
-// exceed maxChoiceOptions.
+// exceed maxChoiceOptions. planCtx.WorkspaceID != "" is this request's own
+// offerProposePanel (O3), applied to the "service" question's own criteria
+// and to wireQuestionInstructions exactly as buildRequest applies it to the
+// flat "pick" question - every "op_<service>" question never carries
+// built-ins at all (opCriteriaFor), so it needs no switch of its own.
 func buildHierarchicalRequest(
 	query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
-	criteria string, objectInstructions bool,
+	criteria string, objectInstructions bool, planCtx usecase.PlanContext,
 ) (wireRequest, error) {
+	offerProposePanel := planCtx.WorkspaceID != ""
+
 	services := servicesOf(shortlist)
 
-	var wireServiceCriteria any = serviceCriteriaV1(shortlist, services)
+	var wireServiceCriteria any = serviceCriteriaV1(shortlist, services, offerProposePanel)
 	if criteria == CriteriaV2 {
-		wireServiceCriteria = serviceCriteriaV2(shortlist, services)
+		wireServiceCriteria = serviceCriteriaV2(shortlist, services, offerProposePanel)
 	}
 
-	var wireQuestionInstructions any = defaultInstructionsFor(criteria)
+	var wireQuestionInstructions any = defaultInstructionsFor(criteria, offerProposePanel)
 	if objectInstructions {
-		wireQuestionInstructions = instructionsFor(criteria, len(turns) > 0)
+		wireQuestionInstructions = instructionsFor(criteria, len(turns) > 0, offerProposePanel)
 	}
 
 	questions := map[string]wireQuestion{

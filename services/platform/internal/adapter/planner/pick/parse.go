@@ -26,8 +26,12 @@ const platformService = "platform"
 
 // candidatesFor lists every id the pick's response is matched against: the
 // shortlist's own endpoints, longest id first is decided later (parse), not
-// here - this just enumerates what may be found.
-func candidatesFor(shortlist domain.Catalog) []candidate {
+// here - this just enumerates what may be found. The IDProposePanel
+// candidate is included only when offerProposePanel is true - O3
+// (docs/specs/offering.md), Picker.Pick's own switch, the same one
+// userMessage applies to lineProposePanel (prompt.go): a response naming
+// "propose_panel" cannot match a candidate that was never offered.
+func candidatesFor(shortlist domain.Catalog, offerProposePanel bool) []candidate {
 	candidates := make([]candidate, 0, len(shortlist.Endpoints)+builtinLineCount)
 
 	for i := range shortlist.Endpoints {
@@ -37,11 +41,13 @@ func candidatesFor(shortlist domain.Catalog) []candidate {
 		})
 	}
 
-	return append(candidates,
-		candidate{id: IDListCapabilities, service: platformService},
-		candidate{id: IDProposePanel, service: platformService},
-		candidate{id: IDNone, service: platformService},
-	)
+	candidates = append(candidates, candidate{id: IDListCapabilities, service: platformService})
+
+	if offerProposePanel {
+		candidates = append(candidates, candidate{id: IDProposePanel, service: platformService})
+	}
+
+	return append(candidates, candidate{id: IDNone, service: platformService})
 }
 
 // ambiguousPattern matches the second word e2e/narrowing/pick/client.ts's

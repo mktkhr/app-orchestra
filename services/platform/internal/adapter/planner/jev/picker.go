@@ -167,6 +167,7 @@ func New(baseURL, apiKey string, httpClient *http.Client, opts ...Option) *Picke
 // is bounded to requestTimeout regardless of ctx's own deadline.
 func (p *Picker) Pick(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
+	planCtx usecase.PlanContext,
 ) (usecase.Pick, error) {
 	if len(shortlist.Endpoints) == 0 {
 		return usecase.Pick{Kind: usecase.PickNone}, nil
@@ -178,10 +179,10 @@ func (p *Picker) Pick(
 	start := time.Now()
 
 	if needsHierarchical(shortlist) {
-		return p.pickHierarchical(ctx, query, answers, turns, shortlist, start)
+		return p.pickHierarchical(ctx, query, answers, turns, shortlist, planCtx, start)
 	}
 
-	req := buildRequest(query, answers, turns, shortlist, p.criteria, p.objectInstructions)
+	req := buildRequest(query, answers, turns, shortlist, p.criteria, p.objectInstructions, planCtx)
 	if p.fanOutGate {
 		addImpossibleQuestion(&req)
 	}
@@ -251,9 +252,9 @@ func (p *Picker) Pick(
 // folds it into buildRequest's.
 func (p *Picker) pickHierarchical(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
-	start time.Time,
+	planCtx usecase.PlanContext, start time.Time,
 ) (usecase.Pick, error) {
-	req, err := buildHierarchicalRequest(query, answers, turns, shortlist, p.criteria, p.objectInstructions)
+	req, err := buildHierarchicalRequest(query, answers, turns, shortlist, p.criteria, p.objectInstructions, planCtx)
 	if err != nil {
 		return usecase.Pick{}, fmt.Errorf("building hierarchical jev request: %w", err)
 	}

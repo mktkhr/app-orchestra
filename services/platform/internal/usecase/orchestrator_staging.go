@@ -105,6 +105,8 @@ func (o *Orchestrator) planStaged(
 ) (Result, error) {
 	start := time.Now()
 
+	planCtx := PlanContext{WorkspaceID: workspaceID}
+
 	pickCatalog := catalog
 
 	if service, ok := idAffinity(ctx, query, catalog); ok {
@@ -123,7 +125,7 @@ func (o *Orchestrator) planStaged(
 		}
 	}
 
-	p, err := o.picker.Pick(ctx, query, answers, truncateTurns(turns, o.contextWindow), pickCatalog)
+	p, err := o.picker.Pick(ctx, query, answers, truncateTurns(turns, o.contextWindow), pickCatalog, planCtx)
 	if err != nil {
 		return Result{}, fmt.Errorf("picking: %w", err)
 	}

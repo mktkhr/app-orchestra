@@ -13,6 +13,7 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jev"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/pick"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/domain"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
 
 // collisionShortlist is two endpoints on two services sharing the same
@@ -66,7 +67,7 @@ func TestPickWithCriteriaV2SendsWhatExamplesAndNotFor(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil, jev.WithCriteria(jev.CriteriaV2))
 
-	_, err := picker.Pick(context.Background(), "発注を承認したい", nil, nil, collisionShortlist())
+	_, err := picker.Pick(context.Background(), "発注を承認したい", nil, nil, collisionShortlist(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	questions, ok := gotBody["questions"].(map[string]any)
@@ -143,7 +144,7 @@ func TestPickWithNoCriteriaOptionSendsCriteriaV1ByteForByte(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "発注を承認したい", nil, nil, collisionShortlist())
+	_, err := picker.Pick(context.Background(), "発注を承認したい", nil, nil, collisionShortlist(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	questions, ok := gotBody["questions"].(map[string]any)

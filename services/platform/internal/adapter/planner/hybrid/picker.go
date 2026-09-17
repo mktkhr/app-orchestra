@@ -150,6 +150,7 @@ func New(jevPicker, localPicker usecase.Picker, opts ...Option) *Picker {
 // possibly the local picker's own, and this one), which is expected.
 func (p *Picker) Pick(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
+	planCtx usecase.PlanContext,
 ) (usecase.Pick, error) {
 	start := time.Now()
 
@@ -157,7 +158,7 @@ func (p *Picker) Pick(
 	defer cancel()
 
 	jevStart := time.Now()
-	jevResult, jevErr := p.jevPicker.Pick(jevCtx, query, answers, turns, shortlist)
+	jevResult, jevErr := p.jevPicker.Pick(jevCtx, query, answers, turns, shortlist, planCtx)
 	jevMS := time.Since(jevStart).Milliseconds()
 
 	reason := fallbackReason(jevCtx, jevResult, jevErr, p.threshold)
@@ -168,7 +169,7 @@ func (p *Picker) Pick(
 	}
 
 	localStart := time.Now()
-	localResult, localErr := p.localPicker.Pick(ctx, query, answers, turns, shortlist)
+	localResult, localErr := p.localPicker.Pick(ctx, query, answers, turns, shortlist, planCtx)
 	localMS := time.Since(localStart).Milliseconds()
 
 	if localErr != nil {

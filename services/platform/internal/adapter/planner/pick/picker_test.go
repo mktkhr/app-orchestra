@@ -88,7 +88,7 @@ func TestPickSendsTheExactRequestTheStandInPickerSent(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	picker := pick.New(client, "qwen3.5-9b-q8")
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	temperature, ok := gotBody["temperature"].(float64)
@@ -125,6 +125,70 @@ func TestPickSendsTheExactRequestTheStandInPickerSent(t *testing.T) {
 	)
 }
 
+// TestPickWithNoWorkspaceOmitsProposePanelFromTheCandidateList is O3
+// (docs/specs/offering.md): a request carrying no workspace
+// (usecase.PlanContext{} - the zero value, WorkspaceID "") must never see
+// propose_panel among its candidates, in the user message or anywhere else
+// a response could match it against - list_capabilities and none stay,
+// unconditionally, exactly as usecase.ToolsFor already excludes the
+// built-in tool of the same name for planOrdinary/planPreferred rather than
+// merely describing it as unavailable.
+func TestPickWithNoWorkspaceOmitsProposePanelFromTheCandidateList(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(responseWith("listInventoryItems certain"))); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	picker := pick.New(client, "qwen3.5-9b-q8")
+
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{})
+	require.NoError(t, err)
+
+	messages, ok := gotBody["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, messages, 2)
+
+	user, ok := messages[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t,
+		"質問: 在庫を見せて\n\n候補:\n"+
+			"listInventoryItems\t在庫管理\t在庫の一覧を返す\n"+
+			"listAttendanceRecords\tattendance\t勤怠記録の一覧を返す\n"+
+			"list_capabilities\tplatform\t使える操作の一覧を知りたい\n"+
+			"none\tplatform\tどの候補も質問に合わない（業務と無関係な質問）",
+		user["content"],
+	)
+	assert.NotContains(t, user["content"], "propose_panel")
+}
+
+// TestPickWithNoWorkspaceNeverParsesProposePanel is
+// TestPickWithNoWorkspaceOmitsProposePanelFromTheCandidateList's other
+// half: even if the model answers "propose_panel" anyway (it was never
+// offered it, but nothing stops a model from naming an id it has seen
+// before in training or a prior turn's own system prompt), the pick must
+// not match it - candidatesFor never lists it as a candidate, so parse
+// falls through to PickNone exactly as it would for any other unrecognised
+// id.
+func TestPickWithNoWorkspaceNeverParsesProposePanel(t *testing.T) {
+	picker := newPicker(t, responseWith("propose_panel certain"))
+
+	got, err := picker.Pick(context.Background(), "画面に置いて", nil, nil, shortlistCatalog(), usecase.PlanContext{})
+	require.NoError(t, err)
+
+	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone, Ambiguous: false}, got)
+}
+
 // captureRequestBody drives one Pick call with the given turns against a
 // fixture server and returns the raw request body it sent - the shared
 // setup TestPickByteIdenticalWithNoTurns and
@@ -154,7 +218,7 @@ func captureRequestBody(t *testing.T, turns []usecase.Turn) string {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	picker := pick.New(client, "qwen3.5-9b-q8")
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, turns, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, turns, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	return got
@@ -195,7 +259,7 @@ func TestPickRendersTurnsIntoTheUserMessage(t *testing.T) {
 func TestPickParsesACertainOperation(t *testing.T) {
 	picker := newPicker(t, responseWith("listInventoryItems certain"))
 
-	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickOperation, Service: "inventory", OperationID: "listInventoryItems"}, got)
@@ -204,7 +268,7 @@ func TestPickParsesACertainOperation(t *testing.T) {
 func TestPickParsesAnAmbiguousOperation(t *testing.T) {
 	picker := newPicker(t, responseWith("listInventoryItems ambiguous"))
 
-	got, err := picker.Pick(context.Background(), "見せて", nil, nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{
@@ -222,7 +286,7 @@ func TestPickPicksTheLongestIdWhenOneIsASubstringOfAnother(t *testing.T) {
 
 	picker := newPicker(t, responseWith("listInventoryItems certain"))
 
-	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlist)
+	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlist, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, "listInventoryItems", got.OperationID)
@@ -231,7 +295,7 @@ func TestPickPicksTheLongestIdWhenOneIsASubstringOfAnother(t *testing.T) {
 func TestPickParsesListCapabilities(t *testing.T) {
 	picker := newPicker(t, responseWith("list_capabilities certain"))
 
-	got, err := picker.Pick(context.Background(), "何ができるの？", nil, nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "何ができるの？", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickListCapabilities}, got)
@@ -240,7 +304,7 @@ func TestPickParsesListCapabilities(t *testing.T) {
 func TestPickParsesProposePanel(t *testing.T) {
 	picker := newPicker(t, responseWith("propose_panel certain"))
 
-	got, err := picker.Pick(context.Background(), "画面に置いて", nil, nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "画面に置いて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickProposePanel}, got)
@@ -249,7 +313,7 @@ func TestPickParsesProposePanel(t *testing.T) {
 func TestPickParsesNoneExplicitly(t *testing.T) {
 	picker := newPicker(t, responseWith("none certain"))
 
-	got, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)
@@ -258,7 +322,7 @@ func TestPickParsesNoneExplicitly(t *testing.T) {
 func TestPickWithNoRecognisableIdAtAllIsNone(t *testing.T) {
 	picker := newPicker(t, responseWith("わかりません"))
 
-	got, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "今日の天気は？", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)
@@ -271,7 +335,7 @@ func TestPickTruncatedByMaxTokensIsNone(t *testing.T) {
 	body := `{"choices": [{"finish_reason": "length", "message": {"role": "assistant", "content": "listInventoryIt"}}]}`
 	picker := newPicker(t, body)
 
-	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)
@@ -283,7 +347,7 @@ func TestPickWrapsATransportError(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: "http://127.0.0.1:0", Model: "test-model"})
 	picker := pick.New(client, "qwen3.5-9b-q8")
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.Error(t, err)
 }
 
@@ -319,7 +383,7 @@ func TestPickCandidateLineFallsBackToTheDescriptionsFirstLineWhenSummaryIsEmpty(
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	picker := pick.New(client, "qwen3.5-9b-q8")
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlist)
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlist, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	messages, ok := gotBody["messages"].([]any)
@@ -346,7 +410,7 @@ func TestPickOnEmptyShortlistNeverCallsTheModel(t *testing.T) {
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
 	picker := pick.New(client, "qwen3.5-9b-q8")
 
-	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, domain.Catalog{})
+	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, domain.Catalog{}, usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)

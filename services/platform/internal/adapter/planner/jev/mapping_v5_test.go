@@ -66,7 +66,7 @@ func TestPickWithNoTurnsSendsStatePlainByteForByte(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	assert.Equal(t, "在庫を見せて", gotBody.body["state"], "state must stay a plain string with no turns")
@@ -92,7 +92,7 @@ func TestPickWithObjectInstructionsAndNoTurnsCarriesNoContextField(t *testing.T)
 
 	picker := jev.New(server.URL, "test-key", nil, jev.WithObjectInstructions())
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	questions, ok := gotBody.body["questions"].(map[string]any)
@@ -159,7 +159,7 @@ func TestPickWithTurnsSendsStateAsAnObjectWithDisplayNames(t *testing.T) {
 	// answers, not through the request itself; a second, present-in-
 	// shortlist case is covered by
 	// TestPickWithATurnFoundInTheShortlistUsesItsDisplayNames below.
-	_, err := picker.Pick(context.Background(), "勤怠でも同じことして", nil, turns, turnsShortlist())
+	_, err := picker.Pick(context.Background(), "勤怠でも同じことして", nil, turns, turnsShortlist(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	state, ok := gotBody.body["state"].(map[string]any)
@@ -210,7 +210,7 @@ func TestPickWithATurnFoundInTheShortlistUsesItsDisplayNames(t *testing.T) {
 		},
 	}
 
-	_, err := picker.Pick(context.Background(), "続けて", nil, turns, turnsShortlist())
+	_, err := picker.Pick(context.Background(), "続けて", nil, turns, turnsShortlist(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	state, ok := gotBody.body["state"].(map[string]any)
@@ -234,7 +234,7 @@ func TestPickWithoutFanOutGateNeverSendsAnImpossibleQuestion(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil)
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	questions, ok := gotBody.body["questions"].(map[string]any)
@@ -271,7 +271,7 @@ func TestPickWithFanOutGateSendsBothQuestionsInOneRequest(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil, jev.WithFanOutGate(0.7))
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	questions, ok := gotBody.body["questions"].(map[string]any)
@@ -309,7 +309,7 @@ func TestPickWithFanOutGateAboveThresholdReturnsPickNoneWithoutTheChoice(t *test
 
 	picker := jev.New(server.URL, "test-key", nil, jev.WithFanOutGate(0.7))
 
-	got, err := picker.Pick(context.Background(), "在庫を集計したい", nil, nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "在庫を集計したい", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)
 }
@@ -329,7 +329,7 @@ func TestPickWithFanOutGateBelowThresholdProceedsToTheChoice(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil, jev.WithFanOutGate(0.7))
 
-	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 	assert.Equal(t, usecase.Pick{
 		Kind: usecase.PickOperation, Service: "inventory", OperationID: "listInventoryItems", Confidence: 0.9,
@@ -354,7 +354,7 @@ func TestPickWithFanOutGateLogsTheGateVerdictAtInfo(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil, jev.WithFanOutGate(0.7))
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	line := logLineWith(t, buf, "gate_noul")
@@ -381,7 +381,7 @@ func TestPickByDefaultSendsThePlainV2StringWithTurnsStillInState(t *testing.T) {
 		{Question: "勤怠を見せて", Kind: usecase.ResultKindResult, Service: "attendance", OperationID: "ListAttendanceRecords"},
 	}
 
-	_, err := picker.Pick(context.Background(), "続けて", nil, turns, turnsShortlist())
+	_, err := picker.Pick(context.Background(), "続けて", nil, turns, turnsShortlist(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	state, ok := gotBody.body["state"].(map[string]any)
@@ -413,7 +413,7 @@ func TestPickWithObjectInstructionsSendsTheV5ObjectByDefault(t *testing.T) {
 
 	picker := jev.New(server.URL, "test-key", nil, jev.WithObjectInstructions())
 
-	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)
 
 	questions, ok := gotBody.body["questions"].(map[string]any)
