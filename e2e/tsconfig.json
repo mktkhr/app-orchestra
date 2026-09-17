@@ -10,6 +10,7 @@
     "eval",
     "narrowing",
     "shortlist",
+    "dialogue",
     "vite.config.ts",
     "playwright.config.ts"
   ]

@@ -95,3 +95,8 @@
 # print-report.ts. Rebuilt from a live platform and a live model each run -
 # generated, same rule as .vectors/ and .utterances/ above.
 /e2e/shortlist/out/
+
+# make eval-dialogue's per-turn jsonl and report (this task): rebuilt from a
+# live platform and a live model each run - generated, same rule as
+# /e2e/shortlist/out/ above.
+/e2e/dialogue/out/

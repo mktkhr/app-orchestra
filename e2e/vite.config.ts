@@ -22,11 +22,16 @@ export default defineConfig({
     // plan-client.ts and services.ts (the ones that do need a live platform
     // and ORCHESTRA_EVAL_MODEL) are never *.test.ts, so `make check` still
     // calls no model (AC-E-202) even with eval/**/*.test.ts included here.
+    //
+    // dialogue/chain.test.ts and dialogue/score.test.ts are the same shape
+    // again: pure logic against fakes, no server, no model. dialogue/run.ts
+    // (the one that boots the real platform) is never *.test.ts either.
     include: [
       "src/**/*.test.ts",
       "narrowing/**/*.test.ts",
       "shortlist/**/*.test.ts",
       "eval/**/*.test.ts",
+      "dialogue/**/*.test.ts",
     ],
     globals: false,
     testTimeout: 30_000,

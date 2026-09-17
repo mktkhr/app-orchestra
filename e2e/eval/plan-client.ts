@@ -84,13 +84,25 @@ function parsePlanOutcome(value: unknown): PlanOutcome {
   };
 }
 
-/** Posts one question (with, optionally, the conversation before it) against a running platform. */
-export async function postPlan(
+/** postPlanRaw's result: the outcome eval's own cases match against, plus the response body it was parsed from. */
+export interface PlanResponse {
+  readonly outcome: PlanOutcome;
+  readonly raw: unknown;
+}
+
+/**
+ * Posts one question (with, optionally, the conversation before it)
+ * against a running platform, returning both the parsed outcome and the
+ * raw response body. `postPlan` (below) is this with only `outcome` kept -
+ * eval's own cases never needed the raw body, `e2e/dialogue`'s output rows
+ * do (they record the exact request/response of every turn).
+ */
+export async function postPlanRaw(
   baseUrl: string,
   session: Session,
   question: string,
   turns: readonly CaseTurn[] = [],
-): Promise<PlanOutcome> {
+): Promise<PlanResponse> {
   const response = await fetch(
     `${baseUrl}/api/plan`,
     withSession(session, {
@@ -100,5 +112,17 @@ export async function postPlan(
     }),
   );
 
-  return parsePlanOutcome(await response.json());
+  const raw: unknown = await response.json();
+
+  return { outcome: parsePlanOutcome(raw), raw };
+}
+
+/** Posts one question (with, optionally, the conversation before it) against a running platform. */
+export async function postPlan(
+  baseUrl: string,
+  session: Session,
+  question: string,
+  turns: readonly CaseTurn[] = [],
+): Promise<PlanOutcome> {
+  return (await postPlanRaw(baseUrl, session, question, turns)).outcome;
 }

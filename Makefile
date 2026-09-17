@@ -48,7 +48,7 @@ GENERATED := $(addsuffix /internal/adapter/openapi/openapi.gen.go,$(SERVICE_DIRS
         web-fmt web-fmt-check web-lint web-typecheck web-test web-build web-dev \
         guard-arch guard-fsd guard-suppressions guard-filelen guard-ui guard-ignored guard-duplication guard-coverage guard-browser guard-a11y guard-layout guard-protected guard-test \
         acceptance-services acceptance-web acceptance-e2e acceptance-browser browsers \
-        eval eval-accept narrowing eval-shortlist eval-mid
+        eval eval-accept narrowing eval-shortlist eval-mid eval-dialogue
 
 ## ---------------------------------------------------------------- overview
 help: ## Show this help
@@ -339,6 +339,9 @@ eval-shortlist: build ## Measure the product's own planner on the narrowing corp
 eval-mid: build ## Measure the product's own planner on the thirty-operation mid subset, sixty questions, narrowing on - composes with WORDING=a,b,c, THINKING=on|off, REPEAT_PENALTY=<float> and STAGES=1|2 (docs/specs/midsizing.md, docs/plans/midsizing.md; never part of make check; needs llama-swap running the models named in e2e/shortlist/run.ts); PICKER=jev for the Jev trial or PICKER=hybrid for the hybrid Jev/local picker, ORCHESTRA_JEV_API_KEY from the caller's own environment, JEV_CRITERIA=v2 for its second round, GATE=jev for its v3 noul refusal gate
 	cd e2e && $(if $(PICKER),ORCHESTRA_PICKER=$(PICKER) )$(if $(JEV_CRITERIA),ORCHESTRA_JEV_CRITERIA=$(JEV_CRITERIA) )$(if $(GATE),ORCHESTRA_GATE=$(GATE) )node shortlist/run.ts --corpus mid $(if $(WORDING),--wording $(WORDING),) $(if $(THINKING),--thinking $(THINKING),) $(if $(REPEAT_PENALTY),--repeat-penalty $(REPEAT_PENALTY),) $(if $(STAGES),--stages $(STAGES),)
 	cd e2e && node shortlist/print-report.ts
+
+eval-dialogue: build ## Run the multi-turn dialogue instrument against the real planner: twelve chained conversations, once each (not quiet: it prints its own report; ORCHESTRA_EVAL_MODEL, default qwen3.5-9b-q8; PICKER=jev for the Jev trial or PICKER=hybrid for the hybrid Jev/local picker, ORCHESTRA_JEV_API_KEY from the caller's own environment, JEV_CRITERIA=v2 for its second round, GATE=jev for its v3 noul refusal gate)
+	cd e2e && $(if $(PICKER),ORCHESTRA_PICKER=$(PICKER) )$(if $(JEV_CRITERIA),ORCHESTRA_JEV_CRITERIA=$(JEV_CRITERIA) )$(if $(GATE),ORCHESTRA_GATE=$(GATE) )node dialogue/run.ts
 
 ## ---------------------------------------------------------------- misc
 clean: ## Remove build output

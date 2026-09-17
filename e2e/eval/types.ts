@@ -76,7 +76,14 @@ export interface Case {
   readonly runs?: number;
 }
 
-/** /api/plan's response, narrowed to the fields a case's expected outcomes can name. */
+/**
+ * /api/plan's response, narrowed to the fields a case's expected outcomes
+ * can name. `target` carries `args` the same as `source` does -
+ * `openapi.yaml`'s `PlanResult.target` is the same `Source` schema as
+ * `PlanResult.source` - even though no eval case has needed it yet: e2e/dialogue's
+ * chaining (a `form` turn's decision becomes the next question's `Turn`,
+ * `e2e/dialogue/chain.ts`, matching `toContextTurns.ts`) does.
+ */
 export interface PlanOutcome {
   readonly kind: string;
   readonly source?: {
@@ -84,7 +91,11 @@ export interface PlanOutcome {
     readonly operationId?: string;
     readonly args?: Record<string, unknown>;
   };
-  readonly target?: { readonly service?: string; readonly operationId?: string };
+  readonly target?: {
+    readonly service?: string;
+    readonly operationId?: string;
+    readonly args?: Record<string, unknown>;
+  };
   readonly initial?: Record<string, unknown>;
   readonly param?: string;
 }
