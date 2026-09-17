@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
+	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/hybrid"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jev"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/pick"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
@@ -93,9 +94,43 @@ func newPicker(cfg *Config, fanOut bool) (usecase.Picker, error) {
 		}
 
 		return jev.New(cfg.Picker.JevBaseURL, cfg.Picker.JevAPIKey, nil, opts...), nil
+	case PickerHybrid:
+		return newHybridPicker(cfg)
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidPicker, cfg.Picker.Name)
 	}
+}
+
+// newHybridPicker builds hybrid.New over a jev.Picker and a pick.Picker,
+// each built exactly as newPicker's own PickerJev/PickerLocal cases build
+// theirs - except the jev half here never takes jev.WithFanOutGate: that
+// option is stagingOptions' own fanOut wiring for pairing a standalone
+// jev Picker with a standalone jev Gate in one request
+// (docs/measurements/jev-picker-v5.md), a different mechanism from
+// hybrid.Picker's own timeout/threshold fallback, and folding the two
+// together is out of scope here. newPicker's own fanOut parameter is
+// PickerJev-only (stagingOptions computes it from cfg.Picker.Name ==
+// PickerJev), so it is already always false whenever cfg.Picker.Name is
+// PickerHybrid - this function simply never looks at it.
+func newHybridPicker(cfg *Config) (usecase.Picker, error) {
+	if cfg.Picker.JevAPIKey == "" {
+		return nil, ErrMissingJevAPIKey
+	}
+
+	jevOpts := []jev.Option{jev.WithCriteria(cfg.Picker.JevCriteria)}
+	if cfg.Picker.JevObjectInstructions {
+		jevOpts = append(jevOpts, jev.WithObjectInstructions())
+	}
+
+	jevPicker := jev.New(cfg.Picker.JevBaseURL, cfg.Picker.JevAPIKey, nil, jevOpts...)
+
+	client := chat.New(chat.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model})
+	localPicker := pick.New(client, cfg.LLM.Model)
+
+	return hybrid.New(
+		jevPicker, localPicker,
+		hybrid.WithJevTimeout(cfg.Picker.HybridJevTimeout), hybrid.WithThreshold(cfg.Picker.HybridThreshold),
+	), nil
 }
 
 // newGate builds the usecase.Gate stagingOptions passes to usecase.WithGate

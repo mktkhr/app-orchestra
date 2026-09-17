@@ -190,7 +190,8 @@ func TestPickMapsChoiceToShortlistEndpoint(t *testing.T) {
 	result, err := picker.Pick(context.Background(), "勤怠を見せて", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
 	assert.Equal(t, usecase.Pick{
-		Kind: usecase.PickOperation, Service: "attendance", OperationID: "listAttendanceRecords", Ambiguous: false,
+		Kind: usecase.PickOperation, Service: "attendance", OperationID: "listAttendanceRecords",
+		Ambiguous: false, Confidence: 0.9,
 	}, result)
 }
 

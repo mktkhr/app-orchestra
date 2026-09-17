@@ -35,6 +35,16 @@ type Pick struct {
 	// acted on (asking on ambiguity is the lever v3-ask-on-collision
 	// measured at 68 -> 56, docs/specs/staging.md section 2).
 	Ambiguous bool
+	// Confidence is Jev's own judged confidence for this "pick" answer
+	// (internal/adapter/planner/jev's mapAnswer, read back from the
+	// wire answer's own confidence field) - zero for the local picker
+	// (internal/adapter/planner/pick), which has no confidence signal
+	// of its own to report. Added for internal/adapter/planner/hybrid's
+	// own confidence gate: it falls back from Jev to the local picker
+	// exactly when this is below its own threshold, rather than acting
+	// on Ambiguous (already spoken for by S4's own "never acted on"
+	// rule above).
+	Confidence float64
 }
 
 // Picker names one operation of the shortlist for the question, in the

@@ -331,7 +331,9 @@ func TestPickWithFanOutGateBelowThresholdProceedsToTheChoice(t *testing.T) {
 
 	got, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog())
 	require.NoError(t, err)
-	assert.Equal(t, usecase.Pick{Kind: usecase.PickOperation, Service: "inventory", OperationID: "listInventoryItems"}, got)
+	assert.Equal(t, usecase.Pick{
+		Kind: usecase.PickOperation, Service: "inventory", OperationID: "listInventoryItems", Confidence: 0.9,
+	}, got)
 }
 
 // TestPickWithFanOutGateLogsTheGateVerdictAtInfo proves the "gate

@@ -503,26 +503,31 @@ func serviceFor(shortlist domain.Catalog, operationID string) (string, bool) {
 // (Service, OperationID), exactly as
 // internal/adapter/planner/pick/parse.go's own parse resolves the local
 // picker's answer. Ambiguous is confidence below threshold (S4).
-// matched is false only when choice named neither a built-in nor any
-// shortlist endpoint - the caller logs that case; this function stays a
-// pure mapping with nothing to log to.
+// Confidence carries answer.Confidence through unchanged on every branch
+// - including the unmatched fallback - so a caller such as
+// internal/adapter/planner/hybrid can read Jev's real judged confidence
+// off any usecase.Pick this returns, not just the ones threshold itself
+// already judged non-ambiguous. matched is false only when choice named
+// neither a built-in nor any shortlist endpoint - the caller logs that
+// case; this function stays a pure mapping with nothing to log to.
 func mapAnswer(answer wireAnswer, shortlist domain.Catalog, threshold float64) (usecase.Pick, bool) {
 	ambiguous := answer.Confidence < threshold
 
 	switch answer.Choice {
 	case pick.IDListCapabilities:
-		return usecase.Pick{Kind: usecase.PickListCapabilities, Ambiguous: ambiguous}, true
+		return usecase.Pick{Kind: usecase.PickListCapabilities, Ambiguous: ambiguous, Confidence: answer.Confidence}, true
 	case pick.IDProposePanel:
-		return usecase.Pick{Kind: usecase.PickProposePanel, Ambiguous: ambiguous}, true
+		return usecase.Pick{Kind: usecase.PickProposePanel, Ambiguous: ambiguous, Confidence: answer.Confidence}, true
 	case pick.IDNone:
-		return usecase.Pick{Kind: usecase.PickNone, Ambiguous: ambiguous}, true
+		return usecase.Pick{Kind: usecase.PickNone, Ambiguous: ambiguous, Confidence: answer.Confidence}, true
 	default:
 		if service, ok := serviceFor(shortlist, answer.Choice); ok {
 			return usecase.Pick{
-				Kind: usecase.PickOperation, Service: service, OperationID: answer.Choice, Ambiguous: ambiguous,
+				Kind: usecase.PickOperation, Service: service, OperationID: answer.Choice,
+				Ambiguous: ambiguous, Confidence: answer.Confidence,
 			}, true
 		}
 
-		return usecase.Pick{Kind: usecase.PickNone, Ambiguous: ambiguous}, false
+		return usecase.Pick{Kind: usecase.PickNone, Ambiguous: ambiguous, Confidence: answer.Confidence}, false
 	}
 }

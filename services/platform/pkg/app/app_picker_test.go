@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -145,6 +146,85 @@ func TestNewRejectsPickerJevWithoutAnAPIKey(t *testing.T) {
 	_, err := app.New(&app.Config{
 		LLM:           app.LLM{BaseURL: "http://127.0.0.1:0", Stages: 2},
 		Picker:        app.Picker{Name: app.PickerJev},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, app.ErrMissingJevAPIKey)
+}
+
+// fixtureJevServerWithChoice mirrors fixtureJevServer, but answers with
+// choice/confidence the caller picks - hybrid's own app-wiring tests need
+// a confident catalogue pick (Kind PickOperation) rather than the plain
+// "none" built-in fixtureJevServer always answers, so that the served
+// answer can be told apart from what the local picker's own
+// fixtureChatServer would have answered instead.
+func fixtureJevServerWithChoice(t *testing.T, choice string, confidence float64) *httptest.Server {
+	t.Helper()
+
+	response := fmt.Sprintf(`{
+    "model": "jev-1.13.0",
+    "answers": {"pick": {"type": "choice", "choice": %q, "confidence": %v}},
+    "usage": {"input_tokens": 1, "output_tokens": 1}
+  }`, choice, confidence)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(response)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+// TestNewWithPickerHybridBuildsAndServesAConfidentJevPick proves the
+// wiring from Config down to hybrid.New holds: a confident catalogue
+// pick from the Jev fixture server is served over /api/plan without
+// error, the same end-to-end shape TestNewWithPickerJevBuildsAndServesAQuestion
+// proves for the plain jev picker.
+func TestNewWithPickerHybridBuildsAndServesAConfidentJevPick(t *testing.T) {
+	fixture := fixtureService(t)
+	chatServer := fixtureChatServer(t)
+	jevServer := fixtureJevServerWithChoice(t, "ListWidgets", 0.95)
+
+	handler, err := app.New(&app.Config{
+		Services:      []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:           app.LLM{BaseURL: chatServer.URL, Model: "test-model", Stages: 2},
+		Picker:        app.Picker{Name: app.PickerHybrid, JevAPIKey: "test-key", JevBaseURL: jevServer.URL},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// TestNewRejectsPickerHybridWithoutAnAPIKey mirrors
+// TestNewRejectsPickerJevWithoutAnAPIKey: PickerHybrid needs a jev.Picker
+// for its own Jev half exactly as PickerJev does.
+func TestNewRejectsPickerHybridWithoutAnAPIKey(t *testing.T) {
+	_, err := app.New(&app.Config{
+		LLM:           app.LLM{BaseURL: "http://127.0.0.1:0", Stages: 2},
+		Picker:        app.Picker{Name: app.PickerHybrid},
 		DBPath:        filepath.Join(t.TempDir(), "app.db"),
 		AdminPassword: appTestAdminPassword,
 	})

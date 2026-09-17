@@ -73,19 +73,19 @@ var ErrInvalidPlannerStages = errors.New("ORCHESTRA_PLANNER_STAGES must be 1 or 
 var ErrInvalidPlannerToday = errors.New("ORCHESTRA_PLANNER_TODAY must be YYYY-MM-DD")
 
 // ErrInvalidPicker is wrapped into the error returned when ORCHESTRA_PICKER
-// names anything other than PickerLocal or PickerJev - the same reasoning
-// ErrInvalidLLMMode already applies to ORCHESTRA_LLM_MODE.
-var ErrInvalidPicker = errors.New("ORCHESTRA_PICKER must be local or jev")
+// names anything other than PickerLocal, PickerJev or PickerHybrid - the
+// same reasoning ErrInvalidLLMMode already applies to ORCHESTRA_LLM_MODE.
+var ErrInvalidPicker = errors.New("ORCHESTRA_PICKER must be local, jev or hybrid")
 
-// ErrMissingJevAPIKey is returned when ORCHESTRA_PICKER is PickerJev, or
-// ORCHESTRA_GATE is GateJev, but ORCHESTRA_JEV_API_KEY is unset or empty
-// - internal/adapter/planner/jev has no route to Jev without one, the
-// same reasoning ErrMissingDBPath already applies to ORCHESTRA_DB_PATH: a
-// platform that started anyway would fail on the first pick (or gate
-// call) instead of at startup. The picker and the gate share one key -
-// there is no separate ORCHESTRA_JEV_GATE_API_KEY. See config_gate.go's
-// loadGate for the ORCHESTRA_GATE=jev half of this check.
-var ErrMissingJevAPIKey = errors.New("ORCHESTRA_JEV_API_KEY is required when ORCHESTRA_PICKER=jev or ORCHESTRA_GATE=jev")
+// ErrMissingJevAPIKey is returned when ORCHESTRA_PICKER is PickerJev or
+// PickerHybrid, or ORCHESTRA_GATE is GateJev, but ORCHESTRA_JEV_API_KEY
+// is unset or empty - internal/adapter/planner/jev has no route to Jev
+// without one (PickerHybrid needs a jev.Picker for its own Jev half
+// exactly as PickerJev does). The picker and the gate share one key; see
+// config_gate.go's loadGate for the ORCHESTRA_GATE=jev half of this check.
+var ErrMissingJevAPIKey = errors.New(
+	"ORCHESTRA_JEV_API_KEY is required when ORCHESTRA_PICKER=jev, ORCHESTRA_PICKER=hybrid or ORCHESTRA_GATE=jev",
+)
 
 // ErrInvalidJevCriteria is wrapped into the error returned when
 // ORCHESTRA_JEV_CRITERIA is set to something other than JevCriteriaV1 or
@@ -143,13 +143,15 @@ const (
 	LLMModeJSON     = "json"
 )
 
-// PickerLocal and PickerJev are ORCHESTRA_PICKER's two accepted values:
-// internal/adapter/planner/pick (the measured stand-in picker, over the
-// same model the toolcall planner uses) and internal/adapter/planner/jev
-// (TypeSafe's hosted Jev API), respectively. PickerLocal is the default.
+// PickerLocal, PickerJev and PickerHybrid are ORCHESTRA_PICKER's three
+// accepted values: internal/adapter/planner/pick, internal/adapter/planner/jev
+// and internal/adapter/planner/hybrid (Jev first, falling back to the
+// local picker below its own confidence threshold - config_hybrid.go),
+// respectively. PickerLocal is the default.
 const (
-	PickerLocal = "local"
-	PickerJev   = "jev"
+	PickerLocal  = "local"
+	PickerJev    = "jev"
+	PickerHybrid = "hybrid"
 )
 
 // defaultJevBaseURL is used when ORCHESTRA_JEV_BASE_URL is unset.
@@ -375,6 +377,12 @@ type Config struct {
 	// turns still reach "state" unchanged either way. Ignored when Picker
 	// is not PickerJev.
 	JevObjectInstructions bool
+	// HybridJevTimeout and HybridThreshold configure
+	// internal/adapter/planner/hybrid.Picker, read from
+	// ORCHESTRA_HYBRID_JEV_TIMEOUT and ORCHESTRA_HYBRID_THRESHOLD
+	// (config_hybrid.go). Ignored when Picker is not PickerHybrid.
+	HybridJevTimeout time.Duration
+	HybridThreshold  float64
 	// Gate selects which usecase.Gate implementation pkg/app.build builds,
 	// read from ORCHESTRA_GATE: GateNone (the default, no gate at all) or
 	// GateJev (internal/adapter/planner/jev's "noul refusal gate",
@@ -869,14 +877,14 @@ func parseNarrowing(embedModel, rerankModel, rawK string) (narrowingConfig, erro
 }
 
 // parsePicker reads ORCHESTRA_PICKER: PickerLocal when unset, or exactly
-// PickerLocal or PickerJev otherwise - anything else fails startup rather
-// than silently falling back to the default, the same reasoning
-// parseLLMMode already applies to ORCHESTRA_LLM_MODE.
+// PickerLocal, PickerJev or PickerHybrid otherwise - anything else fails
+// startup rather than silently falling back to the default, the same
+// reasoning parseLLMMode already applies to ORCHESTRA_LLM_MODE.
 func parsePicker(raw string) (string, error) {
 	switch raw {
 	case "":
 		return PickerLocal, nil
-	case PickerLocal, PickerJev:
+	case PickerLocal, PickerJev, PickerHybrid:
 		return raw, nil
 	default:
 		return "", fmt.Errorf("%w: %q", ErrInvalidPicker, raw)
@@ -899,15 +907,13 @@ func parseJevCriteria(raw string) (string, error) {
 
 // loadPicker reads ORCHESTRA_PICKER, ORCHESTRA_JEV_API_KEY,
 // ORCHESTRA_JEV_BASE_URL and ORCHESTRA_JEV_CRITERIA and applies them to
-// cfg, isolating Load itself from both the os.Getenv calls and their own
-// validation (funlen, harness/quality/go/golangci.yml) - the same reason
-// loadNarrowing and loadLLM exist. ORCHESTRA_JEV_API_KEY is required
-// exactly when the picker is PickerJev (ErrMissingJevAPIKey) - loadGate
-// (config_gate.go), called right after this from Load, adds its own
-// requiredness check for ORCHESTRA_GATE=jev over the same cfg.JevAPIKey
-// this function sets. A value left set when neither is jev is read but
-// never validated, so switching either back to its local/none default
-// never needs the key removed.
+// cfg, isolating Load from both the os.Getenv calls and their own
+// validation (funlen, harness/quality/go/golangci.yml). ORCHESTRA_JEV_API_KEY
+// is required exactly when the picker is PickerJev or PickerHybrid
+// (ErrMissingJevAPIKey) - loadGate (config_gate.go), called right after
+// this from Load, adds its own requiredness check for ORCHESTRA_GATE=jev
+// over the same cfg.JevAPIKey this function sets. A value left set when
+// none of those apply is read but never validated.
 func loadPicker(cfg *Config) error {
 	picker, err := parsePicker(os.Getenv("ORCHESTRA_PICKER"))
 	if err != nil {
@@ -917,7 +923,7 @@ func loadPicker(cfg *Config) error {
 	cfg.Picker = picker
 
 	apiKey := os.Getenv("ORCHESTRA_JEV_API_KEY")
-	if picker == PickerJev && apiKey == "" {
+	if (picker == PickerJev || picker == PickerHybrid) && apiKey == "" {
 		return ErrMissingJevAPIKey
 	}
 
@@ -942,14 +948,19 @@ func loadPicker(cfg *Config) error {
 	return nil
 }
 
-// loadPickerAndGate calls loadPicker then loadGate (config_gate.go), in
-// that order - loadGate's own ORCHESTRA_JEV_API_KEY requiredness check
-// reads cfg.JevAPIKey, which loadPicker is what sets. One function, not
-// two calls inlined into Load, keeps Load's own cyclomatic complexity
-// under gocyclo's cap (harness/quality/go/golangci.yml) - the same
-// funlen/gocyclo reasoning loadNarrowing and loadLLM already exist for.
+// loadPickerAndGate calls loadPicker, then loadHybrid (config_hybrid.go),
+// then loadGate (config_gate.go), in that order - loadGate's own
+// ORCHESTRA_JEV_API_KEY requiredness check reads cfg.JevAPIKey, set by
+// loadPicker. One function, not three calls inlined into Load, keeps
+// Load's own cyclomatic complexity under gocyclo's cap
+// (harness/quality/go/golangci.yml), the same reasoning loadNarrowing
+// and loadLLM already exist for.
 func loadPickerAndGate(cfg *Config) error {
 	if err := loadPicker(cfg); err != nil {
+		return err
+	}
+
+	if err := loadHybrid(cfg); err != nil {
 		return err
 	}
 

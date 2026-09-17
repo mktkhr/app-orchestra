@@ -262,6 +262,14 @@ type Picker struct {
 	// config.Config.JevObjectInstructions. turns still reach "state"
 	// unchanged either way. Ignored when Name is not PickerJev.
 	JevObjectInstructions bool
+	// HybridJevTimeout and HybridThreshold configure
+	// internal/adapter/planner/hybrid.Picker
+	// (hybrid.WithJevTimeout/hybrid.WithThreshold), mirroring
+	// config.Config.HybridJevTimeout/HybridThreshold. Zero means "use
+	// hybrid's own default" for each (see hybrid.New's own doc comment).
+	// Ignored when Name is not PickerHybrid.
+	HybridJevTimeout time.Duration
+	HybridThreshold  float64
 }
 
 // JevCriteriaV1 and JevCriteriaV2 are Picker.JevCriteria's two non-empty
@@ -271,11 +279,13 @@ const (
 	JevCriteriaV2 = "v2"
 )
 
-// PickerLocal and PickerJev are Picker.Name's two non-empty values,
-// mirroring internal/infra/config.PickerLocal/PickerJev.
+// PickerLocal, PickerJev and PickerHybrid are Picker.Name's three
+// non-empty values, mirroring
+// internal/infra/config.PickerLocal/PickerJev/PickerHybrid.
 const (
-	PickerLocal = "local"
-	PickerJev   = "jev"
+	PickerLocal  = "local"
+	PickerJev    = "jev"
+	PickerHybrid = "hybrid"
 )
 
 // Gate configures which usecase.Gate implementation stagingOptions builds
@@ -332,19 +342,21 @@ var ErrInvalidLLMMode = errors.New("invalid LLM.Mode, want \"\", \"toolcall\" or
 var ErrInvalidPlannerWording = errors.New("invalid LLM.Wording")
 
 // ErrInvalidPicker is returned by New when Config.Picker.Name is set to
-// anything other than "" (PickerLocal), PickerLocal or PickerJev -
-// mirroring ErrInvalidLLMMode's own defence-in-depth: cmd/api always goes
-// through config.Load's own validation first (config.ErrInvalidPicker).
-var ErrInvalidPicker = errors.New("invalid Picker.Name, want \"\", \"local\" or \"jev\"")
+// anything other than "" (PickerLocal), PickerLocal, PickerJev or
+// PickerHybrid - mirroring ErrInvalidLLMMode's own defence-in-depth:
+// cmd/api always goes through config.Load's own validation first
+// (config.ErrInvalidPicker).
+var ErrInvalidPicker = errors.New("invalid Picker.Name, want \"\", \"local\", \"jev\" or \"hybrid\"")
 
 // ErrMissingJevAPIKey is returned by New when Config.Picker.Name is
-// PickerJev but Config.Picker.JevAPIKey is empty - mirroring
-// config.ErrMissingJevAPIKey the same way ErrInvalidPicker mirrors
-// config.ErrInvalidPicker. Also returned when Config.Gate.Name is GateJev
-// and Config.Gate.JevAPIKey is empty - the picker and the gate share one
-// error and one required key.
+// PickerJev or PickerHybrid but Config.Picker.JevAPIKey is empty -
+// mirroring config.ErrMissingJevAPIKey the same way ErrInvalidPicker
+// mirrors config.ErrInvalidPicker: PickerHybrid needs a real jev.Picker
+// for its own Jev half exactly as PickerJev does. Also returned when
+// Config.Gate.Name is GateJev and Config.Gate.JevAPIKey is empty - the
+// picker and the gate share one error and one required key.
 var ErrMissingJevAPIKey = errors.New(
-	"Picker.JevAPIKey is required when Picker.Name is \"jev\", or Gate.JevAPIKey when Gate.Name is \"jev\"",
+	"Picker.JevAPIKey is required when Picker.Name is \"jev\" or \"hybrid\", or Gate.JevAPIKey when Gate.Name is \"jev\"",
 )
 
 // ErrInvalidGate is returned by New when Config.Gate.Name is set to

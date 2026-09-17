@@ -51,6 +51,8 @@ func main() {
 			JevBaseURL:            cfg.JevBaseURL,
 			JevCriteria:           cfg.JevCriteria,
 			JevObjectInstructions: cfg.JevObjectInstructions,
+			HybridJevTimeout:      cfg.HybridJevTimeout,
+			HybridThreshold:       cfg.HybridThreshold,
 		},
 		Gate: app.Gate{
 			Name:             cfg.Gate,
