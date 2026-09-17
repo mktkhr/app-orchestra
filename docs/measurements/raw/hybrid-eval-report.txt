@@ -1,0 +1,38 @@
+ok: services-build:attendance
+ok: services-build:inventory
+ok: services-build:platform
+ok: web-build
+filter-by-label      10/10    accept   0/10     reject
+no-enum-value        30/30    accept   0/30     reject
+list-everything      10/10    accept   0/10     reject
+create               10/10    accept   0/10     reject
+unanswerable         10/10    accept   0/10     reject
+capability           10/10    accept   0/10     reject
+follow-up-stays      10/10    accept   0/10     reject
+filter-by-label-allocated 10/10    accept   0/10     reject
+filter-by-label-staged 10/10    accept   0/10     reject
+filter-by-label-consigned 10/10    accept   0/10     reject
+filter-by-label-deemed 10/10    accept   0/10     reject
+filter-by-label-substitute 10/10    accept   0/10     reject
+filter-by-label-compensatory 10/10    accept   0/10     reject
+filter-by-label-on-call 10/10    accept   0/10     reject
+list-everything-attendance 10/10    accept   0/10     reject
+create-attendance    10/10    accept   0/10     reject
+follow-up-other-service 10/10    accept   0/10     reject
+no-enum-value-attendance 10/10    accept   0/10     reject (judged: reject)
+real-delete-inventory 10/10    accept   0/10     reject
+real-decrease-inventory 10/10    accept   0/10     reject
+real-show-sales      10/10    accept   0/10     reject
+real-sum-overtime    10/10    accept   0/10     reject
+real-what-day        10/10    accept   0/10     reject
+real-capability-inventory 10/10    accept   0/10     reject
+real-report-tardiness 10/10    accept   0/10     reject
+real-register-new-item 10/10    accept   0/10     reject
+real-apply-paid-leave 10/10    accept   0/10     reject
+real-attendance-detail 10/10    accept   0/10     reject
+real-inventory-detail 10/10    accept   0/10     reject
+real-consigned-inventory 10/10    accept   0/10     reject
+real-compensatory-attendance 10/10    accept   0/10     reject
+real-register-screws 10/10    accept   0/10     reject
+real-tanaka-attendance 10/10    accept   0/10     reject
+real-inventory-list-graph 10/10    accept   0/10     reject
