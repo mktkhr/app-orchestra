@@ -1,6 +1,6 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-17 (the Jev picker v2 trial: measured against all three instruments, not adopted either; v3 in progress)_
+_Last updated: 2026-09-17 (the Jev trial: three rounds measured, none adopted; v3's gate recommended, off by default, pending confirmation)_
 
 ## Summary
 
@@ -22,8 +22,20 @@ confidence throughout without accuracy following, at $0.0508 for this
 round ($0.0726 cumulative); full record in
 `docs/measurements/jev-picker-v2.md` and `DECISIONS.md`, 2026-09-17
 ("Jev as the pick stage, v2: measured, not adopted either"). v3 (a
-`noul` refusal gate in front of the local pick) is in progress
-(`TODO.md`).
+`noul` refusal gate in front of the local pick, `ORCHESTRA_GATE=jev`,
+threshold 0.7, fail-open) is also measured and, recommended-not-yet-
+confirmed, not adopted by default: a true no-op on the shortlist corpus
+(max gate noul 0.31, zero refusals), a partial fix on mid (the named
+印刷/print forced row is now correctly refused at noul 0.86, while
+集計/aggregate and 承認/approve score 0.16/0.37 and stay forced exactly
+as before), and this trial's first false refusal on the eval suite
+(`real-inventory-list-graph`, noul 0.78, just above the line) - full
+record in `docs/measurements/jev-gate-v3.md` and `DECISIONS.md`,
+2026-09-17 ("Jev as a refusal gate, v3: recommended, to be confirmed").
+`ORCHESTRA_GATE` stays unset by default; the adapter, gate port, and
+config wiring stay in the tree for a later round. $0.0896 cumulative
+across all three rounds. Next, if picked back up: v4 (conversation
+state), only with a concrete hypothesis (`TODO.md`).
 
 **2026-09-17 - the mid instrument's first run: 38/40 answerable, 17/20 impossible refused, 0/24 fabricated.** `make eval-mid` (`docs/specs/midsizing.md`, `docs/plans/midsizing.md` all four tasks) exists: a thirty-operation, three-service fixture (sales, purchasing, attendance; ids `so-`/`po-`/`att-`, `pattern`-bearing) and sixty questions (40 answerable, 20 impossible) run through the real platform, scored for correct@1, false refusal, refused, forced, fabricated, and latency. First run under the shared defaults (two stages, `v6-unmatched-filter`, thinking off, narrowing K=20, no chunk cache reuse): answerable 40 correct@1 38 / false refusal 1; impossible 20 refused 17 / forced 3; forms 24 fabricated 0; latency mean 1274 ms. All five misses read row by row and left as genuine (`m24`, `m29`, `m41`, `m42`, `m44`); the impossible half's verb-not-there family took 3 of the run's 3 forced picks. Two instrument limits found and recorded, not fixed: the scorer's enum-vs-fabrication confusion (fixed in `7adb5b7`), and forms that echo an id into a `name` field past both the scorer's and the platform's own "appears in the question" rule (`TODO.md`). From here every planning decision is checked against all three instruments together - shortlist corpus (78/79), real-catalogue cases (16/16), and mid (38/40, 17/20, 0/24) - not any one alone. Full account in `DECISIONS.md`, 2026-09-17 ("Midsizing: the first mid run").
 

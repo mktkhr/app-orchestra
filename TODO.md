@@ -4,28 +4,15 @@ _Keep three lists. Move items, do not duplicate them._
 
 ## In progress
 
-- **The Jev trial: v1 and v2 measured and not adopted, v3 in progress.**
-  A second `usecase.Picker` over TypeSafe's Jev (`ORCHESTRA_PICKER=jev`,
-  behind `ORCHESTRA_PLANNER_STAGES=2`) scored 69/100 on the shortlist
-  corpus under both v1 (one-line criteria) and v2 (richer `what`/
-  `examples`/`not_for` criteria) against the local picker's 78/100; v2's
-  richer criteria fixed most of v1's homonym-refusal losses (`none` on
-  collision, 11→1) but traded them for a new `list*`-vs-`get*` confusion
-  at about the same rate, so the corpus score did not move, while the
-  mid subset reached this trial's best score anywhere (39/40) and the
-  same two eval regressions persisted (`follow-up-other-service` 0/10 -
-  no conversation state; `real-attendance-detail` 2/10-5/10 - genuine
-  confidence instability) - see `DECISIONS.md`, 2026-09-17 ("Jev as the
-  pick stage, v1: measured, not adopted" and "...v2: measured, not
-  adopted either") and `docs/measurements/jev-picker-v1.md` /
-  `jev-picker-v2.md`. The local picker stays the default. v3 (a `noul`
-  refusal gate in front of the local pick - Jev for the typed yes/no,
-  local for the choosing) is in progress in
-  `internal/adapter/planner/jev/`; v4 (conversation state) is planned
-  after it, each measured on the same three instruments.
+_Nothing in progress right now._
 
 ## Next
 
+1. Jev v4: conversation state / hierarchical choice - only if a round
+   with a concrete hypothesis is wanted. `follow-up-other-service`
+   remains a picker-only regression neither v1/v2's richer criteria nor
+   v3's gate touched, since none of the three rounds gave Jev any memory
+   of the prior turn.
 1. A genre/domain layer above individual services - grouping services by
    what they are for, rather than listing every one flat. Deferred again by
    `docs/specs/picking.md` K4 (2026-09-13): with today's contracts every
@@ -34,12 +21,12 @@ _Keep three lists. Move items, do not duplicate them._
    group nothing beyond what `OperationPicker`'s own `groupBy` (off
    `serviceDisplayName`) already does. Worth building once a service
    carries more than one tag over its own exposed operations.
-2. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
+1. Move to TypeScript 7 once `openapi-typescript` supports it. Everything
    else in the repository already passes under 7; only code generation does
    not. orval was measured as a replacement and rejected - it runs under
    TypeScript 7 but emits the wrong shape for this product (`DECISIONS.md`,
    2026-09-11).
-3. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
+1. **`harness/quality/file-length.txt` needs `**/src/shared/api/gen/**` (or
    equivalent) added to its `exclude` list**, matching
    `harness/quality/oxfmt/policy.ts` and `harness/quality/oxlint/policy.ts`,
    which already carry it. `docs/plans/dashboard.md` Task 4's contract
@@ -50,12 +37,12 @@ _Keep three lists. Move items, do not duplicate them._
    rule 2 (harness/quality is not this agent's to reconfigure); the next
    contract change that touches `platform.d.ts` will hit the same wall
    until somebody with standing to edit the harness does.
-4. **Uninstall `ollama`.** Left over from before `llama-swap` became the
+1. **Uninstall `ollama`.** Left over from before `llama-swap` became the
    local model runtime `make eval`/`ORCHESTRA_LLM_BASE_URL` talk to; nothing
    in this repository or its harness names it any more (`grep -r ollama`
    across the tree turns up nothing but this line). Housekeeping on the
    development machine, not a code change.
-5. **`<Typography color="text.secondary">` is a silent no-op almost
+1. **`<Typography color="text.secondary">` is a silent no-op almost
    everywhere it is written** - the component's own `color` prop only
    recognises `"textSecondary"` (camelCase, no dot) or a bare palette key
    (`Typography.d.ts`: `` `text${Capitalize<keyof TypeText>}` ``); the
@@ -74,7 +61,7 @@ _Keep three lists. Move items, do not duplicate them._
    this task's own scope for one commit was the wrong trade. TypeScript
    does not catch it either - the prop's type falls back to `(string & {})`
    for exactly this reason.
-6. **With two-stage planning now the default, the pick's own misses are
+1. **With two-stage planning now the default, the pick's own misses are
    the gap.** Two stages reaches 79 correct@1 against the picker's own 83
    and the shortlist's 93 recall; what stands between them is no longer
    the planner's prompt but the pick itself. Two groups remain open:
@@ -94,7 +81,7 @@ _Keep three lists. Move items, do not duplicate them._
    corpus loses outright: `c12`, `c13`, `d06`, `d12`, all to
    `list_capabilities` (`DECISIONS.md`, 2026-09-16, "the fill after a pick
    may answer none or list_capabilities").
-7. **Free-text restrictions are dropped silently.** 今日の勤怠 / 田中さんの
+1. **Free-text restrictions are dropped silently.** 今日の勤怠 / 田中さんの
    勤怠 / 4月の勤怠記録 all return every record, because the operation has
    no such filter and the fill says nothing about the mismatch. Found in
    the same real-usage check. Possible fix: say in the answer that the
@@ -104,7 +91,7 @@ _Keep three lists. Move items, do not duplicate them._
    under the full system prompt and regressed three unrelated `make eval`
    rows; see `DECISIONS.md`. (c) a synthetic optional argument on every
    catalogue tool, schema only, no prompt text, is untried. Unscheduled.
-8. **`no-enum-value-attendance` (有給の勤怠はある？) is a near-tie whose
+1. **`no-enum-value-attendance` (有給の勤怠はある？) is a near-tie whose
    `make eval` outcome tracks llama-server's own cache state, not the
    code.** Read 10/10 reject in one run against the 0/10-reject baseline
    `v6-unmatched-filter` closed 2026-09-16, with no code change able to
@@ -118,7 +105,7 @@ _Keep three lists. Move items, do not duplicate them._
    agree row for row (78 / 79). What remains: `e2e/eval/cases.ts`'s doc
    comment on this case still describes the old band - update it when
    the case is next touched. See `DECISIONS.md`, 2026-09-17.
-9. **The fabrication check's "appears in the question" rule has an
+1. **The fabrication check's "appears in the question" rule has an
    id-echo blind spot.** Found on the mid instrument's first run
    (`DECISIONS.md`, 2026-09-17, "Midsizing: the first mid run"): three
    forms put the record's own id straight into a `name` field (`m04`
@@ -129,25 +116,54 @@ _Keep three lists. Move items, do not duplicate them._
    the id is exactly as fabricated as any other guessed value. Candidate
    fix, in both places: a non-id field equal to, or containing, the id
    counts as fabricated. Unscheduled.
-10. **`e2e/shortlist/boot.ts` has the same unconsumed-stdio shape
-    `e2e/eval/services.ts` had before `04f1748`.** Checked while recording
-    the Jev trial (`DECISIONS.md`, 2026-09-17, "Jev as the pick stage, v1:
-    measured, not adopted"): both call the same
-    `startBinary` (`e2e/src/helpers/process.ts`, `stdio: ["ignore", "pipe",
+1. **`e2e/shortlist/boot.ts` has the same unconsumed-stdio shape
+   `e2e/eval/services.ts` had before `04f1748`.** Checked while recording
+   the Jev trial (`DECISIONS.md`, 2026-09-17, "Jev as the pick stage, v1:
+   measured, not adopted"): both call the same
+   `startBinary` (`e2e/src/helpers/process.ts`, `stdio: ["ignore", "pipe",
 "pipe"]`), but `boot.ts` only drains the platform's stdout/stderr when
-    the caller passes `logFile` (piping into a write stream); with no
-    `logFile` - the default for every `make eval-shortlist`/`eval-mid` run,
-    including every jev run in this trial - neither stream is read at all.
-    The jev corpus and mid runs did not hang, so the buffer never filled
-    this time, but the mechanism is identical to the eval suite's hang and
-    a more talkative picker or a longer run could hit it the same way.
-    Candidate fix: `.resume()` both streams unconditionally in `boot()`,
-    the same as `04f1748`'s fix, with `logFile`'s `.pipe()` layered on top
-    when requested. Unscheduled - not touched here since this task's own
-    files were `DECISIONS.md`/`TODO.md`/`STATE.md`/`PRODUCT.md`/
-    `docs/measurements/`, not `e2e/`.
+   the caller passes `logFile` (piping into a write stream); with no
+   `logFile` - the default for every `make eval-shortlist`/`eval-mid` run,
+   including every jev run in this trial - neither stream is read at all.
+   The jev corpus and mid runs did not hang, so the buffer never filled
+   this time, but the mechanism is identical to the eval suite's hang and
+   a more talkative picker or a longer run could hit it the same way.
+   Candidate fix: `.resume()` both streams unconditionally in `boot()`,
+   the same as `04f1748`'s fix, with `logFile`'s `.pipe()` layered on top
+   when requested. Unscheduled - not touched here since this task's own
+   files were `DECISIONS.md`/`TODO.md`/`STATE.md`/`PRODUCT.md`/
+   `docs/measurements/`, not `e2e/`.
 
 ## Done
+
+- **The Jev trial: three rounds measured, none adopted.** v1 (one-line
+  criteria) and v2 (richer `what`/`examples`/`not_for` criteria), both a
+  second `usecase.Picker` over TypeSafe's Jev (`ORCHESTRA_PICKER=jev`),
+  scored 69/100 on the shortlist corpus against the local picker's
+  78/100; v2's richer criteria fixed most of v1's homonym-refusal losses
+  (`none` on collision, 11→1) but traded them for a new `list*`-vs-`get*`
+  confusion at about the same rate, so the corpus score did not move,
+  while the mid subset reached 39/40 and the same two eval regressions
+  persisted (`follow-up-other-service` 0/10 - no conversation state;
+  `real-attendance-detail` 2/10-5/10 - genuine confidence instability).
+  v3 (a `noul` refusal gate in front of the local pick, `ORCHESTRA_GATE=jev`,
+  `internal/adapter/planner/jev/gate.go`, threshold 0.7, fail-open) left
+  the pick stage local throughout and instead gated the one typed
+  yes/no: a true no-op on the shortlist corpus (max noul 0.31, zero gate
+  refusals), a partial fix on mid (m44 印刷/print correctly refused at
+  0.86; m41 集計/aggregate 0.16 and m42 承認/approve 0.37 both stayed far
+  under threshold, so Jev does not treat all three "verb the catalogue
+  lacks" cases as equally impossible), and this trial's first false
+  refusal on the eval suite (`real-inventory-list-graph`, noul 0.78, a
+  near-miss just above the line). See `DECISIONS.md`, 2026-09-17 ("Jev
+  as the pick stage, v1: measured, not adopted", "...v2: measured, not
+  adopted either", "Jev as a refusal gate, v3: recommended, to be
+  confirmed") and `docs/measurements/jev-picker-v1.md` /
+  `jev-picker-v2.md` / `jev-gate-v3.md`. The local picker stays the
+  default and the gate stays off by default (`ORCHESTRA_GATE` unset);
+  the adapter, gate port, and config wiring stay in the tree for a later
+  round. $0.0896 cumulative across all three rounds, under 5% of the $2
+  budget.
 
 - **Id affinity closes `real-attendance-detail`** (`dc1f465`, `2020f58`,
   2026-09-17). The pick sent `att-002` to `inventory/GetInventoryItem`

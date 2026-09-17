@@ -7591,3 +7591,112 @@ shape without reintroducing the `list*`/`get*` confusion v2's richer
 per-candidate criteria caused, since the local picker's own prompt
 already resolves that distinction correctly. Measured the same way, on
 the same three instruments, when it lands.
+
+## 2026-09-17 Jev as a refusal gate, v3: recommended, to be confirmed
+
+Unlike v1/v2, v3 does not change the pick stage at all: `ORCHESTRA_PICKER`
+stays unset (local) throughout. The new knob is `ORCHESTRA_GATE=jev`,
+which runs `Gate.Gate` (`internal/adapter/planner/jev/gate.go`) - one
+`systemone` `noul` question, state = the question plus the shortlist as
+an object (`{"question", "operations": [{"id","service","summary"}, ...]}`)
+
+- in `planStaged`, after `idAffinity` and before `o.picker.Pick`.
+  `Impossible = noul >= 0.7` (`ORCHESTRA_JEV_GATE_THRESHOLD` default, never
+  overridden this round); on `Impossible` the plan answers `none` without
+  ever calling the picker; on a gate error it fails open (a warn, then the
+  pick runs unchanged). Full record: `docs/measurements/jev-gate-v3.md`.
+
+**The three instruments, gate vs. no-gate, same tree, same day:**
+
+|                        | gate (today)                                                             | local, no gate (same tree)        |
+| ---------------------- | ------------------------------------------------------------------------ | --------------------------------- |
+| shortlist corpus (100) | 77/100 correct@1, 79/100 correct@shown                                   | 78/100, 79/100                    |
+| mid (60, 3 services)   | 38/40 answerable · 1 false refusal · 17/20 impossible refused · 3 forced | 38/40 · 1 · 17/20 · 3 (identical) |
+| eval (34 cases)        | 33/34 at baseline, one new false refusal                                 | 34/34                             |
+
+The shortlist corpus is a true no-op: **max gate noul over all 100
+questions was 0.31**, nowhere near the 0.7 threshold, so zero gate
+refusals fired at all; the one-point correct@1 drop (78→77, one row,
+a19) is the local picker's own run-to-run sampling variance, not
+gate-caused (a19's own gate_noul was 0.07).
+
+Mid is where the gate was built to help, and it is a genuine partial
+fix. The three forced rows the brief named all crossed different noul
+values: **m44** (「休暇申請書を印刷したい」, 印刷/print) scored 0.86,
+crossed the threshold, and is now correctly refused instead of forced -
+the one target failure mode this round actually fixed. **m41**
+(「受注を集計したい」, 集計/aggregate, 0.16) and **m42**
+(「取引先を承認したい」, 承認/approve, 0.37) both stayed far under 0.7
+and were forced exactly as in every prior round - Jev's own judgment
+does not read "aggregate" or "approve" against a list-only catalogue as
+anywhere near as impossible as "print", even though the brief's own
+instruction text names all three verbs as one example category. All
+five headline mid numbers land identical to the no-gate baseline, but
+not because nothing moved underneath: m44 flipped from forced to
+refused (a fix) while m43 (previously correctly refused) flipped the
+other way, independently of the gate (its own noul was 0.22, well under
+threshold) - the local picker's own sampling variance again, coincidentally
+cancelling m44's fix in the raw count. Every one of the 7 mid rows that
+crossed 0.7 was a genuinely impossible question - zero false refusals
+among them - and the gate's explicit capability-question carve-out held
+on every capability row tested (noul 0.08-0.14).
+
+The eval suite is where the gate cost something: **one false refusal**,
+`real-inventory-list-graph` (「在庫の一覧をグラフで」, accept: the plain
+list), baseline 10/10 accept → this run 0/10, all ten answered `none`.
+Its own noul was 0.78 - the closest any genuinely-answerable question
+came to the threshold anywhere in this round's evidence (shortlist max
+0.31; mid's answerable half stayed well clear). Jev reads "as a graph"
+as resembling the gate instruction's own named impossible-verb category
+(集計・承認・印刷), even though the product's accepted behaviour is to
+return the plain list and ignore the decorative request. Every other
+eval case, including all seven `filter-by-label` variants and
+`follow-up-other-service` (still 10/10, since v3 never touches the
+picker), held exactly at baseline.
+
+**Cost.** Every gate call, across all three instruments and 169
+directly-measured calls, cost exactly 20 output tokens - a fixed cost
+independent of the noul value or shortlist size; input tokens are the
+only lever. This round: 529 calls, $0.0170. Cumulative across all three
+rounds: 2,031 calls, $0.0896, under 5% of the $2 budget.
+
+The agent's own threshold suggestion, 0.80, is recorded as a
+suggestion, not a measured result: no second `make eval`/`make eval-mid`
+run was made at a different threshold this round, so raising it to
+0.80-0.85 (which would fix `real-inventory-list-graph`'s 0.78 while
+keeping mid's three strongest fixes at 0.86-0.96) is read off this
+round's two distributions, not confirmed by rerunning them.
+
+**Decision (mine, recommended, to be confirmed): the gate is not
+adopted by default.** `ORCHESTRA_GATE` stays unset. It adds one Jev call
+per staged question for a net +1 row on mid (m44 fixed, m43 lost to
+unrelated variance) while leaving the two verbs the task brief actually
+named it after - 集計/aggregate (0.16) and 承認/approve (0.37) - scoring
+far below any threshold that would catch them; and it introduces this
+trial's first false refusal on the eval suite (0.78, a near-miss). The
+adapter, the gate port, and the config wiring all stay in the tree, off
+by default, for a later round to pick back up - either a threshold
+retune (0.80-0.85, unmeasured) or folding the gate into v4's
+conversation-state work instead of running it as a separate pass.
+
+**Cross-cutting lesson for the article, three rounds in.** Three
+rounds, $0.0896 total, the same three instruments and the same pinned
+date (`ORCHESTRA_PLANNER_TODAY=2026-09-16`) every time - directly
+comparable numbers were only possible because nothing else about the
+measurement moved between rounds. Jev's strengths held across all three:
+fast (latency ~230ms mean for a gate call, on par with v1/v2's pick
+latency), typed output throughout (`noul`/enum, never free text to
+parse), never once returned an API error across 2,031 calls, and always
+answered `none`/refused honestly on genuinely out-of-domain questions.
+Its limits also held across all three, each round finding a different
+one: v1/v2 found Japanese cross-service homonyms and `list*`-vs-`get*`
+confusion in the pick itself; v3 found that gating the pick separately
+still can't fully resolve which "verb the catalogue lacks" actually
+means impossible, that conversation state is still absent
+(`follow-up-other-service` remains a picker-only regression this round
+never touched), and that confidence rises without accuracy following it
+(v2's own calibration finding) in a new form here - a near-miss refusal
+just above threshold on a question a human would call obviously
+answerable. See `docs/measurements/jev-picker-v1.md`,
+`jev-picker-v2.md`, and `jev-gate-v3.md` for the full record behind each
+claim.
