@@ -191,6 +191,17 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       ...(process.env["ORCHESTRA_GATE"] === undefined
         ? {}
         : { ORCHESTRA_GATE: process.env["ORCHESTRA_GATE"] }),
+      // The hybrid picker (internal/adapter/planner/hybrid,
+      // ORCHESTRA_PICKER=hybrid): ORCHESTRA_HYBRID_JEV_TIMEOUT/
+      // ORCHESTRA_HYBRID_THRESHOLD, same pass-through as
+      // ORCHESTRA_JEV_CRITERIA above - unset means the platform's own
+      // defaults (800ms, 0.7).
+      ...(process.env["ORCHESTRA_HYBRID_JEV_TIMEOUT"] === undefined
+        ? {}
+        : { ORCHESTRA_HYBRID_JEV_TIMEOUT: process.env["ORCHESTRA_HYBRID_JEV_TIMEOUT"] }),
+      ...(process.env["ORCHESTRA_HYBRID_THRESHOLD"] === undefined
+        ? {}
+        : { ORCHESTRA_HYBRID_THRESHOLD: process.env["ORCHESTRA_HYBRID_THRESHOLD"] }),
     }),
     port: platformPort,
   };

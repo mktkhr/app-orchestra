@@ -162,6 +162,17 @@ export async function startEvalPlatform(
       ...(process.env["ORCHESTRA_JEV_OBJECT_INSTRUCTIONS"] === undefined
         ? {}
         : { ORCHESTRA_JEV_OBJECT_INSTRUCTIONS: process.env["ORCHESTRA_JEV_OBJECT_INSTRUCTIONS"] }),
+      // The hybrid picker (internal/adapter/planner/hybrid,
+      // ORCHESTRA_PICKER=hybrid): ORCHESTRA_HYBRID_JEV_TIMEOUT/
+      // ORCHESTRA_HYBRID_THRESHOLD, same pass-through as
+      // ORCHESTRA_JEV_CRITERIA above - unset means the platform's own
+      // defaults (800ms, 0.7).
+      ...(process.env["ORCHESTRA_HYBRID_JEV_TIMEOUT"] === undefined
+        ? {}
+        : { ORCHESTRA_HYBRID_JEV_TIMEOUT: process.env["ORCHESTRA_HYBRID_JEV_TIMEOUT"] }),
+      ...(process.env["ORCHESTRA_HYBRID_THRESHOLD"] === undefined
+        ? {}
+        : { ORCHESTRA_HYBRID_THRESHOLD: process.env["ORCHESTRA_HYBRID_THRESHOLD"] }),
     }),
     port: platformPort,
   };

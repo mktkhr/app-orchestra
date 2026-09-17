@@ -93,15 +93,19 @@ export function corpusArg(): "mid" | undefined {
  * `undefined` carries no suffix - `STAGES=1` reproduces the plain pass
  * byte for byte (docs/plans/staging.md, AC-S-101).
  *
- * `-jev`, `-v2` and `-gate` are read straight from `ORCHESTRA_PICKER`/
- * `ORCHESTRA_JEV_CRITERIA`/`ORCHESTRA_GATE`, unlike the other three
- * which come from `run.ts`'s own `--flag` parsing above: the picker and
- * the gate are each chosen through the platform's own environment
- * (`e2e/eval/services.ts`/`e2e/shortlist/boot.ts` pass all three
- * through the same way), not a run.ts flag, so this reads those
+ * `-jev`/`-hybrid`, `-v2` and `-gate` are read straight from
+ * `ORCHESTRA_PICKER`/`ORCHESTRA_JEV_CRITERIA`/`ORCHESTRA_GATE`, unlike
+ * the other three which come from `run.ts`'s own `--flag` parsing above:
+ * the picker and the gate are each chosen through the platform's own
+ * environment (`e2e/eval/services.ts`/`e2e/shortlist/boot.ts` pass all
+ * three through the same way), not a run.ts flag, so this reads those
  * environment variables directly rather than growing more parameters
  * every call site would have to thread through for names nothing else
- * here needs.
+ * here needs. `ORCHESTRA_PICKER=hybrid` (internal/adapter/planner/hybrid,
+ * Jev first, falling back to the local picker below its own confidence
+ * threshold) gets its own `-hybrid` suffix, not `-jev` - the two name
+ * different pickers, and a shared suffix would make a hybrid run's
+ * output file indistinguishable from a plain Jev run's.
  */
 export function variantSuffix(
   thinking?: "on" | "off",
@@ -114,7 +118,8 @@ export function variantSuffix(
   const nothink = thinking === undefined ? "" : thinkSuffix[thinking];
   const rp = repeatPenalty === undefined ? "" : `-rp${String(repeatPenalty)}`;
   const st = stages === undefined || stages === 1 ? "" : `-stages${String(stages)}`;
-  const jev = process.env["ORCHESTRA_PICKER"] === "jev" ? "-jev" : "";
+  const picker = process.env["ORCHESTRA_PICKER"];
+  const jev = picker === "hybrid" ? "-hybrid" : picker === "jev" ? "-jev" : "";
   // The Jev trial's second round (2026-09-17, "v2: richer criteria"):
   // ORCHESTRA_JEV_CRITERIA, read the same direct way as ORCHESTRA_PICKER
   // just above. Only meaningful alongside "-jev" (jev), but this suffix

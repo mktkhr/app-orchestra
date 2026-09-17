@@ -68,6 +68,13 @@ test("variantSuffix appends -jev when ORCHESTRA_PICKER=jev", () => {
   expect(variantSuffix("off", 1.1, 2)).toBe("-nothink-rp1.1-stages2-jev");
 });
 
+test("variantSuffix appends -hybrid when ORCHESTRA_PICKER=hybrid", () => {
+  process.env["ORCHESTRA_PICKER"] = "hybrid";
+
+  expect(variantSuffix()).toBe("-hybrid");
+  expect(variantSuffix("off", 1.1, 2)).toBe("-nothink-rp1.1-stages2-hybrid");
+});
+
 test("variantSuffix appends nothing for ORCHESTRA_PICKER=local", () => {
   process.env["ORCHESTRA_PICKER"] = "local";
 
