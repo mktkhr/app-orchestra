@@ -39,15 +39,16 @@ async function main(): Promise<void> {
     // forcing here - that is `runShortlist`'s own baseline convention for
     // the shortlist corpus, not part of the mid measurement
     // (docs/specs/midsizing.md M5/M6). `--narrowing off` is the full-catalogue
-    // Jev trial's own flag (internal/adapter/planner/jev/hierarchical.go) -
-    // `runShortlist` has no equivalent flag; its own `--on-only`/`--off-only`
-    // already run both narrowing passes.
+    // Jev trial's own flag (internal/adapter/planner/jev/hierarchical.go);
+    // `runShortlist` honours it too, as a variant pass whose files carry a
+    // `-narrowing-off` suffix, so a picker run never overwrites the plain
+    // `--off-only` pass's own `off.jsonl`.
     await runMid(names, thinking, repeatPenalty, stages, narrowing);
 
     return;
   }
 
-  await runShortlist(names, thinking, repeatPenalty, stages);
+  await runShortlist(names, thinking, repeatPenalty, stages, narrowing);
 }
 
 await main();

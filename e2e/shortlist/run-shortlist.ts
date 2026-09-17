@@ -160,7 +160,11 @@ async function runPass(pass: "on" | "off"): Promise<void> {
  * (docs/plans/wording.md Task 2, Step 1) plus, when given,
  * `ORCHESTRA_PLANNER_THINKING` / `ORCHESTRA_PLANNER_REPEAT_PENALTY` /
  * `ORCHESTRA_PLANNER_STAGES` (platform knobs subproject, 2026-09-16;
- * staging, docs/plans/staging.md). Rows go to
+ * staging, docs/plans/staging.md). `narrowing: "off"` (`--narrowing off`,
+ * the full-catalogue Jev trial) boots with narrowing off instead and adds
+ * a `-narrowing-off` suffix, mirroring `run-mid.ts`'s `runMidPass`; the
+ * `on-` prefix stays, since it names this pass kind, not the narrowing.
+ * Rows go to
  * `out/on-<name><suffix>.jsonl`; the miss list to
  * `out/misses-<name><suffix>.txt`; the platform's own stdout/stderr -
  * including the `planner truncated by max_tokens` warn line - to
@@ -171,11 +175,13 @@ async function runWordingPass(
   thinking?: "on" | "off",
   repeatPenalty?: number,
   stages?: 1 | 2,
+  narrowing?: "on" | "off",
 ): Promise<void> {
-  const variant = `${name}${variantSuffix(thinking, repeatPenalty, stages)}`;
+  const narrowingSuffix = narrowing === "off" ? "-narrowing-off" : "";
+  const variant = `${name}${variantSuffix(thinking, repeatPenalty, stages)}${narrowingSuffix}`;
   const outputName = `on-${variant}`;
   const booted: Booted = await boot({
-    narrowing: NARROWING,
+    ...(narrowing === "off" ? {} : { narrowing: NARROWING }),
     // "default" is a label for the report, not a wording the platform
     // knows: leave ORCHESTRA_PLANNER_WORDING unset so the platform's own
     // wording.Default() applies (its config rejects any unknown name).
@@ -206,8 +212,13 @@ export async function runShortlist(
   thinking: "on" | "off" | undefined,
   repeatPenalty: number | undefined,
   stages: 1 | 2 | undefined,
+  narrowing?: "on" | "off",
 ): Promise<void> {
-  const isVariant = thinking !== undefined || repeatPenalty !== undefined || stages !== undefined;
+  const isVariant =
+    thinking !== undefined ||
+    repeatPenalty !== undefined ||
+    stages !== undefined ||
+    narrowing !== undefined;
 
   if (names !== undefined) {
     // `v1` is always included first as a baseline, unless a thinking/
@@ -220,14 +231,14 @@ export async function runShortlist(
     for (const name of targets) {
       // Sequential and deliberate: one platform boot per wording, one at
       // a time (docs/plans/wording.md Task 2, Step 1).
-      await runWordingPass(name, thinking, repeatPenalty, stages);
+      await runWordingPass(name, thinking, repeatPenalty, stages, narrowing);
     }
 
     return;
   }
 
   if (isVariant) {
-    await runWordingPass("default", thinking, repeatPenalty, stages);
+    await runWordingPass("default", thinking, repeatPenalty, stages, narrowing);
 
     return;
   }
