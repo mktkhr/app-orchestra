@@ -15,6 +15,20 @@ import (
 // answer Ambiguous (S4) when the caller passes no WithAmbiguityThreshold.
 const defaultAmbiguityThreshold = 0.5
 
+// CriteriaV1 and CriteriaV2 are WithCriteria's two accepted values.
+// CriteriaV1 is criteriaFor's original one-line-per-option shape,
+// unchanged since this adapter's first trial. CriteriaV2 is the richer
+// per-option object (criteriaForV2: `what`, `examples`, `not_for`) the
+// Jev trial's second round measures against it. An empty string (the
+// zero value app.Picker.JevCriteria has when a caller builds one without
+// setting it - every test and caller that predates CriteriaV2) is
+// treated exactly as CriteriaV1, so New's behavior is unchanged for
+// anyone who never mentions this option at all.
+const (
+	CriteriaV1 = "v1"
+	CriteriaV2 = "v2"
+)
+
 // Option configures a Picker built by New.
 type Option func(*Picker)
 
@@ -23,6 +37,26 @@ type Option func(*Picker)
 // used when this option is never given.
 func WithAmbiguityThreshold(threshold float64) Option {
 	return func(p *Picker) { p.ambiguityThreshold = threshold }
+}
+
+// WithCriteria selects which of criteriaFor (CriteriaV1) or
+// criteriaForV2 (CriteriaV2) buildRequest uses to build each shortlist
+// entry's criteria. "" is treated as CriteriaV1 (see CriteriaV1's own
+// doc comment); any other value is also folded to CriteriaV1 rather than
+// panicking or silently sending no criteria at all - a typo'd
+// ORCHESTRA_JEV_CRITERIA already fails startup in
+// internal/infra/config.parseJevCriteria, so this fallback only ever
+// matters for a caller outside that path, such as a test.
+func WithCriteria(criteria string) Option {
+	return func(p *Picker) {
+		if criteria == CriteriaV2 {
+			p.criteria = CriteriaV2
+
+			return
+		}
+
+		p.criteria = CriteriaV1
+	}
 }
 
 // Picker implements usecase.Picker over TypeSafe's Jev API: the shortlist
@@ -34,6 +68,9 @@ func WithAmbiguityThreshold(threshold float64) Option {
 type Picker struct {
 	client             *client
 	ambiguityThreshold float64
+	// criteria is CriteriaV1 or CriteriaV2, set by WithCriteria; the zero
+	// value ("") is treated as CriteriaV1 by buildRequest.
+	criteria string
 }
 
 var _ usecase.Picker = (*Picker)(nil)
@@ -71,7 +108,7 @@ func (p *Picker) Pick(
 
 	start := time.Now()
 
-	resp, err := p.client.pick(ctx, buildRequest(query, answers, shortlist))
+	resp, err := p.client.pick(ctx, buildRequest(query, answers, shortlist, p.criteria))
 	if err != nil {
 		return usecase.Pick{}, fmt.Errorf("jev picking: %w", err)
 	}

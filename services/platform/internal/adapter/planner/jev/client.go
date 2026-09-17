@@ -65,11 +65,16 @@ type wireRequest struct {
 }
 
 // wireQuestion is one entry of wireRequest.Questions: this adapter only
-// ever sends the one named "pick".
+// ever sends the one named "pick". Criteria is `any` rather than
+// map[string]string because CriteriaV2 sends a criterionV2 object (per
+// docs.typesafe.ai/primitives/choice's own object form) as each entry's
+// value instead of CriteriaV1's plain string - mapping.go's criteriaFor
+// and criteriaForV2 are the only two callers, and each builds a map of
+// one concrete value type, never a mix of the two within one request.
 type wireQuestion struct {
-	Type         string            `json:"type"`
-	Instructions string            `json:"instructions"`
-	Criteria     map[string]string `json:"criteria"`
+	Type         string `json:"type"`
+	Instructions string `json:"instructions"`
+	Criteria     any    `json:"criteria"`
 }
 
 // wireResponse is the JSON body POST /v1/systemone answers with.
