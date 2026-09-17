@@ -44,6 +44,13 @@ export type Kind = "result" | "ask" | "none" | "form" | "proposal" | "error";
  * (`run.ts`'s `planFromInvokeFailure`) - undefined for every other kind,
  * where the question does not apply. `report.ts` counts these per pass so
  * a run measuring only the fallback path is visible, not silent.
+ *
+ * `expect` and `capability` carry a `MidQuestion`'s own fields
+ * (docs/plans/midsizing.md Task 3) through to the jsonl row, undefined
+ * for a plain shortlist-corpus row. `initial` carries a `form`'s
+ * string-valued `initial` fields (`plan-request.ts`'s own comment) so
+ * `score-mid.ts`'s fabrication check can be computed from the jsonl alone,
+ * without re-running the question.
  */
 export interface QuestionResult {
   readonly id: string;
@@ -55,10 +62,13 @@ export interface QuestionResult {
   readonly askDegraded?: boolean;
   readonly alternatives?: readonly string[];
   readonly via?: "plan" | "invoke-500";
+  readonly initial?: Readonly<Record<string, string>>;
   readonly latencyMs: number;
   readonly narrowingMs?: number;
   readonly errorMessage?: string;
   readonly errorStatus?: number;
+  readonly expect?: "answerable" | "impossible";
+  readonly capability?: boolean;
 }
 
 /** One question's outcome, scored. */

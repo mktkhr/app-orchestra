@@ -19,12 +19,21 @@ import type { QuestionResult } from "./score.ts";
  * comment). `alternatives` is only ever present on a `result`
  * (orchestrator.go's own `call`) - reading it here regardless of kind is
  * harmless, since a `form` never carries the field on the wire.
+ *
+ * `initial` reads a `form`'s own `initial` field
+ * (services/platform/api/openapi.yaml's `PlanResult.initial`), filtered
+ * down to its string-valued entries only - the mid scorer's fabrication
+ * check (docs/plans/midsizing.md Task 3, `score-mid.ts`) only ever needs
+ * to compare a string against the question text, and a non-string value
+ * (a number, say) can never be "fabricated" the same way. Absent when the
+ * response is not a `form`, or its `initial` had no string values.
  */
 export interface PlanResponse {
   readonly kind: string;
   readonly operationId?: string;
   readonly alternatives?: readonly string[];
   readonly via?: "plan" | "invoke-500";
+  readonly initial?: Readonly<Record<string, string>>;
   readonly errorMessage?: string;
   readonly errorStatus?: number;
 }
@@ -43,12 +52,19 @@ function parsePlanResponse(value: unknown): PlanResponse {
     .filter((a) => isRecord(a))
     .map((a) => a["operationId"])
     .filter((id): id is string => typeof id === "string");
+  const rawInitial = isRecord(record["initial"]) ? record["initial"] : {};
+  const initial = Object.fromEntries(
+    Object.entries(rawInitial).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
 
   return {
     kind,
     ...(operationId !== undefined && { operationId }),
     ...(alternatives.length > 0 && { alternatives }),
     ...(kind === "result" && { via: "plan" }),
+    ...(Object.keys(initial).length > 0 && { initial }),
   };
 }
 

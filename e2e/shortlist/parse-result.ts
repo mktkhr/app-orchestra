@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { asRecord } from "../src/helpers/wire.ts";
+import { asRecord, isRecord } from "../src/helpers/wire.ts";
 import type { Axis, QuestionResult } from "./score.ts";
 
 /**
@@ -42,6 +42,19 @@ function parseLine(line: string): QuestionResult {
   const errorMessage =
     typeof record["errorMessage"] === "string" ? record["errorMessage"] : undefined;
   const errorStatus = typeof record["errorStatus"] === "number" ? record["errorStatus"] : undefined;
+  const rawInitial = isRecord(record["initial"]) ? record["initial"] : undefined;
+  const initial =
+    rawInitial === undefined
+      ? undefined
+      : Object.fromEntries(
+          Object.entries(rawInitial).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        );
+  const expectValue = record["expect"];
+  const expect =
+    expectValue === "answerable" || expectValue === "impossible" ? expectValue : undefined;
+  const capability = record["capability"] === true ? true : undefined;
 
   return {
     id,
@@ -53,9 +66,12 @@ function parseLine(line: string): QuestionResult {
     ...(askDegraded !== undefined && { askDegraded }),
     ...(alternatives !== undefined && { alternatives }),
     ...(via !== undefined && { via }),
+    ...(initial !== undefined && { initial }),
     latencyMs,
     ...(errorMessage !== undefined && { errorMessage }),
     ...(errorStatus !== undefined && { errorStatus }),
+    ...(expect !== undefined && { expect }),
+    ...(capability !== undefined && { capability }),
   };
 }
 

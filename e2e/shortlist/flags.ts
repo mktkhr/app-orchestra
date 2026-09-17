@@ -70,3 +70,40 @@ export function stagesArg(): 1 | 2 | undefined {
 
   return raw === "2" ? 2 : 1;
 }
+
+/** `--corpus mid` (docs/plans/midsizing.md, Task 3): the only corpus name this flag accepts besides the default (unset, the shortlist corpus) - anything else is a usage error, not a silent no-op. */
+export function corpusArg(): "mid" | undefined {
+  const raw = flagValue("--corpus");
+
+  if (raw === undefined) return undefined;
+
+  if (raw !== "mid") {
+    throw new Error(`--corpus must be "mid", got ${JSON.stringify(raw)}`);
+  }
+
+  return raw;
+}
+
+/**
+ * The `-nothink` / `-rp<value>` / `-stages2` suffix a variant's output
+ * files carry (run.ts's own doc comment, docs/plans/staging.md;
+ * docs/plans/midsizing.md Task 3 reuses it for `--corpus mid`'s
+ * `mid-<variant>.jsonl`) - "" for a plain wording pass, unchanged from
+ * before any of the three flags existed. `stages` of `1` or `undefined`
+ * carries no suffix - `STAGES=1` reproduces the plain pass byte for byte
+ * (docs/plans/staging.md, AC-S-101).
+ */
+export function variantSuffix(
+  thinking?: "on" | "off",
+  repeatPenalty?: number,
+  stages?: 1 | 2,
+): string {
+  // "on" gets its own suffix too: since 2026-09-16 the platform's default is
+  // off, so an explicit "on" is a distinct variant, not the plain pass.
+  const thinkSuffix = { on: "-think", off: "-nothink" } as const;
+  const nothink = thinking === undefined ? "" : thinkSuffix[thinking];
+  const rp = repeatPenalty === undefined ? "" : `-rp${String(repeatPenalty)}`;
+  const st = stages === undefined || stages === 1 ? "" : `-stages${String(stages)}`;
+
+  return `${nothink}${rp}${st}`;
+}

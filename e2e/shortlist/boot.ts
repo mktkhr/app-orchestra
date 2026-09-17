@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { start as startFixture, type Serving } from "../narrowing/serve.ts";
-import { services } from "../narrowing/fixture/index.ts";
+import { midServices, services } from "../narrowing/fixture/index.ts";
 import {
   freePort,
   startBinary,
@@ -30,6 +30,13 @@ const ADMIN_PASSWORD = "shortlist-eval-admin-password";
 const LLM_BASE_URL = "http://localhost:11435/v1";
 const LLM_MODEL = "qwen3.5-9b-q8";
 
+/** Narrowing on, K=20 - the shortlist measurement's own setting (docs/plans/shortlisting.md Task 4), shared by run.ts's plain/wording passes and run-mid.ts's mid pass (docs/plans/midsizing.md Task 3) so the two never drift apart. */
+export const NARROWING: NarrowingOptions = {
+  embedModel: "e5-large-q8",
+  rerankModel: "bge-reranker-v2-m3-q8",
+  k: 20,
+};
+
 export interface NarrowingOptions {
   readonly embedModel: string;
   readonly rerankModel: string;
@@ -49,6 +56,8 @@ export interface BootOptions {
   readonly stages?: 1 | 2;
   /** When set, the platform's stdout and stderr - its JSON logs, including the `planner truncated by max_tokens` warn line - are written to this file instead of being discarded. */
   readonly logFile?: string;
+  /** Which fixture subset to serve: the full five-service fixture (default), or the mid subset's three services (docs/plans/midsizing.md Task 3) - `midServices()`, thirty operations. */
+  readonly fixture?: "full" | "mid";
 }
 
 export interface Booted {
@@ -108,9 +117,12 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
   const [fixturePort, platformPort] = await Promise.all([freePort(), freePort()]);
 
   usedPorts = [fixturePort, platformPort];
-  fixture = await startFixture(fixturePort);
 
-  const serviceEnv = services()
+  const servedServices = options.fixture === "mid" ? midServices() : services();
+
+  fixture = await startFixture(fixturePort, servedServices);
+
+  const serviceEnv = servedServices
     .map((service) => `${service.name}=http://127.0.0.1:${String(fixturePort)}/${service.name}`)
     .join(",");
 

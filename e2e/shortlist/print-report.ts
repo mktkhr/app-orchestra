@@ -1,8 +1,12 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
+import { midCatalog } from "../narrowing/fixture/index.ts";
 import { readResults } from "./parse-result.ts";
+import { pickMeanMs } from "./pick-log.ts";
+import { renderMidSection } from "./report-mid.ts";
 import { renderReport, renderWordingReport, type WordingRunReport } from "./report.ts";
+import { scoreMid } from "./score-mid.ts";
 import { scoreboard } from "./score.ts";
 
 /**
@@ -13,6 +17,11 @@ import { scoreboard } from "./score.ts";
  * `make eval-shortlist` runs `run.ts` then this - kept separate so a
  * report can be reprinted from an already-finished run without re-running
  * any question.
+ *
+ * Also prints the mid section (docs/plans/midsizing.md Task 3) for every
+ * `mid-<variant>.jsonl` output file `run.ts --corpus mid` wrote, alongside
+ * whatever shortlist reports above - `make eval-mid` runs `run.ts
+ * --corpus mid` then this same script.
  */
 
 const outDir = path.join(import.meta.dirname, "out");
@@ -36,6 +45,28 @@ function printWordingReport(names: readonly string[]): void {
   console.log(renderWordingReport(runs));
 }
 
+/** Every `mid-<variant>.jsonl` file's variant name, in directory order. */
+function midVariantNames(): readonly string[] {
+  if (!existsSync(outDir)) return [];
+
+  return readdirSync(outDir)
+    .map((entry) => /^mid-(.+)\.jsonl$/u.exec(entry)?.[1])
+    .filter((name): name is string => name !== undefined);
+}
+
+function printMidReport(names: readonly string[]): void {
+  const catalogIds = new Set(midCatalog().map((operation) => operation.operationId));
+
+  for (const name of names) {
+    const rows = readResults(path.join(outDir, `mid-${name}.jsonl`));
+    const board = scoreMid(rows, catalogIds);
+    const pickMean = pickMeanMs(path.join(outDir, `mid-${name}.log`));
+
+    console.log(`# mid ${name}`);
+    console.log(renderMidSection(board, pickMean));
+  }
+}
+
 function printPlainReport(): void {
   const on = readResults(path.join(outDir, "on.jsonl"));
   const off = readResults(path.join(outDir, "off.jsonl"));
@@ -55,3 +86,7 @@ if (names.length > 0) printWordingReport(names);
 if (existsSync(path.join(outDir, "on.jsonl")) && existsSync(path.join(outDir, "off.jsonl"))) {
   printPlainReport();
 }
+
+const midNames = midVariantNames();
+
+if (midNames.length > 0) printMidReport(midNames);

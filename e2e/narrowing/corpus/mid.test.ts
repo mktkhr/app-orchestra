@@ -1,53 +1,19 @@
 /**
  * The mid corpus's own checks (docs/plans/midsizing.md Task 2 Step 1,
- * AC-M-103). Task 1 (`e2e/narrowing/fixture/mid.ts`, `midCatalog()`) has not
- * landed yet, so the thirty operation ids are computed here from the same
- * naming rule the fixture generator uses (`fixture/naming.ts`'s `ALL_VERBS`,
- * `pluralOf`, `qualify`) rather than imported.
- *
- * TODO(midsizing Task 3): switch to `midCatalog()` once Task 1 is merged,
- * and drop `MID_RESOURCES` / `midOperationIds` below.
+ * AC-M-103). The thirty operation ids come from `midCatalog()`
+ * (`e2e/narrowing/fixture/mid.ts`, landed in Task 1) rather than being
+ * recomputed here.
  */
 import { expect, test } from "vite-plus/test";
 
-import { catalogOf, type FixtureOperation } from "../fixture/index.ts";
-import { ALL_VERBS, pluralOf, qualify } from "../fixture/naming.ts";
+import { midCatalog, type FixtureOperation } from "../fixture/index.ts";
 import { midQuestions } from "./mid.ts";
 import type { MidQuestion } from "./types.ts";
 
-/** docs/specs/midsizing.md M1: three services, two resources each. */
-const MID_RESOURCES: Readonly<Record<string, readonly string[]>> = {
-  sales: ["Order", "Partner"],
-  purchasing: ["Order", "Partner"],
-  attendance: ["Employee", "LeaveRequest"],
-};
-
-/** The five operation ids one resource generates, by the fixture's naming rule. */
-function operationIdsOfResource(service: string, resource: string): readonly string[] {
-  return ALL_VERBS.map((verb) => {
-    const idPart = verb === "list" ? pluralOf(resource) : resource;
-
-    return `${verb}${qualify(service, idPart)}`;
-  });
-}
-
-/** The thirty mid operation ids, computed rather than imported (see header). */
-function midOperationIds(): readonly string[] {
-  return Object.entries(MID_RESOURCES).flatMap(([service, resources]) =>
-    resources.flatMap((resource) => operationIdsOfResource(service, resource)),
-  );
-}
-
-const MID_OPERATION_IDS = midOperationIds();
+const MID_CATALOG = midCatalog();
+const MID_OPERATION_IDS = MID_CATALOG.map((op) => op.operationId);
 const MID_OPERATION_ID_SET = new Set(MID_OPERATION_IDS);
-
-const FULL_CATALOG = catalogOf(5);
-const MID_OPERATIONS_BY_ID = new Map(
-  FULL_CATALOG.filter((op) => MID_OPERATION_ID_SET.has(op.operationId)).map((op) => [
-    op.operationId,
-    op,
-  ]),
-);
+const MID_OPERATIONS_BY_ID = new Map(MID_CATALOG.map((op) => [op.operationId, op]));
 
 function answerable(): readonly MidQuestion[] {
   return midQuestions().filter((q) => q.expect === "answerable");
@@ -123,7 +89,7 @@ test("question ids are unique and run m01..m60", () => {
   expect(ids.toSorted()).toEqual(expected);
 });
 
-test("the computed catalogue has exactly the thirty mid operations", () => {
+test("midCatalog has exactly the thirty mid operations", () => {
   expect(MID_OPERATION_IDS.length).toBe(30);
   expect(MID_OPERATIONS_BY_ID.size).toBe(30);
 });
