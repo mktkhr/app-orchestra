@@ -171,9 +171,8 @@ type LLM struct {
 	// Thinking selects whether the toolcall planner leaves Qwen3.5's
 	// thinking on or turns it off (toolcall.WithThinking), mirroring
 	// config.Config.PlannerThinking. A pointer, not a bare bool: nil (the
-	// zero value - every test in this package that predates this option)
-	// must mean "thinking on", the same default toolcall.New itself
-	// applies, and a bare bool's zero value (false) cannot say that.
+	// zero value - every test predating this option) must mean "thinking
+	// on" (toolcall.New's own default) - a bare bool's zero value cannot.
 	Thinking *bool
 	// RepeatPenalty and RepeatLastN are toolcall.WithRepeatPenalty's
 	// arguments, mirroring config.Config.PlannerRepeatPenalty/
@@ -196,10 +195,11 @@ type LLM struct {
 	// on (docs/specs/staging.md's own reasoning for a fixed measurement
 	// date).
 	Today *time.Time
-	// Provider/AnthropicAPIKey/AnthropicBaseURL: see app_llm_provider.go.
-	Provider         string
-	AnthropicAPIKey  string
-	AnthropicBaseURL string
+	// Provider/AnthropicAPIKey/AnthropicBaseURL/AnthropicThinking: see app_llm_provider.go.
+	Provider          string
+	AnthropicAPIKey   string
+	AnthropicBaseURL  string
+	AnthropicThinking bool
 }
 
 // Narrowing configures the llama-swap-backed usecase.Narrower

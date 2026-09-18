@@ -35,4 +35,18 @@ type Config struct {
 	// (params.go's own doc comment). chat.Request.Model, when set,
 	// overrides it, mirroring chat.Config.Model.
 	Model string
+	// ThinkingEnabled is whether toWireRequest must leave a model's own
+	// default thinking behaviour alone rather than sending
+	// "thinking":{"type":"disabled"} for a model whose behaviorFor entry
+	// disables it (params.go). false (the zero value; ORCHESTRA_ANTHROPIC_
+	// THINKING=off, internal/infra/config.Config.AnthropicThinking's own
+	// default) sends the disable, byte-identical to this package's
+	// behaviour before this field existed. true (ORCHESTRA_ANTHROPIC_
+	// THINKING=on) omits it - it never invents a "budget_tokens" or an
+	// "effort" field, only omits the disable. Never changes anything for a
+	// model whose entry already sends no "thinking" field
+	// (claude-haiku-4-5, claude-fable-5-1): behaviorFor's own
+	// thinkingDisabled is false for those, so there was never a disable to
+	// omit.
+	ThinkingEnabled bool
 }

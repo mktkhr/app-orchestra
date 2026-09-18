@@ -222,6 +222,14 @@ export function variantSuffix(
     llmModel === undefined || llmModel === DEFAULT_LLM_MODEL
       ? ""
       : `-model-${llmModel.toLowerCase().replaceAll(/[^a-z0-9.-]/gu, "-")}`;
+  // The Anthropic thinking-comparison flag (docs/measurements: a
+  // 2026-09-15 round found thinking bought nothing on this task; the tree
+  // has changed since): ORCHESTRA_ANTHROPIC_THINKING, read the same direct
+  // way as ORCHESTRA_LLM_MODEL just above - the platform's own environment,
+  // not a run.ts flag. Only "on" carries a suffix; "off" (the default) and
+  // unset do not, matching every other suffix here, so a thinking-on run's
+  // output files never collide with the thinking-off ones.
+  const anthropicThinking = process.env["ORCHESTRA_ANTHROPIC_THINKING"] === "on" ? "-think" : "";
 
-  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}${model}`;
+  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}${model}${anthropicThinking}`;
 }

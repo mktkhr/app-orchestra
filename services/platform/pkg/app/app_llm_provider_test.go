@@ -179,6 +179,66 @@ func TestNewWithLLMProviderLlamaSwapAndNoBaseURLFallsBackToTheStub(t *testing.T)
 	assert.Equal(t, "table", body.Component)
 }
 
+// TestNewWithAnthropicThinkingOmitsTheDisableField proves LLM.AnthropicThinking
+// (ORCHESTRA_ANTHROPIC_THINKING=on, config.Config.AnthropicThinking)
+// reaches internal/adapter/planner/chat/anthropic.Client's own wire body
+// through pkg/app.newChatCompleter, not just anthropic.Config directly
+// (that package's own client_test.go already proves the field works in
+// isolation) - claude-sonnet-5 must send no "thinking" field at all.
+func TestNewWithAnthropicThinkingOmitsTheDisableField(t *testing.T) {
+	fixture := fixtureService(t)
+
+	var gotBody map[string]any
+
+	anthropicServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		const response = `{
+      "content": [{"type": "tool_use", "id": "toolu_1", "name": "ListWidgets", "input": {}}],
+      "stop_reason": "tool_use",
+      "usage": {"input_tokens": 12, "output_tokens": 4}
+    }`
+		if _, err := w.Write([]byte(response)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(anthropicServer.Close)
+
+	handler, err := app.New(&app.Config{
+		Services: []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM: app.LLM{
+			Model: "claude-sonnet-5", Provider: app.ProviderAnthropic,
+			AnthropicAPIKey: "test-key", AnthropicBaseURL: anthropicServer.URL, AnthropicThinking: true,
+		},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	_, hasThinking := gotBody["thinking"]
+	assert.False(t, hasThinking, "AnthropicThinking=true must omit \"thinking\" for claude-sonnet-5")
+}
+
 // LLM.Provider left unset (the zero value, "") taking the same
 // ProviderLlamaSwap branch as before this subproject existed is already
 // covered end to end by TestNewWithLLMBaseURLConfiguredUsesTheToolCallingPlanner

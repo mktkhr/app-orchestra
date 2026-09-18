@@ -291,9 +291,10 @@ type Config struct {
 	// builds when LLMBaseURL is set: LLMModeToolCall (the default, used
 	// when ORCHESTRA_LLM_MODE is unset) or LLMModeJSON, for a model that
 	// cannot call tools (docs/plans/orchestration.md, Task 11).
-	LLMMode         string
-	LLMProvider     string // ORCHESTRA_LLM_PROVIDER; see config_llm_provider.go
-	AnthropicAPIKey string // ANTHROPIC_API_KEY; see config_llm_provider.go
+	LLMMode           string
+	LLMProvider       string // ORCHESTRA_LLM_PROVIDER; see config_llm_provider.go
+	AnthropicAPIKey   string // ANTHROPIC_API_KEY; see config_llm_provider.go
+	AnthropicThinking bool   // ORCHESTRA_ANTHROPIC_THINKING; see config_llm_provider.go
 	// PlannerWording selects the toolcall planner's named set of words
 	// (internal/adapter/planner/wording.ByName), read from
 	// ORCHESTRA_PLANNER_WORDING. Defaults to wording.Default().Name

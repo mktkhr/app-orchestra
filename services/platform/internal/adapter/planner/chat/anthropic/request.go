@@ -72,8 +72,12 @@ type wireRequestBody struct {
 
 // toWireRequest builds the Messages API request body for model and req -
 // the one function both Client.Complete and BuildRequestBody go through,
-// so "what goes on the wire" has exactly one definition.
-func toWireRequest(model string, req *chat.Request) (wireRequestBody, error) {
+// so "what goes on the wire" has exactly one definition. thinkingEnabled
+// mirrors Config.ThinkingEnabled's own doc comment: false (today's
+// behaviour) still sends "thinking":{"type":"disabled"} for a model whose
+// behaviorFor entry disables it; true omits that field instead, letting
+// the model think as it would by default.
+func toWireRequest(model string, req *chat.Request, thinkingEnabled bool) (wireRequestBody, error) {
 	if model == "" {
 		return wireRequestBody{}, ErrMissingModel
 	}
@@ -98,7 +102,7 @@ func toWireRequest(model string, req *chat.Request) (wireRequestBody, error) {
 		wire.Temperature = req.Temperature
 	}
 
-	if behavior.thinkingDisabled {
+	if behavior.thinkingDisabled && !thinkingEnabled {
 		wire.Thinking = &wireThinking{Type: "disabled"}
 	}
 

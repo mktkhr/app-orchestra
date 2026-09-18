@@ -65,8 +65,8 @@ func llmConfigured(cfg *Config) bool {
 // newHybridPicker) both run their planning calls through: a
 // chat.Client over cfg.LLM.BaseURL/APIKey/Model for "" or
 // ProviderLlamaSwap (today's OpenAI-compatible transport, unchanged), or
-// an anthropic.Client over cfg.LLM.AnthropicAPIKey/Model for
-// ProviderAnthropic. Both toolcall.Planner and pick.Picker accept a
+// an anthropic.Client over cfg.LLM.AnthropicAPIKey/Model/AnthropicThinking
+// for ProviderAnthropic. Both toolcall.Planner and pick.Picker accept a
 // chat.Completer rather than either concrete type, so this is the one
 // place the choice is made.
 func newChatCompleter(cfg *Config) (chat.Completer, error) {
@@ -80,6 +80,7 @@ func newChatCompleter(cfg *Config) (chat.Completer, error) {
 
 		return anthropic.New(anthropic.Config{
 			BaseURL: cfg.LLM.AnthropicBaseURL, APIKey: cfg.LLM.AnthropicAPIKey, Model: cfg.LLM.Model,
+			ThinkingEnabled: cfg.LLM.AnthropicThinking,
 		}), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidLLMProvider, cfg.LLM.Provider)

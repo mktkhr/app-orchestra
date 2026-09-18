@@ -75,3 +75,52 @@ func TestLoadIgnoresAnthropicAPIKeyForLlamaSwap(t *testing.T) {
 	assert.Equal(t, config.LLMProviderLlamaSwap, cfg.LLMProvider)
 	assert.Equal(t, "sk-ant-test", cfg.AnthropicAPIKey)
 }
+
+// TestLoadAnthropicThinkingDefaultsToOff is AC-style: a run that never
+// mentions ORCHESTRA_ANTHROPIC_THINKING at all - every deployment before
+// this field existed - must load exactly false, so
+// internal/adapter/planner/chat/anthropic keeps sending
+// "thinking":{"type":"disabled"} for claude-sonnet-5/claude-opus-5
+// unchanged.
+func TestLoadAnthropicThinkingDefaultsToOff(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.False(t, cfg.AnthropicThinking)
+}
+
+func TestLoadReadsAnthropicThinkingOn(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_ANTHROPIC_THINKING", "on")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.True(t, cfg.AnthropicThinking)
+}
+
+func TestLoadReadsAnthropicThinkingOff(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_ANTHROPIC_THINKING", "off")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.False(t, cfg.AnthropicThinking)
+}
+
+func TestLoadRejectsAnUnknownAnthropicThinking(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_ANTHROPIC_THINKING", "maybe")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, config.ErrInvalidAnthropicThinking)
+}

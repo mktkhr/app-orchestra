@@ -90,8 +90,9 @@ let platform: RunningService | undefined;
 let usedPorts: readonly number[] = [];
 
 /**
- * The Jev trial's own env vars, plus the second chat backend's own two
- * (`ORCHESTRA_LLM_PROVIDER`, `ANTHROPIC_API_KEY`) - passed through from the
+ * The Jev trial's own env vars, plus the second chat backend's own three
+ * (`ORCHESTRA_LLM_PROVIDER`, `ANTHROPIC_API_KEY`, `ORCHESTRA_ANTHROPIC_THINKING`)
+ * - passed through from the
  * caller's own environment only when set - never a default - so a run that
  * never mentions any of them is byte-identical to before this list existed
  * (`e2e/eval/services.ts`'s own `PASSTHROUGH_ENV_VARS`, the same list,
@@ -105,6 +106,7 @@ let usedPorts: readonly number[] = [];
 const JEV_TRIAL_ENV_VARS = [
   "ORCHESTRA_LLM_PROVIDER",
   "ANTHROPIC_API_KEY",
+  "ORCHESTRA_ANTHROPIC_THINKING",
   "ORCHESTRA_PICKER",
   "ORCHESTRA_JEV_API_KEY",
   "ORCHESTRA_JEV_CRITERIA",

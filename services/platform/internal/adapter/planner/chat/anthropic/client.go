@@ -49,17 +49,20 @@ var _ chat.Completer = (*Client)(nil)
 // Complete sends req to the Anthropic Messages API and maps its response
 // onto the shared chat.Response shape (fromWireResponse's own doc
 // comment). Every call logs, at info, the model, input and output token
-// counts, latency and stop reason - "a run's log must be enough to compute
-// what it cost" - before mapping the response, so a refusal (which
-// Complete then returns as an error) is still logged with its own token
-// cost and latency rather than silently swallowed into just an error.
+// counts, latency, stop reason and whether "thinking":{"type":"disabled"}
+// was sent on the wire - "a run's log must be enough to compute what it
+// cost", and, since ORCHESTRA_ANTHROPIC_THINKING (Config.ThinkingEnabled)
+// exists, enough to say which mode produced it - before mapping the
+// response, so a refusal (which Complete then returns as an error) is
+// still logged with its own token cost and latency rather than silently
+// swallowed into just an error.
 func (c *Client) Complete(ctx context.Context, req *chat.Request) (chat.Response, error) {
 	model := req.Model
 	if model == "" {
 		model = c.cfg.Model
 	}
 
-	wire, err := toWireRequest(model, req)
+	wire, err := toWireRequest(model, req, c.cfg.ThinkingEnabled)
 	if err != nil {
 		return chat.Response{}, err
 	}
@@ -98,7 +101,8 @@ func (c *Client) Complete(ctx context.Context, req *chat.Request) (chat.Response
 		slog.Int("input_tokens", wireResp.Usage.InputTokens),
 		slog.Int("output_tokens", wireResp.Usage.OutputTokens),
 		slog.Int64("latency_ms", latency.Milliseconds()),
-		slog.String("stop_reason", wireResp.StopReason))
+		slog.String("stop_reason", wireResp.StopReason),
+		slog.Bool("thinking_disabled", wire.Thinking != nil))
 
 	return fromWireResponse(&wireResp)
 }
@@ -140,14 +144,15 @@ func requestError(req *http.Request, resp *http.Response) error {
 }
 
 // BuildRequestBody marshals the Messages API request body Complete would
-// send for model and req, without sending it. This is what a token-count
-// helper needs: POST /v1/messages/count_tokens takes the same headers
-// (x-api-key, anthropic-version, content-type) and the same body minus
-// "max_tokens" - a caller wanting to count tokens can json.Unmarshal this
-// result, delete "max_tokens", and POST that to count_tokens with the same
-// free endpoint, no billed completion involved.
-func BuildRequestBody(model string, req *chat.Request) ([]byte, error) {
-	wire, err := toWireRequest(model, req)
+// send for model, req and thinkingEnabled (Config.ThinkingEnabled's own
+// doc comment), without sending it. This is what a token-count helper
+// needs: POST /v1/messages/count_tokens takes the same headers (x-api-key,
+// anthropic-version, content-type) and the same body minus "max_tokens" -
+// a caller wanting to count tokens can json.Unmarshal this result, delete
+// "max_tokens", and POST that to count_tokens with the same free endpoint,
+// no billed completion involved.
+func BuildRequestBody(model string, req *chat.Request, thinkingEnabled bool) ([]byte, error) {
+	wire, err := toWireRequest(model, req, thinkingEnabled)
 	if err != nil {
 		return nil, err
 	}

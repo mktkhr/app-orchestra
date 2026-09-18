@@ -93,9 +93,9 @@ func TestCompleteSendsSystemMessagesToolsAndHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "/v1/messages", gotPath)
-	assert.Equal(t, "test-key", gotHeaders.Get("x-api-key"))
-	assert.Equal(t, "2023-06-01", gotHeaders.Get("anthropic-version"))
-	assert.Equal(t, "application/json", gotHeaders.Get("content-type"))
+	assert.Equal(t, "test-key", gotHeaders.Get("X-Api-Key"))
+	assert.Equal(t, "2023-06-01", gotHeaders.Get("Anthropic-Version"))
+	assert.Equal(t, "application/json", gotHeaders.Get("Content-Type"))
 
 	assert.Equal(t, "claude-haiku-4-5", gotBody["model"])
 	assert.Equal(t, "you are a planner", gotBody["system"], "system message must go on \"system\", not \"messages\"")
@@ -303,7 +303,7 @@ func TestBuildRequestBodyMatchesWhatCompleteWouldSend(t *testing.T) {
 		},
 		Temperature: &temp,
 		MaxTokens:   &maxTokens,
-	})
+	}, false)
 	require.NoError(t, err)
 
 	decoded := decodeBody(t, body)
@@ -312,4 +312,78 @@ func TestBuildRequestBodyMatchesWhatCompleteWouldSend(t *testing.T) {
 	assert.InDelta(t, 1024.0, decoded["max_tokens"], 0)
 	_, hasTemperature := decoded["temperature"]
 	assert.False(t, hasTemperature, "claude-sonnet-5 must never see temperature on the wire")
+}
+
+// TestCompleteConfigThinkingEnabledOmitsTheDisableField proves
+// Config.ThinkingEnabled (ORCHESTRA_ANTHROPIC_THINKING=on, threaded
+// through pkg/app into New) reaches Complete's own wire body, not just
+// BuildRequestBody's - the default Config{} (ThinkingEnabled: false, the
+// zero value) still sends "thinking":{"type":"disabled"} for
+// claude-sonnet-5, exactly as before this field existed.
+func TestCompleteConfigThinkingEnabledOmitsTheDisableField(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(textResponse)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := anthropic.New(anthropic.Config{BaseURL: server.URL, Model: "claude-sonnet-5", ThinkingEnabled: true})
+
+	maxTokens := 1024
+
+	_, err := client.Complete(t.Context(), &chat.Request{
+		Messages:  []chat.Message{{Role: "user", Content: "hi"}},
+		MaxTokens: &maxTokens,
+	})
+	require.NoError(t, err)
+
+	_, hasThinking := gotBody["thinking"]
+	assert.False(t, hasThinking, "ThinkingEnabled must omit \"thinking\" for claude-sonnet-5")
+}
+
+// TestCompleteConfigThinkingEnabledDoesNotAffectHaikuOrFable proves the
+// env var's own "must not change anything for a model whose entry already
+// sends no thinking field" rule at the Client.Complete level, not just
+// toWireRequest's own table test (params_test.go).
+func TestCompleteConfigThinkingEnabledDoesNotAffectHaikuOrFable(t *testing.T) {
+	for _, model := range []string{"claude-haiku-4-5", "claude-fable-5-1"} {
+		t.Run(model, func(t *testing.T) {
+			var gotBody map[string]any
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+					t.Errorf("decoding request body: %v", err)
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				if _, err := w.Write([]byte(textResponse)); err != nil {
+					t.Errorf("writing fixture response: %v", err)
+				}
+			}))
+			t.Cleanup(server.Close)
+
+			for _, thinkingEnabled := range []bool{false, true} {
+				client := anthropic.New(anthropic.Config{BaseURL: server.URL, Model: model, ThinkingEnabled: thinkingEnabled})
+
+				maxTokens := 1024
+
+				_, err := client.Complete(t.Context(), &chat.Request{
+					Messages:  []chat.Message{{Role: "user", Content: "hi"}},
+					MaxTokens: &maxTokens,
+				})
+				require.NoError(t, err)
+
+				_, hasThinking := gotBody["thinking"]
+				assert.False(t, hasThinking, "%s must never see thinking, ThinkingEnabled=%v", model, thinkingEnabled)
+			}
+		})
+	}
 }

@@ -33,7 +33,7 @@ func main() {
 			BaseURL: cfg.LLMBaseURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, Mode: cfg.LLMMode, Wording: cfg.PlannerWording,
 			Thinking: &cfg.PlannerThinking, RepeatPenalty: cfg.PlannerRepeatPenalty, RepeatLastN: cfg.PlannerRepeatLastN,
 			Stages: cfg.PlannerStages, Today: cfg.PlannerToday,
-			Provider: cfg.LLMProvider, AnthropicAPIKey: cfg.AnthropicAPIKey,
+			Provider: cfg.LLMProvider, AnthropicAPIKey: cfg.AnthropicAPIKey, AnthropicThinking: cfg.AnthropicThinking,
 		},
 		PlanFixtures:  toAppPlanFixtures(cfg.PlanFixtures),
 		DBPath:        cfg.DBPath,
