@@ -34,11 +34,51 @@ func (f *Filler) buildFillRequest(
 		}
 	}
 
+	if f.refusalMode == refusalModeSeparate {
+		addSeparateRefusalQuestions(questions)
+	}
+
 	return wireRequest{
 		State:     toolcall.BuildUserContent(query, answers, turns, now),
 		Model:     modelName,
 		Questions: questions,
 	}
+}
+
+// fillRefusalQuestionName and fillCapabilitiesQuestionName are the two
+// whole-request questions addSeparateRefusalQuestions adds alongside every
+// parameter's own Choice question, keyed the same "one extra key in the same
+// request, not a second call" way picker.go's own impossibleQuestionName is
+// (docs/measurements/jev-picker-v5.md, "fan-out"): Jev evaluates every
+// question of one request in parallel and counts input tokens once.
+const (
+	fillRefusalQuestionName      = "refusal"
+	fillCapabilitiesQuestionName = "capabilities"
+)
+
+// addSeparateRefusalQuestions adds fillRefusalQuestionName and
+// fillCapabilitiesQuestionName to questions as two "noul" (yes/no-with-a-
+// probability) questions - refusalModeSeparate's own answer to the category
+// error refusalModeInOptions makes: "the picked operation cannot answer this
+// question at all" and "the question is asking what the system can do, not
+// asking to run an operation" are both claims about the whole request, not
+// about any one parameter's value, so they are asked as their own questions
+// here rather than as extra criteria competing inside a parameter's Choice
+// question (criteriaForParam, called just above in buildFillRequest, never
+// adds refusalChoice/capabilitiesChoice in this mode). The shape reused is
+// gate.go's own standalone "noul" question (gateWireQuestion: Type "noul",
+// a plain Instructions string, no Criteria) rather than picker.go's own
+// fan-out "impossible" question, which additionally sends a true/false
+// Criteria object that gate.go's does not - the simpler of the two already
+// documented shapes, and gate.go's own gateInstructions is the one already
+// asking a single whole-request yes/no over one Japanese sentence, which is
+// exactly this shape. refusalLabel and capabilitiesLabel are reused
+// byte-for-byte as each question's own Instructions: the same claim, asked
+// as a criterion's own text in refusalModeInOptions and as a noul question's
+// own instructions here, should read identically either way.
+func addSeparateRefusalQuestions(questions map[string]wireQuestion) {
+	questions[fillRefusalQuestionName] = wireQuestion{Type: noulQuestionType, Instructions: refusalLabel}
+	questions[fillCapabilitiesQuestionName] = wireQuestion{Type: noulQuestionType, Instructions: capabilitiesLabel}
 }
 
 // instructionsForParam builds one parameter's own Choice question
@@ -61,6 +101,10 @@ func instructionsForParam(p *domain.Parameter) string {
 // falling back to the bare value for a spec-nonconformant service the same
 // defensive way optionsFromSchema (internal/usecase/orchestrator_ask.go)
 // already does - plus the two sentinels unsetChoice and mismatchChoice.
+// refusalChoice and capabilitiesChoice are added only in refusalModeInOptions
+// - never in refusalModeSeparate, where the same two judgements are asked as
+// their own whole-request questions instead (addSeparateRefusalQuestions),
+// so a parameter's own criteria here only ever describe that one field.
 func (f *Filler) criteriaForParam(p *domain.Parameter) map[string]string {
 	criteria := make(map[string]string, len(p.Schema.Enum)+sentinelCount)
 
@@ -76,7 +120,7 @@ func (f *Filler) criteriaForParam(p *domain.Parameter) map[string]string {
 	criteria[unsetChoice] = f.unsetLabel()
 	criteria[mismatchChoice] = mismatchLabel
 
-	if f.refusal {
+	if f.refusalMode == refusalModeInOptions {
 		criteria[refusalChoice] = refusalLabel
 		criteria[capabilitiesChoice] = capabilitiesLabel
 	}
@@ -120,42 +164,57 @@ func questionTitleFor(endpoint *domain.Endpoint, name string) string {
 }
 
 // fillOutcome is mapFillAnswers' own result: args is the DecisionCall
-// Filler.Fill returns when none of refusalParam, capabilitiesParam or
-// mismatchParam is set (every parameter answered unsetChoice or a real
-// enum value); mismatchParam, when non-empty, is the first parameter (in
-// endpoint.Parameters order) whose answer was mismatchChoice;
-// capabilitiesParam, when non-empty, is the first parameter whose answer
-// was capabilitiesChoice; refusalParam, when non-empty, is the first
-// parameter whose answer was refusalChoice. Precedence among the three,
-// applied in decision below: refusalParam first, then capabilitiesParam,
-// then mismatchParam - each is a claim about the whole request, not one
-// field, and a claim about the whole request outranks a claim about a
-// single parameter's value; refusalParam outranks capabilitiesParam
-// because "this operation cannot answer the question at all" is the
-// stronger of the two whole-request claims, and the ordering matches the
-// local fill's own DecisionNone-over-DecisionListCapabilities precedent
-// when both would apply. chosen, confidence and probabilities carry every
-// parameter's own raw answer, read only by logFillCompleted.
+// Filler.Fill returns when none of the whole-request judgements
+// (refusalParam/refusalSeparate, capabilitiesParam/capabilitiesSeparate) nor
+// mismatchParam fired (every parameter answered unsetChoice or a real enum
+// value); mismatchParam, when non-empty, is the first parameter (in
+// endpoint.Parameters order) whose answer was mismatchChoice.
+// refusalParam/capabilitiesParam are refusalModeInOptions' own reading, when
+// non-empty naming the first parameter whose answer was
+// refusalChoice/capabilitiesChoice; refusalSeparate/capabilitiesSeparate are
+// refusalModeSeparate's own reading of the two whole-request noul questions,
+// true when that question's own probability was at or above threshold.
+// Precedence among refusal/capabilities/mismatch, applied in decision below:
+// refusal first, then capabilities, then mismatch - each of the first two is
+// a claim about the whole request, not one field, and a claim about the
+// whole request outranks a claim about a single parameter's value; refusal
+// outranks capabilities because "this operation cannot answer the question
+// at all" is the stronger of the two whole-request claims, and the ordering
+// matches the local fill's own DecisionNone-over-DecisionListCapabilities
+// precedent when both would apply - true regardless of which refusalMode
+// produced the claim. chosen, confidence and probabilities carry every
+// parameter's own raw answer; refusalProbability/capabilitiesProbability
+// carry the two whole-request noul answers' own probability (0 when
+// refusalMode is not refusalModeSeparate) - all read only by
+// logFillCompleted.
 type fillOutcome struct {
-	args              map[string]any
-	mismatchParam     string
-	refusalParam      string
-	capabilitiesParam string
-	chosen            map[string]string
-	confidence        map[string]float64
-	probabilities     map[string]map[string]float64
+	args                    map[string]any
+	mismatchParam           string
+	refusalParam            string
+	capabilitiesParam       string
+	refusalSeparate         bool
+	capabilitiesSeparate    bool
+	refusalProbability      float64
+	capabilitiesProbability float64
+	chosen                  map[string]string
+	confidence              map[string]float64
+	probabilities           map[string]map[string]float64
 }
 
-// mapFillAnswers reads resp.Answers against endpoint's own parameters:
-// false whenever any parameter's answer is missing entirely, or its
-// confidence is below threshold - Fill's own fail-open cases - or its
-// choice is neither a sentinel nor one of the parameter's own declared
-// enum values (a shape Jev's own criteria never offered, so this is
-// defensive, not an expected path). True otherwise, with outcome fully
-// built: every parameter is read once, in endpoint.Parameters order, so a
-// deployment with more than one mismatchChoice answer always names the
-// same one first.
-func mapFillAnswers(endpoint *domain.Endpoint, resp wireResponse, threshold float64) (fillOutcome, bool) {
+// mapFillAnswers reads resp.Answers against endpoint's own parameters, and -
+// in refusalModeSeparate - the two whole-request noul answers
+// addSeparateRefusalQuestions asked for: false whenever any parameter's
+// answer is missing entirely, or its confidence is below threshold - Fill's
+// own fail-open cases - or its choice is neither a sentinel nor one of the
+// parameter's own declared enum values (a shape Jev's own criteria never
+// offered, so this is defensive, not an expected path); also false when
+// refusalMode is refusalModeSeparate and either whole-request question's own
+// answer is missing, the same "a response that does not answer what was
+// asked fails open" rule applied to the extra questions this mode adds. True
+// otherwise, with outcome fully built: every parameter is read once, in
+// endpoint.Parameters order, so a deployment with more than one
+// mismatchChoice answer always names the same one first.
+func mapFillAnswers(endpoint *domain.Endpoint, resp wireResponse, threshold float64, refusalMode string) (fillOutcome, bool) {
 	outcome := fillOutcome{
 		args:          map[string]any{},
 		chosen:        make(map[string]string, len(endpoint.Parameters)),
@@ -197,6 +256,12 @@ func mapFillAnswers(endpoint *domain.Endpoint, resp wireResponse, threshold floa
 		}
 	}
 
+	if refusalMode == refusalModeSeparate {
+		if !applySeparateRefusalAnswers(resp, threshold, &outcome) {
+			return fillOutcome{}, false
+		}
+	}
+
 	if len(outcome.args) == 0 {
 		outcome.args = nil
 	}
@@ -204,31 +269,58 @@ func mapFillAnswers(endpoint *domain.Endpoint, resp wireResponse, threshold floa
 	return outcome, true
 }
 
+// applySeparateRefusalAnswers reads the two whole-request noul answers
+// addSeparateRefusalQuestions asked for (fillRefusalQuestionName,
+// fillCapabilitiesQuestionName) into outcome, returning false when either is
+// missing entirely - split out of mapFillAnswers to keep its own cognitive
+// complexity under golangci's gocognit/gocyclo caps
+// (harness/quality/go/golangci.yml), the same reason mapFillAnswers' own
+// per-parameter loop is not further inlined into Fill.
+func applySeparateRefusalAnswers(resp wireResponse, threshold float64, outcome *fillOutcome) bool {
+	refusal, ok := resp.Answers[fillRefusalQuestionName]
+	if !ok {
+		return false
+	}
+
+	capabilities, ok := resp.Answers[fillCapabilitiesQuestionName]
+	if !ok {
+		return false
+	}
+
+	outcome.refusalProbability = refusal.Noul
+	outcome.refusalSeparate = refusal.Noul >= threshold
+	outcome.capabilitiesProbability = capabilities.Noul
+	outcome.capabilitiesSeparate = capabilities.Noul >= threshold
+
+	return true
+}
+
 // decision turns outcome into the usecase.Decision Filler.Fill returns, in
-// the precedence fillOutcome's own doc comment explains (refusalParam,
-// then capabilitiesParam, then mismatchParam, then the plain call): a
-// DecisionNone when refusalParam was found (usecase.Decision{Kind:
-// usecase.DecisionNone}, no Service/OperationID/Message - the same bare
-// shape resolvePickedFill's own DecisionNone case already expects and
+// the precedence fillOutcome's own doc comment explains (refusal, then
+// capabilities, then mismatchParam, then the plain call): a DecisionNone
+// when refusalParam was found or refusalSeparate is true (usecase.Decision{
+// Kind: usecase.DecisionNone}, no Service/OperationID/Message - the same
+// bare shape resolvePickedFill's own DecisionNone case already expects and
 // turns into ResultKindNone with its usual message, exactly as it does
 // for a DecisionNone the local fill produced); otherwise a
-// DecisionListCapabilities when capabilitiesParam was found
-// (usecase.Decision{Kind: usecase.DecisionListCapabilities}, Service left
-// empty so resolvePickedFill's own o.listCapabilities call lists every
-// service, not one - the same bare shape planStaged's own PickListCapabilities
-// case already builds); otherwise a DecisionAsk over mismatchParam
-// (Question built the same way usecase.askForEnumGuess's own does,
-// "<title>はどれですか？", so Orchestrator.ask produces the identical
-// ResultKindAsk shape either way) when one was found, otherwise a
-// DecisionCall naming every answered parameter's own value - nil Args, not
-// an empty map, when every parameter answered unsetChoice, the same
-// "absent, not empty" convention usecase.argsFromAnswers already keeps.
+// DecisionListCapabilities when capabilitiesParam was found or
+// capabilitiesSeparate is true (usecase.Decision{Kind:
+// usecase.DecisionListCapabilities}, Service left empty so
+// resolvePickedFill's own o.listCapabilities call lists every service, not
+// one - the same bare shape planStaged's own PickListCapabilities case
+// already builds); otherwise a DecisionAsk over mismatchParam (Question
+// built the same way usecase.askForEnumGuess's own does, "<title>はどれです
+// か？", so Orchestrator.ask produces the identical ResultKindAsk shape
+// either way) when one was found, otherwise a DecisionCall naming every
+// answered parameter's own value - nil Args, not an empty map, when every
+// parameter answered unsetChoice, the same "absent, not empty" convention
+// usecase.argsFromAnswers already keeps.
 func (o *fillOutcome) decision(endpoint *domain.Endpoint) usecase.Decision {
-	if o.refusalParam != "" {
+	if o.refusalParam != "" || o.refusalSeparate {
 		return usecase.Decision{Kind: usecase.DecisionNone}
 	}
 
-	if o.capabilitiesParam != "" {
+	if o.capabilitiesParam != "" || o.capabilitiesSeparate {
 		return usecase.Decision{Kind: usecase.DecisionListCapabilities}
 	}
 
@@ -248,9 +340,17 @@ func (o *fillOutcome) decision(endpoint *domain.Endpoint) usecase.Decision {
 // logFillCompleted logs fill_provider "jev", one chosen option and
 // confidence per parameter, fill_ms, the token usage Jev's own response
 // reports, and the full probability distribution per question - the same
-// convention jev.Picker.Pick already logs pick_probabilities under.
-func logFillCompleted(ctx context.Context, endpoint *domain.Endpoint, outcome *fillOutcome, fillMs int64, usage wireUsage) {
-	slog.Default().InfoContext(ctx, "fill completed",
+// convention jev.Picker.Pick already logs pick_probabilities under. In
+// refusalModeSeparate, it additionally logs fill_refusal_noul and
+// fill_capabilities_noul - the two whole-request judgements' own
+// probabilities, beside the per-parameter distributions already logged, so a
+// run's platform log alone is enough to re-analyse both together (the
+// measurement this whole option exists for: docs/measurements' own captured
+// distributions were read from exactly this kind of log line).
+func logFillCompleted(
+	ctx context.Context, endpoint *domain.Endpoint, outcome *fillOutcome, fillMs int64, usage wireUsage, refusalMode string,
+) {
+	attrs := []any{
 		slog.String("fill_provider", "jev"),
 		slog.String("service", endpoint.Service),
 		slog.String("operation_id", endpoint.OperationID),
@@ -259,5 +359,14 @@ func logFillCompleted(ctx context.Context, endpoint *domain.Endpoint, outcome *f
 		slog.Int64("fill_ms", fillMs),
 		slog.Int("fill_input_tokens", usage.InputTokens),
 		slog.Int("fill_output_tokens", usage.OutputTokens),
-		slog.Any("fill_probabilities", outcome.probabilities))
+		slog.Any("fill_probabilities", outcome.probabilities),
+	}
+
+	if refusalMode == refusalModeSeparate {
+		attrs = append(attrs,
+			slog.Float64("fill_refusal_noul", outcome.refusalProbability),
+			slog.Float64("fill_capabilities_noul", outcome.capabilitiesProbability))
+	}
+
+	slog.Default().InfoContext(ctx, "fill completed", attrs...)
 }

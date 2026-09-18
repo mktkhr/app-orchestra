@@ -40,6 +40,47 @@ const (
 // different number.
 const defaultFillEnumThreshold = 0.5
 
+// ErrInvalidFillEnumRefusal is wrapped into the error returned when
+// ORCHESTRA_FILL_ENUM_REFUSAL is set to something other than "" (off),
+// FillEnumRefusalOn or FillEnumRefusalSeparate - the same reasoning
+// ErrInvalidFillEnumUnsetWording (below) already applies to
+// ORCHESTRA_FILL_ENUM_UNSET_WORDING.
+var ErrInvalidFillEnumRefusal = errors.New("ORCHESTRA_FILL_ENUM_REFUSAL must be unset, 1 or separate")
+
+// FillEnumRefusalOn and FillEnumRefusalSeparate are
+// ORCHESTRA_FILL_ENUM_REFUSAL's two non-default values: FillEnumRefusalOn
+// ("1") is arm 2's original in-options behaviour, unchanged since it was
+// introduced - refusalChoice and capabilitiesChoice both added to every
+// parameter's own Choice question (jev.WithFillRefusal).
+// FillEnumRefusalSeparate ("separate") asks the same two judgements as
+// their own whole-request "noul" questions in the same request instead
+// (jev.WithFillRefusalSeparate) - see that function's own doc comment for
+// why. The zero value ("") means off: neither sentinel nor either
+// whole-request question is ever sent.
+const (
+	FillEnumRefusalOn       = "1"
+	FillEnumRefusalSeparate = "separate"
+)
+
+// parseFillEnumRefusal reads ORCHESTRA_FILL_ENUM_REFUSAL: "" (off) when
+// unset, or exactly FillEnumRefusalOn or FillEnumRefusalSeparate otherwise -
+// the same reasoning parseFillEnumUnsetWording (below) already applies to
+// ORCHESTRA_FILL_ENUM_UNSET_WORDING. Unlike the boolean read this variable
+// used to get (== "1", silently off for anything else), an unrecognised
+// non-empty value is now an error: two accepted non-default values sharing
+// one variable means a typo between them ("Separate", "on") should be
+// reported, not silently read as off.
+func parseFillEnumRefusal(raw string) (string, error) {
+	switch raw {
+	case "":
+		return "", nil
+	case FillEnumRefusalOn, FillEnumRefusalSeparate:
+		return raw, nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrInvalidFillEnumRefusal, raw)
+	}
+}
+
 // ErrInvalidFillEnumUnsetWording is wrapped into the error returned when
 // ORCHESTRA_FILL_ENUM_UNSET_WORDING is set to something other than
 // FillEnumUnsetWordingNarrow or FillEnumUnsetWordingWide - the same
@@ -99,7 +140,13 @@ func parseFillEnumUnsetWording(raw string) (string, error) {
 // when ORCHESTRA_FILL_ENUM is FillEnumJev (pkg/app/app_fill.go).
 func loadFill(cfg *Config) error {
 	cfg.FillSkipEmpty = os.Getenv("ORCHESTRA_FILL_SKIP_EMPTY") == "1"
-	cfg.FillEnumRefusal = os.Getenv("ORCHESTRA_FILL_ENUM_REFUSAL") == "1"
+
+	refusal, err := parseFillEnumRefusal(os.Getenv("ORCHESTRA_FILL_ENUM_REFUSAL"))
+	if err != nil {
+		return err
+	}
+
+	cfg.FillEnumRefusal = refusal
 
 	stage, err := loadJevStage(
 		cfg, "ORCHESTRA_FILL_ENUM", FillEnumNone, FillEnumJev, ErrInvalidFillEnum,

@@ -199,8 +199,15 @@ export function variantSuffix(
   // "-fillenum", but appended whenever the env var itself says so,
   // matching every other suffix here; "narrow" (the default) carries no
   // suffix, matching ORCHESTRA_SERVICE_ROUTER_CRITERIA's own
-  // "names"-carries-no-suffix rule.
-  const refusal = process.env["ORCHESTRA_FILL_ENUM_REFUSAL"] === "1" ? "-refusal" : "";
+  // "names"-carries-no-suffix rule. ORCHESTRA_FILL_ENUM_REFUSAL's own third
+  // value, "separate" (the whole-request judgements asked as their own
+  // questions instead of in-options sentinels - the category-error fix for
+  // the two ListInventoryItems rows docs/measurements/jev-conditions.md
+  // captured), gets its own "-refusalsep" suffix rather than reusing
+  // "-refusal": the two modes send a materially different request shape, so
+  // their own output files must never collide.
+  const refusalEnv = process.env["ORCHESTRA_FILL_ENUM_REFUSAL"];
+  const refusal = refusalEnv === "1" ? "-refusal" : refusalEnv === "separate" ? "-refusalsep" : "";
   const unsetWording =
     process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] === "wide" ? "-unsetwide" : "";
 

@@ -124,7 +124,7 @@ func buildGateRequest(query string, answers []usecase.Answer, shortlist domain.C
 		State: gateState{Question: stateFor(query, answers), Operations: gateOperationsFor(shortlist)},
 		Model: modelName,
 		Questions: map[string]gateWireQuestion{
-			gateQuestionName: {Type: "noul", Instructions: gateInstructions},
+			gateQuestionName: {Type: noulQuestionType, Instructions: gateInstructions},
 		},
 	}
 }

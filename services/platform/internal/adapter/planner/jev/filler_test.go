@@ -350,6 +350,224 @@ func TestFillerRequestUnsetWordingWideCoversDroppingAFilter(t *testing.T) {
 	assert.Contains(t, wide, "絞り込みを解除した場合を含む", "additionally covers dropping an earlier restriction")
 }
 
+// separateStatusConfidence is the fixed confidence separateResponseBody
+// gives "status"'s own choice answer - every call site here varies only the
+// choice and the two noul probabilities, never this, so it is not its own
+// parameter (golangci's unparam).
+const separateStatusConfidence = 0.9
+
+// separateResponseBody builds a fixed wireResponse JSON body carrying
+// "status"'s own choice answer plus the two whole-request "noul" answers
+// refusalModeSeparate asks for (fillRefusalQuestionName,
+// fillCapabilitiesQuestionName) - the response shape a real Jev deployment
+// would send back for addSeparateRefusalQuestions' own request.
+func separateResponseBody(statusChoice string, refusalNoul, capabilitiesNoul float64) string {
+	sc := strconv.FormatFloat(separateStatusConfidence, 'f', -1, 64)
+	rn := strconv.FormatFloat(refusalNoul, 'f', -1, 64)
+	cn := strconv.FormatFloat(capabilitiesNoul, 'f', -1, 64)
+
+	return `{"model":"jev-latest","answers":{` +
+		`"status":{"type":"choice","choice":"` + statusChoice + `","confidence":` + sc +
+		`,"probabilities":{"` + statusChoice + `":` + sc + `}},` +
+		`"refusal":{"type":"noul","noul":` + rn + `},` +
+		`"capabilities":{"type":"noul","noul":` + cn + `}` +
+		`},"usage":{"input_tokens":25,"output_tokens":4}}`
+}
+
+// TestFillerSeparateRequestShapeAddsTwoNoulQuestionsNoSentinelsInOptions
+// proves refusalModeSeparate's own request shape: one Choice question per
+// parameter, carrying only its own field-level options (enum values,
+// __unset__, __mismatch__ - never __refusal__/__capabilities__), plus two
+// extra "noul" questions in the same request, one per whole-request
+// judgement.
+func TestFillerSeparateRequestShapeAddsTwoNoulQuestionsNoSentinelsInOptions(t *testing.T) {
+	fake := fakeRequestServer(t, separateResponseBody("in_stock", 0.1, 0.1))
+
+	f := jev.NewFiller(fake.server.URL, "test-key", nil, jev.WithFillRefusalSeparate())
+	endpoint := statusEnumEndpoint()
+
+	_, _, err := f.Fill(context.Background(), &endpoint, "在庫を見せて", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+
+	questions, ok := fake.gotBody()["questions"].(map[string]any)
+	require.True(t, ok)
+	require.Len(t, questions, 3, "one Choice question per parameter plus the two noul questions")
+
+	status, ok := questions["status"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "choice", status["type"])
+
+	criteria, ok := status["criteria"].(map[string]any)
+	require.True(t, ok)
+	assert.NotContains(t, criteria, "__refusal__", "a whole-request claim never competes inside a field's own options")
+	assert.NotContains(t, criteria, "__capabilities__")
+	assert.Len(t, criteria, 4, "two enum values plus __unset__/__mismatch__ only")
+
+	refusal, ok := questions["refusal"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "noul", refusal["type"])
+	assert.Equal(t, refusalLabelForTest, refusal["instructions"])
+
+	capabilities, ok := questions["capabilities"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "noul", capabilities["type"])
+	assert.Equal(t, capabilitiesLabelForTest, capabilities["instructions"])
+}
+
+// refusalLabelForTest and capabilitiesLabelForTest mirror filler.go's own
+// unexported refusalLabel/capabilitiesLabel - this test package (jev_test)
+// cannot reach those directly, and the golden request-shape assertion above
+// wants the literal text, not merely "is non-empty", so the report can quote
+// it verbatim.
+const (
+	refusalLabelForTest      = "選ばれた操作は、そもそもこの質問には答えられない（操作の対象や種類が質問と合っていない）"
+	capabilitiesLabelForTest = "質問は特定の操作の実行を求めているのではなく、そもそもこの仕組み全体で何ができるか、どんな操作があるかを尋ねている"
+)
+
+// TestFillerSeparateRefusalAboveThresholdBecomesDecisionNone proves the
+// refusal noul question's own answer, at or above threshold, maps to
+// DecisionNone - the same outcome refusalModeInOptions' own __refusal__
+// answer produces, reached a different way.
+func TestFillerSeparateRefusalAboveThresholdBecomesDecisionNone(t *testing.T) {
+	server := fakeServer(t, separateResponseBody("__unset__", 0.7, 0.1))
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusalSeparate())
+	endpoint := statusEnumEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫を削除したい", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionNone}, decision)
+}
+
+// TestFillerSeparateRefusalBelowThresholdDoesNotFire proves the refusal
+// noul question's own answer, below threshold, never fires - the plain call
+// goes through when every parameter also answered __unset__.
+func TestFillerSeparateRefusalBelowThresholdDoesNotFire(t *testing.T) {
+	server := fakeServer(t, separateResponseBody("__unset__", 0.49, 0.1))
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusalSeparate())
+	endpoint := statusEnumEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫を減らしたい", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.DecisionCall, decision.Kind)
+}
+
+// TestFillerSeparateCapabilitiesAboveThresholdBecomesDecisionListCapabilities
+// proves the capabilities noul question's own answer, at or above threshold,
+// maps to DecisionListCapabilities when refusal did not also fire.
+func TestFillerSeparateCapabilitiesAboveThresholdBecomesDecisionListCapabilities(t *testing.T) {
+	server := fakeServer(t, separateResponseBody("__unset__", 0.1, 0.96))
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusalSeparate())
+	endpoint := statusEnumEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫で何ができる？", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionListCapabilities}, decision)
+}
+
+// TestFillerSeparateRefusalOutranksCapabilitiesWhenBothFire proves the same
+// precedence order refusalModeInOptions already has, reached through the two
+// separate noul answers instead of two parameters' own sentinel answers.
+func TestFillerSeparateRefusalOutranksCapabilitiesWhenBothFire(t *testing.T) {
+	server := fakeServer(t, separateResponseBody("__unset__", 0.8, 0.9))
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusalSeparate())
+	endpoint := statusEnumEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫で何ができる？", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionNone}, decision)
+}
+
+// TestFillerSeparateCapabilitiesOutranksMismatchWhenBothFire proves a
+// whole-request separate judgement still outranks a single parameter's own
+// __mismatch__ answer.
+func TestFillerSeparateCapabilitiesOutranksMismatchWhenBothFire(t *testing.T) {
+	server := fakeServer(t, separateResponseBody("__mismatch__", 0.1, 0.9))
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusalSeparate())
+	endpoint := statusEnumEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫で何ができる？", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionListCapabilities}, decision)
+}
+
+// TestFillerSeparateMismatchStillAsksWhenNeitherJudgementFires proves the
+// mismatch path is unaffected by refusalModeSeparate when neither
+// whole-request judgement fires - today's ask still happens.
+func TestFillerSeparateMismatchStillAsksWhenNeitherJudgementFires(t *testing.T) {
+	server := fakeServer(t, separateResponseBody("__mismatch__", 0.1, 0.1))
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusalSeparate())
+	endpoint := statusEnumEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "だめなやつを見せて", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.DecisionAsk, decision.Kind)
+	assert.Equal(t, "status", decision.Param)
+}
+
+// TestFillerSeparateFailsOpenWhenRefusalAnswerMissing proves a response
+// missing the "refusal" noul answer entirely fails open, the same way a
+// missing per-parameter answer already does - a response that does not
+// answer what refusalModeSeparate asked for is not trustworthy enough to
+// build a decision from.
+func TestFillerSeparateFailsOpenWhenRefusalAnswerMissing(t *testing.T) {
+	body := `{"model":"jev-latest","answers":{` +
+		`"status":{"type":"choice","choice":"in_stock","confidence":0.9,"probabilities":{"in_stock":0.9}},` +
+		`"capabilities":{"type":"noul","noul":0.1}` +
+		`},"usage":{"input_tokens":20,"output_tokens":3}}`
+	server := fakeServer(t, body)
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusalSeparate())
+	endpoint := statusEnumEndpoint()
+
+	_, ok, err := f.Fill(context.Background(), &endpoint, "在庫を見せて", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
+// TestFillerModeOneStillBehavesExactlyAsBeforeSeparateExisted proves
+// WithFillRefusal (mode "1") is unaffected by refusalModeSeparate's own
+// existence: same in-options criteria, same __refusal__/__capabilities__
+// mapping, no noul questions added.
+func TestFillerModeOneStillBehavesExactlyAsBeforeSeparateExisted(t *testing.T) {
+	fake := fakeRequestServer(t, fillResponseBody("__refusal__", 0.9))
+
+	f := jev.NewFiller(fake.server.URL, "test-key", nil, jev.WithFillRefusal())
+	endpoint := statusEnumEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫を全部消して", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionNone}, decision)
+
+	questions, ok := fake.gotBody()["questions"].(map[string]any)
+	require.True(t, ok)
+	require.Len(t, questions, 1, "no extra noul questions in mode 1")
+
+	status, ok := questions["status"].(map[string]any)
+	require.True(t, ok)
+	criteria, ok := status["criteria"].(map[string]any)
+	require.True(t, ok)
+	assert.Len(t, criteria, 6, "two enum values plus all four sentinels, unchanged")
+}
+
 // TestFillerRequestStateCarriesTurns proves state is built from the same
 // helper the local fill's own toolcall.Planner renders turns with -
 // TestFillerRequestShapeOneQuestionPerParameterWithBothSentinels already

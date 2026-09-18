@@ -50,10 +50,19 @@ func TestNewFillOptionsRejectsAnUnknownEnumValue(t *testing.T) {
 }
 
 func TestNewFillOptionsEnumRefusalBuildsOneOption(t *testing.T) {
-	opts, err := newFillOptions(&Config{Fill: Fill{Enum: FillEnumJev, JevAPIKey: "test-key", EnumRefusal: true}})
+	opts, err := newFillOptions(&Config{Fill: Fill{Enum: FillEnumJev, JevAPIKey: "test-key", EnumRefusal: FillEnumRefusalOn}})
 
 	require.NoError(t, err)
 	assert.Len(t, opts, 1, "EnumRefusal configures the same one jev.Filler option, not an extra one")
+}
+
+func TestNewFillOptionsEnumRefusalSeparateBuildsOneOption(t *testing.T) {
+	opts, err := newFillOptions(
+		&Config{Fill: Fill{Enum: FillEnumJev, JevAPIKey: "test-key", EnumRefusal: FillEnumRefusalSeparate}},
+	)
+
+	require.NoError(t, err)
+	assert.Len(t, opts, 1, "EnumRefusal=separate configures the same one jev.Filler option, not an extra one")
 }
 
 func TestNewFillOptionsEnumUnsetWordingWideBuildsOneOption(t *testing.T) {

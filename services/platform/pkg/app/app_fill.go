@@ -47,14 +47,17 @@ type Fill struct {
 	// jev.NewFiller's own default (also 0.5) applies instead of a
 	// threshold no real answer could ever clear.
 	EnumThreshold float64
-	// EnumRefusal is ORCHESTRA_FILL_ENUM_REFUSAL: off by default, meaning
-	// arm 2's Choice questions never offer a "this operation cannot
-	// answer the question at all" option, nor a "the question is about
-	// this system's capabilities in general, not about running any
-	// operation" one - both are gated behind this same flag
-	// (jev.WithFillRefusal). Only meaningful alongside Enum == FillEnumJev,
-	// the same way EnumThreshold only matters there.
-	EnumRefusal bool
+	// EnumRefusal is ORCHESTRA_FILL_ENUM_REFUSAL: "" (off, the default)
+	// means neither whole-request judgement - "this operation cannot
+	// answer the question at all" nor "the question is about this
+	// system's capabilities in general, not about running any
+	// operation" - is ever asked. FillEnumRefusalOn ("1") asks both as
+	// extra options on every parameter's own Choice question
+	// (jev.WithFillRefusal); FillEnumRefusalSeparate ("separate") asks
+	// them instead as their own whole-request questions in the same
+	// request (jev.WithFillRefusalSeparate). Only meaningful alongside
+	// Enum == FillEnumJev, the same way EnumThreshold only matters there.
+	EnumRefusal string
 	// EnumUnsetWording is ORCHESTRA_FILL_ENUM_UNSET_WORDING: "" or
 	// "narrow" (the default) keeps arm 2's original __unset__ wording;
 	// "wide" additionally covers a question that explicitly asks for
@@ -73,6 +76,14 @@ const (
 // FillEnumUnsetWordingWide is Fill.EnumUnsetWording's one non-default
 // value, mirroring internal/infra/config.FillEnumUnsetWordingWide.
 const FillEnumUnsetWordingWide = "wide"
+
+// FillEnumRefusalOn and FillEnumRefusalSeparate are Fill.EnumRefusal's two
+// non-default values, mirroring
+// internal/infra/config.FillEnumRefusalOn/Separate.
+const (
+	FillEnumRefusalOn       = "1"
+	FillEnumRefusalSeparate = "separate"
+)
 
 // ErrInvalidFillEnum is returned by newFillOptions when Config.Fill.Enum is
 // set to anything other than "" (FillEnumNone), FillEnumNone or
@@ -107,8 +118,11 @@ func newFillOptions(cfg *Config) ([]usecase.Option, error) {
 			fillerOpts = append(fillerOpts, jev.WithFillThreshold(cfg.Fill.EnumThreshold))
 		}
 
-		if cfg.Fill.EnumRefusal {
+		switch cfg.Fill.EnumRefusal {
+		case FillEnumRefusalOn:
 			fillerOpts = append(fillerOpts, jev.WithFillRefusal())
+		case FillEnumRefusalSeparate:
+			fillerOpts = append(fillerOpts, jev.WithFillRefusalSeparate())
 		}
 
 		if cfg.Fill.EnumUnsetWording == FillEnumUnsetWordingWide {

@@ -19,7 +19,7 @@ func TestLoadFillDefaultsToBothArmsOff(t *testing.T) {
 	assert.False(t, cfg.FillSkipEmpty)
 	assert.Equal(t, config.FillEnumNone, cfg.FillEnum)
 	assert.InDelta(t, 0.5, cfg.FillEnumThreshold, 0.0001)
-	assert.False(t, cfg.FillEnumRefusal)
+	assert.Empty(t, cfg.FillEnumRefusal)
 	assert.Equal(t, config.FillEnumUnsetWordingNarrow, cfg.FillEnumUnsetWording)
 }
 
@@ -31,18 +31,29 @@ func TestLoadFillEnumRefusalReadsExactly1(t *testing.T) {
 	cfg, err := config.Load()
 
 	require.NoError(t, err)
-	assert.True(t, cfg.FillEnumRefusal)
+	assert.Equal(t, config.FillEnumRefusalOn, cfg.FillEnumRefusal)
 }
 
-func TestLoadFillEnumRefusalIgnoresAnythingOtherThan1(t *testing.T) {
+func TestLoadFillEnumRefusalReadsSeparate(t *testing.T) {
 	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
-	t.Setenv("ORCHESTRA_FILL_ENUM_REFUSAL", "true")
+	t.Setenv("ORCHESTRA_FILL_ENUM_REFUSAL", "separate")
 
 	cfg, err := config.Load()
 
 	require.NoError(t, err)
-	assert.False(t, cfg.FillEnumRefusal)
+	assert.Equal(t, config.FillEnumRefusalSeparate, cfg.FillEnumRefusal)
+}
+
+func TestLoadRejectsAnUnknownFillEnumRefusal(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_FILL_ENUM_REFUSAL", "true")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidFillEnumRefusal)
 }
 
 func TestLoadFillEnumUnsetWordingReadsWide(t *testing.T) {

@@ -272,10 +272,12 @@ test("variantSuffix appends both -fillenum and -skipempty together, fillenum fir
   expect(variantSuffix()).toBe("-fillenum-skipempty");
 });
 
-test("variantSuffix appends -refusal for ORCHESTRA_FILL_ENUM_REFUSAL=1, nothing when unset", () => {
+test("variantSuffix appends -refusal for =1, -refusalsep for =separate, nothing when unset", () => {
   expect(variantSuffix()).toBe("");
   process.env["ORCHESTRA_FILL_ENUM_REFUSAL"] = "1";
   expect(variantSuffix()).toBe("-refusal");
+  process.env["ORCHESTRA_FILL_ENUM_REFUSAL"] = "separate";
+  expect(variantSuffix()).toBe("-refusalsep");
 });
 
 test("variantSuffix appends -unsetwide for =wide, nothing for narrow (the default) or unset", () => {

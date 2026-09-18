@@ -32,6 +32,14 @@ const pickPath = "/v1/systemone"
 // built from.
 const modelName = "jev-latest"
 
+// noulQuestionType is wireQuestion.Type's own value for every "noul"
+// (yes/no-with-a-probability) question this package sends - gate.go's own
+// standalone "gate" question, picker.go's own fan-out "impossible" question
+// and filler_mapping.go's own addSeparateRefusalQuestions - factored into
+// one constant for the same golangci goconst reason choiceQuestionType
+// (mapping.go) already is.
+const noulQuestionType = "noul"
+
 // requestTimeout bounds one Pick call end to end, retries included: the
 // API's own measured latency is ~600ms, so 10s is generous room for the
 // two retries below, not a budget this adapter expects to spend.

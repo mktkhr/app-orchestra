@@ -540,7 +540,7 @@ func buildRequest(
 // on.
 func addImpossibleQuestion(req *wireRequest) {
 	req.Questions[impossibleQuestionName] = wireQuestion{
-		Type: "noul", Instructions: impossibleInstructions, Criteria: impossibleCriteria(),
+		Type: noulQuestionType, Instructions: impossibleInstructions, Criteria: impossibleCriteria(),
 	}
 }
 
