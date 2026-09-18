@@ -141,6 +141,110 @@ func TestFillerRequestShapeOneQuestionPerParameterWithBothSentinels(t *testing.T
 	assert.Contains(t, gotBody["state"], "在庫を見せて", "state carries the question text")
 }
 
+// TestFillerRequestOmitsRefusalByDefault proves ORCHESTRA_FILL_ENUM_REFUSAL's
+// own sentinel is absent from a plain Filler's criteria - the request stays
+// byte-identical to before this option existed.
+func TestFillerRequestOmitsRefusalByDefault(t *testing.T) {
+	fake := fakeRequestServer(t, fillResponseBody("in_stock", 0.9))
+
+	f := jev.NewFiller(fake.server.URL, "test-key", nil)
+	endpoint := statusEnumEndpoint()
+
+	_, _, err := f.Fill(context.Background(), &endpoint, "在庫を見せて", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+
+	status, ok := fake.gotBody()["questions"].(map[string]any)["status"].(map[string]any)
+	require.True(t, ok)
+	criteria, ok := status["criteria"].(map[string]any)
+	require.True(t, ok)
+
+	assert.NotContains(t, criteria, "__refusal__", "WithFillRefusal was never given")
+	assert.Len(t, criteria, 4, "two enum values plus the two default sentinels, nothing else")
+}
+
+// TestFillerRequestIncludesRefusalWhenEnabled proves WithFillRefusal adds
+// the third sentinel, described in Japanese, without naming any eval
+// question.
+func TestFillerRequestIncludesRefusalWhenEnabled(t *testing.T) {
+	fake := fakeRequestServer(t, fillResponseBody("in_stock", 0.9))
+
+	f := jev.NewFiller(fake.server.URL, "test-key", nil, jev.WithFillRefusal())
+	endpoint := statusEnumEndpoint()
+
+	_, _, err := f.Fill(context.Background(), &endpoint, "在庫を見せて", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+
+	status, ok := fake.gotBody()["questions"].(map[string]any)["status"].(map[string]any)
+	require.True(t, ok)
+	criteria, ok := status["criteria"].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, "選ばれた操作は、そもそもこの質問には答えられない（操作の対象や種類が質問と合っていない）", criteria["__refusal__"])
+	assert.Len(t, criteria, 5, "two enum values plus all three sentinels")
+}
+
+// TestFillerARefusalBecomesDecisionNone proves a __refusal__ answer on any
+// parameter maps to the same bare usecase.Decision{Kind: DecisionNone} the
+// local fill's own decline produces - resolvePickedFill turns either into
+// the identical ResultKindNone shape.
+func TestFillerARefusalBecomesDecisionNone(t *testing.T) {
+	server := fakeServer(t, fillResponseBody("__refusal__", 0.9))
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusal())
+	endpoint := statusEnumEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫を全部消して", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionNone}, decision)
+}
+
+// TestFillerRequestUnsetWordingDefaultsToNarrow proves the __unset__
+// criterion stays byte-identical to before ORCHESTRA_FILL_ENUM_UNSET_WORDING
+// existed when the Filler is built without WithFillUnsetWordingWide.
+func TestFillerRequestUnsetWordingDefaultsToNarrow(t *testing.T) {
+	fake := fakeRequestServer(t, fillResponseBody("in_stock", 0.9))
+
+	f := jev.NewFiller(fake.server.URL, "test-key", nil)
+	endpoint := statusEnumEndpoint()
+
+	_, _, err := f.Fill(context.Background(), &endpoint, "在庫を見せて", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+
+	status, ok := fake.gotBody()["questions"].(map[string]any)["status"].(map[string]any)
+	require.True(t, ok)
+	criteria, ok := status["criteria"].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, "この質問はこの項目を絞り込んでいない", criteria["__unset__"])
+}
+
+// TestFillerRequestUnsetWordingWideCoversDroppingAFilter proves
+// WithFillUnsetWordingWide rewords __unset__ to additionally cover a
+// question that explicitly asks for everything or removes an earlier
+// turn's restriction (the d06 turn 2 regression) - without naming that
+// eval question's own words.
+func TestFillerRequestUnsetWordingWideCoversDroppingAFilter(t *testing.T) {
+	fake := fakeRequestServer(t, fillResponseBody("in_stock", 0.9))
+
+	f := jev.NewFiller(fake.server.URL, "test-key", nil, jev.WithFillUnsetWordingWide())
+	endpoint := statusEnumEndpoint()
+
+	_, _, err := f.Fill(context.Background(), &endpoint, "在庫を見せて", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+
+	status, ok := fake.gotBody()["questions"].(map[string]any)["status"].(map[string]any)
+	require.True(t, ok)
+	criteria, ok := status["criteria"].(map[string]any)
+	require.True(t, ok)
+
+	wide, ok := criteria["__unset__"].(string)
+	require.True(t, ok)
+	assert.Contains(t, wide, "絞り込んでいない", "still covers the plain no-restriction case")
+	assert.Contains(t, wide, "絞り込みを解除した場合を含む", "additionally covers dropping an earlier restriction")
+}
+
 // TestFillerRequestStateCarriesTurns proves state is built from the same
 // helper the local fill's own toolcall.Planner renders turns with -
 // TestFillerRequestShapeOneQuestionPerParameterWithBothSentinels already

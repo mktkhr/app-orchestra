@@ -9,6 +9,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 )
 
@@ -39,20 +40,66 @@ const (
 // different number.
 const defaultFillEnumThreshold = 0.5
 
-// loadFill reads ORCHESTRA_FILL_SKIP_EMPTY, ORCHESTRA_FILL_ENUM and
-// ORCHESTRA_FILL_ENUM_THRESHOLD and applies them to cfg, called from
+// ErrInvalidFillEnumUnsetWording is wrapped into the error returned when
+// ORCHESTRA_FILL_ENUM_UNSET_WORDING is set to something other than
+// FillEnumUnsetWordingNarrow or FillEnumUnsetWordingWide - the same
+// reasoning ErrInvalidServiceRouterCriteria (config_service_router.go)
+// already applies to ORCHESTRA_SERVICE_ROUTER_CRITERIA.
+var ErrInvalidFillEnumUnsetWording = errors.New("ORCHESTRA_FILL_ENUM_UNSET_WORDING must be narrow or wide")
+
+// FillEnumUnsetWordingNarrow and FillEnumUnsetWordingWide are
+// ORCHESTRA_FILL_ENUM_UNSET_WORDING's two accepted values:
+// FillEnumUnsetWordingNarrow is arm 2's original __unset__ criterion,
+// unchanged since it was introduced - the default, so a deployment that
+// never sets this variable sends exactly what it always has - and
+// FillEnumUnsetWordingWide additionally covers a question that explicitly
+// asks for everything or removes an earlier restriction (today's
+// dialogue d06 turn 2 regression, docs/measurements/jev-conditions.md).
+const (
+	FillEnumUnsetWordingNarrow = "narrow"
+	FillEnumUnsetWordingWide   = "wide"
+)
+
+// defaultFillEnumUnsetWording is used when
+// ORCHESTRA_FILL_ENUM_UNSET_WORDING is unset.
+const defaultFillEnumUnsetWording = FillEnumUnsetWordingNarrow
+
+// parseFillEnumUnsetWording reads ORCHESTRA_FILL_ENUM_UNSET_WORDING:
+// defaultFillEnumUnsetWording when unset, or exactly
+// FillEnumUnsetWordingNarrow or FillEnumUnsetWordingWide otherwise - the
+// same reasoning parseServiceRouterCriteria (config_service_router.go)
+// already applies to ORCHESTRA_SERVICE_ROUTER_CRITERIA.
+func parseFillEnumUnsetWording(raw string) (string, error) {
+	switch raw {
+	case "":
+		return defaultFillEnumUnsetWording, nil
+	case FillEnumUnsetWordingNarrow, FillEnumUnsetWordingWide:
+		return raw, nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrInvalidFillEnumUnsetWording, raw)
+	}
+}
+
+// loadFill reads ORCHESTRA_FILL_SKIP_EMPTY, ORCHESTRA_FILL_ENUM,
+// ORCHESTRA_FILL_ENUM_THRESHOLD, ORCHESTRA_FILL_ENUM_REFUSAL and
+// ORCHESTRA_FILL_ENUM_UNSET_WORDING and applies them to cfg, called from
 // loadServiceRouter's own tail (config_service_router.go) - see that
 // function's own doc comment for why it is chained there rather than
 // called as its own step from config.go. ORCHESTRA_JEV_API_KEY is
 // required when the fill arm is FillEnumJev (ErrMissingJevAPIKey), on top
 // of - not instead of - loadPicker's, loadGate's and loadServiceRouter's
 // own requiredness checks: any one of the four alone is enough to require
-// the key. Both arms are independent of each other and of Picker/Gate/
-// ServiceRouter, and both default to off - a deployment that sets neither
-// ORCHESTRA_FILL_SKIP_EMPTY nor ORCHESTRA_FILL_ENUM starts exactly as it
-// did before this subproject existed.
+// the key. All four options are independent of each other and of Picker/
+// Gate/ServiceRouter, and all default to off/unchanged - a deployment
+// that sets none of them starts exactly as it did before this subproject
+// existed. ORCHESTRA_FILL_ENUM_REFUSAL and ORCHESTRA_FILL_ENUM_UNSET_WORDING
+// are read regardless of ORCHESTRA_FILL_ENUM's own value, the same way
+// ORCHESTRA_FILL_ENUM_THRESHOLD already is - they are only ever consulted
+// by internal/adapter/planner/jev's own Filler, which is only ever built
+// when ORCHESTRA_FILL_ENUM is FillEnumJev (pkg/app/app_fill.go).
 func loadFill(cfg *Config) error {
 	cfg.FillSkipEmpty = os.Getenv("ORCHESTRA_FILL_SKIP_EMPTY") == "1"
+	cfg.FillEnumRefusal = os.Getenv("ORCHESTRA_FILL_ENUM_REFUSAL") == "1"
 
 	stage, err := loadJevStage(
 		cfg, "ORCHESTRA_FILL_ENUM", FillEnumNone, FillEnumJev, ErrInvalidFillEnum,
@@ -64,6 +111,13 @@ func loadFill(cfg *Config) error {
 
 	cfg.FillEnum = stage.Value
 	cfg.FillEnumThreshold = stage.Threshold
+
+	unsetWording, err := parseFillEnumUnsetWording(os.Getenv("ORCHESTRA_FILL_ENUM_UNSET_WORDING"))
+	if err != nil {
+		return err
+	}
+
+	cfg.FillEnumUnsetWording = unsetWording
 
 	return nil
 }

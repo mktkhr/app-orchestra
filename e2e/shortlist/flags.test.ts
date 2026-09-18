@@ -17,6 +17,8 @@ const originalServiceRouter = process.env["ORCHESTRA_SERVICE_ROUTER"];
 const originalServiceRouterCriteria = process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
 const originalFillEnum = process.env["ORCHESTRA_FILL_ENUM"];
 const originalFillSkipEmpty = process.env["ORCHESTRA_FILL_SKIP_EMPTY"];
+const originalFillEnumRefusal = process.env["ORCHESTRA_FILL_ENUM_REFUSAL"];
+const originalFillEnumUnsetWording = process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"];
 
 beforeEach(() => {
   process.argv = [...originalArgv];
@@ -27,6 +29,8 @@ beforeEach(() => {
   delete process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
   delete process.env["ORCHESTRA_FILL_ENUM"];
   delete process.env["ORCHESTRA_FILL_SKIP_EMPTY"];
+  delete process.env["ORCHESTRA_FILL_ENUM_REFUSAL"];
+  delete process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"];
 });
 
 afterEach(() => {
@@ -38,6 +42,8 @@ afterEach(() => {
   delete process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
   delete process.env["ORCHESTRA_FILL_ENUM"];
   delete process.env["ORCHESTRA_FILL_SKIP_EMPTY"];
+  delete process.env["ORCHESTRA_FILL_ENUM_REFUSAL"];
+  delete process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"];
 
   if (originalPicker !== undefined) process.env["ORCHESTRA_PICKER"] = originalPicker;
   if (originalJevCriteria !== undefined)
@@ -50,6 +56,10 @@ afterEach(() => {
   if (originalFillEnum !== undefined) process.env["ORCHESTRA_FILL_ENUM"] = originalFillEnum;
   if (originalFillSkipEmpty !== undefined)
     process.env["ORCHESTRA_FILL_SKIP_EMPTY"] = originalFillSkipEmpty;
+  if (originalFillEnumRefusal !== undefined)
+    process.env["ORCHESTRA_FILL_ENUM_REFUSAL"] = originalFillEnumRefusal;
+  if (originalFillEnumUnsetWording !== undefined)
+    process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] = originalFillEnumUnsetWording;
 });
 
 test("--corpus is undefined when not given", () => {
@@ -260,4 +270,26 @@ test("variantSuffix appends both -fillenum and -skipempty together, fillenum fir
   process.env["ORCHESTRA_FILL_SKIP_EMPTY"] = "1";
 
   expect(variantSuffix()).toBe("-fillenum-skipempty");
+});
+
+test("variantSuffix appends -refusal for ORCHESTRA_FILL_ENUM_REFUSAL=1, nothing when unset", () => {
+  expect(variantSuffix()).toBe("");
+  process.env["ORCHESTRA_FILL_ENUM_REFUSAL"] = "1";
+  expect(variantSuffix()).toBe("-refusal");
+});
+
+test("variantSuffix appends -unsetwide for =wide, nothing for narrow (the default) or unset", () => {
+  expect(variantSuffix()).toBe("");
+  process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] = "narrow";
+  expect(variantSuffix()).toBe("");
+  process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] = "wide";
+  expect(variantSuffix()).toBe("-unsetwide");
+});
+
+test("variantSuffix appends -fillenum-refusal-unsetwide together, in that order", () => {
+  process.env["ORCHESTRA_FILL_ENUM"] = "jev";
+  process.env["ORCHESTRA_FILL_ENUM_REFUSAL"] = "1";
+  process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] = "wide";
+
+  expect(variantSuffix()).toBe("-fillenum-refusal-unsetwide");
 });

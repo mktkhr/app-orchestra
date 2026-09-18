@@ -47,6 +47,17 @@ type Fill struct {
 	// jev.NewFiller's own default (also 0.5) applies instead of a
 	// threshold no real answer could ever clear.
 	EnumThreshold float64
+	// EnumRefusal is ORCHESTRA_FILL_ENUM_REFUSAL: off by default, meaning
+	// arm 2's Choice questions never offer a "this operation cannot
+	// answer the question at all" option. Only meaningful alongside Enum
+	// == FillEnumJev, the same way EnumThreshold only matters there.
+	EnumRefusal bool
+	// EnumUnsetWording is ORCHESTRA_FILL_ENUM_UNSET_WORDING: "" or
+	// "narrow" (the default) keeps arm 2's original __unset__ wording;
+	// "wide" additionally covers a question that explicitly asks for
+	// everything on a field or removes an earlier restriction. Only
+	// meaningful alongside Enum == FillEnumJev.
+	EnumUnsetWording string
 }
 
 // FillEnumNone and FillEnumJev are Fill.Enum's two non-empty values,
@@ -55,6 +66,10 @@ const (
 	FillEnumNone = "none"
 	FillEnumJev  = "jev"
 )
+
+// FillEnumUnsetWordingWide is Fill.EnumUnsetWording's one non-default
+// value, mirroring internal/infra/config.FillEnumUnsetWordingWide.
+const FillEnumUnsetWordingWide = "wide"
 
 // ErrInvalidFillEnum is returned by newFillOptions when Config.Fill.Enum is
 // set to anything other than "" (FillEnumNone), FillEnumNone or
@@ -87,6 +102,14 @@ func newFillOptions(cfg *Config) ([]usecase.Option, error) {
 		fillerOpts := []jev.FillerOption{}
 		if cfg.Fill.EnumThreshold != 0 {
 			fillerOpts = append(fillerOpts, jev.WithFillThreshold(cfg.Fill.EnumThreshold))
+		}
+
+		if cfg.Fill.EnumRefusal {
+			fillerOpts = append(fillerOpts, jev.WithFillRefusal())
+		}
+
+		if cfg.Fill.EnumUnsetWording == FillEnumUnsetWordingWide {
+			fillerOpts = append(fillerOpts, jev.WithFillUnsetWordingWide())
 		}
 
 		filler := jev.NewFiller(cfg.Fill.JevBaseURL, cfg.Fill.JevAPIKey, nil, fillerOpts...)

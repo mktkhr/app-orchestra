@@ -190,6 +190,19 @@ export function variantSuffix(
   // both can appear together.
   const fillEnum = process.env["ORCHESTRA_FILL_ENUM"] === "jev" ? "-fillenum" : "";
   const skipEmpty = process.env["ORCHESTRA_FILL_SKIP_EMPTY"] === "1" ? "-skipempty" : "";
+  // Arm 2's own two independent option-set changes (today's measurement,
+  // docs/measurements/jev-conditions.md): ORCHESTRA_FILL_ENUM_REFUSAL (a
+  // third sentinel option, "this operation cannot answer the question at
+  // all") and ORCHESTRA_FILL_ENUM_UNSET_WORDING (the __unset__ criterion's
+  // own wording), read the same direct way as ORCHESTRA_FILL_ENUM/
+  // ORCHESTRA_FILL_SKIP_EMPTY just above. Only meaningful alongside
+  // "-fillenum", but appended whenever the env var itself says so,
+  // matching every other suffix here; "narrow" (the default) carries no
+  // suffix, matching ORCHESTRA_SERVICE_ROUTER_CRITERIA's own
+  // "names"-carries-no-suffix rule.
+  const refusal = process.env["ORCHESTRA_FILL_ENUM_REFUSAL"] === "1" ? "-refusal" : "";
+  const unsetWording =
+    process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] === "wide" ? "-unsetwide" : "";
 
-  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}`;
+  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}`;
 }

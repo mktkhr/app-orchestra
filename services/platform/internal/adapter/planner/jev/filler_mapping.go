@@ -20,7 +20,7 @@ import (
 // any prior answers - so Jev is asked about exactly the user content the
 // local fill would have seen for the same question, not a second, drifting
 // copy of it.
-func buildFillRequest(
+func (f *Filler) buildFillRequest(
 	endpoint *domain.Endpoint, query string, answers []usecase.Answer, turns []usecase.Turn, now time.Time,
 ) wireRequest {
 	questions := make(map[string]wireQuestion, len(endpoint.Parameters))
@@ -30,7 +30,7 @@ func buildFillRequest(
 		questions[p.Name] = wireQuestion{
 			Type:         choiceQuestionType,
 			Instructions: instructionsForParam(p),
-			Criteria:     criteriaForParam(p),
+			Criteria:     f.criteriaForParam(p),
 		}
 	}
 
@@ -61,7 +61,7 @@ func instructionsForParam(p *domain.Parameter) string {
 // falling back to the bare value for a spec-nonconformant service the same
 // defensive way optionsFromSchema (internal/usecase/orchestrator_ask.go)
 // already does - plus the two sentinels unsetChoice and mismatchChoice.
-func criteriaForParam(p *domain.Parameter) map[string]string {
+func (f *Filler) criteriaForParam(p *domain.Parameter) map[string]string {
 	criteria := make(map[string]string, len(p.Schema.Enum)+sentinelCount)
 
 	for _, value := range p.Schema.Enum {
@@ -73,10 +73,25 @@ func criteriaForParam(p *domain.Parameter) map[string]string {
 		criteria[value] = label
 	}
 
-	criteria[unsetChoice] = unsetLabel
+	criteria[unsetChoice] = f.unsetLabel()
 	criteria[mismatchChoice] = mismatchLabel
 
+	if f.refusal {
+		criteria[refusalChoice] = refusalLabel
+	}
+
 	return criteria
+}
+
+// unsetLabel is unsetChoice's own criterion text: unsetLabelWide when the
+// Filler was built WithFillUnsetWordingWide, unsetLabelNarrow (the
+// default) otherwise.
+func (f *Filler) unsetLabel() string {
+	if f.unsetWording == unsetWordingWide {
+		return unsetLabelWide
+	}
+
+	return unsetLabelNarrow
 }
 
 // questionParamTitle answers one parameter's own display name the same way
@@ -104,15 +119,20 @@ func questionTitleFor(endpoint *domain.Endpoint, name string) string {
 }
 
 // fillOutcome is mapFillAnswers' own result: args is the DecisionCall
-// Filler.Fill returns when mismatchParam is "" (every parameter answered
-// unsetChoice or a real enum value); mismatchParam, when non-empty, is the
-// first parameter (in endpoint.Parameters order) whose answer was
-// mismatchChoice - decision (below) turns either shape into the
-// usecase.Decision Fill returns. chosen, confidence and probabilities
-// carry every parameter's own raw answer, read only by logFillCompleted.
+// Filler.Fill returns when neither refusalParam nor mismatchParam is set
+// (every parameter answered unsetChoice or a real enum value);
+// mismatchParam, when non-empty, is the first parameter (in
+// endpoint.Parameters order) whose answer was mismatchChoice;
+// refusalParam, when non-empty, is the first parameter whose answer was
+// refusalChoice, and takes priority over mismatchParam (decision, below):
+// the picked operation being wrong for the question at all is a stronger
+// claim than one parameter's value merely not matching. chosen, confidence
+// and probabilities carry every parameter's own raw answer, read only by
+// logFillCompleted.
 type fillOutcome struct {
 	args          map[string]any
 	mismatchParam string
+	refusalParam  string
 	chosen        map[string]string
 	confidence    map[string]float64
 	probabilities map[string]map[string]float64
@@ -150,6 +170,10 @@ func mapFillAnswers(endpoint *domain.Endpoint, resp wireResponse, threshold floa
 		switch {
 		case answer.Choice == unsetChoice:
 			continue
+		case answer.Choice == refusalChoice:
+			if outcome.refusalParam == "" {
+				outcome.refusalParam = p.Name
+			}
 		case answer.Choice == mismatchChoice:
 			if outcome.mismatchParam == "" {
 				outcome.mismatchParam = p.Name
@@ -169,7 +193,12 @@ func mapFillAnswers(endpoint *domain.Endpoint, resp wireResponse, threshold floa
 }
 
 // decision turns outcome into the usecase.Decision Filler.Fill returns:
-// a DecisionAsk over mismatchParam (Question built the same way
+// a DecisionNone when refusalParam was found (usecase.Decision{Kind:
+// usecase.DecisionNone}, no Service/OperationID/Message - the same bare
+// shape resolvePickedFill's own DecisionNone case already expects and
+// turns into ResultKindNone with its usual message, exactly as it does
+// for a DecisionNone the local fill produced), taking priority over a
+// DecisionAsk over mismatchParam (Question built the same way
 // usecase.askForEnumGuess's own does, "<title>はどれですか？", so
 // Orchestrator.ask produces the identical ResultKindAsk shape either way)
 // when one was found, otherwise a DecisionCall naming every answered
@@ -177,6 +206,10 @@ func mapFillAnswers(endpoint *domain.Endpoint, resp wireResponse, threshold floa
 // parameter answered unsetChoice, the same "absent, not empty" convention
 // usecase.argsFromAnswers already keeps.
 func (o fillOutcome) decision(endpoint *domain.Endpoint) usecase.Decision {
+	if o.refusalParam != "" {
+		return usecase.Decision{Kind: usecase.DecisionNone}
+	}
+
 	if o.mismatchParam != "" {
 		return usecase.Decision{
 			Kind:        usecase.DecisionAsk,

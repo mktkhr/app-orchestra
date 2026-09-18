@@ -63,6 +63,8 @@ const PASSTHROUGH_ENV_VARS = [
   "ORCHESTRA_FILL_SKIP_EMPTY",
   "ORCHESTRA_FILL_ENUM",
   "ORCHESTRA_FILL_ENUM_THRESHOLD",
+  "ORCHESTRA_FILL_ENUM_REFUSAL",
+  "ORCHESTRA_FILL_ENUM_UNSET_WORDING",
 ] as const;
 
 /** Builds the env overrides for `PASSTHROUGH_ENV_VARS`, one entry per name actually set in `process.env`. */

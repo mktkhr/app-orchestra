@@ -447,10 +447,10 @@ type Config struct {
 	ServiceRouter          string
 	ServiceRouterThreshold float64
 	ServiceRouterCriteria  string
-	// Fill fields: see config_fill.go - the two fill-stage experiment arms, both off by default.
-	FillSkipEmpty     bool
-	FillEnum          string
-	FillEnumThreshold float64
+	// Fill fields: see config_fill.go - all off/unchanged by default.
+	FillSkipEmpty, FillEnumRefusal bool
+	FillEnum, FillEnumUnsetWording string
+	FillEnumThreshold              float64
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080

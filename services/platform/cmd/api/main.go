@@ -69,11 +69,13 @@ func main() {
 			Threshold:       cfg.ServiceRouterThreshold,
 		},
 		Fill: app.Fill{
-			SkipEmpty:     cfg.FillSkipEmpty,
-			Enum:          cfg.FillEnum,
-			JevAPIKey:     cfg.JevAPIKey,
-			JevBaseURL:    cfg.JevBaseURL,
-			EnumThreshold: cfg.FillEnumThreshold,
+			SkipEmpty:        cfg.FillSkipEmpty,
+			Enum:             cfg.FillEnum,
+			JevAPIKey:        cfg.JevAPIKey,
+			JevBaseURL:       cfg.JevBaseURL,
+			EnumThreshold:    cfg.FillEnumThreshold,
+			EnumRefusal:      cfg.FillEnumRefusal,
+			EnumUnsetWording: cfg.FillEnumUnsetWording,
 		},
 	})
 	if err != nil {
