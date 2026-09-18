@@ -68,6 +68,13 @@ func main() {
 			JevCriteriaForm: cfg.ServiceRouterCriteria,
 			Threshold:       cfg.ServiceRouterThreshold,
 		},
+		Fill: app.Fill{
+			SkipEmpty:     cfg.FillSkipEmpty,
+			Enum:          cfg.FillEnum,
+			JevAPIKey:     cfg.JevAPIKey,
+			JevBaseURL:    cfg.JevBaseURL,
+			EnumThreshold: cfg.FillEnumThreshold,
+		},
 	})
 	if err != nil {
 		logger.Error("building the platform", slog.Any("error", err))

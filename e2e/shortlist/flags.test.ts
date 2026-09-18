@@ -15,6 +15,8 @@ const originalJevCriteria = process.env["ORCHESTRA_JEV_CRITERIA"];
 const originalGate = process.env["ORCHESTRA_GATE"];
 const originalServiceRouter = process.env["ORCHESTRA_SERVICE_ROUTER"];
 const originalServiceRouterCriteria = process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
+const originalFillEnum = process.env["ORCHESTRA_FILL_ENUM"];
+const originalFillSkipEmpty = process.env["ORCHESTRA_FILL_SKIP_EMPTY"];
 
 beforeEach(() => {
   process.argv = [...originalArgv];
@@ -23,6 +25,8 @@ beforeEach(() => {
   delete process.env["ORCHESTRA_GATE"];
   delete process.env["ORCHESTRA_SERVICE_ROUTER"];
   delete process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
+  delete process.env["ORCHESTRA_FILL_ENUM"];
+  delete process.env["ORCHESTRA_FILL_SKIP_EMPTY"];
 });
 
 afterEach(() => {
@@ -32,6 +36,8 @@ afterEach(() => {
   delete process.env["ORCHESTRA_GATE"];
   delete process.env["ORCHESTRA_SERVICE_ROUTER"];
   delete process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
+  delete process.env["ORCHESTRA_FILL_ENUM"];
+  delete process.env["ORCHESTRA_FILL_SKIP_EMPTY"];
 
   if (originalPicker !== undefined) process.env["ORCHESTRA_PICKER"] = originalPicker;
   if (originalJevCriteria !== undefined)
@@ -41,6 +47,9 @@ afterEach(() => {
     process.env["ORCHESTRA_SERVICE_ROUTER"] = originalServiceRouter;
   if (originalServiceRouterCriteria !== undefined)
     process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"] = originalServiceRouterCriteria;
+  if (originalFillEnum !== undefined) process.env["ORCHESTRA_FILL_ENUM"] = originalFillEnum;
+  if (originalFillSkipEmpty !== undefined)
+    process.env["ORCHESTRA_FILL_SKIP_EMPTY"] = originalFillSkipEmpty;
 });
 
 test("--corpus is undefined when not given", () => {
@@ -216,4 +225,39 @@ test("variantSuffix never collides between the two router criteria forms", () =>
   const ops = variantSuffix();
 
   expect(names).not.toBe(ops);
+});
+
+test("variantSuffix appends -fillenum when ORCHESTRA_FILL_ENUM=jev", () => {
+  process.env["ORCHESTRA_FILL_ENUM"] = "jev";
+
+  expect(variantSuffix()).toBe("-fillenum");
+  expect(variantSuffix("off", 1.1, 2)).toBe("-nothink-rp1.1-stages2-fillenum");
+});
+
+test("variantSuffix appends nothing for ORCHESTRA_FILL_ENUM=none (the default)", () => {
+  process.env["ORCHESTRA_FILL_ENUM"] = "none";
+
+  expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends nothing when ORCHESTRA_FILL_ENUM is unset", () => {
+  expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends -skipempty when ORCHESTRA_FILL_SKIP_EMPTY=1", () => {
+  process.env["ORCHESTRA_FILL_SKIP_EMPTY"] = "1";
+
+  expect(variantSuffix()).toBe("-skipempty");
+  expect(variantSuffix("off", 1.1, 2)).toBe("-nothink-rp1.1-stages2-skipempty");
+});
+
+test("variantSuffix appends nothing when ORCHESTRA_FILL_SKIP_EMPTY is unset", () => {
+  expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends both -fillenum and -skipempty together, fillenum first", () => {
+  process.env["ORCHESTRA_FILL_ENUM"] = "jev";
+  process.env["ORCHESTRA_FILL_SKIP_EMPTY"] = "1";
+
+  expect(variantSuffix()).toBe("-fillenum-skipempty");
 });

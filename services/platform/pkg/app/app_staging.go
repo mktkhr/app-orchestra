@@ -54,15 +54,20 @@ func stagingOptions(cfg *Config) ([]usecase.Option, error) {
 	opts := []usecase.Option{usecase.WithPicker(picker), usecase.WithStages(stagesTwo)}
 
 	if cfg.Gate.Name != "" && cfg.Gate.Name != GateNone && !fanOut {
-		gate, err := newGate(cfg)
-		if err != nil {
-			return nil, err
+		gate, gateErr := newGate(cfg)
+		if gateErr != nil {
+			return nil, gateErr
 		}
 
 		opts = append(opts, usecase.WithGate(gate))
 	}
 
-	return opts, nil
+	fillOpts, err := newFillOptions(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(opts, fillOpts...), nil
 }
 
 // PickerJev builds jev.New against

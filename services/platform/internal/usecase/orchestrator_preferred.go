@@ -103,6 +103,16 @@ func (o *Orchestrator) planPreferred(
 		return formFor(endpoint, fallback, query, answers), nil
 	}
 
+	// The fill-stage experiment's own two arms (orchestrator_fill.go,
+	// docs/measurements/jev-conditions.md) only ever apply to a pick's own
+	// fill - a chip's preferred (fromPick == false) is unaffected, so it
+	// stays byte-identical whatever o.fillSkipEmpty/o.fillEnum hold.
+	if fromPick {
+		if result, handled, fillErr := o.tryFill(ctx, catalog, endpoint, fallback, query, answers, turns, workspaceID); handled {
+			return result, fillErr
+		}
+	}
+
 	tools := []Tool{toolFor(endpoint)}
 	if fromPick {
 		tools = append(tools, AskUserTool(), ListCapabilitiesTool())

@@ -182,6 +182,14 @@ export function variantSuffix(
   // collide; only "ops" carries a suffix, "names" (the default) does
   // not, matching every other suffix here.
   const routerCriteria = process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"] === "ops" ? "-ops" : "";
+  // The fill-stage experiment's own two arms (docs/measurements/jev-conditions.md):
+  // ORCHESTRA_FILL_ENUM and ORCHESTRA_FILL_SKIP_EMPTY, read the same direct
+  // way as ORCHESTRA_GATE/ORCHESTRA_SERVICE_ROUTER just above - each arm is
+  // chosen through the platform's own environment, not a run.ts flag, and
+  // the two are independent of each other and of every suffix above, so
+  // both can appear together.
+  const fillEnum = process.env["ORCHESTRA_FILL_ENUM"] === "jev" ? "-fillenum" : "";
+  const skipEmpty = process.env["ORCHESTRA_FILL_SKIP_EMPTY"] === "1" ? "-skipempty" : "";
 
-  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}`;
+  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}`;
 }

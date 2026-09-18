@@ -512,6 +512,11 @@ type Config struct {
 	// router at all) - every test and caller that predates this
 	// subproject keeps today's behaviour unchanged.
 	ServiceRouter ServiceRouter
+	// Fill selects the fill-stage experiment's two arms (see app_fill.go).
+	// Its zero value (SkipEmpty == false, Enum == "") is both arms off -
+	// every test and caller that predates this subproject keeps today's
+	// behaviour unchanged.
+	Fill Fill
 }
 
 // SeedAccount is one account for New to put in place via SeedAccounts,

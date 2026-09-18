@@ -509,11 +509,11 @@ func buildMessages(
 ) []chat.Message {
 	return []chat.Message{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: buildUserContent(query, answers, turns, now)},
+		{Role: "user", Content: BuildUserContent(query, answers, turns, now)},
 	}
 }
 
-// dateLine is buildUserContent's own first line, on every planning call:
+// dateLine is BuildUserContent's own first line, on every planning call:
 // "今日は 2026-09-16（火）です。" followed by a blank line, so the model
 // has some notion of today without it ever touching systemPrompt (which
 // wording's own byte-identity tests, AC-Q-101, pin unchanged) - fixing the
@@ -531,13 +531,16 @@ func japaneseWeekday(d time.Weekday) string {
 	return [...]string{"日", "月", "火", "水", "木", "金", "土"}[d]
 }
 
-// buildUserContent renders dateLine first, on every call, then - when
+// BuildUserContent renders dateLine first, on every call, then - when
 // turns is non-empty - the conversation so far (renderTurns), then the
 // current question, followed - when answers is non-empty - by every
 // answer the person has already given to a previous ask_user question, so
 // a resubmitted query actually uses the chosen value instead of asking
-// again.
-func buildUserContent(query string, answers []usecase.Answer, turns []usecase.Turn, now time.Time) string {
+// again. Exported so internal/adapter/planner/jev's own ORCHESTRA_FILL_ENUM=jev
+// Filler (docs/measurements/jev-conditions.md) can send Jev the identical
+// user content the local fill would have seen for the same question,
+// rather than a second, drifting copy of this rendering.
+func BuildUserContent(query string, answers []usecase.Answer, turns []usecase.Turn, now time.Time) string {
 	var b strings.Builder
 
 	b.WriteString(dateLine(now))

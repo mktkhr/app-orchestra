@@ -115,5 +115,10 @@ func loadServiceRouter(cfg *Config) error {
 
 	cfg.ServiceRouterCriteria = criteria
 
-	return nil
+	// loadFill (config_fill.go) is chained onto this function's own tail,
+	// rather than called as its own step from Load/loadPickerAndGate
+	// (config.go), for the same reason loadGate's own tail calls this
+	// function instead: config.go is already at its own 1000-line cap
+	// (harness/quality/file-length.txt).
+	return loadFill(cfg)
 }

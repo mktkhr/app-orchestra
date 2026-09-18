@@ -178,6 +178,16 @@ type Orchestrator struct {
 	// before this field existed.
 	serviceRouter          ServiceRouter
 	serviceRouterThreshold float64
+	// fillSkipEmpty and fillEnum are the fill-stage experiment's own two
+	// fields (docs/measurements/jev-conditions.md; orchestrator_preferred.go's
+	// planPreferred, fromPick == true only): fillSkipEmpty is
+	// ORCHESTRA_FILL_SKIP_EMPTY (arm 1, no Filler needed - see
+	// EligibleForFillSkip); fillEnum is nil (WithFillEnum never given,
+	// the default) unless ORCHESTRA_FILL_ENUM=jev configured one (arm 2).
+	// Both are off by default and independent of each other and of
+	// picker/gate/serviceRouter.
+	fillSkipEmpty bool
+	fillEnum      Filler
 }
 
 // Option configures an Orchestrator built by NewOrchestrator, beyond its
@@ -238,6 +248,26 @@ func WithServiceRouter(r ServiceRouter, threshold float64) Option {
 		o.serviceRouter = r
 		o.serviceRouterThreshold = threshold
 	}
+}
+
+// WithFillSkipEmpty turns on ORCHESTRA_FILL_SKIP_EMPTY (arm 1,
+// docs/measurements/jev-conditions.md): planPreferred's own fromPick path
+// skips the fill's model call outright for any endpoint EligibleForFillSkip
+// reports true for, and dispatches straight to the same outcome a model
+// call naming that operation with no arguments would have reached. Never
+// given (the default) is byte-identical to today - see planPreferred's own
+// doc comment for exactly where this is consulted.
+func WithFillSkipEmpty() Option {
+	return func(o *Orchestrator) { o.fillSkipEmpty = true }
+}
+
+// WithFillEnum configures the usecase.Filler ORCHESTRA_FILL_ENUM=jev (arm
+// 2, docs/measurements/jev-conditions.md) consults in place of the fill's
+// model call, for any endpoint EligibleForFillEnum reports true for. nil
+// (WithFillEnum never given, the default) skips this entirely, byte for
+// byte the same planPreferred path as before this option existed.
+func WithFillEnum(f Filler) Option {
+	return func(o *Orchestrator) { o.fillEnum = f }
 }
 
 // WithStages selects how many model calls Plan makes to resolve an

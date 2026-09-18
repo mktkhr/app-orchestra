@@ -103,6 +103,9 @@ const JEV_TRIAL_ENV_VARS = [
   "ORCHESTRA_SERVICE_ROUTER",
   "ORCHESTRA_SERVICE_ROUTER_THRESHOLD",
   "ORCHESTRA_SERVICE_ROUTER_CRITERIA",
+  "ORCHESTRA_FILL_SKIP_EMPTY",
+  "ORCHESTRA_FILL_ENUM",
+  "ORCHESTRA_FILL_ENUM_THRESHOLD",
 ] as const;
 
 /** Builds the env overrides for `JEV_TRIAL_ENV_VARS`, one entry per name actually set in `process.env`. */

@@ -319,9 +319,8 @@ type Config struct {
 	// (unset) sends nothing - today's behaviour.
 	PlannerRepeatPenalty *float64
 	// PlannerRepeatLastN is chat.Request.RepeatLastN, read from
-	// ORCHESTRA_PLANNER_REPEAT_LAST_N. Defaults to 64 when unset,
-	// regardless of PlannerRepeatPenalty - it has no effect unless
-	// PlannerRepeatPenalty is also set.
+	// ORCHESTRA_PLANNER_REPEAT_LAST_N. Defaults to 64 when unset, regardless
+	// of PlannerRepeatPenalty - it has no effect unless PlannerRepeatPenalty is also set.
 	PlannerRepeatLastN int
 	// PlannerStages selects how many model calls the toolcall planner
 	// makes to resolve an ordinary question, read from
@@ -377,9 +376,8 @@ type Config struct {
 	// turns still reach "state" unchanged either way. Ignored when Picker
 	// is not PickerJev.
 	JevObjectInstructions bool
-	// HybridJevTimeout and HybridThreshold configure
-	// internal/adapter/planner/hybrid.Picker, read from
-	// ORCHESTRA_HYBRID_JEV_TIMEOUT and ORCHESTRA_HYBRID_THRESHOLD
+	// HybridJevTimeout and HybridThreshold configure internal/adapter/planner/hybrid.Picker,
+	// read from ORCHESTRA_HYBRID_JEV_TIMEOUT and ORCHESTRA_HYBRID_THRESHOLD
 	// (config_hybrid.go). Ignored when Picker is not PickerHybrid.
 	HybridJevTimeout time.Duration
 	HybridThreshold  float64
@@ -432,13 +430,11 @@ type Config struct {
 	// non-admin account to sign in as, and has no in-process Go test's
 	// access to pkg/app.Config to seed one through directly. Setting an
 	// environment variable is not a network route - the exclusion this
-	// mirrors is about not exposing account creation over HTTP, which this
-	// does not do.
+	// mirrors is about not exposing account creation over HTTP, which this does not do.
 	SeedAccounts []SeedAccount
 	// ContextTurns is the number of turns of a conversation Orchestrator.Plan
 	// keeps, oldest dropped first, read from ORCHESTRA_CONTEXT_TURNS
-	// (docs/specs/context.md, section 6). Defaults to defaultContextTurns
-	// when unset.
+	// (docs/specs/context.md, section 6). Defaults to defaultContextTurns when unset.
 	ContextTurns int
 	// NarrowingEmbedModel names the embedding model llama-swap serves at /v1/embeddings, read from ORCHESTRA_NARROWING_EMBED_MODEL.
 	// Empty means narrowing is off (docs/specs/shortlisting.md, H7) - see ErrNarrowingIncomplete for what a partial setting means.
@@ -451,6 +447,10 @@ type Config struct {
 	ServiceRouter          string
 	ServiceRouterThreshold float64
 	ServiceRouterCriteria  string
+	// Fill fields: see config_fill.go - the two fill-stage experiment arms, both off by default.
+	FillSkipEmpty     bool
+	FillEnum          string
+	FillEnumThreshold float64
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080
