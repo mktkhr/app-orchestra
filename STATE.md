@@ -1,8 +1,19 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-18 (Jev as a service router: the first configuration to beat the local picker on the corpus, and why it is still not adopted)_
+_Last updated: 2026-09-18 (correction: `make eval` reads 32/34 on today's tree with no Jev involved - the propose_panel fix moved two near-tie rows)_
 
 ## Summary
+
+**2026-09-18, correction - `make eval` reads 32/34 against the local
+default, not 34/34: `unanswerable` and `real-what-day` answer
+`list_capabilities` where `baseline.json` records `none`, because
+`eeb23fa` removed `propose_panel` from the pick's candidate list on a
+workspace-less question.** Isolated by hand (the same two questions
+answer `none` when a `workspaceId` is present). The router's eval cost is
+therefore one row, not two. `baseline.json` is untouched - accepting it
+is a human's act - and the open choice is whether to restore `none`
+through the pick's own built-in wording or to re-record the baseline
+(`TODO.md` item 1). See `DECISIONS.md`, 2026-09-18, "Correction".
 
 **2026-09-18 - a `usecase.ServiceRouter` port (off by default,
 `ORCHESTRA_SERVICE_ROUTER=jev`) names one service before narrowing, and

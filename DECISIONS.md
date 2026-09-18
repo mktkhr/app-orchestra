@@ -8210,3 +8210,47 @@ stays unset; the port, the adapter and both criteria forms stay in the
 tree behind config. Two candidate fixes are open in `TODO.md`: route only
 above a measured catalogue size, or require a margin over `other` rather
 than an absolute confidence.
+
+## 2026-09-18 Correction: the two eval rows were the propose_panel fix, not the router
+
+The entry above reads the service router as costing two `make eval` rows.
+That attribution is wrong, and this entry corrects it. `make eval` had
+not been run against the local default after `eeb23fa` (the propose_panel
+fix) before the router was measured on top of it, so the router's run was
+compared against a baseline the tree no longer produced.
+
+**Measured, no Jev involved.** `make eval` with the router off, today's
+build: **32/34** - `unanswerable` (今日の天気は？) and `real-what-day`
+(今日は何曜日？) both answer `list_capabilities` where the baseline
+records `none`.
+
+**Cause, isolated by hand** (scratch script, two platforms, the only
+difference being whether the pick stage is offered `propose_panel` - a
+request carrying a `workspaceId` still offers it):
+
+| question           | propose_panel offered | not offered          |
+| ------------------ | --------------------- | -------------------- |
+| 今日は何曜日？     | `none`                | `list_capabilities`  |
+| 今日の天気は？     | `none`                | `list_capabilities`  |
+| 在庫で何ができる？ | `list_capabilities`   | `list_capabilities`  |
+| 在庫を見せて       | `ListInventoryItems`  | `ListInventoryItems` |
+
+Removing one built-in from the pick's candidate list moves these two
+near-tie rows from `none` to `list_capabilities`. The fix itself is still
+right - offering a tool the product will refuse to honour is a defect -
+but it changed a behaviour the eval suite pins, and that was not noticed
+because no local `make eval` run separated the two changes.
+
+**What this does to the router's own numbers.** Against the correct
+baseline for today's tree (local 32/34), the router reads 32/34 at
+threshold 0 - the same count, a different pair (`real-what-day` and
+`real-capability-inventory`; `unanswerable` recovers to `none` under the
+router) - and 31/34 at threshold 0.7. So the router costs **one** eval
+row at its best setting, not two, while gaining +4 on the corpus. The
+"not adopted" reasoning in the entry above still stands on the mid wash
+and on the fact that the gain is fixture-sized, but the eval cost was
+overstated.
+
+`e2e/eval/baseline.json` is untouched: accepting a baseline is a human's
+act (`make eval-accept`), and the right next step is a decision about the
+pick's own built-in wording, not a rewritten baseline. Open in `TODO.md`.

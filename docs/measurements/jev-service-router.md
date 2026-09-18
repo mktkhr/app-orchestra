@@ -82,21 +82,31 @@ because nothing was wrong.
 | ---------- | --------------- | -------------------- | -------------------------------------- |
 | corpus     | 1000 ops, 5 svc | 78 / 80              | **82 / 84**                            |
 | mid        | 30 ops, 3 svc   | 37/40, refused 16/20 | 37/40, refused 15/20 (a wash)          |
-| eval       | 6 ops, 2 svc    | 34/34                | **32/34** at threshold 0, 31/34 at 0.7 |
+| eval       | 6 ops, 2 svc    | **32/34**            | **32/34** at threshold 0, 31/34 at 0.7 |
 
-The three eval rows that break are exactly the questions that are about
-no service at all:
+**Corrected 2026-09-18, after this file was first written.** The eval
+column originally read `34/34` for local and blamed the router for two
+rows. It was wrong: `make eval` had not been run against the local
+default after `eeb23fa` (offering `propose_panel` to the pick only with a
+workspace). Run since, with the router off, today's tree reads **32/34** -
+`unanswerable` (今日の天気は？) and `real-what-day` (今日は何曜日？) both
+answer `list_capabilities` where `baseline.json` records `none`, because
+removing one built-in from the pick's candidate list moves those two
+near-tie rows. Isolated by hand: the same two questions answer `none`
+when the request carries a `workspaceId` (so `propose_panel` is offered)
+and `list_capabilities` when it does not.
 
-- `real-what-day` (今日は何曜日？) - `none` at baseline, answers
-  `list_capabilities` under the router;
-- `real-capability-inventory` (在庫で何ができる？) - `list_capabilities`
-  at baseline, answers `none` under the router;
-- `unanswerable` (今日の天気は？) - breaks at threshold 0.7 but not at 0.
+Against that correct baseline the router costs **one** row, not two:
+at threshold 0 it reads 32/34 with a different pair - `real-what-day` and
+`real-capability-inventory` (在庫で何ができる？, `list_capabilities` at
+baseline, `none` under the router) - and `unanswerable` recovers. At
+threshold 0.7 it reads 31/34.
 
-With two services and six operations, narrowing to one service changes
-what the fill can see, and these built-in answers flip. The router names
-a service confidently for a question that has none, because its only
-options are the services and `other`.
+The remaining router-caused row is still the shape described above: with
+two services and six operations, narrowing to one service changes what
+the fill can see, and a built-in answer flips. The router names a service
+confidently for a question that has none, because its only options are
+the services and `other`.
 
 ## Cost and latency
 
@@ -111,9 +121,12 @@ options are the services and `other`.
 
 `ORCHESTRA_SERVICE_ROUTER` stays unset. On the catalogue the product
 actually serves today - two services, six operations - the router costs
-two `make eval` rows and gains nothing; the +4 it wins is on the
-1000-operation fixture, which is where the product is meant to end up but
-is not where it is.
+one `make eval` row (see the correction above) and gains nothing; the +4
+it wins is on the 1000-operation fixture, which is where the product is
+meant to end up but is not where it is. Whether that one row is worth +4
+is a decision to take once the pick's own built-in wording is settled,
+since two of the three rows in this area are moving for a reason that has
+nothing to do with the router.
 
 ## Open, in `TODO.md`
 

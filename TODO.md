@@ -143,6 +143,19 @@ _Nothing in progress right now._
    with the local pick fixed and Jev called only for ordering, and a
    decision on the extra call per question.
 
+1. **The pick answers `list_capabilities` where it used to answer `none`,
+   since `propose_panel` left its candidate list.** `make eval` reads
+   32/34 with no Jev involved at all (`unanswerable` 今日の天気は？,
+   `real-what-day` 今日は何曜日？), a regression introduced by `eeb23fa`
+   and measured only afterwards; isolated by hand to the presence of the
+   `propose_panel` option alone (`DECISIONS.md`, 2026-09-18, the
+   correction entry). The fix itself is right, so the choice is between
+   (a) restoring `none` for an out-of-domain question through the pick's
+   own built-in wording - the candidate, since `list_capabilities` for
+   今日の天気は？ answers a question nobody asked - and (b) accepting the
+   new behaviour and re-recording the baseline, which is a human's act.
+   Blocks item 2: two of the three eval rows in that area are moving for
+   this reason, not for the router's.
 1. **The service router wins on the fixture and loses on the real
    catalogue - close that gap or close the item.** Built and measured
    2026-09-18 (`docs/measurements/jev-service-router.md`): corpus 82/84
