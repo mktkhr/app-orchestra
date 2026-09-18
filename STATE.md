@@ -1,8 +1,21 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-18 (Jev on the whole catalogue, measured; propose_panel now offered to the pick only with a workspace)_
+_Last updated: 2026-09-18 (Jev as a service router: the first configuration to beat the local picker on the corpus, and why it is still not adopted)_
 
 ## Summary
+
+**2026-09-18 - a `usecase.ServiceRouter` port (off by default,
+`ORCHESTRA_SERVICE_ROUTER=jev`) names one service before narrowing, and
+with `ORCHESTRA_SERVICE_ROUTER_CRITERIA=ops` it routes 93 of 100 corpus
+questions and gets 93 of 93 right, moving the corpus to 82/84 against the
+local picker's 78/80 - the first configuration in the whole Jev trial to
+beat the local default.** It still is not adopted: on the real
+two-service, six-operation catalogue it costs two `make eval` rows
+(questions about no service at all - 今日は何曜日, 在庫で何ができる,
+今日の天気), and mid is a wash. The gain scales with the catalogue, the
+cost lands on small ones. Fail-open everywhere; `names` criteria (the
+default) declines 56 of 100 and moves nothing. See `DECISIONS.md`,
+2026-09-18, and `docs/measurements/jev-service-router.md`.
 
 **2026-09-18 - Jev given the whole 1000-operation catalogue (the shape
 TypeSafe's own docs recommend, hierarchical over 255 options) reads 27

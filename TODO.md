@@ -143,16 +143,19 @@ _Nothing in progress right now._
    with the local pick fixed and Jev called only for ordering, and a
    decision on the extra call per question.
 
-1. **Let Jev name the service, and keep the pick local inside it.** The
-   whole-catalogue round (`DECISIONS.md`, 2026-09-18) found Jev's service
-   decision right in 90 of 98 rows and 25 of 25 on axis B, while its
-   operation decision stayed below the local picker. The slot exists:
-   `idAffinity` already narrows the pick's catalogue to one service
-   (`orchestrator_staging.go`). A service-only Choice question is five
-   options plus built-ins - a few hundred tokens a question, under $0.01
-   for the corpus. Win condition to set before running: 80 or more
-   correct@1 on the corpus (the local picker reads 78), with mid and
-   `make eval` not regressing.
+1. **The service router wins on the fixture and loses on the real
+   catalogue - close that gap or close the item.** Built and measured
+   2026-09-18 (`docs/measurements/jev-service-router.md`): corpus 82/84
+   against the local picker's 78/80, routing 93 of 100 questions with
+   zero wrong routes, but `make eval` drops to 32/34 because three
+   questions about no service at all (今日は何曜日, 在庫で何ができる,
+   今日の天気) get a service anyway. Two candidate fixes, one variable
+   each, about $0.05 a run: (a) route only above a catalogue size -
+   operations or services - chosen from measurement, not guessed;
+   (b) require a margin over the catch-all `other` rather than an
+   absolute confidence, since `other` is what should have won those three
+   rows. Either has to hold corpus 82, mid 37/40, and eval 34/34 at once
+   to be worth adopting.
 1. **The built-ins distort a hierarchical Jev request.** `none` won the
    service question in 58 of 100 rows at ~0.85, because a built-in is one
    decision scored against an operation's two-decision geometric mean.
@@ -161,6 +164,14 @@ _Nothing in progress right now._
    all); the 70 recovered offline assumes they are simply removed.
 
 ## Done
+
+- **Jev as a service router: measured, not adopted** (2026-09-18,
+  `010f9dc`/`0d6dd80`). The first configuration in the trial to beat the
+  local picker on the corpus (82/84 against 78/80) by naming the service
+  before narrowing - 93 routes, 93 correct - and the reason it stays off
+  is the real catalogue, not the mechanism. Next step in item 1 above.
+  See `DECISIONS.md`, 2026-09-18, and
+  `docs/measurements/jev-service-router.md`.
 
 - **Jev on the whole catalogue: measured, not adopted** (2026-09-18).
   27 correct@1 as built, 70 with built-ins set aside, against the local

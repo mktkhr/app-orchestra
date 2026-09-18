@@ -8161,3 +8161,52 @@ clearly ahead of the local stack, is the **service** decision, not the
 operation: Jev naming the service and the existing local narrowing and
 pick running inside it - the same slot `idAffinity` already occupies
 (`orchestrator_staging.go`). Untried.
+
+## 2026-09-18 Jev as a service router: +4 on the fixture, -2 on the real catalogue
+
+Full record: `docs/measurements/jev-service-router.md`; raw routes in
+`jev-service-router-routes.jsonl`. Follows the whole-catalogue round
+above, which found Jev's service decision (90/98, 25/25 on axis B) far
+better than its operation decision (70 against the local picker's 78).
+
+**Built** (`010f9dc`, `0d6dd80`): a `usecase.ServiceRouter` port called in
+`Plan` before `Narrow`, off by default (`ORCHESTRA_SERVICE_ROUTER=jev`),
+with a confidence threshold (`..._THRESHOLD`, default 0.5) and two ways
+for a service to describe itself (`..._CRITERIA`: `names`, today's
+few-summaries text, or `ops`, every operation's display name). One Choice
+question: the services plus a catch-all `other`, no built-ins - this
+stage cannot answer a question, only name a service. Every failure -
+transport error, `other`, unknown service, low confidence - falls open to
+today's catalogue.
+
+**What the round found.** The criteria form is the whole result. With
+`names`, the router declines 56 of 100 questions (`other`) and the corpus
+does not move (78/80). With `ops` it names a service on 93 of 100 and is
+right **93 of 93** - no wrong route at all - and the corpus reads
+**82/84** against the local picker's 78/80, the first configuration in
+this whole trial to beat the local default on the corpus. Axis A, C and E
+route 25/25, 25/25 and 10/10; axis B routes 20/25 (the five it declines
+are `other`, not a wrong service). Raising the threshold only declines
+more questions and corrects nothing (93/93 at 0, 88/88 at 0.5, 76/76 at
+0.7).
+
+The reason `names` fails and `ops` works is the same reason the
+whole-catalogue request's service question was good: the decision needs
+to see what each service can actually do. `ops` costs 8,133 input tokens
+a question ($0.034 per 100) against `names`'s 621, and 398 ms.
+
+**Why it is not adopted.** The gain is on the 1000-operation fixture. On
+the catalogue the product actually serves - two services, six operations
+
+- it costs two `make eval` rows (32/34 at threshold 0, 31/34 at 0.7):
+  `real-what-day`, `real-capability-inventory` and `unanswerable` are
+  questions about no service at all, and narrowing to one service flips
+  which built-in answers them. mid (30 operations, three services) is a
+  wash: 37/40 either way, refused 16 against 15.
+
+So the mechanism works and is measured, but its benefit scales with the
+catalogue and its cost lands on small ones. `ORCHESTRA_SERVICE_ROUTER`
+stays unset; the port, the adapter and both criteria forms stay in the
+tree behind config. Two candidate fixes are open in `TODO.md`: route only
+above a measured catalogue size, or require a margin over `other` rather
+than an absolute confidence.
