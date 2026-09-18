@@ -143,6 +143,17 @@ _Nothing in progress right now._
    with the local pick fixed and Jev called only for ordering, and a
    decision on the extra call per question.
 
+1. **`bonsai2-27b` is a serious candidate for the default - and it needs a
+   second look before it can be one.** Measured 2026-09-18
+   (`frontier-full-2026-09-18.md`): corpus 81 (local 77), axis B 92 (local
+   80), mid **39/40 answerable with 1 false refusal and 19/20 refused** -
+   the best mid line of fifteen models - at 5.95 GB and no per-question
+   cost. Against it: eval 30/34 (the local default's 34/34 is still
+   unmatched), 3,579 ms a corpus question against 1,363, and it runs only
+   on PrismML's llama.cpp fork, whose binaries now sit in the local-llm
+   repo's `prism/` directory (197 MB, untracked - the user may want them
+   gitignored or moved). Next: read its four eval losses row by row, and
+   decide whether a fork dependency is acceptable for a default.
 1. **A full four-instrument run on Claude, if it is worth $8.** The
    planner now runs on the Anthropic Messages API
    (`ORCHESTRA_LLM_PROVIDER=anthropic`, `adbdf6b`) and a six-question

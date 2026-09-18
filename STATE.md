@@ -1,8 +1,21 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-18 (the planner can run on Claude; single-shot check of four Claude models)_
+_Last updated: 2026-09-18 (three Claude models and a ternary 27B on all four instruments)_
 
 ## Summary
+
+**2026-09-18 - Haiku 4.5, Sonnet 5, Opus 5 and a newly added local
+`bonsai2-27b` each took a full pass over the four instruments.** Sonnet 5
+has the best corpus measured (81/83 against the local 77/80, axis D 80
+against 60); Opus 5 costs 2.4x Sonnet and scores below it; Haiku 4.5 is
+last everywhere and fails only toward `none`. **`bonsai2-27b`** - Ternary
+Bonsai 2 27B, 5.95 GB, runnable only through PrismML's llama.cpp fork
+(stock build 10920 rejects it with `invalid ggml type 143`) - ties Sonnet
+on the corpus, takes axis B at 92, and posts the best mid line of all
+fifteen models measured today (39/40 answerable, 1 false refusal, 19/20
+refused) at no cost per question. `make eval`'s 34/34 is still the local
+default's alone. Anthropic spend $12.53 this round, $16.56 cumulative. See
+`DECISIONS.md` and `docs/measurements/frontier-full-2026-09-18.md`.
 
 **2026-09-18 - the planner has a second chat backend
 (`ORCHESTRA_LLM_PROVIDER=anthropic`, `adbdf6b`), and four Claude models

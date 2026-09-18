@@ -8461,3 +8461,50 @@ From those rates a full four-instrument run would be ~$1.0 (Haiku), ~$2.0
 (Sonnet 5), ~$5.1 (Opus 5), ~$10.2 (Fable 5.1) - all four together exceed
 the remaining budget, the first three do not. Not run: six questions
 cannot rank models, and this round's purpose was the path and the price.
+
+## 2026-09-18 Three Claude models and a ternary 27B on all four instruments
+
+Full record: `docs/measurements/frontier-full-2026-09-18.md`.
+
+**The Claude models.** Haiku 4.5, Sonnet 5 and Opus 5 each took one pass
+over eval / corpus / mid / dialogues with the planner's two stages on the
+Anthropic Messages API and local narrowing unchanged. Sonnet 5 posts the
+best corpus of anything measured (81/83 against the local 77/80) and
+**moves axis D to 80 against 60** - the vocabulary gap nothing had moved
+before. Opus 5 costs 2.4x Sonnet and scores below it (75/75, axis D 47);
+the 2026-09-15 pick-only round had them tied at 73, so running the fill is
+what separates them. Haiku 4.5 is last on every instrument (29/34, 60/63,
+22/40, 24/27) and fails in one direction only: `none`.
+
+**All three carry the same reluctance in different degrees**, and it shows
+on the instrument built from the real services: false refusals on mid are
+local 2, Sonnet 11, Opus 14, Haiku 17, and every Claude model's eval losses
+are create forms, a filtered list or a chart. Nobody reaches the local
+34/34.
+
+**`bonsai2-27b`, and a correction to how it was nearly dismissed.** The
+user asked for Ternary Bonsai 2 27B (PrismML, published 2026-09-17). A web
+summary said stock llama.cpp "silently outputs garbage" and I proposed
+skipping it on that basis - which was wrong twice over. Measured here:
+stock `llama-server` build 10920 **fails loudly** (`invalid ggml type 143`
+for PTQ1_0, `142` for PQ2_0) while reading the tensor index, and the
+model's own footprint is 5.95 GB, not the 12-15 GB I had assumed. With
+PrismML's llama.cpp fork (prebuilt linux-cuda binaries now under the
+local-llm repo's mounted `prism/`), it loads in 7.3 GB, answers Japanese
+cleanly, disables thinking through the same `enable_thinking` switch the
+Qwen entry uses, and returns correct OpenAI-shaped tool calls.
+
+It then tied Sonnet 5 on the corpus (**81**), took axis B at **92** - the
+cross-service homonyms every other model finds hardest - and posted
+**mid 39/40 answerable, 1 false refusal, 19/20 refused**, the best mid line
+of all fifteen models measured today. eval 30/34 is its weak spot. It costs
+nothing per question.
+
+**What this round settles.** Price does not order these models: Opus below
+Sonnet, a free 5.95 GB local model tying the best hosted corpus score and
+beating everything on mid. The refusal column keeps promoting models that
+simply say no (Haiku 19/20 refused with 22/40 answered; `lfm25` 20/20 with
+1/40) - and bonsai2 shows the shape of a real one (19/20 with 39/40).
+`make eval`'s 34/34 remains the local default's alone.
+
+Anthropic spend: $12.53 this round, $16.56 cumulative.
