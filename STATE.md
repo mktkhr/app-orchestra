@@ -1,8 +1,21 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-18 (`make eval` back to 34/34: the pick's two built-in lines reworded)_
+_Last updated: 2026-09-18 (ten local models re-measured on all four instruments)_
 
 ## Summary
+
+**2026-09-18 - ten local models re-measured with only the model varying
+(`docs/measurements/models-2026-09-18.md`).** `qwen3.5-9b-q8` stays the
+default and is still the only model at 34/34 on `make eval` - and it is
+now best at nothing else: `gemma4-12b-q8` takes the corpus (79), mid
+(38/40, zero false refusals) and the dialogues (27/27) at ~50% more
+latency, and `qwen3.5-9b` at Q4_K_M matches its own Q8 everywhere but
+eval while running 14% faster. Two models show that one instrument cannot
+rank them: `granite41-8b-q8` reads corpus 78 while answering `none` 10/10
+on nineteen eval cases, and `lfm25-8b-a1b-q8` refuses 20/20 impossible
+questions by refusing 39 of 40 answerable ones. Models over ~13 GB were
+excluded (they cannot share the card with the narrowing models).
+Open in `TODO.md` item 1.
 
 **2026-09-18 - `make eval` is 34/34 again.** The two rows the
 propose_panel fix had moved (`unanswerable`, `real-what-day`) are back at

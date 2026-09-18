@@ -8378,3 +8378,47 @@ all (0 of the 100-question corpus - its enums live on request bodies).
 Both flags stay unset.
 
 Cumulative Jev spend $0.4299 of $2.
+
+## 2026-09-18 Ten local models, re-measured on four instruments
+
+Full record and per-model characterisation:
+`docs/measurements/models-2026-09-18.md`.
+
+The default model's justification (2026-09-14, nine models on eighteen
+eval cases, one planning call, no narrowing) had expired: the planner is
+two-stage now, the wording is `v6-unmatched-filter`, narrowing is on, and
+there are four instruments instead of one. So every model was measured
+again with only the model varying.
+
+Models above ~13 GB were excluded by decision (`qwen38-27b-iq3s`,
+`qwen36-35b-iq4xs`, `gemma4-26b-a4b-qat`, `gpt-oss-20b`): they cannot
+share the 16 GB card with the embedding and reranking models the corpus
+and mid instruments need, and the 2026-09-14 round already found size
+does not help on this task. Ten models remained.
+
+**Headline.** `qwen3.5-9b-q8` is still the only model at 34/34 on the
+eval suite, and it is no longer the best on anything else.
+`gemma4-12b-q8` reads corpus 79 (against 77), mid 38/40 answerable with
+**zero** false refusals (against 37/40 and 2), dialogues **27/27**
+(against 26/27 - it answers the `d11` turn the default gets wrong), and
+eval 32/34, at about 50% more latency. `qwen3.5-9b` at Q4_K_M matches its
+own Q8 on the corpus and dialogues, beats it on mid refusals (18/20
+against 16/20), loses one eval row, and runs 14% faster.
+
+**Two models show that a single instrument cannot rank these.**
+`granite41-8b-q8` reads corpus 78 - above the default - while answering
+`none` 10/10 on nineteen eval cases and failing twenty dialogue turns in
+110-200 ms: it refuses instantly on the real six-operation catalogue.
+`lfm25-8b-a1b-q8` refuses 20/20 impossible questions, the best refusal
+score in the table, by refusing 39 of 40 answerable ones (corpus 1/100).
+Either would win a comparison run on one instrument.
+
+**Method note.** llama-swap has to be emptied between models or the
+previous one keeps the card and every case reads 0; one run was discarded
+for exactly that before these numbers were taken.
+
+**Nothing changed in the tree.** `ORCHESTRA_LLM_MODEL` stays
+`qwen3.5-9b-q8`: the eval suite is the contract and only the default
+passes it whole. Whether to trade two eval rows for the gemma's three
+instruments is a product decision, recorded in `TODO.md` rather than
+taken here.

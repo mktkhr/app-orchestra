@@ -143,6 +143,17 @@ _Nothing in progress right now._
    with the local pick fixed and Jev called only for ordering, and a
    decision on the extra call per question.
 
+1. **The default model is no longer unarguable - decide whether to move.**
+   Ten models re-measured 2026-09-18 with only the model varying
+   (`docs/measurements/models-2026-09-18.md`). `qwen3.5-9b-q8` is the only
+   one at 34/34 on `make eval`, and it is best at nothing else:
+   `gemma4-12b-q8` reads corpus 79 (77), mid 38/40 with zero false
+   refusals (37/40, 2), dialogues 27/27 (26/27), eval 32/34, at ~50% more
+   latency; `qwen3.5-9b` at Q4_K_M matches its own Q8 everywhere but eval
+   (31/34) and runs 14% faster. Moving means trading eval rows - the
+   contract - for the other three instruments, which is a product
+   decision. If it moves, `ORCHESTRA_LLM_MODEL` / `.air.toml` /
+   `e2e/shortlist/boot.ts`'s default all name the model.
 1. **The service router wins on the fixture and loses on the real
    catalogue - close that gap or close the item.** Built and measured
    2026-09-18 (`docs/measurements/jev-service-router.md`): corpus 82/84
