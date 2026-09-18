@@ -152,7 +152,10 @@ func newServiceRouterOption(cfg *Config) (usecase.Option, error) {
 			return nil, ErrMissingJevAPIKey
 		}
 
-		opts := []jev.RouterOption{jev.WithRouterCriteria(cfg.ServiceRouter.JevCriteria)}
+		opts := []jev.RouterOption{
+			jev.WithRouterCriteria(cfg.ServiceRouter.JevCriteria),
+			jev.WithRouterCriteriaForm(cfg.ServiceRouter.JevCriteriaForm),
+		}
 		router := jev.NewServiceRouter(cfg.ServiceRouter.JevBaseURL, cfg.ServiceRouter.JevAPIKey, nil, opts...)
 
 		return usecase.WithServiceRouter(router, cfg.ServiceRouter.Threshold), nil

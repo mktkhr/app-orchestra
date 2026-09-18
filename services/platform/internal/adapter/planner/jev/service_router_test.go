@@ -3,6 +3,7 @@ package jev_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -191,4 +192,106 @@ func TestServiceRouterMissingAnswerKeyIsAnError(t *testing.T) {
 
 	_, err := router.Route(context.Background(), "q", nil, nil, shortlistCatalog())
 	require.Error(t, err)
+}
+
+// routeRequestBody sends query against shortlist through a ServiceRouter
+// built with opts and returns the one "route" question's own criteria -
+// this file's own helper for the RouteCriteriaNames/RouteCriteriaOps
+// tests below, which all only care about that one question's criteria.
+func routeRequestBody(t *testing.T, shortlist domain.Catalog, opts ...jev.RouterOption) map[string]any {
+	t.Helper()
+
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(routeResponseWith(t, "svc0", 0.9))); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	router := jev.NewServiceRouter(server.URL, "test-key", nil, opts...)
+
+	_, err := router.Route(context.Background(), "在庫を見せて", nil, nil, shortlist)
+	require.NoError(t, err)
+
+	questions, ok := gotBody["questions"].(map[string]any)
+	require.True(t, ok)
+
+	route, ok := questions["route"].(map[string]any)
+	require.True(t, ok)
+
+	criteria, ok := route["criteria"].(map[string]any)
+	require.True(t, ok)
+
+	return criteria
+}
+
+// TestServiceRouterCriteriaFormNamesIsByteIdenticalToNotSettingIt proves
+// WithRouterCriteriaForm(jev.RouteCriteriaNames) sends the exact same
+// request body as never calling WithRouterCriteriaForm at all - the
+// "byte-identical, unset means today's behaviour" guarantee this round's
+// own task asks for.
+func TestServiceRouterCriteriaFormNamesIsByteIdenticalToNotSettingIt(t *testing.T) {
+	shortlist := bigCatalog(2, 5)
+
+	withoutOption := routeRequestBody(t, shortlist)
+	withNamesForm := routeRequestBody(t, shortlist, jev.WithRouterCriteriaForm(jev.RouteCriteriaNames))
+
+	assert.Equal(t, withoutOption, withNamesForm)
+}
+
+// TestServiceRouterCriteriaFormOpsListsEveryOperation proves
+// WithRouterCriteriaForm(jev.RouteCriteriaOps) puts every one of a
+// service's own operations into that service's own criterion (not just
+// serviceDescOpCount of them, as RouteCriteriaNames does), and leaves the
+// catch-all "other" option untouched.
+func TestServiceRouterCriteriaFormOpsListsEveryOperation(t *testing.T) {
+	shortlist := bigCatalog(2, 5)
+
+	criteria := routeRequestBody(t, shortlist, jev.WithRouterCriteriaForm(jev.RouteCriteriaOps))
+
+	svc0, ok := criteria["svc0"].(string)
+	require.True(t, ok)
+
+	for o := range 5 {
+		assert.Contains(t, svc0, fmt.Sprintf("op0_%d", o), "every operation of svc0 must be named")
+	}
+
+	other, ok := criteria["other"].(string)
+	require.True(t, ok)
+	assert.Equal(t, "上記のどのサービスにも当てはまらない、またはサービスとは無関係な質問", other, "the catch-all is unchanged")
+}
+
+// TestServiceRouterCriteriaFormOpsUnderCriteriaV2ListsEveryOperationAsExamples
+// is TestServiceRouterCriteriaFormOpsListsEveryOperation's CriteriaV2
+// counterpart: the full operation list lands in the same `examples` field
+// serviceCriteriaV2 already uses for a service, not a new one.
+func TestServiceRouterCriteriaFormOpsUnderCriteriaV2ListsEveryOperationAsExamples(t *testing.T) {
+	shortlist := bigCatalog(2, 5)
+
+	criteria := routeRequestBody(
+		t, shortlist, jev.WithRouterCriteria(jev.CriteriaV2), jev.WithRouterCriteriaForm(jev.RouteCriteriaOps),
+	)
+
+	svc0, ok := criteria["svc0"].(map[string]any)
+	require.True(t, ok)
+
+	examples, ok := svc0["examples"].([]any)
+	require.True(t, ok)
+	assert.Len(t, examples, 5)
+
+	for o := range 5 {
+		assert.Contains(t, examples, fmt.Sprintf("op0_%d", o))
+	}
+
+	other, ok := criteria["other"].(map[string]any)
+	require.True(t, ok)
+	assert.NotEmpty(t, other["what"])
 }

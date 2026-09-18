@@ -347,6 +347,14 @@ type ServiceRouter struct {
 	// comment (this file's own doc comment: so a deployment's router and
 	// picker always describe each service in the same words).
 	JevCriteria string
+	// JevCriteriaForm selects which content the router builds each
+	// service's own criterion from: "" or jev.RouteCriteriaNames (the
+	// default, a handful of that service's own operation names) or
+	// jev.RouteCriteriaOps (every one of that service's own operations).
+	// cmd/api always sets it from config.Config.ServiceRouterCriteria,
+	// which already defaults to "names" when
+	// ORCHESTRA_SERVICE_ROUTER_CRITERIA is unset.
+	JevCriteriaForm string
 	// Threshold is the confidence a ServiceRoute must be at or above for
 	// Plan to act on it. cmd/api always sets it from
 	// config.Config.ServiceRouterThreshold, which already defaults to 0.5

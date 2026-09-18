@@ -7,7 +7,11 @@
 
 package config
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"os"
+)
 
 // ErrInvalidServiceRouter is wrapped into the error returned when
 // ORCHESTRA_SERVICE_ROUTER names anything other than ServiceRouterNone or
@@ -42,15 +46,56 @@ const (
 // rather than second-guessing a confident answer.
 const defaultServiceRouterThreshold = 0.5
 
-// loadServiceRouter reads ORCHESTRA_SERVICE_ROUTER and
-// ORCHESTRA_SERVICE_ROUTER_THRESHOLD and applies them to cfg
-// (loadJevStage, config_gate.go), called from loadGate's own tail - see
-// that function's own doc comment for why it is chained there rather
-// than called as its own step from config.go. ORCHESTRA_JEV_API_KEY is
-// required when the router is ServiceRouterJev (ErrMissingJevAPIKey), on
-// top of - not instead of - loadPicker's own and loadGate's own
-// requiredness checks: any one of the three alone is enough to require
-// the key.
+// ErrInvalidServiceRouterCriteria is wrapped into the error returned when
+// ORCHESTRA_SERVICE_ROUTER_CRITERIA is set to something other than
+// ServiceRouterCriteriaNames or ServiceRouterCriteriaOps - the same
+// reasoning ErrInvalidJevCriteria (config.go) already applies to
+// ORCHESTRA_JEV_CRITERIA.
+var ErrInvalidServiceRouterCriteria = errors.New("ORCHESTRA_SERVICE_ROUTER_CRITERIA must be names or ops")
+
+// ServiceRouterCriteriaNames and ServiceRouterCriteriaOps are
+// ORCHESTRA_SERVICE_ROUTER_CRITERIA's two accepted values:
+// ServiceRouterCriteriaNames is internal/adapter/planner/jev's original
+// per-service criterion (a handful of that service's own operation
+// names) - the default, so a deployment that never sets this variable
+// sends exactly what it always has - and ServiceRouterCriteriaOps is the
+// full-catalogue Jev trial's own follow-up (docs/measurements/
+// jev-full-catalogue.md; DECISIONS.md 2026-09-18): every one of that
+// service's own operations, not just a handful.
+const (
+	ServiceRouterCriteriaNames = "names"
+	ServiceRouterCriteriaOps   = "ops"
+)
+
+// defaultServiceRouterCriteria is used when ORCHESTRA_SERVICE_ROUTER_CRITERIA
+// is unset.
+const defaultServiceRouterCriteria = ServiceRouterCriteriaNames
+
+// parseServiceRouterCriteria reads ORCHESTRA_SERVICE_ROUTER_CRITERIA:
+// defaultServiceRouterCriteria when unset, or exactly
+// ServiceRouterCriteriaNames or ServiceRouterCriteriaOps otherwise - the
+// same reasoning parseJevCriteria (config.go) already applies to
+// ORCHESTRA_JEV_CRITERIA.
+func parseServiceRouterCriteria(raw string) (string, error) {
+	switch raw {
+	case "":
+		return defaultServiceRouterCriteria, nil
+	case ServiceRouterCriteriaNames, ServiceRouterCriteriaOps:
+		return raw, nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrInvalidServiceRouterCriteria, raw)
+	}
+}
+
+// loadServiceRouter reads ORCHESTRA_SERVICE_ROUTER,
+// ORCHESTRA_SERVICE_ROUTER_THRESHOLD and ORCHESTRA_SERVICE_ROUTER_CRITERIA
+// and applies them to cfg (loadJevStage, config_gate.go), called from
+// loadGate's own tail - see that function's own doc comment for why it is
+// chained there rather than called as its own step from config.go.
+// ORCHESTRA_JEV_API_KEY is required when the router is ServiceRouterJev
+// (ErrMissingJevAPIKey), on top of - not instead of - loadPicker's own and
+// loadGate's own requiredness checks: any one of the three alone is
+// enough to require the key.
 func loadServiceRouter(cfg *Config) error {
 	stage, err := loadJevStage(
 		cfg, "ORCHESTRA_SERVICE_ROUTER", ServiceRouterNone, ServiceRouterJev, ErrInvalidServiceRouter,
@@ -62,6 +107,13 @@ func loadServiceRouter(cfg *Config) error {
 
 	cfg.ServiceRouter = stage.Value
 	cfg.ServiceRouterThreshold = stage.Threshold
+
+	criteria, err := parseServiceRouterCriteria(os.Getenv("ORCHESTRA_SERVICE_ROUTER_CRITERIA"))
+	if err != nil {
+		return err
+	}
+
+	cfg.ServiceRouterCriteria = criteria
 
 	return nil
 }

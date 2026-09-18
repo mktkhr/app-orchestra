@@ -59,6 +59,7 @@ const PASSTHROUGH_ENV_VARS = [
   "ORCHESTRA_HYBRID_THRESHOLD",
   "ORCHESTRA_SERVICE_ROUTER",
   "ORCHESTRA_SERVICE_ROUTER_THRESHOLD",
+  "ORCHESTRA_SERVICE_ROUTER_CRITERIA",
 ] as const;
 
 /** Builds the env overrides for `PASSTHROUGH_ENV_VARS`, one entry per name actually set in `process.env`. */

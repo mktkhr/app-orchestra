@@ -447,9 +447,10 @@ type Config struct {
 	NarrowingRerankModel string
 	// NarrowingK is how many endpoints the shortlist is cut to, read from ORCHESTRA_NARROWING_K.
 	NarrowingK int
-	// ServiceRouter/ServiceRouterThreshold: see config_service_router.go - unlike Picker/Gate, consulted regardless of PlannerStages.
+	// ServiceRouter fields: see config_service_router.go - unlike Picker/Gate, consulted regardless of PlannerStages.
 	ServiceRouter          string
 	ServiceRouterThreshold float64
+	ServiceRouterCriteria  string
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080

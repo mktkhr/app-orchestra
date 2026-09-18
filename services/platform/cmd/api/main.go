@@ -61,11 +61,12 @@ func main() {
 			JevGateThreshold: cfg.JevGateThreshold,
 		},
 		ServiceRouter: app.ServiceRouter{
-			Name:        cfg.ServiceRouter,
-			JevAPIKey:   cfg.JevAPIKey,
-			JevBaseURL:  cfg.JevBaseURL,
-			JevCriteria: cfg.JevCriteria,
-			Threshold:   cfg.ServiceRouterThreshold,
+			Name:            cfg.ServiceRouter,
+			JevAPIKey:       cfg.JevAPIKey,
+			JevBaseURL:      cfg.JevBaseURL,
+			JevCriteria:     cfg.JevCriteria,
+			JevCriteriaForm: cfg.ServiceRouterCriteria,
+			Threshold:       cfg.ServiceRouterThreshold,
 		},
 	})
 	if err != nil {

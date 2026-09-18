@@ -110,7 +110,7 @@ export function narrowingArg(): "on" | "off" | undefined {
 
 /**
  * The `-nothink` / `-rp<value>` / `-stages2` / `-jev` / `-v2` / `-gate` /
- * `-router` suffix a variant's output files carry (run.ts's own doc
+ * `-router` / `-ops` suffix a variant's output files carry (run.ts's own doc
  * comment, docs/plans/staging.md; docs/plans/midsizing.md Task 3 reuses
  * it for `--corpus mid`'s `mid-<variant>.jsonl`) - "" for a plain wording
  * pass, unchanged from before any of these flags existed. `stages` of `1`
@@ -134,7 +134,12 @@ export function narrowingArg(): "on" | "off" | undefined {
  * (docs/measurements/jev-full-catalogue.md; DECISIONS.md 2026-09-18,
  * "let Jev choose the service") is independent of all the others - it
  * can appear alongside any picker/gate combination, since it runs before
- * narrowing rather than in place of the picker or the gate.
+ * narrowing rather than in place of the picker or the gate. `-ops`
+ * (ORCHESTRA_SERVICE_ROUTER_CRITERIA=ops, the router's own richer
+ * criteria form) is meaningful only alongside `-router`, but - like `-v2`
+ * alongside `-jev` - is appended whenever the env var is literally "ops"
+ * regardless of ORCHESTRA_SERVICE_ROUTER, so the two forms' own output
+ * files never collide even if they are ever produced independently.
  */
 export function variantSuffix(
   thinking?: "on" | "off",
@@ -170,6 +175,13 @@ export function variantSuffix(
   // way as ORCHESTRA_GATE just above. Only "jev" carries a suffix; "none"
   // (the default) does not, matching every other suffix here.
   const router = process.env["ORCHESTRA_SERVICE_ROUTER"] === "jev" ? "-router" : "";
+  // The service router's own second criteria form (2026-09-18, "ops:
+  // every operation, not just a few names"): ORCHESTRA_SERVICE_ROUTER_CRITERIA,
+  // read the same direct way as ORCHESTRA_SERVICE_ROUTER just above.
+  // Appended after "-router" so the two forms' own output files never
+  // collide; only "ops" carries a suffix, "names" (the default) does
+  // not, matching every other suffix here.
+  const routerCriteria = process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"] === "ops" ? "-ops" : "";
 
-  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}`;
+  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}`;
 }

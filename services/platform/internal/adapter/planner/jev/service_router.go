@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/pick"
@@ -109,20 +110,111 @@ func routeCriteriaV2(catalog domain.Catalog, services []string) map[string]crite
 	return criteria
 }
 
+// RouteCriteriaNames and RouteCriteriaOps are WithRouterCriteriaForm's two
+// accepted values: RouteCriteriaNames is routeCriteriaV1/V2's own original
+// content - each service's criterion carries only serviceDescOpCount of
+// its own operations (hierarchical.go's serviceOpSummaries) - and is the
+// default, so a deployment that never calls WithRouterCriteriaForm sends
+// exactly what it always has. RouteCriteriaOps is the full-catalogue Jev
+// trial's own follow-up measurement (docs/measurements/
+// jev-full-catalogue.md; DECISIONS.md 2026-09-18): the same criterion,
+// but every one of that service's own operations rather than just three -
+// evidence the "service question alone" round measured as too thin to
+// route the cross-service-homonym axis reliably.
+const (
+	RouteCriteriaNames = "names"
+	RouteCriteriaOps   = "ops"
+)
+
+// serviceOpAllNames returns every one of service's own endpoints' display
+// names (Endpoint.DisplayNameOr, falling back to OperationID - the same
+// fallback mapping.go's own instructionsFor/summariseTurn already reads
+// turn operations through), deduplicated and in catalog's own order -
+// routeCriteriaV1Ops/routeCriteriaV2Ops's own evidence list, unlike
+// serviceOpSummaries (hierarchical.go) which caps at serviceDescOpCount
+// and reads Summary rather than DisplayName.
+func serviceOpAllNames(catalog domain.Catalog, service string) []string {
+	seen := make(map[string]bool)
+
+	var names []string
+
+	for i := range catalog.Endpoints {
+		e := &catalog.Endpoints[i]
+		if e.Service != service {
+			continue
+		}
+
+		name := e.DisplayNameOr(e.OperationID)
+		if seen[name] {
+			continue
+		}
+
+		seen[name] = true
+
+		names = append(names, name)
+	}
+
+	return names
+}
+
+// routeCriteriaV1Ops is routeCriteriaV1's RouteCriteriaOps counterpart:
+// the same "<serviceDisplayName> / <op1>、<op2>、..." line shape, but over
+// serviceOpAllNames rather than serviceCriteriaV1's own capped
+// serviceOpSummaries - built directly, not through serviceCriteriaV1
+// (which also appends the three flat-pick built-ins this stage never
+// offers), so there is no deleteBuiltinCriteria call to make here.
+func routeCriteriaV1Ops(catalog domain.Catalog, services []string) map[string]string {
+	criteria := make(map[string]string, len(services)+1)
+
+	for _, svc := range services {
+		criteria[svc] = serviceDisplayNameOf(catalog, svc) + " / " + strings.Join(serviceOpAllNames(catalog, svc), "、")
+	}
+
+	criteria[routeOtherID] = routeOtherPhraseV1
+
+	return criteria
+}
+
+// routeCriteriaV2Ops is routeCriteriaV1Ops's CriteriaV2 counterpart: each
+// service's own criterionV2 carries serviceOpAllNames as Examples in
+// place of serviceCriteriaV2's own capped serviceOpSummaries - the same
+// "what a person might want from this service" slot, just fuller.
+func routeCriteriaV2Ops(catalog domain.Catalog, services []string) map[string]criterionV2 {
+	criteria := make(map[string]criterionV2, len(services)+1)
+
+	for _, svc := range services {
+		criteria[svc] = criterionV2{What: serviceDisplayNameOf(catalog, svc), Examples: serviceOpAllNames(catalog, svc)}
+	}
+
+	criteria[routeOtherID] = criterionV2{What: routeOtherPhraseV1, Examples: routeOtherExamplesV2()}
+
+	return criteria
+}
+
 // buildServiceRouterRequest builds the one wireRequest ServiceRouter.Route
 // sends for query, answers, turns and catalog: state/instructions handling
 // shared with buildRequest/buildHierarchicalRequest (stateValue,
 // routeInstructions fixed rather than switching on hasTurns/offerProposePanel
 // - this stage never offers propose_panel and asks the same one question
-// regardless of turns), one "route" question over routeCriteriaV1/V2.
+// regardless of turns), one "route" question over routeCriteriaV1/V2 or,
+// when criteriaForm is RouteCriteriaOps, routeCriteriaV1Ops/routeCriteriaV2Ops.
 func buildServiceRouterRequest(
-	query string, answers []usecase.Answer, turns []usecase.Turn, catalog domain.Catalog, criteria string,
+	query string, answers []usecase.Answer, turns []usecase.Turn, catalog domain.Catalog, criteria string, criteriaForm string,
 ) wireRequest {
 	services := servicesOf(catalog)
+	ops := criteriaForm == RouteCriteriaOps
 
-	var wireCriteria any = routeCriteriaV1(catalog, services)
-	if criteria == CriteriaV2 {
+	var wireCriteria any
+
+	switch {
+	case criteria == CriteriaV2 && ops:
+		wireCriteria = routeCriteriaV2Ops(catalog, services)
+	case criteria == CriteriaV2:
 		wireCriteria = routeCriteriaV2(catalog, services)
+	case ops:
+		wireCriteria = routeCriteriaV1Ops(catalog, services)
+	default:
+		wireCriteria = routeCriteriaV1(catalog, services)
 	}
 
 	return wireRequest{
@@ -172,12 +264,34 @@ func WithRouterCriteria(criteria string) RouterOption {
 	}
 }
 
+// WithRouterCriteriaForm selects which of routeCriteriaV1/V2
+// (RouteCriteriaNames) or routeCriteriaV1Ops/V2Ops (RouteCriteriaOps)
+// buildServiceRouterRequest uses - the ORCHESTRA_SERVICE_ROUTER_CRITERIA
+// switch (internal/infra/config's own config_service_router.go). Anything
+// other than exactly RouteCriteriaOps - including "" (WithRouterCriteriaForm
+// never given) - is RouteCriteriaNames, matching WithRouterCriteria's own
+// fallback shape: ORCHESTRA_SERVICE_ROUTER_CRITERIA already fails startup
+// on an unknown value in config, so this fallback only ever sees "",
+// RouteCriteriaNames or RouteCriteriaOps in practice.
+func WithRouterCriteriaForm(form string) RouterOption {
+	return func(r *ServiceRouter) {
+		if form == RouteCriteriaOps {
+			r.criteriaForm = RouteCriteriaOps
+
+			return
+		}
+
+		r.criteriaForm = RouteCriteriaNames
+	}
+}
+
 // ServiceRouter implements usecase.ServiceRouter over TypeSafe's Jev API:
 // one "choice" question naming every service the catalogue it is given
 // carries, plus routeOtherID - see this file's own doc comment.
 type ServiceRouter struct {
-	client   *client
-	criteria string
+	client       *client
+	criteria     string
+	criteriaForm string
 }
 
 var _ usecase.ServiceRouter = (*ServiceRouter)(nil)
@@ -219,7 +333,7 @@ func (r *ServiceRouter) Route(
 
 	start := time.Now()
 
-	req := buildServiceRouterRequest(query, answers, turns, catalog, r.criteria)
+	req := buildServiceRouterRequest(query, answers, turns, catalog, r.criteria, r.criteriaForm)
 
 	resp, err := r.client.pick(ctx, req)
 	if err != nil {

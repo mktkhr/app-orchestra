@@ -14,6 +14,7 @@ const originalPicker = process.env["ORCHESTRA_PICKER"];
 const originalJevCriteria = process.env["ORCHESTRA_JEV_CRITERIA"];
 const originalGate = process.env["ORCHESTRA_GATE"];
 const originalServiceRouter = process.env["ORCHESTRA_SERVICE_ROUTER"];
+const originalServiceRouterCriteria = process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
 
 beforeEach(() => {
   process.argv = [...originalArgv];
@@ -21,6 +22,7 @@ beforeEach(() => {
   delete process.env["ORCHESTRA_JEV_CRITERIA"];
   delete process.env["ORCHESTRA_GATE"];
   delete process.env["ORCHESTRA_SERVICE_ROUTER"];
+  delete process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
 });
 
 afterEach(() => {
@@ -29,6 +31,7 @@ afterEach(() => {
   delete process.env["ORCHESTRA_JEV_CRITERIA"];
   delete process.env["ORCHESTRA_GATE"];
   delete process.env["ORCHESTRA_SERVICE_ROUTER"];
+  delete process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
 
   if (originalPicker !== undefined) process.env["ORCHESTRA_PICKER"] = originalPicker;
   if (originalJevCriteria !== undefined)
@@ -36,6 +39,8 @@ afterEach(() => {
   if (originalGate !== undefined) process.env["ORCHESTRA_GATE"] = originalGate;
   if (originalServiceRouter !== undefined)
     process.env["ORCHESTRA_SERVICE_ROUTER"] = originalServiceRouter;
+  if (originalServiceRouterCriteria !== undefined)
+    process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"] = originalServiceRouterCriteria;
 });
 
 test("--corpus is undefined when not given", () => {
@@ -180,4 +185,35 @@ test("variantSuffix appends nothing for ORCHESTRA_SERVICE_ROUTER=none (the defau
 
 test("variantSuffix appends nothing when ORCHESTRA_SERVICE_ROUTER is unset", () => {
   expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends -ops after -router when ORCHESTRA_SERVICE_ROUTER_CRITERIA=ops", () => {
+  process.env["ORCHESTRA_SERVICE_ROUTER"] = "jev";
+  process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"] = "ops";
+
+  expect(variantSuffix()).toBe("-router-ops");
+  expect(variantSuffix("off", 1.1, 2)).toBe("-nothink-rp1.1-stages2-router-ops");
+});
+
+test("variantSuffix appends nothing for ORCHESTRA_SERVICE_ROUTER_CRITERIA=names (the default)", () => {
+  process.env["ORCHESTRA_SERVICE_ROUTER"] = "jev";
+  process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"] = "names";
+
+  expect(variantSuffix()).toBe("-router");
+});
+
+test("variantSuffix appends nothing when ORCHESTRA_SERVICE_ROUTER_CRITERIA is unset", () => {
+  process.env["ORCHESTRA_SERVICE_ROUTER"] = "jev";
+
+  expect(variantSuffix()).toBe("-router");
+});
+
+test("variantSuffix never collides between the two router criteria forms", () => {
+  process.env["ORCHESTRA_SERVICE_ROUTER"] = "jev";
+  const names = variantSuffix();
+
+  process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"] = "ops";
+  const ops = variantSuffix();
+
+  expect(names).not.toBe(ops);
 });

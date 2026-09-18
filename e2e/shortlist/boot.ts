@@ -81,6 +81,43 @@ let fixture: Serving | undefined;
 let platform: RunningService | undefined;
 let usedPorts: readonly number[] = [];
 
+/**
+ * The Jev trial's own env vars, passed through from the caller's own
+ * environment only when set - never a default - so a run that never
+ * mentions any of them is byte-identical to before this list existed
+ * (`e2e/eval/services.ts`'s own `PASSTHROUGH_ENV_VARS`, the same list,
+ * pairs with this one). Env vars, not `BootOptions` fields, the same way
+ * `make eval-shortlist PICKER=jev` reaches this file through the process
+ * environment rather than a `run.ts` flag (`variantSuffix`, `flags.ts`).
+ * Factored out of `boot`'s own env object (eslint's
+ * `max-lines-per-function`, harness/quality) - one name per line so a new
+ * addition here is the whole diff.
+ */
+const JEV_TRIAL_ENV_VARS = [
+  "ORCHESTRA_PICKER",
+  "ORCHESTRA_JEV_API_KEY",
+  "ORCHESTRA_JEV_CRITERIA",
+  "ORCHESTRA_GATE",
+  "ORCHESTRA_HYBRID_JEV_TIMEOUT",
+  "ORCHESTRA_HYBRID_THRESHOLD",
+  "ORCHESTRA_SERVICE_ROUTER",
+  "ORCHESTRA_SERVICE_ROUTER_THRESHOLD",
+  "ORCHESTRA_SERVICE_ROUTER_CRITERIA",
+] as const;
+
+/** Builds the env overrides for `JEV_TRIAL_ENV_VARS`, one entry per name actually set in `process.env`. */
+function jevTrialEnv(): Record<string, string> {
+  const out: Record<string, string> = {};
+
+  for (const name of JEV_TRIAL_ENV_VARS) {
+    const value = process.env[name];
+
+    if (value !== undefined) out[name] = value;
+  }
+
+  return out;
+}
+
 /** Whether something is listening on port right now, by attempting a real TCP connect. */
 function isListening(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -165,56 +202,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
         ? {}
         : { ORCHESTRA_PLANNER_REPEAT_PENALTY: String(options.repeatPenalty) }),
       ...(options.stages === undefined ? {} : { ORCHESTRA_PLANNER_STAGES: String(options.stages) }),
-      // The Jev trial (2026-09-17): ORCHESTRA_PICKER/ORCHESTRA_JEV_API_KEY,
-      // like e2e/eval/services.ts's own pair, are passed through only when
-      // set in the caller's own environment - never a default - so a run
-      // that never mentions either is byte-identical to before this pair
-      // existed. Env vars, not BootOptions fields, the same way `make
-      // eval-shortlist PICKER=jev` reaches this file through the process
-      // environment rather than a run.ts flag (variantSuffix, flags.ts).
-      ...(process.env["ORCHESTRA_PICKER"] === undefined
-        ? {}
-        : { ORCHESTRA_PICKER: process.env["ORCHESTRA_PICKER"] }),
-      ...(process.env["ORCHESTRA_JEV_API_KEY"] === undefined
-        ? {}
-        : { ORCHESTRA_JEV_API_KEY: process.env["ORCHESTRA_JEV_API_KEY"] }),
-      // The Jev trial's second round (2026-09-17, "v2: richer criteria"):
-      // ORCHESTRA_JEV_CRITERIA, same pass-through as ORCHESTRA_PICKER
-      // above - unset means the platform's own default (v1).
-      ...(process.env["ORCHESTRA_JEV_CRITERIA"] === undefined
-        ? {}
-        : { ORCHESTRA_JEV_CRITERIA: process.env["ORCHESTRA_JEV_CRITERIA"] }),
-      // The v3 Jev trial (2026-09-17, "a noul refusal gate in front of
-      // the local pick"): ORCHESTRA_GATE, same pass-through as
-      // ORCHESTRA_PICKER above - unset means the platform's own default
-      // (none, no gate at all).
-      ...(process.env["ORCHESTRA_GATE"] === undefined
-        ? {}
-        : { ORCHESTRA_GATE: process.env["ORCHESTRA_GATE"] }),
-      // The hybrid picker (internal/adapter/planner/hybrid,
-      // ORCHESTRA_PICKER=hybrid): ORCHESTRA_HYBRID_JEV_TIMEOUT/
-      // ORCHESTRA_HYBRID_THRESHOLD, same pass-through as
-      // ORCHESTRA_JEV_CRITERIA above - unset means the platform's own
-      // defaults (800ms, 0.7).
-      ...(process.env["ORCHESTRA_HYBRID_JEV_TIMEOUT"] === undefined
-        ? {}
-        : { ORCHESTRA_HYBRID_JEV_TIMEOUT: process.env["ORCHESTRA_HYBRID_JEV_TIMEOUT"] }),
-      ...(process.env["ORCHESTRA_HYBRID_THRESHOLD"] === undefined
-        ? {}
-        : { ORCHESTRA_HYBRID_THRESHOLD: process.env["ORCHESTRA_HYBRID_THRESHOLD"] }),
-      // The full-catalogue Jev trial's own follow-up (2026-09-18, "let
-      // Jev choose the service"): ORCHESTRA_SERVICE_ROUTER/
-      // ORCHESTRA_SERVICE_ROUTER_THRESHOLD, same pass-through as
-      // ORCHESTRA_PICKER above - unset means the platform's own defaults
-      // (none, no router at all; 0.5).
-      ...(process.env["ORCHESTRA_SERVICE_ROUTER"] === undefined
-        ? {}
-        : { ORCHESTRA_SERVICE_ROUTER: process.env["ORCHESTRA_SERVICE_ROUTER"] }),
-      ...(process.env["ORCHESTRA_SERVICE_ROUTER_THRESHOLD"] === undefined
-        ? {}
-        : {
-            ORCHESTRA_SERVICE_ROUTER_THRESHOLD: process.env["ORCHESTRA_SERVICE_ROUTER_THRESHOLD"],
-          }),
+      ...jevTrialEnv(),
     }),
     port: platformPort,
   };

@@ -89,3 +89,45 @@ func TestLoadRejectsAnInvalidServiceRouterThreshold(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, config.ErrInvalidServiceRouterThreshold)
 }
+
+// TestLoadServiceRouterCriteriaDefaultsToNames documents that an unset
+// ORCHESTRA_SERVICE_ROUTER_CRITERIA resolves to config.ServiceRouterCriteriaNames
+// - today's routing criteria, unchanged.
+func TestLoadServiceRouterCriteriaDefaultsToNames(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.ServiceRouterCriteriaNames, cfg.ServiceRouterCriteria)
+}
+
+// TestLoadServiceRouterCriteriaReadsOps proves
+// ORCHESTRA_SERVICE_ROUTER_CRITERIA=ops is read through to
+// cfg.ServiceRouterCriteria.
+func TestLoadServiceRouterCriteriaReadsOps(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_SERVICE_ROUTER_CRITERIA", "ops")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	assert.Equal(t, config.ServiceRouterCriteriaOps, cfg.ServiceRouterCriteria)
+}
+
+// TestLoadRejectsAnUnknownServiceRouterCriteria proves an unrecognised
+// ORCHESTRA_SERVICE_ROUTER_CRITERIA value fails startup naming the known
+// ones, exactly as the other jev env vars parse (config.go's
+// parseJevCriteria, config_gate.go's parseNoneOrJev).
+func TestLoadRejectsAnUnknownServiceRouterCriteria(t *testing.T) {
+	t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+	t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+	t.Setenv("ORCHESTRA_SERVICE_ROUTER_CRITERIA", "descriptions")
+
+	_, err := config.Load()
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, config.ErrInvalidServiceRouterCriteria)
+}
