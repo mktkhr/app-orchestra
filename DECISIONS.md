@@ -8254,3 +8254,40 @@ overstated.
 `e2e/eval/baseline.json` is untouched: accepting a baseline is a human's
 act (`make eval-accept`), and the right next step is a decision about the
 pick's own built-in wording, not a rewritten baseline. Open in `TODO.md`.
+
+## 2026-09-18 The pick's built-in wording, second and third attempts: `make eval` is 34/34 again
+
+The correction above left two rows answering `list_capabilities` where
+`baseline.json` records `none`, caused by `eeb23fa` removing
+`propose_panel` from a workspace-less pick. `docs/specs/staging.md`
+section 7 allows the pick's three built-in lines to be reworded and
+measured - one attempt was spent 2026-09-16; both remaining attempts were
+spent here, one variable each.
+
+**Attempt 2 - narrow `list_capabilities`.** `使える操作の一覧を知りたい`
+→ `使える操作の一覧そのものを求めている`: asking for the list itself
+rather than merely wanting to know something. `make eval`:
+`real-what-day` back to 10/10 `none`, `capability` and
+`real-capability-inventory` held at 10/10, `unanswerable` (今日の天気は？)
+still `list_capabilities`. 33/34.
+
+**Attempt 3 - widen `none`.** `どの候補も質問に合わない（業務と無関係な
+質問）` → `...（業務と無関係な質問、候補の操作では答えられない質問）`,
+naming the second way a question can fail without naming any question.
+`make eval`: **34/34**, every row at baseline.
+
+No word from an eval case (天気, 日付) appears in either line on purpose:
+a line listing them would fix the suite and nothing else.
+
+**Cost, measured on the other two instruments.** The corpus reads 77 / 80
+against 78 / 80 before the rewording - one correct@1 row, inside the
+7-row determinism band recorded 2026-09-16, with correct@shown unchanged.
+mid is identical: 37/40 answerable, 16/20 refused, 0 fabricated. Adopted
+on that reading: `make eval`'s 34/34 is the contract (`PRODUCT.md`
+AC-B-106 - a question matching no endpoint returns `none`), and one
+corpus row inside the band is not evidence against it.
+
+The Jev adapters' own built-in phrasing (`instructionsNoneClause` and
+friends in `internal/adapter/planner/jev/mapping.go`) is deliberately left
+as it was: it is a different prompt shape, measured separately, and
+changing it here would confound the next Jev round.

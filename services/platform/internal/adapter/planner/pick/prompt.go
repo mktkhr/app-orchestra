@@ -48,6 +48,30 @@ ambiguous のときも、最も可能性の高い operationId を必ず1つ挙�
 // (ORCHESTRA_PLANNER_STAGES=2 make eval), so the other two attempts
 // section 7 allowed were never needed.
 //
+// The second of those attempts was spent on 2026-09-18, when dropping
+// `propose_panel` from a workspace-less pick (`eeb23fa`) reopened the
+// same regression with one fewer built-in in the list: `unanswerable`
+// (今日の天気は？) and `real-what-day` (今日は何曜日？) both moved from
+// `none` to `list_capabilities` again (`DECISIONS.md`, 2026-09-18, the
+// correction entry). The change is to this line alone - "使える操作の
+// 一覧を知りたい" becomes "使える操作の一覧そのものを求めている", which
+// asks for the list itself rather than merely wanting to know something -
+// so the pull toward it from a question that names no operation is
+// weaker, while `capability` (在庫で何ができる？), which does ask for the
+// list, still reads it. `none`'s own line is deliberately left alone: the
+// two rows move because list_capabilities attracts them, not because
+// none is too weak to hold them.
+//
+// That attempt moved `real-what-day` back to `none` and held `capability`
+// and `real-capability-inventory` at 10/10, but left `unanswerable`
+// (今日の天気は？) still reading `list_capabilities` - so the third and
+// last attempt section 7 allows widens none's own line instead:
+// "（業務と無関係な質問）" becomes "（業務と無関係な質問、候補の操作では
+// 答えられない質問）", naming the second case a question can fail in
+// without naming any question. No word from an eval case appears here on
+// purpose: a line listing 天気 or 日付 would fix the suite and nothing
+// else.
+//
 // Exported (IDListCapabilities etc.) so internal/adapter/planner/jev's
 // Picker - the second usecase.Picker implementation, behind
 // ORCHESTRA_PICKER=jev - can name the same three built-ins in its own
@@ -65,9 +89,9 @@ const (
 // for why it reads the way it does - must stay the one copy both pickers
 // share.
 const (
-	PhraseListCapabilities = "使える操作の一覧を知りたい"
+	PhraseListCapabilities = "使える操作の一覧そのものを求めている"
 	PhraseProposePanel     = "画面に出したい"
-	PhraseNone             = "どの候補も質問に合わない（業務と無関係な質問）"
+	PhraseNone             = "どの候補も質問に合わない（業務と無関係な質問、候補の操作では答えられない質問）"
 )
 
 // The three fixed candidate lines, in S3's order, built from the ids and

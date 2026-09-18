@@ -1,8 +1,19 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-18 (correction: `make eval` reads 32/34 on today's tree with no Jev involved - the propose_panel fix moved two near-tie rows)_
+_Last updated: 2026-09-18 (`make eval` back to 34/34: the pick's two built-in lines reworded)_
 
 ## Summary
+
+**2026-09-18 - `make eval` is 34/34 again.** The two rows the
+propose_panel fix had moved (`unanswerable`, `real-what-day`) are back at
+`none`: `list_capabilities`' own pick line now reads 使える操作の一覧
+そのものを求めている and `none`'s reads ...（業務と無関係な質問、候補の
+操作では答えられない質問）. Cost: the corpus reads 77/80 against 78/80,
+one row inside the 7-row determinism band, correct@shown unchanged; mid
+identical at 37/40, 16/20 refused. Both remaining reword attempts
+`docs/specs/staging.md` section 7 allows are now spent. Current
+instrument readings: corpus 77/80, mid 37/40·16/20·0, eval 34/34,
+dialogues 26/27. See `DECISIONS.md`, 2026-09-18.
 
 **2026-09-18, correction - `make eval` reads 32/34 against the local
 default, not 34/34: `unanswerable` and `real-what-day` answer
