@@ -184,12 +184,29 @@ order only, never the answer.
 | service router, `ops` (mid, eval ×2, dialogues ×2, re-runs) |   ~800 |     ~450,000 |          ~0.019 |
 | **cumulative**                                              |        |              | **~0.46 of $2** |
 
+### 2g. Jev fills the enum arguments — the only end-to-end speed win
+
+Measured 2026-09-18, full record in `jev-fill-enum.md`. Replacing the
+fill model call (not the pick) with one Jev request for an all-enum
+operation: dialogues 25-26/27 against local's 26/27 at **684-744 ms mean
+against 1,062 ms**, `make eval` 29-33/34 depending on which escape hatches
+the request offers. The control arm with no Jev at all (skip the fill for
+a parameterless operation) reads the same trade: corpus latency 1,363 →
+731 ms, mid refusals 16/20 → 12/20.
+
+Boundaries: the fill is the stage that owns the GPU, so this is where
+latency moves; whatever replaces it must be able to answer "wrong
+operation" or it forces every wrong pick; and a whole-request judgement
+needs its own question _with the operation's own text in it_ (0.44-0.55
+without, usable with - see `jev-fill-enum.md`). Eligibility is a hard
+gate: 18 of 34 eval cases, 0 of the 100-question corpus.
+
 ## 5. Not measured yet (the PoC's open ground)
 
-1. **Enum-valued fill arguments.** Classify a closed set (在庫の状態,
-   勤怠の種別) instead of generating it. The only candidate that could
-   move end-to-end latency, because it removes a GPU call rather than
-   adding a network one.
+1. **The fill arm under concurrency.** Every fill figure above is a
+   sequential run; `latency-bench.md` measured the local stack saturating
+   at 4-8 requests in flight, which is where removing a GPU call should
+   matter most.
 2. **Impossible-question detection with the evidence attached.** The v3
    gate saw only instructions; 2b showed that listing every operation is
    what made a decision reliable. mid's 20 impossible questions are the

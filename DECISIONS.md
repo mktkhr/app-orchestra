@@ -8335,3 +8335,46 @@ answers. Next, per the user's own order: the enum-valued fill arguments
 (the only candidate that can move end-to-end latency, since it removes a
 GPU call instead of adding a network one), then impossible-question
 detection with every operation listed as evidence.
+
+## 2026-09-18 Jev in the fill stage: the first end-to-end speed win, and the evidence rule confirmed a third time
+
+Full record: `docs/measurements/jev-fill-enum.md`.
+
+The pick is not where the time goes; the fill is (`jev-conditions.md`
+2e). So two arms, both off by default: `ORCHESTRA_FILL_SKIP_EMPTY=1`
+skips the fill model call for an operation with no parameters at all (no
+Jev anywhere), and `ORCHESTRA_FILL_ENUM=jev` replaces it with one Jev
+request - one Choice question per enum parameter - when every parameter
+is enum-valued.
+
+**Arm 1 is the control and the sharpest result.** Corpus: 79/81 against
+the local 77/80, at **731 ms mean against 1,363 ms**. mid: answerable
+unchanged at 37/40, impossible **refused 12/20 against 16/20**. Halving
+the latency and losing four refusals needs no hosted model at all -
+skipping the fill is what removes the last gate on a wrong pick.
+
+**Arm 2, five wordings of the same request** (eval 34x10, dialogues 27
+turns): no escape hatch 29/34; refusal as an option 33/34; plus a
+capabilities option and a wider `__unset__` 32/34 at 724 ms; the two
+judgements as separate `noul` questions **20/34**; the same separate
+questions carrying the picked operation's own text 32/34 at **684 ms
+mean against the local fill's 1,062 ms**.
+
+**The rule, now seen three ways.** A Jev question is as good as the
+evidence inside that question. The service router abstained 56 times with
+thin descriptions and was 93/93 with every operation name listed. A
+whole-request judgement inside a field's option list loses to the field's
+own true answer - 在庫を削除したい read `__unset__` 0.70 against
+`__refusal__` 0.11, and "this question does not restrict status" is
+correct. The same judgement as its own question sat at 0.44-0.55 for
+every question until it was given the operation's display name, service,
+id, summary and parameter titles, when it recovered twelve eval rows.
+
+**Not adopted, and what the trade is.** Nothing here reaches the local
+fill's 34/34; the best correctness is 33/34, the best latency 684 ms at
+32/34. The trade is a third of the end-to-end latency against one or two
+question-kinds of 34, on a catalogue where 18 of 34 cases are eligible at
+all (0 of the 100-question corpus - its enums live on request bodies).
+Both flags stay unset.
+
+Cumulative Jev spend $0.4299 of $2.
