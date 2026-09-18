@@ -8291,3 +8291,47 @@ The Jev adapters' own built-in phrasing (`instructionsNoneClause` and
 friends in `internal/adapter/planner/jev/mapping.go`) is deliberately left
 as it was: it is a different prompt shape, measured separately, and
 changing it here would confound the next Jev round.
+
+## 2026-09-18 The conditions map, and the service router on today's tree
+
+Two things this entry records: the re-measurement of the service router
+after the built-in rewording above, and a new index of the whole Jev
+proof-of-concept written as conditions rather than verdicts
+(`docs/measurements/jev-conditions.md`).
+
+**Why the index exists.** Every round so far ended in "not adopted",
+which is the least useful sentence available: this is a proof of concept,
+and what it is for is knowing _where_ a hosted judge model helps and
+where it is unnecessary. The new file records, per role, the exact bench
+(one RTX 4080 SUPER shared by all three local models, temperature 0, no
+chunked KV reuse, pinned date), the instrument sizes, the parallelism
+every latency figure came from (levels 1/2/4/8 requests in flight, 40
+requests per level per target, `Promise.all` batches), the token and
+dollar cost, and - for each result - the boundary at which it flips.
+
+**The service router, re-measured on the reworded tree** (all four
+instruments, same build, `ops` criteria):
+
+| instrument | local             | router, threshold 0 | router, threshold 0.5 |
+| ---------- | ----------------- | ------------------- | --------------------- |
+| corpus     | 77 / 80           | **81 / 83**         | not run               |
+| mid        | 37/40, 16 refused | 36/40, 16 refused   | not run               |
+| eval       | 34/34             | 32/34               | 32/34                 |
+| dialogues  | 26/27             | 25/27               | **26/27**             |
+
+The +4 on the corpus reproduces on the new baseline. The dialogue loss
+was a threshold artefact and disappears at the default: the second turn
+of d04 (`att-003を見せて` → `itm-004は？`) routed to `attendance` at
+confidence **0.29**, which threshold 0 accepted and 0.5 declines. The two
+eval losses are not confidence failures and do not move with the
+threshold - `real-capability-inventory` and `no-enum-value-attendance`
+change because narrowing to the correct service leaves 3 of 6 operations
+visible, which moves the built-in choice and the unmatched-enum ask.
+
+So the boundary is not "the router is wrong". It is: the coarser the
+decision and the larger the catalogue, the more it wins; below a handful
+of operations there is nothing to narrow and narrowing itself changes
+answers. Next, per the user's own order: the enum-valued fill arguments
+(the only candidate that can move end-to-end latency, since it removes a
+GPU call instead of adding a network one), then impossible-question
+detection with every operation listed as evidence.
