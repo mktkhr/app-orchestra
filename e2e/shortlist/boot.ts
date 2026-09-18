@@ -28,6 +28,14 @@ import {
 
 const ADMIN_PASSWORD = "shortlist-eval-admin-password";
 const LLM_BASE_URL = "http://localhost:11435/v1";
+/**
+ * The shortlist measurement's default model. A model comparison overrides
+ * it with `ORCHESTRA_LLM_MODEL` (read where `ORCHESTRA_LLM_MODEL` is passed
+ * to the platform below) - unset falls back to this constant, so a run that
+ * never sets it is byte-identical to before this override existed, the same
+ * "pass through only when the caller set it, never a default" convention
+ * `JEV_TRIAL_ENV_VARS` below uses (its own comment).
+ */
 const LLM_MODEL = "qwen3.5-9b-q8";
 
 /**
@@ -191,7 +199,7 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       ORCHESTRA_DB_PATH: dbPath,
       ORCHESTRA_ADMIN_PASSWORD: ADMIN_PASSWORD,
       ORCHESTRA_LLM_BASE_URL: LLM_BASE_URL,
-      ORCHESTRA_LLM_MODEL: LLM_MODEL,
+      ORCHESTRA_LLM_MODEL: process.env["ORCHESTRA_LLM_MODEL"] ?? LLM_MODEL,
       ORCHESTRA_SECURE_COOKIE: "false",
       ORCHESTRA_PLANNER_TODAY: PLANNER_TODAY,
       ...(options.narrowing === undefined

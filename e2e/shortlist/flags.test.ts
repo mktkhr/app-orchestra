@@ -10,56 +10,37 @@ import { corpusArg, narrowingArg, variantSuffix } from "./flags.ts";
  */
 
 const originalArgv = process.argv;
-const originalPicker = process.env["ORCHESTRA_PICKER"];
-const originalJevCriteria = process.env["ORCHESTRA_JEV_CRITERIA"];
-const originalGate = process.env["ORCHESTRA_GATE"];
-const originalServiceRouter = process.env["ORCHESTRA_SERVICE_ROUTER"];
-const originalServiceRouterCriteria = process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
-const originalFillEnum = process.env["ORCHESTRA_FILL_ENUM"];
-const originalFillSkipEmpty = process.env["ORCHESTRA_FILL_SKIP_EMPTY"];
-const originalFillEnumRefusal = process.env["ORCHESTRA_FILL_ENUM_REFUSAL"];
-const originalFillEnumUnsetWording = process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"];
+
+/** Every env var `variantSuffix` reads, snapshotted once so `afterEach` can restore each one exactly, added to as the suffix grows a new source. */
+const ENV_VARS_UNDER_TEST = [
+  "ORCHESTRA_PICKER",
+  "ORCHESTRA_JEV_CRITERIA",
+  "ORCHESTRA_GATE",
+  "ORCHESTRA_SERVICE_ROUTER",
+  "ORCHESTRA_SERVICE_ROUTER_CRITERIA",
+  "ORCHESTRA_FILL_ENUM",
+  "ORCHESTRA_FILL_SKIP_EMPTY",
+  "ORCHESTRA_FILL_ENUM_REFUSAL",
+  "ORCHESTRA_FILL_ENUM_UNSET_WORDING",
+  "ORCHESTRA_LLM_MODEL",
+] as const;
+const originalEnv: Record<string, string | undefined> = {};
+
+for (const name of ENV_VARS_UNDER_TEST) originalEnv[name] = process.env[name];
 
 beforeEach(() => {
   process.argv = [...originalArgv];
-  delete process.env["ORCHESTRA_PICKER"];
-  delete process.env["ORCHESTRA_JEV_CRITERIA"];
-  delete process.env["ORCHESTRA_GATE"];
-  delete process.env["ORCHESTRA_SERVICE_ROUTER"];
-  delete process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
-  delete process.env["ORCHESTRA_FILL_ENUM"];
-  delete process.env["ORCHESTRA_FILL_SKIP_EMPTY"];
-  delete process.env["ORCHESTRA_FILL_ENUM_REFUSAL"];
-  delete process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"];
+  for (const name of ENV_VARS_UNDER_TEST) delete process.env[name];
 });
 
 afterEach(() => {
   process.argv = originalArgv;
-  delete process.env["ORCHESTRA_PICKER"];
-  delete process.env["ORCHESTRA_JEV_CRITERIA"];
-  delete process.env["ORCHESTRA_GATE"];
-  delete process.env["ORCHESTRA_SERVICE_ROUTER"];
-  delete process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"];
-  delete process.env["ORCHESTRA_FILL_ENUM"];
-  delete process.env["ORCHESTRA_FILL_SKIP_EMPTY"];
-  delete process.env["ORCHESTRA_FILL_ENUM_REFUSAL"];
-  delete process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"];
+  for (const name of ENV_VARS_UNDER_TEST) {
+    delete process.env[name];
+    const original = originalEnv[name];
 
-  if (originalPicker !== undefined) process.env["ORCHESTRA_PICKER"] = originalPicker;
-  if (originalJevCriteria !== undefined)
-    process.env["ORCHESTRA_JEV_CRITERIA"] = originalJevCriteria;
-  if (originalGate !== undefined) process.env["ORCHESTRA_GATE"] = originalGate;
-  if (originalServiceRouter !== undefined)
-    process.env["ORCHESTRA_SERVICE_ROUTER"] = originalServiceRouter;
-  if (originalServiceRouterCriteria !== undefined)
-    process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"] = originalServiceRouterCriteria;
-  if (originalFillEnum !== undefined) process.env["ORCHESTRA_FILL_ENUM"] = originalFillEnum;
-  if (originalFillSkipEmpty !== undefined)
-    process.env["ORCHESTRA_FILL_SKIP_EMPTY"] = originalFillSkipEmpty;
-  if (originalFillEnumRefusal !== undefined)
-    process.env["ORCHESTRA_FILL_ENUM_REFUSAL"] = originalFillEnumRefusal;
-  if (originalFillEnumUnsetWording !== undefined)
-    process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] = originalFillEnumUnsetWording;
+    if (original !== undefined) process.env[name] = original;
+  }
 });
 
 test("--corpus is undefined when not given", () => {
@@ -294,4 +275,18 @@ test("variantSuffix appends -fillenum-refusal-unsetwide together, in that order"
   process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] = "wide";
 
   expect(variantSuffix()).toBe("-fillenum-refusal-unsetwide");
+});
+
+test("variantSuffix appends nothing for ORCHESTRA_LLM_MODEL=qwen3.5-9b-q8 (the default) or unset", () => {
+  expect(variantSuffix()).toBe("");
+  process.env["ORCHESTRA_LLM_MODEL"] = "qwen3.5-9b-q8";
+  expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends -model-<sanitised name> for a non-default ORCHESTRA_LLM_MODEL, after -unsetwide", () => {
+  process.env["ORCHESTRA_FILL_ENUM"] = "jev";
+  process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] = "wide";
+  process.env["ORCHESTRA_LLM_MODEL"] = "Qwen3 (Q8_0)!";
+
+  expect(variantSuffix()).toBe("-fillenum-unsetwide-model-qwen3--q8-0--");
 });

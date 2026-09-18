@@ -210,6 +210,18 @@ export function variantSuffix(
   const refusal = refusalEnv === "1" ? "-refusal" : refusalEnv === "separate" ? "-refusalsep" : "";
   const unsetWording =
     process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] === "wide" ? "-unsetwide" : "";
+  // A model comparison's own flag (boot.ts's ORCHESTRA_LLM_MODEL override):
+  // read the same direct way as every other env-sourced suffix above. Only
+  // a model other than the platform's own default, "qwen3.5-9b-q8", carries
+  // a suffix - the default (set explicitly or left unset) carries none,
+  // matching every other suffix here. Sanitised to `[a-z0-9.-]` so a model
+  // name can never break the output filename it becomes part of.
+  const DEFAULT_LLM_MODEL = "qwen3.5-9b-q8";
+  const llmModel = process.env["ORCHESTRA_LLM_MODEL"];
+  const model =
+    llmModel === undefined || llmModel === DEFAULT_LLM_MODEL
+      ? ""
+      : `-model-${llmModel.toLowerCase().replaceAll(/[^a-z0-9.-]/gu, "-")}`;
 
-  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}`;
+  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}${model}`;
 }
