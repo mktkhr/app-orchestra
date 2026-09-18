@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/toolcall"
@@ -35,7 +36,7 @@ func (f *Filler) buildFillRequest(
 	}
 
 	if f.refusalMode == refusalModeSeparate {
-		addSeparateRefusalQuestions(questions)
+		addSeparateRefusalQuestions(questions, endpoint)
 	}
 
 	return wireRequest{
@@ -66,19 +67,95 @@ const (
 // here rather than as extra criteria competing inside a parameter's Choice
 // question (criteriaForParam, called just above in buildFillRequest, never
 // adds refusalChoice/capabilitiesChoice in this mode). The shape reused is
-// gate.go's own standalone "noul" question (gateWireQuestion: Type "noul",
-// a plain Instructions string, no Criteria) rather than picker.go's own
-// fan-out "impossible" question, which additionally sends a true/false
-// Criteria object that gate.go's does not - the simpler of the two already
-// documented shapes, and gate.go's own gateInstructions is the one already
-// asking a single whole-request yes/no over one Japanese sentence, which is
-// exactly this shape. refusalLabel and capabilitiesLabel are reused
-// byte-for-byte as each question's own Instructions: the same claim, asked
-// as a criterion's own text in refusalModeInOptions and as a noul question's
-// own instructions here, should read identically either way.
-func addSeparateRefusalQuestions(questions map[string]wireQuestion) {
-	questions[fillRefusalQuestionName] = wireQuestion{Type: noulQuestionType, Instructions: refusalLabel}
-	questions[fillCapabilitiesQuestionName] = wireQuestion{Type: noulQuestionType, Instructions: capabilitiesLabel}
+// gate.go's own standalone "noul" question's Instructions (a plain string),
+// plus picker.go's own fan-out "impossible" question's Criteria (a
+// true/false object, docs.typesafe.ai/primitives/noul) - unlike gate.go's
+// own gateWireQuestion, which has no Criteria field at all. The plain
+// Instructions carries refusalLabel/capabilitiesLabel byte-for-byte, as
+// before; Criteria is new, and is where the API actually weighs evidence
+// (docs/measurements: the first cut of this mode gave the judgement nothing
+// but its own instruction sentence, and its confidence sat in a narrow band
+// regardless of the picked operation because it had no way to know which
+// operation was even picked). operationEvidenceCriteria builds both
+// questions' own Criteria from endpoint, naming the picked operation
+// concretely in every branch.
+func addSeparateRefusalQuestions(questions map[string]wireQuestion, endpoint *domain.Endpoint) {
+	criteria := operationEvidenceCriteria(endpoint)
+
+	questions[fillRefusalQuestionName] = wireQuestion{
+		Type: noulQuestionType, Instructions: refusalLabel, Criteria: criteria.refusal,
+	}
+	questions[fillCapabilitiesQuestionName] = wireQuestion{
+		Type: noulQuestionType, Instructions: capabilitiesLabel, Criteria: criteria.capabilities,
+	}
+}
+
+// operationEvidenceFor renders the picked operation's own catalogue entry -
+// the same fields the Filler already sends elsewhere in this request
+// (questionsForFill's own instructionsForParam, criteriaForParam) - into one
+// clause naming it concretely: its display name (falling back to its
+// operation id, DisplayNameOr's own convention), its own operation id, its
+// service's display name (ServiceDisplayNameOr), its summary (summaryFor,
+// mapping.go's own Summary-or-first-Description-line fallback, reused
+// rather than copied a third time - internal/adapter/planner/pick's own
+// prompt.go keeps the first copy), and its parameters' own titles
+// (questionParamTitle, the same fallback-to-name convention
+// instructionsForParam already uses for the same parameters). Built once and
+// shared by both refusalCriteria and capabilitiesCriteria below, so a
+// deployment's two whole-request judgements always name the same operation
+// the same way.
+func operationEvidenceFor(e *domain.Endpoint) string {
+	evidence := e.DisplayNameOr(e.OperationID) + "（操作id: " + e.OperationID +
+		"、サービス: " + e.ServiceDisplayNameOr(e.Service) + "）"
+
+	if summary := summaryFor(e); summary != "" {
+		evidence += "。概要: " + summary
+	}
+
+	if len(e.Parameters) > 0 {
+		titles := make([]string, len(e.Parameters))
+		for i := range e.Parameters {
+			titles[i] = questionParamTitle(&e.Parameters[i])
+		}
+
+		evidence += "。パラメータ: " + strings.Join(titles, "、")
+	}
+
+	return evidence
+}
+
+// separateRefusalCriteria is operationEvidenceCriteria's own result: the two
+// Criteria objects addSeparateRefusalQuestions sends, named rather than
+// returned as two same-typed values so golangci's gocritic (unnamedResult)
+// and nonamedreturns rules (harness/quality/go/golangci.yml) do not
+// disagree over how a two-map result should be spelled.
+type separateRefusalCriteria struct {
+	refusal      map[string]string
+	capabilities map[string]string
+}
+
+// operationEvidenceCriteria builds addSeparateRefusalQuestions' own two
+// Criteria objects (docs.typesafe.ai/primitives/noul's true/false form,
+// the same shape mapping.go's own impossibleCriteria already sends for
+// picker.go's fan-out question) - refusal's "true" and capabilities'
+// "true" both describe the picked operation as unable to answer the
+// question, "false" as able to, each naming it via operationEvidenceFor so
+// the judgement has the evidence to weigh, not only its own instruction
+// sentence.
+func operationEvidenceCriteria(e *domain.Endpoint) separateRefusalCriteria {
+	evidence := operationEvidenceFor(e)
+
+	return separateRefusalCriteria{
+		refusal: map[string]string{
+			noulCriterionTrue:  "選ばれた操作" + evidence + "は、そもそもこの質問には答えられない（操作の対象や種類が質問と合っていない）",
+			noulCriterionFalse: "選ばれた操作" + evidence + "は、この質問に答えられる",
+		},
+		capabilities: map[string]string{
+			noulCriterionTrue: "質問は選ばれた操作" + evidence +
+				"のような特定の操作の実行を求めているのではなく、そもそもこの仕組み全体で何ができるか、どんな操作があるかを尋ねている",
+			noulCriterionFalse: "質問は選ばれた操作" + evidence + "のような特定の操作の実行を求めている",
+		},
+	}
 }
 
 // instructionsForParam builds one parameter's own Choice question

@@ -40,6 +40,17 @@ const modelName = "jev-latest"
 // (mapping.go) already is.
 const noulQuestionType = "noul"
 
+// noulCriterionTrue and noulCriterionFalse are the two keys every "noul"
+// question's own Criteria object uses (docs.typesafe.ai/primitives/noul) -
+// mapping.go's own impossibleCriteria and filler_mapping.go's own
+// operationEvidenceCriteria both key their true/false texts by these,
+// factored into constants for the same golangci goconst reason
+// noulQuestionType above already is.
+const (
+	noulCriterionTrue  = "true"
+	noulCriterionFalse = "false"
+)
+
 // requestTimeout bounds one Pick call end to end, retries included: the
 // API's own measured latency is ~600ms, so 10s is generous room for the
 // two retries below, not a budget this adapter expects to spend.

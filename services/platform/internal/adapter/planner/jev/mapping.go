@@ -191,8 +191,8 @@ const impossibleInstructions = "この質問は、列挙された候補のどれ
 // never criteria).
 func impossibleCriteria() map[string]string {
 	return map[string]string{
-		"true":  "質問が求める操作が候補一覧に無い（一覧しかない資源の集計・承認・印刷、一覧に無い資源、業務と無関係）",
-		"false": "候補のどれかで答えられる、または「何ができるか」を尋ねている",
+		noulCriterionTrue:  "質問が求める操作が候補一覧に無い（一覧しかない資源の集計・承認・印刷、一覧に無い資源、業務と無関係）",
+		noulCriterionFalse: "候補のどれかで答えられる、または「何ができるか」を尋ねている",
 	}
 }
 

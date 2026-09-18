@@ -407,11 +407,89 @@ func TestFillerSeparateRequestShapeAddsTwoNoulQuestionsNoSentinelsInOptions(t *t
 	require.True(t, ok)
 	assert.Equal(t, "noul", refusal["type"])
 	assert.Equal(t, refusalLabelForTest, refusal["instructions"])
+	assertCriteriaNamePickedOperation(t, refusal["criteria"])
 
 	capabilities, ok := questions["capabilities"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "noul", capabilities["type"])
 	assert.Equal(t, capabilitiesLabelForTest, capabilities["instructions"])
+	assertCriteriaNamePickedOperation(t, capabilities["criteria"])
+}
+
+// assertCriteriaNamePickedOperation asserts raw decodes as a true/false
+// criteria object (docs.typesafe.ai/primitives/noul) whose own texts both
+// name statusEnumEndpoint's own operation id - the evidence
+// operationEvidenceFor (filler_mapping.go) embeds so the judgement has
+// something to weigh beyond its own instruction sentence
+// (docs/measurements: the first cut of refusalModeSeparate's own noul
+// questions sat in a narrow probability band regardless of the picked
+// operation, because they carried no evidence about it at all).
+// statusEnumEndpoint declares no DisplayName, so DisplayNameOr falls back to
+// its own OperationID ("listInventoryItems") - TestFillerSeparateCriteriaNameOperationDisplayName
+// below checks the DisplayName branch with a fuller endpoint.
+func assertCriteriaNamePickedOperation(t *testing.T, raw any) {
+	t.Helper()
+
+	criteria, ok := raw.(map[string]any)
+	require.True(t, ok, "criteria must be a true/false object, not left unset")
+	require.Len(t, criteria, 2)
+
+	for _, key := range []string{"true", "false"} {
+		text, ok := criteria[key].(string)
+		require.True(t, ok, "criteria[%q] must be a string", key)
+		assert.Contains(t, text, "listInventoryItems", "criteria[%q] must name the operation id", key)
+	}
+}
+
+// TestFillerSeparateCriteriaNameOperationDisplayName proves
+// operationEvidenceFor's own DisplayName/ServiceDisplayName/Summary branches:
+// a fuller endpoint than statusEnumEndpoint (a real ListInventoryItems-shaped
+// one, docs/measurements) makes both noul questions' own criteria name the
+// operation's display name and its service's display name, not only its bare
+// operation id.
+func TestFillerSeparateCriteriaNameOperationDisplayName(t *testing.T) {
+	fake := fakeRequestServer(t, separateResponseBody("in_stock", 0.1, 0.1))
+
+	f := jev.NewFiller(fake.server.URL, "test-key", nil, jev.WithFillRefusalSeparate())
+	endpoint := domain.Endpoint{
+		Service:            "inventory",
+		OperationID:        "ListInventoryItems",
+		Method:             domain.MethodGet,
+		Path:               "/items",
+		Summary:            "List stock items, optionally filtered by status.",
+		DisplayName:        "在庫一覧",
+		ServiceDisplayName: "在庫管理",
+		Parameters: []domain.Parameter{
+			{
+				Name: "status", In: "query",
+				Schema: domain.Schema{
+					Type:       domain.SchemaTypeString,
+					Enum:       []string{"in_stock", "quarantined"},
+					EnumLabels: map[string]string{"in_stock": "入荷済み", "quarantined": "検品保留"},
+					Title:      "ステータス",
+				},
+			},
+		},
+	}
+
+	_, _, err := f.Fill(context.Background(), &endpoint, "在庫を見せて", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+
+	questions, ok := fake.gotBody()["questions"].(map[string]any)
+	require.True(t, ok)
+
+	for _, name := range []string{"refusal", "capabilities"} {
+		criteria, ok := questions[name].(map[string]any)["criteria"].(map[string]any)
+		require.True(t, ok)
+
+		for _, key := range []string{"true", "false"} {
+			text, ok := criteria[key].(string)
+			require.True(t, ok)
+			assert.Contains(t, text, "ListInventoryItems", "%s[%q] names the operation id", name, key)
+			assert.Contains(t, text, "在庫一覧", "%s[%q] names the operation's display name", name, key)
+			assert.Contains(t, text, "在庫管理", "%s[%q] names the service display name", name, key)
+		}
+	}
 }
 
 // refusalLabelForTest and capabilitiesLabelForTest mirror filler.go's own
