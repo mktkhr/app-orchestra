@@ -13,12 +13,14 @@ const originalArgv = process.argv;
 const originalPicker = process.env["ORCHESTRA_PICKER"];
 const originalJevCriteria = process.env["ORCHESTRA_JEV_CRITERIA"];
 const originalGate = process.env["ORCHESTRA_GATE"];
+const originalServiceRouter = process.env["ORCHESTRA_SERVICE_ROUTER"];
 
 beforeEach(() => {
   process.argv = [...originalArgv];
   delete process.env["ORCHESTRA_PICKER"];
   delete process.env["ORCHESTRA_JEV_CRITERIA"];
   delete process.env["ORCHESTRA_GATE"];
+  delete process.env["ORCHESTRA_SERVICE_ROUTER"];
 });
 
 afterEach(() => {
@@ -26,11 +28,14 @@ afterEach(() => {
   delete process.env["ORCHESTRA_PICKER"];
   delete process.env["ORCHESTRA_JEV_CRITERIA"];
   delete process.env["ORCHESTRA_GATE"];
+  delete process.env["ORCHESTRA_SERVICE_ROUTER"];
 
   if (originalPicker !== undefined) process.env["ORCHESTRA_PICKER"] = originalPicker;
   if (originalJevCriteria !== undefined)
     process.env["ORCHESTRA_JEV_CRITERIA"] = originalJevCriteria;
   if (originalGate !== undefined) process.env["ORCHESTRA_GATE"] = originalGate;
+  if (originalServiceRouter !== undefined)
+    process.env["ORCHESTRA_SERVICE_ROUTER"] = originalServiceRouter;
 });
 
 test("--corpus is undefined when not given", () => {
@@ -148,5 +153,31 @@ test("variantSuffix appends nothing for ORCHESTRA_GATE=none (the default)", () =
 });
 
 test("variantSuffix appends nothing when ORCHESTRA_GATE is unset", () => {
+  expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends -router when ORCHESTRA_SERVICE_ROUTER=jev", () => {
+  process.env["ORCHESTRA_SERVICE_ROUTER"] = "jev";
+
+  expect(variantSuffix()).toBe("-router");
+  expect(variantSuffix("off", 1.1, 2)).toBe("-nothink-rp1.1-stages2-router");
+});
+
+test("variantSuffix appends -router after -jev-v2-gate when all four are set", () => {
+  process.env["ORCHESTRA_PICKER"] = "jev";
+  process.env["ORCHESTRA_JEV_CRITERIA"] = "v2";
+  process.env["ORCHESTRA_GATE"] = "jev";
+  process.env["ORCHESTRA_SERVICE_ROUTER"] = "jev";
+
+  expect(variantSuffix()).toBe("-jev-v2-gate-router");
+});
+
+test("variantSuffix appends nothing for ORCHESTRA_SERVICE_ROUTER=none (the default)", () => {
+  process.env["ORCHESTRA_SERVICE_ROUTER"] = "none";
+
+  expect(variantSuffix()).toBe("");
+});
+
+test("variantSuffix appends nothing when ORCHESTRA_SERVICE_ROUTER is unset", () => {
   expect(variantSuffix()).toBe("");
 });

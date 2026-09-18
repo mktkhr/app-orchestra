@@ -21,11 +21,18 @@ type fakeNarrower struct {
 
 	query string
 	k     int
+	// calledWith is the catalogue Narrow was actually given - distinct
+	// from catalog above (what it returns) - so a test can assert on
+	// what Plan offered the narrower, not just what the narrower handed
+	// back (orchestrator_service_router_test.go's own
+	// TestPlanRouteNarrowsAheadOfNarrowerNotJustAheadOfThePick).
+	calledWith domain.Catalog
 }
 
-func (f *fakeNarrower) Narrow(_ context.Context, _ domain.Catalog, query string, k int) (domain.Catalog, error) {
+func (f *fakeNarrower) Narrow(_ context.Context, catalog domain.Catalog, query string, k int) (domain.Catalog, error) {
 	f.query = query
 	f.k = k
+	f.calledWith = catalog
 
 	return f.catalog, f.err
 }

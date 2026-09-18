@@ -133,6 +133,34 @@ func newHybridPicker(cfg *Config) (usecase.Picker, error) {
 	), nil
 }
 
+// newServiceRouterOption builds the usecase.Option build passes to
+// NewOrchestrator for the full-catalogue Jev trial's own follow-up
+// (docs/measurements/jev-full-catalogue.md; DECISIONS.md 2026-09-18): a
+// no-op when cfg.ServiceRouter.Name is "" or ServiceRouterNone - every
+// test and caller that predates this subproject - otherwise
+// usecase.WithServiceRouter over a jev.ServiceRouter. Unlike
+// stagingOptions, this never checks cfg.LLM.Stages or cfg.LLM.BaseURL:
+// Plan consults o.serviceRouter before o.narrower.Narrow regardless of
+// how many calls the rest of the pipeline makes
+// (internal/usecase/orchestrator.go's routeService).
+func newServiceRouterOption(cfg *Config) (usecase.Option, error) {
+	switch cfg.ServiceRouter.Name {
+	case "", ServiceRouterNone:
+		return func(*usecase.Orchestrator) {}, nil
+	case ServiceRouterJev:
+		if cfg.ServiceRouter.JevAPIKey == "" {
+			return nil, ErrMissingJevAPIKey
+		}
+
+		opts := []jev.RouterOption{jev.WithRouterCriteria(cfg.ServiceRouter.JevCriteria)}
+		router := jev.NewServiceRouter(cfg.ServiceRouter.JevBaseURL, cfg.ServiceRouter.JevAPIKey, nil, opts...)
+
+		return usecase.WithServiceRouter(router, cfg.ServiceRouter.Threshold), nil
+	default:
+		return nil, fmt.Errorf("%w: %q", ErrInvalidServiceRouter, cfg.ServiceRouter.Name)
+	}
+}
+
 // newGate builds the usecase.Gate stagingOptions passes to usecase.WithGate
 // - the v3 Jev trial's own "noul refusal gate"
 // (docs/measurements/jev-picker-v3.md). Only called by stagingOptions when

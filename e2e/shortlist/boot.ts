@@ -202,6 +202,19 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       ...(process.env["ORCHESTRA_HYBRID_THRESHOLD"] === undefined
         ? {}
         : { ORCHESTRA_HYBRID_THRESHOLD: process.env["ORCHESTRA_HYBRID_THRESHOLD"] }),
+      // The full-catalogue Jev trial's own follow-up (2026-09-18, "let
+      // Jev choose the service"): ORCHESTRA_SERVICE_ROUTER/
+      // ORCHESTRA_SERVICE_ROUTER_THRESHOLD, same pass-through as
+      // ORCHESTRA_PICKER above - unset means the platform's own defaults
+      // (none, no router at all; 0.5).
+      ...(process.env["ORCHESTRA_SERVICE_ROUTER"] === undefined
+        ? {}
+        : { ORCHESTRA_SERVICE_ROUTER: process.env["ORCHESTRA_SERVICE_ROUTER"] }),
+      ...(process.env["ORCHESTRA_SERVICE_ROUTER_THRESHOLD"] === undefined
+        ? {}
+        : {
+            ORCHESTRA_SERVICE_ROUTER_THRESHOLD: process.env["ORCHESTRA_SERVICE_ROUTER_THRESHOLD"],
+          }),
     }),
     port: platformPort,
   };

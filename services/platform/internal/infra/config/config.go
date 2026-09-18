@@ -440,17 +440,16 @@ type Config struct {
 	// (docs/specs/context.md, section 6). Defaults to defaultContextTurns
 	// when unset.
 	ContextTurns int
-	// NarrowingEmbedModel names the embedding model llama-swap serves at
-	// /v1/embeddings, read from ORCHESTRA_NARROWING_EMBED_MODEL. Empty
-	// means narrowing is off (docs/specs/shortlisting.md, H7) - see
-	// ErrNarrowingIncomplete for what a partial setting means.
+	// NarrowingEmbedModel names the embedding model llama-swap serves at /v1/embeddings, read from ORCHESTRA_NARROWING_EMBED_MODEL.
+	// Empty means narrowing is off (docs/specs/shortlisting.md, H7) - see ErrNarrowingIncomplete for what a partial setting means.
 	NarrowingEmbedModel string
-	// NarrowingRerankModel names the reranking model llama-swap serves at
-	// /v1/rerank, read from ORCHESTRA_NARROWING_RERANK_MODEL.
+	// NarrowingRerankModel names the reranking model llama-swap serves at /v1/rerank, read from ORCHESTRA_NARROWING_RERANK_MODEL.
 	NarrowingRerankModel string
-	// NarrowingK is how many endpoints the shortlist is cut to, read from
-	// ORCHESTRA_NARROWING_K.
+	// NarrowingK is how many endpoints the shortlist is cut to, read from ORCHESTRA_NARROWING_K.
 	NarrowingK int
+	// ServiceRouter/ServiceRouterThreshold: see config_service_router.go - unlike Picker/Gate, consulted regardless of PlannerStages.
+	ServiceRouter          string
+	ServiceRouterThreshold float64
 }
 
 // Load reads Config from the environment. ORCHESTRA_PORT defaults to 8080

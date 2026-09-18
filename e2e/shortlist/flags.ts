@@ -109,27 +109,32 @@ export function narrowingArg(): "on" | "off" | undefined {
 }
 
 /**
- * The `-nothink` / `-rp<value>` / `-stages2` / `-jev` / `-v2` / `-gate`
- * suffix a variant's output files carry (run.ts's own doc comment,
- * docs/plans/staging.md; docs/plans/midsizing.md Task 3 reuses it for
- * `--corpus mid`'s `mid-<variant>.jsonl`) - "" for a plain wording pass,
- * unchanged from before any of these flags existed. `stages` of `1` or
- * `undefined` carries no suffix - `STAGES=1` reproduces the plain pass
+ * The `-nothink` / `-rp<value>` / `-stages2` / `-jev` / `-v2` / `-gate` /
+ * `-router` suffix a variant's output files carry (run.ts's own doc
+ * comment, docs/plans/staging.md; docs/plans/midsizing.md Task 3 reuses
+ * it for `--corpus mid`'s `mid-<variant>.jsonl`) - "" for a plain wording
+ * pass, unchanged from before any of these flags existed. `stages` of `1`
+ * or `undefined` carries no suffix - `STAGES=1` reproduces the plain pass
  * byte for byte (docs/plans/staging.md, AC-S-101).
  *
- * `-jev`/`-hybrid`, `-v2` and `-gate` are read straight from
- * `ORCHESTRA_PICKER`/`ORCHESTRA_JEV_CRITERIA`/`ORCHESTRA_GATE`, unlike
- * the other three which come from `run.ts`'s own `--flag` parsing above:
- * the picker and the gate are each chosen through the platform's own
- * environment (`e2e/eval/services.ts`/`e2e/shortlist/boot.ts` pass all
- * three through the same way), not a run.ts flag, so this reads those
- * environment variables directly rather than growing more parameters
- * every call site would have to thread through for names nothing else
- * here needs. `ORCHESTRA_PICKER=hybrid` (internal/adapter/planner/hybrid,
- * Jev first, falling back to the local picker below its own confidence
- * threshold) gets its own `-hybrid` suffix, not `-jev` - the two name
- * different pickers, and a shared suffix would make a hybrid run's
- * output file indistinguishable from a plain Jev run's.
+ * `-jev`/`-hybrid`, `-v2`, `-gate` and `-router` are read straight from
+ * `ORCHESTRA_PICKER`/`ORCHESTRA_JEV_CRITERIA`/`ORCHESTRA_GATE`/
+ * `ORCHESTRA_SERVICE_ROUTER`, unlike the other three which come from
+ * `run.ts`'s own `--flag` parsing above: the picker, the gate and the
+ * service router are each chosen through the platform's own environment
+ * (`e2e/eval/services.ts`/`e2e/shortlist/boot.ts` pass all four through
+ * the same way), not a run.ts flag, so this reads those environment
+ * variables directly rather than growing more parameters every call site
+ * would have to thread through for names nothing else here needs.
+ * `ORCHESTRA_PICKER=hybrid` (internal/adapter/planner/hybrid, Jev first,
+ * falling back to the local picker below its own confidence threshold)
+ * gets its own `-hybrid` suffix, not `-jev` - the two name different
+ * pickers, and a shared suffix would make a hybrid run's output file
+ * indistinguishable from a plain Jev run's. `-router`
+ * (docs/measurements/jev-full-catalogue.md; DECISIONS.md 2026-09-18,
+ * "let Jev choose the service") is independent of all the others - it
+ * can appear alongside any picker/gate combination, since it runs before
+ * narrowing rather than in place of the picker or the gate.
  */
 export function variantSuffix(
   thinking?: "on" | "off",
@@ -160,6 +165,11 @@ export function variantSuffix(
   // Only "jev" carries a suffix; "none" (the default) does not, matching
   // every other suffix here.
   const gate = process.env["ORCHESTRA_GATE"] === "jev" ? "-gate" : "";
+  // The full-catalogue Jev trial's own follow-up (2026-09-18, "let Jev
+  // choose the service"): ORCHESTRA_SERVICE_ROUTER, read the same direct
+  // way as ORCHESTRA_GATE just above. Only "jev" carries a suffix; "none"
+  // (the default) does not, matching every other suffix here.
+  const router = process.env["ORCHESTRA_SERVICE_ROUTER"] === "jev" ? "-router" : "";
 
-  return `${nothink}${rp}${st}${jev}${criteria}${gate}`;
+  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}`;
 }

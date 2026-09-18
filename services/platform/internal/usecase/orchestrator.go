@@ -170,6 +170,14 @@ type Orchestrator struct {
 	// entirely, byte for byte the same planStaged path as before this
 	// field existed.
 	gate Gate
+	// serviceRouter and serviceRouterThreshold are the full-catalogue Jev
+	// trial's own fields (docs/measurements/jev-full-catalogue.md;
+	// DECISIONS.md 2026-09-18): consulted by Plan, before o.narrower.Narrow
+	// and regardless of stages - nil (the default: WithServiceRouter never
+	// given) skips this entirely, byte for byte the same Plan path as
+	// before this field existed.
+	serviceRouter          ServiceRouter
+	serviceRouterThreshold float64
 }
 
 // Option configures an Orchestrator built by NewOrchestrator, beyond its
@@ -216,6 +224,20 @@ func WithPicker(p Picker) Option {
 // this can never be the only staging option given.
 func WithGate(g Gate) Option {
 	return func(o *Orchestrator) { o.gate = g }
+}
+
+// WithServiceRouter configures the usecase.ServiceRouter Plan consults
+// before o.narrower.Narrow, regardless of stages (docs/measurements/
+// jev-full-catalogue.md; DECISIONS.md 2026-09-18) - see Plan's own doc
+// comment for exactly where it runs and how it fails open. threshold is
+// the confidence r's own ServiceRoute must be at or above for Plan to act
+// on it; below it, or Service == "" (no opinion), leaves the catalogue
+// untouched.
+func WithServiceRouter(r ServiceRouter, threshold float64) Option {
+	return func(o *Orchestrator) {
+		o.serviceRouter = r
+		o.serviceRouterThreshold = threshold
+	}
 }
 
 // WithStages selects how many model calls Plan makes to resolve an
@@ -338,6 +360,8 @@ func (o *Orchestrator) Plan(
 
 		return o.planPreferred(ctx, catalog, &endpoint, query, answers, turns, thinking, false, workspaceID)
 	}
+
+	catalog = o.routeService(ctx, catalog, query, answers, turns)
 
 	// Narrowed to a shortlist before the planner ever sees it
 	// (docs/specs/shortlisting.md, H1/H2): o.narrower is

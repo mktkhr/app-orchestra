@@ -36,6 +36,44 @@ function drainStdio(child: RunningService["process"]): void {
   child.stderr?.resume();
 }
 
+/**
+ * The env vars this file passes through from the caller's own environment,
+ * unset by default: the Jev trial's own knobs (`ORCHESTRA_PICKER` through
+ * `ORCHESTRA_SERVICE_ROUTER_THRESHOLD`) and the two staging/wording flags
+ * above them, each read through only when set - never a default - so a run
+ * that never mentions any of them is byte-identical to before this list
+ * existed. Factored out of `startEvalPlatform`'s own env object (eslint's
+ * `max-lines-per-function`, harness/quality) - one name per line so a new
+ * addition here is the whole diff, rather than another `? {} : {...}`
+ * ternary inline.
+ */
+const PASSTHROUGH_ENV_VARS = [
+  "ORCHESTRA_PLANNER_WORDING",
+  "ORCHESTRA_PLANNER_STAGES",
+  "ORCHESTRA_PICKER",
+  "ORCHESTRA_JEV_API_KEY",
+  "ORCHESTRA_JEV_CRITERIA",
+  "ORCHESTRA_GATE",
+  "ORCHESTRA_JEV_OBJECT_INSTRUCTIONS",
+  "ORCHESTRA_HYBRID_JEV_TIMEOUT",
+  "ORCHESTRA_HYBRID_THRESHOLD",
+  "ORCHESTRA_SERVICE_ROUTER",
+  "ORCHESTRA_SERVICE_ROUTER_THRESHOLD",
+] as const;
+
+/** Builds the env overrides for `PASSTHROUGH_ENV_VARS`, one entry per name actually set in `process.env`. */
+function passthroughEnv(): Record<string, string> {
+  const out: Record<string, string> = {};
+
+  for (const name of PASSTHROUGH_ENV_VARS) {
+    const value = process.env[name];
+
+    if (value !== undefined) out[name] = value;
+  }
+
+  return out;
+}
+
 /** The real, running platform an eval run measures against, and the session to call it with. */
 export interface EvalPlatform {
   readonly baseUrl: string;
@@ -114,65 +152,10 @@ export async function startEvalPlatform(
       // own comment on this variable.
       ORCHESTRA_SECURE_COOKIE: "false",
       ORCHESTRA_PLANNER_TODAY: PLANNER_TODAY,
-      // docs/specs/wording.md Q4: the wording that would become the default
-      // is checked against these eighteen cases too. Passed through only
-      // when set, so the default run is byte-identical to before.
-      ...(process.env["ORCHESTRA_PLANNER_WORDING"] === undefined
-        ? {}
-        : { ORCHESTRA_PLANNER_WORDING: process.env["ORCHESTRA_PLANNER_WORDING"] }),
-      // docs/plans/staging.md, Task 4: `ORCHESTRA_PLANNER_STAGES=2 make
-      // eval` must be able to check capability/unanswerable/enum cases
-      // under staging too. Passed through only when set, so the default
-      // run is byte-identical to before (AC-S-101).
-      ...(process.env["ORCHESTRA_PLANNER_STAGES"] === undefined
-        ? {}
-        : { ORCHESTRA_PLANNER_STAGES: process.env["ORCHESTRA_PLANNER_STAGES"] }),
-      // The Jev trial (2026-09-17): ORCHESTRA_PICKER selects the picker
-      // implementation stagingOptions builds under STAGES=2 ("local" the
-      // default, "jev" TypeSafe's hosted API); ORCHESTRA_JEV_API_KEY is
-      // its bearer token. Passed through only when set in the caller's
-      // own environment - never a default - so a run that never mentions
-      // either is byte-identical to before this pair existed.
-      ...(process.env["ORCHESTRA_PICKER"] === undefined
-        ? {}
-        : { ORCHESTRA_PICKER: process.env["ORCHESTRA_PICKER"] }),
-      ...(process.env["ORCHESTRA_JEV_API_KEY"] === undefined
-        ? {}
-        : { ORCHESTRA_JEV_API_KEY: process.env["ORCHESTRA_JEV_API_KEY"] }),
-      // The Jev trial's second round (2026-09-17, "v2: richer criteria"):
-      // ORCHESTRA_JEV_CRITERIA, same pass-through as ORCHESTRA_PICKER
-      // above - unset means the platform's own default (v1).
-      ...(process.env["ORCHESTRA_JEV_CRITERIA"] === undefined
-        ? {}
-        : { ORCHESTRA_JEV_CRITERIA: process.env["ORCHESTRA_JEV_CRITERIA"] }),
-      // The v3 Jev trial (2026-09-17, "a noul refusal gate in front of
-      // the local pick"): ORCHESTRA_GATE, same pass-through as
-      // ORCHESTRA_PICKER above - unset means the platform's own default
-      // (none, no gate at all).
-      ...(process.env["ORCHESTRA_GATE"] === undefined
-        ? {}
-        : { ORCHESTRA_GATE: process.env["ORCHESTRA_GATE"] }),
-      // The v5 Jev trial's own per-variable isolation (2026-09-17,
-      // "isolating turns from the object instructions"):
-      // ORCHESTRA_JEV_OBJECT_INSTRUCTIONS, same pass-through as
-      // ORCHESTRA_PICKER above - unset means the platform's own default
-      // (the plain-string instructions apply; the v5 object form is
-      // opt-in after isolation measured it as a net-negative
-      // alternative, docs/measurements/jev-v5.md).
-      ...(process.env["ORCHESTRA_JEV_OBJECT_INSTRUCTIONS"] === undefined
-        ? {}
-        : { ORCHESTRA_JEV_OBJECT_INSTRUCTIONS: process.env["ORCHESTRA_JEV_OBJECT_INSTRUCTIONS"] }),
-      // The hybrid picker (internal/adapter/planner/hybrid,
-      // ORCHESTRA_PICKER=hybrid): ORCHESTRA_HYBRID_JEV_TIMEOUT/
-      // ORCHESTRA_HYBRID_THRESHOLD, same pass-through as
-      // ORCHESTRA_JEV_CRITERIA above - unset means the platform's own
-      // defaults (800ms, 0.7).
-      ...(process.env["ORCHESTRA_HYBRID_JEV_TIMEOUT"] === undefined
-        ? {}
-        : { ORCHESTRA_HYBRID_JEV_TIMEOUT: process.env["ORCHESTRA_HYBRID_JEV_TIMEOUT"] }),
-      ...(process.env["ORCHESTRA_HYBRID_THRESHOLD"] === undefined
-        ? {}
-        : { ORCHESTRA_HYBRID_THRESHOLD: process.env["ORCHESTRA_HYBRID_THRESHOLD"] }),
+      // See PASSTHROUGH_ENV_VARS's own doc comment for what each of these
+      // is and when it applies - every one is passed through only when
+      // set in the caller's own environment, never a default.
+      ...passthroughEnv(),
     }),
     port: platformPort,
   };

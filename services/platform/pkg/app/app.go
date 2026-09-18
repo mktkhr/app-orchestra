@@ -325,6 +325,43 @@ const (
 	GateJev  = "jev"
 )
 
+// ServiceRouter configures which usecase.ServiceRouter implementation
+// build consults in Plan, before o.narrower.Narrow and regardless of
+// LLM.Stages (docs/measurements/jev-full-catalogue.md; DECISIONS.md
+// 2026-09-18 - unlike Picker/Gate, this is not gated on staging at all).
+// Mirrors config.Config's own ServiceRouter/JevAPIKey/JevBaseURL/
+// ServiceRouterThreshold fields the way Gate mirrors Gate/JevAPIKey et al.
+type ServiceRouter struct {
+	// Name is "" or ServiceRouterNone (no router at all - the default) or
+	// ServiceRouterJev (internal/adapter/planner/jev.ServiceRouter).
+	Name string
+	// JevAPIKey is sent as internal/adapter/planner/jev's bearer token.
+	// Required when Name is ServiceRouterJev (ErrMissingJevAPIKey) - the
+	// same key Picker.JevAPIKey and Gate.JevAPIKey send.
+	JevAPIKey string
+	// JevBaseURL is the base URL internal/adapter/planner/jev calls,
+	// mirroring Picker.JevBaseURL's own doc comment.
+	JevBaseURL string
+	// JevCriteria selects the shape the router builds its "route"
+	// question's criteria into, mirroring Picker.JevCriteria's own doc
+	// comment (this file's own doc comment: so a deployment's router and
+	// picker always describe each service in the same words).
+	JevCriteria string
+	// Threshold is the confidence a ServiceRoute must be at or above for
+	// Plan to act on it. cmd/api always sets it from
+	// config.Config.ServiceRouterThreshold, which already defaults to 0.5
+	// when ORCHESTRA_SERVICE_ROUTER_THRESHOLD is unset.
+	Threshold float64
+}
+
+// ServiceRouterNone and ServiceRouterJev are ServiceRouter.Name's two
+// non-empty values, mirroring
+// internal/infra/config.ServiceRouterNone/ServiceRouterJev.
+const (
+	ServiceRouterNone = "none"
+	ServiceRouterJev  = "jev"
+)
+
 // ErrInvalidLLMMode is returned by New when Config.LLM.Mode is set to
 // anything other than "" (the default), ModeToolCall or ModeJSON -
 // mirroring internal/infra/config.ErrInvalidLLMMode's own refusal to fall
@@ -353,10 +390,13 @@ var ErrInvalidPicker = errors.New("invalid Picker.Name, want \"\", \"local\", \"
 // mirroring config.ErrMissingJevAPIKey the same way ErrInvalidPicker
 // mirrors config.ErrInvalidPicker: PickerHybrid needs a real jev.Picker
 // for its own Jev half exactly as PickerJev does. Also returned when
-// Config.Gate.Name is GateJev and Config.Gate.JevAPIKey is empty - the
-// picker and the gate share one error and one required key.
+// Config.Gate.Name is GateJev and Config.Gate.JevAPIKey is empty, or
+// Config.ServiceRouter.Name is ServiceRouterJev and
+// Config.ServiceRouter.JevAPIKey is empty - the picker, the gate and the
+// service router share one error and one required key.
 var ErrMissingJevAPIKey = errors.New(
-	"Picker.JevAPIKey is required when Picker.Name is \"jev\" or \"hybrid\", or Gate.JevAPIKey when Gate.Name is \"jev\"",
+	"Picker.JevAPIKey is required when Picker.Name is \"jev\" or \"hybrid\", or Gate.JevAPIKey when Gate.Name is " +
+		"\"jev\", or ServiceRouter.JevAPIKey when ServiceRouter.Name is \"jev\"",
 )
 
 // ErrInvalidGate is returned by New when Config.Gate.Name is set to
@@ -364,6 +404,13 @@ var ErrMissingJevAPIKey = errors.New(
 // ErrInvalidPicker's own defence-in-depth: cmd/api always goes through
 // config.Load's own validation first (config.ErrInvalidGate).
 var ErrInvalidGate = errors.New("invalid Gate.Name, want \"\", \"none\" or \"jev\"")
+
+// ErrInvalidServiceRouter is returned by New when Config.ServiceRouter.Name
+// is set to anything other than "" (ServiceRouterNone), ServiceRouterNone
+// or ServiceRouterJev - mirroring ErrInvalidGate's own defence-in-depth:
+// cmd/api always goes through config.Load's own validation first
+// (config.ErrInvalidServiceRouter).
+var ErrInvalidServiceRouter = errors.New("invalid ServiceRouter.Name, want \"\", \"none\" or \"jev\"")
 
 // ErrMissingDBPath is returned by New when Config.DBPath is empty. There
 // is no legitimate use of this platform without a database - workspaces
@@ -451,6 +498,12 @@ type Config struct {
 	// GateNone (no gate at all) - every test and caller that predates
 	// this subproject keeps today's behaviour unchanged.
 	Gate Gate
+	// ServiceRouter selects which usecase.ServiceRouter implementation
+	// build consults in Plan, before o.narrower.Narrow and regardless of
+	// LLM.Stages. Its zero value (Name == "") is ServiceRouterNone (no
+	// router at all) - every test and caller that predates this
+	// subproject keeps today's behaviour unchanged.
+	ServiceRouter ServiceRouter
 }
 
 // SeedAccount is one account for New to put in place via SeedAccounts,
@@ -541,8 +594,13 @@ func build(
 		return nil, err
 	}
 
+	serviceRouterOption, err := newServiceRouterOption(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	orchestratorOptions := append(
-		[]usecase.Option{contextWindowOption(cfg.ContextTurns), narrowerOption}, staging...,
+		[]usecase.Option{contextWindowOption(cfg.ContextTurns), narrowerOption, serviceRouterOption}, staging...,
 	)
 	orchestrator := usecase.NewOrchestrator(catalog, planner, invoker, permissions, orchestratorOptions...)
 	adminUsecase := usecase.NewAdmin(users, permissions, catalog)
