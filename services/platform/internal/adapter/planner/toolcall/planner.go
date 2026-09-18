@@ -36,10 +36,11 @@ const toolNameProposePanel = "propose_panel"
 var ErrUnknownOperation = errors.New("planner named an operation not in the catalogue")
 
 // Planner implements usecase.Planner: it sends usecase.ToolsFor's tools to
-// a model over chat.Client and maps the tool call it makes onto a
-// usecase.Decision.
+// a model over a chat.Completer (chat.Client's OpenAI-compatible
+// transport, or internal/adapter/planner/chat/anthropic.Client) and maps
+// the tool call it makes onto a usecase.Decision.
 type Planner struct {
-	client  *chat.Client
+	client  chat.Completer
 	catalog domain.Catalog
 	// wording is the named set of words (docs/specs/wording.md) this
 	// Planner builds its system message and tool descriptions from -
@@ -126,7 +127,7 @@ func WithRepeatPenalty(penalty float64, lastN int) Option {
 // the operation, never the service, so the tool-calling wire format alone
 // cannot answer that question. Thinking defaults to enabled (today's
 // behaviour) unless WithThinking(false) is given.
-func New(client *chat.Client, catalog domain.Catalog, opts ...Option) *Planner {
+func New(client chat.Completer, catalog domain.Catalog, opts ...Option) *Planner {
 	defaultWording := wording.Default()
 	p := &Planner{client: client, catalog: catalog, wording: &defaultWording, thinking: true, clock: time.Now}
 

@@ -21,7 +21,7 @@ const pickMaxTokens = 200
 // (internal/usecase/orchestrator_preferred.go) is where that switch
 // applies.
 type Picker struct {
-	client *chat.Client
+	client chat.Completer
 	model  string
 }
 
@@ -29,8 +29,11 @@ var _ usecase.Picker = (*Picker)(nil)
 
 // New builds a Picker over client, sending model on every request - the
 // same model the platform's toolcall.Planner is configured with (S6: "the
-// pick's model is the planner's model").
-func New(client *chat.Client, model string) *Picker {
+// pick's model is the planner's model"). client is a chat.Completer, not a
+// concrete *chat.Client, so the same Picker works unchanged over either
+// chat backend (chat.Client's OpenAI-compatible transport, or
+// internal/adapter/planner/chat/anthropic.Client).
+func New(client chat.Completer, model string) *Picker {
 	return &Picker{client: client, model: model}
 }
 

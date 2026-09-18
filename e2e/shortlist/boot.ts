@@ -90,9 +90,10 @@ let platform: RunningService | undefined;
 let usedPorts: readonly number[] = [];
 
 /**
- * The Jev trial's own env vars, passed through from the caller's own
- * environment only when set - never a default - so a run that never
- * mentions any of them is byte-identical to before this list existed
+ * The Jev trial's own env vars, plus the second chat backend's own two
+ * (`ORCHESTRA_LLM_PROVIDER`, `ANTHROPIC_API_KEY`) - passed through from the
+ * caller's own environment only when set - never a default - so a run that
+ * never mentions any of them is byte-identical to before this list existed
  * (`e2e/eval/services.ts`'s own `PASSTHROUGH_ENV_VARS`, the same list,
  * pairs with this one). Env vars, not `BootOptions` fields, the same way
  * `make eval-shortlist PICKER=jev` reaches this file through the process
@@ -102,6 +103,8 @@ let usedPorts: readonly number[] = [];
  * addition here is the whole diff.
  */
 const JEV_TRIAL_ENV_VARS = [
+  "ORCHESTRA_LLM_PROVIDER",
+  "ANTHROPIC_API_KEY",
   "ORCHESTRA_PICKER",
   "ORCHESTRA_JEV_API_KEY",
   "ORCHESTRA_JEV_CRITERIA",

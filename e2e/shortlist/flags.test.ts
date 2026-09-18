@@ -290,3 +290,9 @@ test("variantSuffix appends -model-<sanitised name> for a non-default ORCHESTRA_
 
   expect(variantSuffix()).toBe("-fillenum-unsetwide-model-qwen3--q8-0--");
 });
+
+test("variantSuffix sanitises a Claude model id into a usable filename suffix", () => {
+  process.env["ORCHESTRA_LLM_MODEL"] = "claude-sonnet-5";
+
+  expect(variantSuffix()).toBe("-model-claude-sonnet-5");
+});

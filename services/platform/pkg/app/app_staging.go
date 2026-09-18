@@ -10,7 +10,6 @@ package app
 import (
 	"fmt"
 
-	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/chat"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/hybrid"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/jev"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/pick"
@@ -31,7 +30,7 @@ const stagesTwo = 2
 // pick against; pairing it with the stub planner would send a real
 // request to an empty base URL instead of exercising the stub.
 func stagingOptions(cfg *Config) ([]usecase.Option, error) {
-	if cfg.LLM.Stages != stagesTwo || cfg.LLM.BaseURL == "" {
+	if cfg.LLM.Stages != stagesTwo || !llmConfigured(cfg) {
 		return nil, nil
 	}
 
@@ -81,7 +80,10 @@ func stagingOptions(cfg *Config) ([]usecase.Option, error) {
 func newPicker(cfg *Config, fanOut bool) (usecase.Picker, error) {
 	switch cfg.Picker.Name {
 	case "", PickerLocal:
-		client := chat.New(chat.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model})
+		client, err := newChatCompleter(cfg)
+		if err != nil {
+			return nil, err
+		}
 
 		return pick.New(client, cfg.LLM.Model), nil
 	case PickerJev:
@@ -129,7 +131,11 @@ func newHybridPicker(cfg *Config) (usecase.Picker, error) {
 
 	jevPicker := jev.New(cfg.Picker.JevBaseURL, cfg.Picker.JevAPIKey, nil, jevOpts...)
 
-	client := chat.New(chat.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model})
+	client, err := newChatCompleter(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	localPicker := pick.New(client, cfg.LLM.Model)
 
 	return hybrid.New(

@@ -196,6 +196,10 @@ type LLM struct {
 	// on (docs/specs/staging.md's own reasoning for a fixed measurement
 	// date).
 	Today *time.Time
+	// Provider/AnthropicAPIKey/AnthropicBaseURL: see app_llm_provider.go.
+	Provider         string
+	AnthropicAPIKey  string
+	AnthropicBaseURL string
 }
 
 // Narrowing configures the llama-swap-backed usecase.Narrower
@@ -901,8 +905,8 @@ func newNarrowerOption(cfg *Config, catalog domain.Catalog) (usecase.Option, err
 }
 
 // newPlanner selects the platform's usecase.Planner from cfg: the
-// tool-calling adapter (internal/adapter/planner/toolcall) when an LLM
-// base URL is configured, the stub over PlanFixtures otherwise.
+// tool-calling adapter (internal/adapter/planner/toolcall) when an LLM is
+// configured (llmConfigured), the stub over PlanFixtures otherwise.
 //
 // The stub is not just a test double here - it is production's fallback
 // whenever no LLM is configured, which is why `make check`'s tests that
@@ -910,11 +914,14 @@ func newNarrowerOption(cfg *Config, catalog domain.Catalog) (usecase.Option, err
 // app_test.go) never call a real one: they simply exercise this same
 // fallback path.
 func newPlanner(cfg *Config, catalog domain.Catalog) (usecase.Planner, error) {
-	if cfg.LLM.BaseURL == "" {
+	if !llmConfigured(cfg) {
 		return stubplanner.New(toStubTable(cfg.PlanFixtures), &usecase.Decision{Kind: usecase.DecisionNone}), nil
 	}
 
-	client := chat.New(chat.Config{BaseURL: cfg.LLM.BaseURL, APIKey: cfg.LLM.APIKey, Model: cfg.LLM.Model})
+	client, err := newChatCompleter(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	switch cfg.LLM.Mode {
 	case "", ModeToolCall:
@@ -925,7 +932,13 @@ func newPlanner(cfg *Config, catalog domain.Catalog) (usecase.Planner, error) {
 
 		return toolcall.New(client, catalog, toolcallOptions(cfg, &w)...), nil
 	case ModeJSON:
-		return jsonmode.New(client, catalog, jsonmodeOptions(cfg)...), nil
+		// jsonmode.New wants a concrete *chat.Client - out of scope here.
+		llamaSwapClient, ok := client.(*chat.Client)
+		if !ok {
+			return nil, fmt.Errorf("%w: LLM.Mode=%q is not supported with LLM.Provider=%q", ErrInvalidLLMMode, ModeJSON, cfg.LLM.Provider)
+		}
+
+		return jsonmode.New(llamaSwapClient, catalog, jsonmodeOptions(cfg)...), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidLLMMode, cfg.LLM.Mode)
 	}

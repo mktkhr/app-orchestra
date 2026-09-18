@@ -134,10 +134,8 @@ var ErrInvalidNarrowingK = errors.New("ORCHESTRA_NARROWING_K must be a positive 
 // startup rather than silently emptying every conversation.
 var ErrInvalidContextTurns = errors.New("ORCHESTRA_CONTEXT_TURNS must be a positive integer")
 
-// The two values ORCHESTRA_LLM_MODE accepts: which of the two
-// usecase.Planner adapters (internal/adapter/planner/toolcall,
-// internal/adapter/planner/jsonmode) pkg/app.newPlanner selects when an LLM
-// base URL is configured. LLMModeToolCall is the default.
+// The two values ORCHESTRA_LLM_MODE accepts: which usecase.Planner adapter
+// pkg/app.newPlanner selects. LLMModeToolCall is the default.
 const (
 	LLMModeToolCall = "toolcall"
 	LLMModeJSON     = "json"
@@ -157,12 +155,9 @@ const (
 // defaultJevBaseURL is used when ORCHESTRA_JEV_BASE_URL is unset.
 const defaultJevBaseURL = "https://api.typesafe.ai"
 
-// JevCriteriaV1 and JevCriteriaV2 are ORCHESTRA_JEV_CRITERIA's two
-// accepted values: internal/adapter/planner/jev's original one-line-per-
-// option criteria (v1), and the richer per-option object (`what`,
-// `examples`, `not_for`) the Jev trial's second round measures (v2).
-// JevCriteriaV1 is the default, so a deployment that never sets this
-// variable sends exactly what it always has.
+// JevCriteriaV1 and JevCriteriaV2 are ORCHESTRA_JEV_CRITERIA's two accepted
+// values: one-line-per-option criteria (v1, the default) or the richer
+// `what`/`examples`/`not_for` object per option (v2).
 const (
 	JevCriteriaV1 = "v1"
 	JevCriteriaV2 = "v2"
@@ -296,7 +291,9 @@ type Config struct {
 	// builds when LLMBaseURL is set: LLMModeToolCall (the default, used
 	// when ORCHESTRA_LLM_MODE is unset) or LLMModeJSON, for a model that
 	// cannot call tools (docs/plans/orchestration.md, Task 11).
-	LLMMode string
+	LLMMode         string
+	LLMProvider     string // ORCHESTRA_LLM_PROVIDER; see config_llm_provider.go
+	AnthropicAPIKey string // ANTHROPIC_API_KEY; see config_llm_provider.go
 	// PlannerWording selects the toolcall planner's named set of words
 	// (internal/adapter/planner/wording.ByName), read from
 	// ORCHESTRA_PLANNER_WORDING. Defaults to wording.Default().Name
@@ -769,10 +766,8 @@ type narrowingConfig struct {
 // applies them to cfg, isolating Load itself from both the os.Getenv
 // calls and parseNarrowing's own validation (funlen,
 // harness/quality/go/golangci.yml).
-// loadLLM reads ORCHESTRA_LLM_MODE and ORCHESTRA_PLANNER_WORDING and
-// applies them to cfg, isolating Load itself from both os.Getenv calls
-// and their own validation (funlen, harness/quality/go/golangci.yml) -
-// the same reason loadNarrowing exists.
+// loadLLM reads every ORCHESTRA_LLM_*/ORCHESTRA_PLANNER_* variable and
+// applies it to cfg (funlen, harness/quality/go/golangci.yml).
 func loadLLM(cfg *Config) error {
 	mode, err := parseLLMMode(os.Getenv("ORCHESTRA_LLM_MODE"))
 	if err != nil {
@@ -780,6 +775,10 @@ func loadLLM(cfg *Config) error {
 	}
 
 	cfg.LLMMode = mode
+
+	if providerErr := loadLLMProvider(cfg); providerErr != nil {
+		return providerErr
+	}
 
 	plannerWording, err := parsePlannerWording(os.Getenv("ORCHESTRA_PLANNER_WORDING"))
 	if err != nil {
