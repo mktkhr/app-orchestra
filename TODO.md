@@ -143,6 +143,15 @@ _Nothing in progress right now._
    with the local pick fixed and Jev called only for ordering, and a
    decision on the extra call per question.
 
+1. **A full four-instrument run on Claude, if it is worth $8.** The
+   planner now runs on the Anthropic Messages API
+   (`ORCHESTRA_LLM_PROVIDER=anthropic`, `adbdf6b`) and a six-question
+   single-shot check passed on Haiku 4.5, Sonnet 5, Opus 5 and Fable 5.1
+   (`docs/measurements/frontier-2026-09-18.md`). Measured rates put a full
+   eval + corpus + mid + dialogues run at ~$1.0 / ~$2.0 / ~$5.1 / ~$10.2
+   per model; the first three fit the ~$16 left of the $20 budget, all four
+   do not. The single divergence worth chasing either way: Haiku 4.5 drops
+   an unmatched enum filter where every other model asks.
 1. **The default model is no longer unarguable - decide whether to move.**
    Ten models re-measured 2026-09-18 with only the model varying
    (`docs/measurements/models-2026-09-18.md`). `qwen3.5-9b-q8` is the only

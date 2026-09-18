@@ -8422,3 +8422,42 @@ for exactly that before these numbers were taken.
 passes it whole. Whether to trade two eval rows for the gemma's three
 instruments is a product decision, recorded in `TODO.md` rather than
 taken here.
+
+## 2026-09-18 The product's own planner, pointed at Claude: a single-shot check
+
+Full record: `docs/measurements/frontier-2026-09-18.md`.
+
+`adbdf6b` adds the Anthropic Messages API as a second chat backend
+(`ORCHESTRA_LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY` from the process
+environment; unset leaves the tree byte-identical). Unlike 2026-09-15's
+frontier round, which drove a stand-in script over the pick alone, this
+runs **both planner stages** - pick and fill, tools and all - behind the
+unchanged local narrowing.
+
+**Four API rules, established free before any paid call.** `temperature`
+is a 400 on Sonnet 5 / Opus 5 / Fable 5.1 (the planner sends 0 on every
+call, so the backend has a per-model table); Sonnet 5 and Opus 5 think by
+default and are sent `thinking: {"type":"disabled"}`; Fable 5.1 cannot be
+told not to think at all; thinking tokens count against `max_tokens` -
+the 2026-09-15 round wasted $1.37 on `max_tokens: 64` and 65 empty
+answers. Forty calls later: no 400, no empty answer, no truncation, no
+refusal.
+
+**Six questions, one divergence.** Local `qwen3.5-9b-q8`, Sonnet 5, Opus 5
+and Fable 5.1 answer all six identically. `claude-haiku-4-5` answers five
+and drops the sixth: 破損した在庫はある？ returns every row instead of
+asking, which is exactly the defect `v6-unmatched-filter` was written to
+close on the local model (2026-09-16). **A prompt fix is not
+model-independent** - the same wording that closed it on the 9B does not
+close it on Haiku.
+
+**Measured cost and latency** (ten calls each): Haiku $0.0114, Sonnet
+$0.0263, Opus $0.0631, Fable 5.1 $0.1271; round total $0.2279, cumulative
+$4.03 of $20. Every Claude model is slower than the local 9B here (1.7-11
+s a question against 0.3-1.2 s), Fable 5.1 most of all since it always
+thinks.
+
+From those rates a full four-instrument run would be ~$1.0 (Haiku), ~$2.0
+(Sonnet 5), ~$5.1 (Opus 5), ~$10.2 (Fable 5.1) - all four together exceed
+the remaining budget, the first three do not. Not run: six questions
+cannot rank models, and this round's purpose was the path and the price.

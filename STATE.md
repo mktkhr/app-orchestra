@@ -1,8 +1,20 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-18 (ten local models re-measured on all four instruments)_
+_Last updated: 2026-09-18 (the planner can run on Claude; single-shot check of four Claude models)_
 
 ## Summary
+
+**2026-09-18 - the planner has a second chat backend
+(`ORCHESTRA_LLM_PROVIDER=anthropic`, `adbdf6b`), and four Claude models
+were checked single-shot through it** - both stages, tools, local
+narrowing unchanged. Six questions: the local 9B, Sonnet 5, Opus 5 and
+Fable 5.1 agree on all six; Haiku 4.5 drops the unmatched-enum question
+(破損した在庫はある？ returns every row instead of asking), the defect
+`v6-unmatched-filter` closed on the local model - a prompt fix is not
+model-independent. Cost $0.2279 for the round, $4.03 cumulative of $20; a
+full four-instrument run would be ~$1.0/$2.0/$5.1/$10.2 per model. Off by
+default; `ORCHESTRA_LLM_PROVIDER` unset keeps llama-swap. See
+`DECISIONS.md` and `docs/measurements/frontier-2026-09-18.md`.
 
 **2026-09-18 - ten local models re-measured with only the model varying
 (`docs/measurements/models-2026-09-18.md`).** `qwen3.5-9b-q8` stays the
