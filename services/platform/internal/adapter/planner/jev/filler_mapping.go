@@ -78,6 +78,7 @@ func (f *Filler) criteriaForParam(p *domain.Parameter) map[string]string {
 
 	if f.refusal {
 		criteria[refusalChoice] = refusalLabel
+		criteria[capabilitiesChoice] = capabilitiesLabel
 	}
 
 	return criteria
@@ -119,23 +120,30 @@ func questionTitleFor(endpoint *domain.Endpoint, name string) string {
 }
 
 // fillOutcome is mapFillAnswers' own result: args is the DecisionCall
-// Filler.Fill returns when neither refusalParam nor mismatchParam is set
-// (every parameter answered unsetChoice or a real enum value);
-// mismatchParam, when non-empty, is the first parameter (in
+// Filler.Fill returns when none of refusalParam, capabilitiesParam or
+// mismatchParam is set (every parameter answered unsetChoice or a real
+// enum value); mismatchParam, when non-empty, is the first parameter (in
 // endpoint.Parameters order) whose answer was mismatchChoice;
-// refusalParam, when non-empty, is the first parameter whose answer was
-// refusalChoice, and takes priority over mismatchParam (decision, below):
-// the picked operation being wrong for the question at all is a stronger
-// claim than one parameter's value merely not matching. chosen, confidence
-// and probabilities carry every parameter's own raw answer, read only by
-// logFillCompleted.
+// capabilitiesParam, when non-empty, is the first parameter whose answer
+// was capabilitiesChoice; refusalParam, when non-empty, is the first
+// parameter whose answer was refusalChoice. Precedence among the three,
+// applied in decision below: refusalParam first, then capabilitiesParam,
+// then mismatchParam - each is a claim about the whole request, not one
+// field, and a claim about the whole request outranks a claim about a
+// single parameter's value; refusalParam outranks capabilitiesParam
+// because "this operation cannot answer the question at all" is the
+// stronger of the two whole-request claims, and the ordering matches the
+// local fill's own DecisionNone-over-DecisionListCapabilities precedent
+// when both would apply. chosen, confidence and probabilities carry every
+// parameter's own raw answer, read only by logFillCompleted.
 type fillOutcome struct {
-	args          map[string]any
-	mismatchParam string
-	refusalParam  string
-	chosen        map[string]string
-	confidence    map[string]float64
-	probabilities map[string]map[string]float64
+	args              map[string]any
+	mismatchParam     string
+	refusalParam      string
+	capabilitiesParam string
+	chosen            map[string]string
+	confidence        map[string]float64
+	probabilities     map[string]map[string]float64
 }
 
 // mapFillAnswers reads resp.Answers against endpoint's own parameters:
@@ -174,6 +182,10 @@ func mapFillAnswers(endpoint *domain.Endpoint, resp wireResponse, threshold floa
 			if outcome.refusalParam == "" {
 				outcome.refusalParam = p.Name
 			}
+		case answer.Choice == capabilitiesChoice:
+			if outcome.capabilitiesParam == "" {
+				outcome.capabilitiesParam = p.Name
+			}
 		case answer.Choice == mismatchChoice:
 			if outcome.mismatchParam == "" {
 				outcome.mismatchParam = p.Name
@@ -192,22 +204,32 @@ func mapFillAnswers(endpoint *domain.Endpoint, resp wireResponse, threshold floa
 	return outcome, true
 }
 
-// decision turns outcome into the usecase.Decision Filler.Fill returns:
-// a DecisionNone when refusalParam was found (usecase.Decision{Kind:
+// decision turns outcome into the usecase.Decision Filler.Fill returns, in
+// the precedence fillOutcome's own doc comment explains (refusalParam,
+// then capabilitiesParam, then mismatchParam, then the plain call): a
+// DecisionNone when refusalParam was found (usecase.Decision{Kind:
 // usecase.DecisionNone}, no Service/OperationID/Message - the same bare
 // shape resolvePickedFill's own DecisionNone case already expects and
 // turns into ResultKindNone with its usual message, exactly as it does
-// for a DecisionNone the local fill produced), taking priority over a
-// DecisionAsk over mismatchParam (Question built the same way
-// usecase.askForEnumGuess's own does, "<title>はどれですか？", so
-// Orchestrator.ask produces the identical ResultKindAsk shape either way)
-// when one was found, otherwise a DecisionCall naming every answered
-// parameter's own value - nil Args, not an empty map, when every
-// parameter answered unsetChoice, the same "absent, not empty" convention
-// usecase.argsFromAnswers already keeps.
-func (o fillOutcome) decision(endpoint *domain.Endpoint) usecase.Decision {
+// for a DecisionNone the local fill produced); otherwise a
+// DecisionListCapabilities when capabilitiesParam was found
+// (usecase.Decision{Kind: usecase.DecisionListCapabilities}, Service left
+// empty so resolvePickedFill's own o.listCapabilities call lists every
+// service, not one - the same bare shape planStaged's own PickListCapabilities
+// case already builds); otherwise a DecisionAsk over mismatchParam
+// (Question built the same way usecase.askForEnumGuess's own does,
+// "<title>はどれですか？", so Orchestrator.ask produces the identical
+// ResultKindAsk shape either way) when one was found, otherwise a
+// DecisionCall naming every answered parameter's own value - nil Args, not
+// an empty map, when every parameter answered unsetChoice, the same
+// "absent, not empty" convention usecase.argsFromAnswers already keeps.
+func (o *fillOutcome) decision(endpoint *domain.Endpoint) usecase.Decision {
 	if o.refusalParam != "" {
 		return usecase.Decision{Kind: usecase.DecisionNone}
+	}
+
+	if o.capabilitiesParam != "" {
+		return usecase.Decision{Kind: usecase.DecisionListCapabilities}
 	}
 
 	if o.mismatchParam != "" {
@@ -227,7 +249,7 @@ func (o fillOutcome) decision(endpoint *domain.Endpoint) usecase.Decision {
 // confidence per parameter, fill_ms, the token usage Jev's own response
 // reports, and the full probability distribution per question - the same
 // convention jev.Picker.Pick already logs pick_probabilities under.
-func logFillCompleted(ctx context.Context, endpoint *domain.Endpoint, outcome fillOutcome, fillMs int64, usage wireUsage) {
+func logFillCompleted(ctx context.Context, endpoint *domain.Endpoint, outcome *fillOutcome, fillMs int64, usage wireUsage) {
 	slog.Default().InfoContext(ctx, "fill completed",
 		slog.String("fill_provider", "jev"),
 		slog.String("service", endpoint.Service),

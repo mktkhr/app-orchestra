@@ -49,8 +49,11 @@ type Fill struct {
 	EnumThreshold float64
 	// EnumRefusal is ORCHESTRA_FILL_ENUM_REFUSAL: off by default, meaning
 	// arm 2's Choice questions never offer a "this operation cannot
-	// answer the question at all" option. Only meaningful alongside Enum
-	// == FillEnumJev, the same way EnumThreshold only matters there.
+	// answer the question at all" option, nor a "the question is about
+	// this system's capabilities in general, not about running any
+	// operation" one - both are gated behind this same flag
+	// (jev.WithFillRefusal). Only meaningful alongside Enum == FillEnumJev,
+	// the same way EnumThreshold only matters there.
 	EnumRefusal bool
 	// EnumUnsetWording is ORCHESTRA_FILL_ENUM_UNSET_WORDING: "" or
 	// "narrow" (the default) keeps arm 2's original __unset__ wording;

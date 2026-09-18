@@ -159,6 +159,7 @@ func TestFillerRequestOmitsRefusalByDefault(t *testing.T) {
 	require.True(t, ok)
 
 	assert.NotContains(t, criteria, "__refusal__", "WithFillRefusal was never given")
+	assert.NotContains(t, criteria, "__capabilities__", "WithFillRefusal was never given")
 	assert.Len(t, criteria, 4, "two enum values plus the two default sentinels, nothing else")
 }
 
@@ -180,7 +181,30 @@ func TestFillerRequestIncludesRefusalWhenEnabled(t *testing.T) {
 	require.True(t, ok)
 
 	assert.Equal(t, "選ばれた操作は、そもそもこの質問には答えられない（操作の対象や種類が質問と合っていない）", criteria["__refusal__"])
-	assert.Len(t, criteria, 5, "two enum values plus all three sentinels")
+	assert.Len(t, criteria, 6, "two enum values plus all four sentinels")
+}
+
+// TestFillerRequestIncludesCapabilitiesWhenEnabled proves WithFillRefusal
+// also adds capabilitiesChoice, worded distinctly from refusalChoice's own
+// text and naming no eval question or service.
+func TestFillerRequestIncludesCapabilitiesWhenEnabled(t *testing.T) {
+	fake := fakeRequestServer(t, fillResponseBody("in_stock", 0.9))
+
+	f := jev.NewFiller(fake.server.URL, "test-key", nil, jev.WithFillRefusal())
+	endpoint := statusEnumEndpoint()
+
+	_, _, err := f.Fill(context.Background(), &endpoint, "在庫を見せて", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+
+	status, ok := fake.gotBody()["questions"].(map[string]any)["status"].(map[string]any)
+	require.True(t, ok)
+	criteria, ok := status["criteria"].(map[string]any)
+	require.True(t, ok)
+
+	capabilities, ok := criteria["__capabilities__"].(string)
+	require.True(t, ok)
+	assert.NotEqual(t, criteria["__refusal__"], capabilities, "distinct wording from refusalChoice")
+	assert.Len(t, criteria, 6, "two enum values plus all four sentinels")
 }
 
 // TestFillerARefusalBecomesDecisionNone proves a __refusal__ answer on any
@@ -198,6 +222,87 @@ func TestFillerARefusalBecomesDecisionNone(t *testing.T) {
 	require.True(t, ok)
 
 	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionNone}, decision)
+}
+
+// TestFillerACapabilitiesAnswerBecomesDecisionListCapabilities proves a
+// __capabilities__ answer on any parameter maps to the bare
+// usecase.Decision{Kind: DecisionListCapabilities} - the identical shape
+// resolvePickedFill's own DecisionListCapabilities case already expects
+// from the local fill's own decline.
+func TestFillerACapabilitiesAnswerBecomesDecisionListCapabilities(t *testing.T) {
+	server := fakeServer(t, fillResponseBody("__capabilities__", 0.9))
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusal())
+	endpoint := statusEnumEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫で何ができる？", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionListCapabilities}, decision)
+}
+
+// twoEnumParamEndpoint is one safe operation with two enum-valued
+// parameters, "status" and "kind" - used only by the precedence test
+// below, which needs two parameters to answer differently.
+func twoEnumParamEndpoint() domain.Endpoint {
+	endpoint := statusEnumEndpoint()
+	endpoint.Parameters = append(endpoint.Parameters, domain.Parameter{
+		Name: "kind", In: "query",
+		Schema: domain.Schema{
+			Type:       domain.SchemaTypeString,
+			Enum:       []string{"raw", "finished"},
+			EnumLabels: map[string]string{"raw": "原材料", "finished": "完成品"},
+			Title:      "種別",
+		},
+	})
+
+	return endpoint
+}
+
+// TestFillerRefusalOutranksCapabilitiesWhenBothWin proves the precedence
+// order: when one parameter answers __refusal__ and another answers
+// __capabilities__, the outcome is still DecisionNone - a claim about the
+// picked operation being wrong for the question outranks a claim about the
+// question being a capabilities question, the same ordering
+// fillOutcome.decision's own doc comment explains.
+func TestFillerRefusalOutranksCapabilitiesWhenBothWin(t *testing.T) {
+	body := `{"model":"jev-latest","answers":{` +
+		`"status":{"type":"choice","choice":"__refusal__","confidence":0.9,"probabilities":{"__refusal__":0.9}},` +
+		`"kind":{"type":"choice","choice":"__capabilities__","confidence":0.9,"probabilities":{"__capabilities__":0.9}}` +
+		`},"usage":{"input_tokens":20,"output_tokens":3}}`
+	server := fakeServer(t, body)
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusal())
+	endpoint := twoEnumParamEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫で何ができる？", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionNone}, decision)
+}
+
+// TestFillerCapabilitiesOutranksMismatchWhenBothWin is the precedence
+// order's other pair: when one parameter answers __capabilities__ and
+// another answers __mismatch__, the outcome is DecisionListCapabilities,
+// not DecisionAsk - a claim about the whole request outranks a claim about
+// one field's value.
+func TestFillerCapabilitiesOutranksMismatchWhenBothWin(t *testing.T) {
+	body := `{"model":"jev-latest","answers":{` +
+		`"status":{"type":"choice","choice":"__mismatch__","confidence":0.9,"probabilities":{"__mismatch__":0.9}},` +
+		`"kind":{"type":"choice","choice":"__capabilities__","confidence":0.9,"probabilities":{"__capabilities__":0.9}}` +
+		`},"usage":{"input_tokens":20,"output_tokens":3}}`
+	server := fakeServer(t, body)
+
+	f := jev.NewFiller(server.URL, "test-key", nil, jev.WithFillRefusal())
+	endpoint := twoEnumParamEndpoint()
+
+	decision, ok, err := f.Fill(context.Background(), &endpoint, "在庫で何ができる？", nil, nil, usecase.PlanContext{})
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, usecase.Decision{Kind: usecase.DecisionListCapabilities}, decision)
 }
 
 // TestFillerRequestUnsetWordingDefaultsToNarrow proves the __unset__
