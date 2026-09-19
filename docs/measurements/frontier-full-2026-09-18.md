@@ -13,17 +13,18 @@ exactly that - no estimate is entered as if it were a measurement.
 
 ## Results
 
-| model                           | eval      | corpus      | mid correct / false-refusal / refused | dialogues | corpus ms mean |       cost |
-| ------------------------------- | --------- | ----------- | ------------------------------------- | --------- | -------------: | ---------: |
-| local `qwen3.5-9b-q8` (default) | **34/34** | 77 / 80     | 37/40 / 2 / 16/20                     | **26/27** |      **1,363** |         $0 |
-| `claude-haiku-4-5`              | 29/34     | 60 / 63     | 22/40 / 17 / 19/20                    | 24/27     |          2,089 |      $1.52 |
-| `claude-sonnet-5`               | 31/34     | **81 / 83** | 26/40 / 11 / 18/20                    | 22/27     |          4,916 |      $3.23 |
-| `claude-opus-5`                 | 31/34     | 75 / 75     | 23/40 / 14 / 18/20                    | 25/27     |          5,314 |      $7.77 |
-| `bonsai2-27b` (local, ternary)  | 30/34     | **81 / 81** | **39/40 / 1 / 19/20**                 | 25/27     |          3,579 |         $0 |
-| `claude-fable-5-1`              | _not run_ | _pending_   | _not run_                             | _not run_ |                | ~$3.5 est. |
+| model                           | eval      | corpus      | mid correct / false-refusal / refused | dialogues | corpus ms mean |  cost |
+| ------------------------------- | --------- | ----------- | ------------------------------------- | --------- | -------------: | ----: |
+| local `qwen3.5-9b-q8` (default) | **34/34** | 77 / 80     | 37/40 / 2 / 16/20                     | **26/27** |      **1,363** |    $0 |
+| `claude-haiku-4-5`              | 29/34     | 60 / 63     | 22/40 / 17 / 19/20                    | 24/27     |          2,089 | $1.52 |
+| `claude-sonnet-5`               | 31/34     | **81 / 83** | 26/40 / 11 / 18/20                    | 22/27     |          4,916 | $3.23 |
+| `claude-opus-5`                 | 31/34     | 75 / 75     | 23/40 / 14 / 18/20                    | 25/27     |          5,314 | $7.77 |
+| `bonsai2-27b` (local, ternary)  | 30/34     | **81 / 81** | **39/40 / 1 / 19/20**                 | 25/27     |          3,579 |    $0 |
+| `claude-fable-5-1`              | _not run_ | 74 / 74     | 29/40 / 11 / 19/20                    | _not run_ |          9,763 | $4.76 |
 
-Round total on the Anthropic side: **$12.53** for the three Claude models,
-$16.56 cumulative including the earlier rounds.
+Round total on the Anthropic side: **$17.29** - $12.53 for the three Claude
+models over all four instruments, plus $4.76 for Fable 5.1 on the corpus
+and mid only. $21.32 cumulative including the earlier rounds.
 
 Corpus per-axis for the models measured so far (A plain lists, B
 cross-service homonyms, C near neighbours, D vocabulary gap, E setting
@@ -36,6 +37,7 @@ decoys):
 | `claude-sonnet-5`     | 92  | 80     | 68  | **80** | 90      | **81**  |
 | `claude-opus-5`       | 88  | 76     | 68  | 47     | **100** | 75      |
 | `bonsai2-27b`         | 92  | **92** | 60  | 73     | 90      | **81**  |
+| `claude-fable-5-1`    | 84  | **92** | 60  | 60     | 60      | 74      |
 
 ## Model by model
 
@@ -112,12 +114,22 @@ answerable have to be read as a pair or not at all - and `bonsai2-27b`
 shows what a genuinely good line looks like: 19/20 refused **with** 39/40
 answered.
 
-**3. Price does not order these models.** Opus 5 costs 2.4x Sonnet 5 and
-scores below it on three of four instruments. A 5.95 GB local model ties
-the best hosted corpus score, beats every model on mid, and costs nothing
-per question. The only column where the price order holds at all is
-latency, and there it runs backwards: the cheapest thing here (the local
-9B) is also the fastest by 2-4x.
+**`claude-fable-5-1` - the most expensive model, seventh of seven on the
+corpus.** 74/74 against the local 77 and Sonnet's 81, at **9,763 ms a
+question** - seven times the local 9B, and _every one of the 100 questions_
+took over five seconds. It shares the top axis-B score (92, with bonsai2)
+and gives it back on axis E (60). Thinking cannot be disabled on this
+model, so unlike every other row here it was measured thinking-on; that is
+part of why it is slow, and it is not a like-for-like comparison. mid
+29/40 with 11 false refusals. $4.76 for corpus and mid alone.
+
+**3. Price runs backwards here.** Ordered by list price the models are
+Fable 5.1, Opus 5, Sonnet 5, Haiku 4.5; ordered by corpus score they are
+Sonnet 5 and bonsai2 (81), local (77), Opus 5 (75), Fable 5.1 (74), Haiku
+(60). The most expensive model is second-last; a free 5.95 GB local model
+ties the best score, beats everything on mid, and is three times faster
+than Fable. Latency orders exactly opposite to price: local 1,363 ms,
+bonsai2 3,579, Sonnet 4,916, Opus 5,314, Fable 9,763.
 
 **4. A prompt fix is not model-independent.** `no-enum-value` is the case
 `v6-unmatched-filter` was written for (2026-09-16): an unmatched

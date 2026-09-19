@@ -8508,3 +8508,51 @@ simply say no (Haiku 19/20 refused with 22/40 answered; `lfm25` 20/20 with
 `make eval`'s 34/34 remains the local default's alone.
 
 Anthropic spend: $12.53 this round, $16.56 cumulative.
+
+## 2026-09-19 The system prompt is a prosthetic, and it fits one model
+
+Full record: `docs/measurements/wording-is-model-specific-2026-09-19.md`.
+
+Every wording this repository ships was derived by measuring
+`qwen3.5-9b-q8` and patching where it failed. So the default configuration
+is the model **plus its own prosthetics**, and the 2026-09-18 reading of
+`bonsai2-27b` at 30/34 against the default's 34/34 was not a comparison
+between two models - it was a model wearing someone else's prosthetics.
+The user made that point; this round measures it.
+
+Two models x two wordings (`ORCHESTRA_PLANNER_WORDING=v1`, the pre-tuning
+literals, against today's `v6-unmatched-filter`), eval and corpus each:
+
+| model x wording           | eval  | corpus |
+| ------------------------- | ----- | ------ |
+| `qwen3.5-9b-q8` x v1      | 32/34 | 65     |
+| `qwen3.5-9b-q8` x default | 34/34 | 77     |
+| `bonsai2-27b` x v1        | 30/34 | 78     |
+| `bonsai2-27b` x default   | 30/34 | 81     |
+
+**The tuning is worth +12 corpus points to the model it was tuned on and
++3 to the other; on eval, +2 and nothing.** Untuned, the newcomer leads by
+thirteen corpus points (78 against 65) - the incumbent climbs to 77 by
+wearing four rounds of patches, reaching where the other model starts.
+
+Not all of it is model-specific: axis D (the vocabulary gap) gains +13 on
+**both**, while axis B gains +24 on the incumbent and 0 on `bonsai2-27b`,
+which already sat at 92. The split is between prompt text that supplies
+**information** (the date, what the catalogue means - it travels) and text
+that **compensates for a weakness** (don't retreat, don't drop the filter
+
+- it only helps the model with that weakness).
+
+**Consequence for procedure.** Requiring a candidate to pass the
+incumbent's baseline under the incumbent's wording measures the wrong
+thing. A model swap is: derive a wording for the candidate with the same
+budget of attempts the incumbent got (four rounds, most of them negative),
+measure both under their own wordings, then re-accept a baseline per model
+
+- accepting a baseline is a human act and part of the swap.
+  `ORCHESTRA_PICK_WORDING` (`be5bdcd`) and `ORCHESTRA_PLANNER_WORDING` make
+  that possible without touching what the incumbent uses.
+
+Open: whether a wording tuned for `bonsai2-27b` reaches 34/34. One attempt
+(`v2-strict-capabilities`) moved nothing, which is also what the
+incumbent's first attempts did.

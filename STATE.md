@@ -1,8 +1,21 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-18 (three Claude models and a ternary 27B on all four instruments)_
+_Last updated: 2026-09-19 (the wording is model-specific: +12 corpus points to the model it was tuned on, +3 to another)_
 
 ## Summary
+
+**2026-09-19 - the system prompt is a prosthetic fitted to
+`qwen3.5-9b-q8`.** Two models x two wordings: the tuning (`v1` →
+`v6-unmatched-filter`) is worth **+12 corpus points and +2 eval rows to
+the incumbent, +3 and 0 to `bonsai2-27b`**. Untuned, `bonsai2-27b` leads
+78 to 65 - the incumbent climbs to 77 by wearing four rounds of patches.
+So `make eval` 34/34 against 30/34 is mostly the prosthetic, not the
+model. Axis D gains +13 on both (information travels); axis B gains +24 on
+one and 0 on the other (weakness-compensation does not). A model swap
+therefore means deriving a wording for the candidate and re-accepting a
+baseline per model, not requiring the candidate to pass the incumbent's.
+See `DECISIONS.md` and
+`docs/measurements/wording-is-model-specific-2026-09-19.md`.
 
 **2026-09-18 - Haiku 4.5, Sonnet 5, Opus 5 and a newly added local
 `bonsai2-27b` each took a full pass over the four instruments.** Sonnet 5

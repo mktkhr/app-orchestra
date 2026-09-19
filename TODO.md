@@ -143,6 +143,18 @@ _Nothing in progress right now._
    with the local pick fixed and Jev called only for ordering, and a
    decision on the extra call per question.
 
+1. **Write a wording for `bonsai2-27b`, then judge it.** Measured
+   2026-09-19 (`wording-is-model-specific-2026-09-19.md`): the shipped
+   wording is worth +12 corpus points to `qwen3.5-9b-q8` and +3 to
+   `bonsai2-27b`; on eval, +2 and 0. Untuned, `bonsai2-27b` leads 78 to 65
+   on the corpus. So its 30/34 against the default's 34/34 is mostly the
+   absence of a wording of its own, and the comparison as it stands is not
+   between two models. What is owed: a wording derived for it with the
+   same budget of attempts the incumbent got (four rounds, most negative -
+   one attempt, `ORCHESTRA_PICK_WORDING=v2-strict-capabilities`, already
+   moved nothing), then a baseline accepted per model. Its four losses are
+   three escapes into `list_capabilities` and one form for an operation
+   that cannot act.
 1. **`bonsai2-27b` is a serious candidate for the default - and it needs a
    second look before it can be one.** Measured 2026-09-18
    (`frontier-full-2026-09-18.md`): corpus 81 (local 77), axis B 92 (local
