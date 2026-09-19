@@ -47,6 +47,7 @@ type Wording struct {
 func all() []Wording {
 	return []Wording{
 		v1(), v2Commit(), v3AskOnCollision(), v4CommitAndAsk(), v5ExamplesInTools(), v6UnmatchedFilter(),
+		v7Verb(), v8Specific(),
 	}
 }
 

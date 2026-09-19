@@ -98,7 +98,7 @@ func TestDefaultIsV6UnmatchedFilter(t *testing.T) {
 // section 4 lists them.
 var declaredNames = []string{
 	"v1", "v2-commit", "v3-ask-on-collision", "v4-commit-and-ask", "v5-examples-in-tools",
-	"v6-unmatched-filter",
+	"v6-unmatched-filter", "v7-verb", "v8-specific",
 }
 
 // TestNamesIsDeclaredOrderV1First asserts Names' exact order, declared,
@@ -240,4 +240,46 @@ func TestV6IsBuiltOnV2CommitPlusTheUnmatchedFilterRule(t *testing.T) {
 	require.NotNil(t, v6.CatalogueTool)
 	assert.Equal(t, "list inventory items", v6.CatalogueTool("list inventory items", nil),
 		"v6-unmatched-filter: CatalogueTool must be v1's, unchanged")
+}
+
+// TestV7AndV8DifferFromV6OnlyInSystemPrompt asserts v7-verb's and
+// v8-specific's shared shape: each is built on v6-unmatched-filter (today's
+// Default()) and differs from it in exactly SystemPrompt - AskUser,
+// ListCapabilities, ProposePanel and CatalogueTool are v6's, unchanged,
+// field for field.
+func TestV7AndV8DifferFromV6OnlyInSystemPrompt(t *testing.T) {
+	v6, foundV6 := wording.ByName("v6-unmatched-filter")
+	require.True(t, foundV6)
+
+	for _, name := range []string{"v7-verb", "v8-specific"} {
+		w, ok := wording.ByName(name)
+		require.True(t, ok)
+
+		assert.Contains(t, w.SystemPrompt, v6.SystemPrompt, "%s: SystemPrompt must extend v6's, not replace it", name)
+		assert.NotEqual(t, v6.SystemPrompt, w.SystemPrompt, "%s: SystemPrompt must add something", name)
+
+		assert.Equal(t, v6.AskUser, w.AskUser, "%s: AskUser must be v6's, unchanged", name)
+		assert.Equal(t, v6.ListCapabilities, w.ListCapabilities, "%s: ListCapabilities must be v6's, unchanged", name)
+		assert.Equal(t, v6.ProposePanel, w.ProposePanel, "%s: ProposePanel must be v6's, unchanged", name)
+
+		require.NotNil(t, w.CatalogueTool)
+		assert.Equal(t, "list inventory items", w.CatalogueTool("list inventory items", nil),
+			"%s: CatalogueTool must be v6's, unchanged", name)
+	}
+}
+
+// TestV7AndV8DifferOnlyFromEachOtherInSystemPrompt asserts the two new sets
+// are siblings, not variants of one another: same base (v6), same non-prompt
+// fields, different one-sentence addition.
+func TestV7AndV8DifferOnlyFromEachOtherInSystemPrompt(t *testing.T) {
+	v7, foundV7 := wording.ByName("v7-verb")
+	require.True(t, foundV7)
+
+	v8, foundV8 := wording.ByName("v8-specific")
+	require.True(t, foundV8)
+
+	assert.NotEqual(t, v7.SystemPrompt, v8.SystemPrompt)
+	assert.Equal(t, v7.AskUser, v8.AskUser)
+	assert.Equal(t, v7.ListCapabilities, v8.ListCapabilities)
+	assert.Equal(t, v7.ProposePanel, v8.ProposePanel)
 }
