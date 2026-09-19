@@ -25,8 +25,10 @@ export const AXIS_D2: readonly Question[] = [
   {
     id: "d2-01",
     axis: "D",
+    // "誰が来ているか" is answered by the plain attendance records as much as
+    // by the individual clock-in/out events; the question does not pick one.
     text: "誰が来ているか確かめたい",
-    answers: ["listAttendanceClockEvents"],
+    answers: ["listAttendanceClockEvents", "listAttendanceRecords"],
   },
   {
     id: "d2-02",
@@ -94,14 +96,18 @@ export const AXIS_D2: readonly Question[] = [
   {
     id: "d2-12",
     axis: "D",
-    text: "荷物をまとめて積み上げたい",
-    answers: ["createInventoryPallet"],
+    // "倉庫から倉庫へ動かす" is what the Transfer resource is for, as
+    // distinct from Shipment (goods leaving) or Receiving (goods arriving).
+    text: "倉庫から倉庫へ商品を動かしたい",
+    answers: ["createInventoryTransfer"],
   },
   {
     id: "d2-13",
     axis: "D",
-    text: "新しい箱に詰め替えたい",
-    answers: ["createInventoryPackingList"],
+    // "倉庫の中でどこに置くか" is what a storage location records, as
+    // distinct from the warehouse itself.
+    text: "倉庫の中でどこに置くか新しく決めたい",
+    answers: ["createInventoryStorageLocation"],
   },
   {
     id: "d2-14",
@@ -174,7 +180,10 @@ export const AXIS_D2: readonly Question[] = [
   {
     id: "d2-25",
     axis: "D",
-    text: "新しい決済手段を会社に届け出たい",
-    answers: ["createExpenseCorporateCard"],
+    // "先方に渡した" is what a payment record is; the wording is chosen to
+    // rule out settlement (account closing) or reimbursement (paying an
+    // employee back), both of which name a different Expense resource.
+    text: "かかった代金を先方に渡した記録を残したい",
+    answers: ["createExpensePayment"],
   },
 ];
