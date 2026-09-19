@@ -96,12 +96,148 @@ const (
 
 // The three fixed candidate lines, in S3's order, built from the ids and
 // phrases above so the id a response is matched against (parse.go) and
-// the id shown in the prompt can never drift apart.
+// the id shown in the prompt can never drift apart. These are exactly
+// Wording's v1 - DefaultWording()'s own values - kept as their own
+// package-level consts (rather than only reachable through
+// DefaultWording()) since prompt_internal_test.go's byte-identity
+// fixtures are written against them directly.
 const (
 	lineListCapabilities = IDListCapabilities + "\tplatform\t" + PhraseListCapabilities
 	lineProposePanel     = IDProposePanel + "\tplatform\t" + PhraseProposePanel
 	lineNone             = IDNone + "\tplatform\t" + PhraseNone
 )
+
+// Wording is one named set of the pick's three built-in candidate lines'
+// own Japanese phrasing (the PhraseListCapabilities/PhraseProposePanel/
+// PhraseNone constants above, for v1) - added because that phrasing is
+// model-specific (DECISIONS.md, 2026-09-19): tuned for qwen3.5-9b-q8 (34/34
+// on ORCHESTRA_PLANNER_STAGES=2 make eval), the same text reads
+// bonsai2-27b (a ternary 27B served through llama-swap) at 30/34, three of
+// its four losses the same shape - list_capabilities answered where a
+// create form, an ask or none was wanted (real-report-tardiness,
+// real-apply-paid-leave, real-decrease-inventory).
+//
+// Named, selected by ORCHESTRA_PICK_WORDING (internal/infra/config),
+// exactly the shape internal/adapter/planner/wording already gives the
+// toolcall planner's own words: a named set, DefaultWording(), selection
+// by env var, an unknown name failing startup naming every known set
+// (WordingNames()). A separate type from that package's own Wording -
+// the pick offers three fixed lines, not the toolcall planner's system
+// prompt/tool descriptions, and jev (internal/adapter/planner/jev) reads
+// PhraseListCapabilities et al. directly rather than through this type
+// (see that package's own mapping.go), so there is nothing here for the
+// two to share.
+type Wording struct {
+	// Name selects this set via ORCHESTRA_PICK_WORDING.
+	Name string
+	// ListCapabilities is lineListCapabilities' phrase column under this
+	// set.
+	ListCapabilities string
+	// ProposePanel is lineProposePanel's phrase column under this set.
+	ProposePanel string
+	// None is lineNone's phrase column under this set.
+	None string
+}
+
+// wordingV1Name is "v1".
+const wordingV1Name = "v1"
+
+// v1Wording is the text in the product today, byte for byte - built from
+// the same PhraseListCapabilities/PhraseProposePanel/PhraseNone constants
+// lineListCapabilities/lineProposePanel/lineNone above are, so the two can
+// never drift apart. A function, not a package-level value, for the same
+// gochecknoglobals reason internal/adapter/planner/wording.v1 is
+// (harness/quality/go/golangci.yml).
+func v1Wording() Wording {
+	return Wording{
+		Name:             wordingV1Name,
+		ListCapabilities: PhraseListCapabilities,
+		ProposePanel:     PhraseProposePanel,
+		None:             PhraseNone,
+	}
+}
+
+// wordingV2StrictCapabilitiesName is "v2-strict-capabilities".
+const wordingV2StrictCapabilitiesName = "v2-strict-capabilities"
+
+// v2StrictCapabilitiesListCapabilities extends v1's own
+// PhraseListCapabilities with an explicit exclusion, the same shape
+// PhraseNone already uses for its own "not this" clause: a question that
+// names a specific action - creating, recording, applying for something -
+// should not read as a request for the capabilities list just because
+// list_capabilities is the built-in the model reaches for when unsure.
+// bonsai2-27b's three same-shaped losses (v1Wording's own doc comment)
+// were exactly this: real-report-tardiness (遅刻を報告したい),
+// real-apply-paid-leave (有給を申請したい) and real-decrease-inventory
+// (在庫を減らしたい, which produced a form instead) all name an action,
+// yet the model answered list_capabilities. A genuine capability question
+// naming no action (在庫で何ができる？) still reads the first sentence
+// unchanged.
+const v2StrictCapabilitiesListCapabilities = PhraseListCapabilities +
+	"。作成・登録・申請など、特定の操作を行いたい質問には使わない。"
+
+// v2StrictCapabilities is a second, independent attempt at
+// ListCapabilities' own phrasing, for a model other than the one v1 is
+// tuned for (Wording's own doc comment) - ProposePanel and None are left
+// exactly v1's, since bonsai2-27b's losses never touched those two lines.
+func v2StrictCapabilities() Wording {
+	return Wording{
+		Name:             wordingV2StrictCapabilitiesName,
+		ListCapabilities: v2StrictCapabilitiesListCapabilities,
+		ProposePanel:     PhraseProposePanel,
+		None:             PhraseNone,
+	}
+}
+
+// allWordings lists every named Wording this package declares, in the
+// order WordingNames reports them - v1 first, since it is DefaultWording
+// and every candidate is written as a delta from it (v1Wording's and
+// v2StrictCapabilities' own doc comments).
+func allWordings() []Wording {
+	return []Wording{v1Wording(), v2StrictCapabilities()}
+}
+
+// DefaultWording is v1: today's text, byte for byte, selected whenever
+// ORCHESTRA_PICK_WORDING is unset.
+func DefaultWording() Wording {
+	return v1Wording()
+}
+
+// WordingByName looks a set up by Wording.Name, reporting false when name
+// is not one allWordings declares - the shape ORCHESTRA_PICK_WORDING's
+// validation (internal/infra/config) and pkg/app both need for an unknown
+// name to fail startup.
+func WordingByName(name string) (Wording, bool) {
+	for _, w := range allWordings() {
+		if w.Name == name {
+			return w, true
+		}
+	}
+
+	return Wording{}, false
+}
+
+// WordingNames lists every set's Name, in allWordings' declared order -
+// what an unknown ORCHESTRA_PICK_WORDING's startup error lists.
+func WordingNames() []string {
+	ws := allWordings()
+
+	names := make([]string, len(ws))
+	for i, w := range ws {
+		names[i] = w.Name
+	}
+
+	return names
+}
+
+// builtinLine renders one built-in candidate's own "id\tplatform\tphrase"
+// line - the same shape candidateLine gives a shortlist endpoint, except
+// the service column is always platformService's own display value
+// ("platform", candidatesFor's own constant) since none of the three
+// built-ins belongs to a configured service.
+func builtinLine(id, phrase string) string {
+	return id + "\tplatform\t" + phrase
+}
 
 // summaryFor is an endpoint's summary column: its own Summary, or - when
 // that is empty - the first line of its Description.
@@ -147,21 +283,23 @@ const builtinLineCount = 3
 // then the blank line, one candidate line per shortlist endpoint in
 // shortlist order, then the three fixed lines of S3.
 //
-// When both answers and turns are empty and offerProposePanel is true this
-// must build byte-identical output to before either parameter existed:
-// AC-S-103's own measurement, and the stages2 comparison it feeds, both
-// depend on the pick seeing exactly the same prompt it always has whenever
-// there is nothing new to tell it -
+// When both answers and turns are empty, offerProposePanel is true and w is
+// DefaultWording() this must build byte-identical output to before either
+// parameter existed: AC-S-103's own measurement, and the stages2 comparison
+// it feeds, both depend on the pick seeing exactly the same prompt it
+// always has whenever there is nothing new to tell it -
 // TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted
 // (prompt_internal_test.go) and TestPickByteIdenticalWithNoTurns
 // (picker_test.go) are the regression guards for that. offerProposePanel is
 // Picker.Pick's own O3 switch (docs/specs/offering.md - the same condition
 // usecase.ToolsFor's own appliesFromWorkspace already applies to the
-// built-in tool of the same name): lineProposePanel is left out of the
-// candidate list entirely, not merely described as unavailable, whenever
-// it is false.
+// built-in tool of the same name): the propose_panel line is left out of
+// the candidate list entirely, not merely described as unavailable,
+// whenever it is false. w selects the three built-ins' own phrasing
+// (Wording, ORCHESTRA_PICK_WORDING) - the ids themselves never change.
 func userMessage(
 	query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog, offerProposePanel bool,
+	w Wording,
 ) string {
 	lines := make([]string, 0, len(shortlist.Endpoints)+builtinLineCount)
 
@@ -169,13 +307,13 @@ func userMessage(
 		lines = append(lines, candidateLine(&shortlist.Endpoints[i]))
 	}
 
-	lines = append(lines, lineListCapabilities)
+	lines = append(lines, builtinLine(IDListCapabilities, w.ListCapabilities))
 
 	if offerProposePanel {
-		lines = append(lines, lineProposePanel)
+		lines = append(lines, builtinLine(IDProposePanel, w.ProposePanel))
 	}
 
-	lines = append(lines, lineNone)
+	lines = append(lines, builtinLine(IDNone, w.None))
 
 	return "質問: " + query + "\n" + answerLines(answers) + turnLines(turns, shortlist) + "\n候補:\n" +
 		strings.Join(lines, "\n")

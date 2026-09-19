@@ -241,6 +241,17 @@ export function variantSuffix(
   // unset).
   const maxTokensEnv = process.env["ORCHESTRA_PLANNER_MAX_TOKENS"];
   const maxTokens = maxTokensEnv === undefined ? "" : `-mt${maxTokensEnv}`;
+  // The pick stage's own named wording sets (2026-09-19,
+  // docs/specs/staging.md section 7; DECISIONS.md 2026-09-19): ORCHESTRA_PICK_WORDING,
+  // read the same direct way as ORCHESTRA_PLANNER_MAX_TOKENS just above -
+  // the platform's own environment, not a run.ts flag. "v1" (the default,
+  // today's text byte for byte) carries no suffix, matching every other
+  // suffix here; any other name gets its own "-pick<name>" suffix so a
+  // non-default pick wording's output files never collide with the
+  // platform's own default.
+  const pickWordingEnv = process.env["ORCHESTRA_PICK_WORDING"];
+  const pickWording =
+    pickWordingEnv === undefined || pickWordingEnv === "v1" ? "" : `-pick${pickWordingEnv}`;
 
-  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}${model}${anthropicThinking}${maxTokens}`;
+  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}${model}${anthropicThinking}${maxTokens}${pickWording}`;
 }

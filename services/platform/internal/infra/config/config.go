@@ -374,8 +374,8 @@ type Config struct {
 	// turns still reach "state" unchanged either way. Ignored when Picker
 	// is not PickerJev.
 	JevObjectInstructions bool
-	// HybridJevTimeout and HybridThreshold configure internal/adapter/planner/hybrid.Picker,
-	// read from ORCHESTRA_HYBRID_JEV_TIMEOUT and ORCHESTRA_HYBRID_THRESHOLD
+	PickWording           string // ORCHESTRA_PICK_WORDING; see config_pick_wording.go
+	// HybridJevTimeout and HybridThreshold configure internal/adapter/planner/hybrid.Picker
 	// (config_hybrid.go). Ignored when Picker is not PickerHybrid.
 	HybridJevTimeout time.Duration
 	HybridThreshold  float64
@@ -945,7 +945,7 @@ func loadPicker(cfg *Config) error {
 
 	cfg.JevObjectInstructions = os.Getenv("ORCHESTRA_JEV_OBJECT_INSTRUCTIONS") != ""
 
-	return nil
+	return loadPickWording(cfg)
 }
 
 // loadPickerAndGate calls loadPicker, then loadHybrid (config_hybrid.go),

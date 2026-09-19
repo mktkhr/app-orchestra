@@ -38,8 +38,8 @@ func TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted(t *te
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("在庫を見せて", nil, nil, catalog, true))
-	assert.Equal(t, want, userMessage("在庫を見せて", []usecase.Answer{}, []usecase.Turn{}, catalog, true),
+	assert.Equal(t, want, userMessage("在庫を見せて", nil, nil, catalog, true, DefaultWording()))
+	assert.Equal(t, want, userMessage("在庫を見せて", []usecase.Answer{}, []usecase.Turn{}, catalog, true, DefaultWording()),
 		"empty, non-nil answers and turns slices must build the same message as nil")
 }
 
@@ -54,7 +54,7 @@ func TestUserMessageWithoutOfferProposePanelOmitsItsLine(t *testing.T) {
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineNone
 
-	got := userMessage("在庫を見せて", nil, nil, catalog, false)
+	got := userMessage("在庫を見せて", nil, nil, catalog, false, DefaultWording())
 	assert.Equal(t, want, got)
 	assert.NotContains(t, got, "propose_panel")
 }
@@ -77,7 +77,7 @@ func TestUserMessageWithAnswersAddsOneLinePerAnswerBeforeTheCandidates(t *testin
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("注文を見たい", answers, nil, catalog, true))
+	assert.Equal(t, want, userMessage("注文を見たい", answers, nil, catalog, true, DefaultWording()))
 }
 
 // TestUserMessageWithTurnsAddsOneLinePerTurnAfterAnswers is the with-turns
@@ -108,5 +108,5 @@ func TestUserMessageWithTurnsAddsOneLinePerTurnAfterAnswers(t *testing.T) {
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("itm-001の詳細", nil, turns, catalog, true))
+	assert.Equal(t, want, userMessage("itm-001の詳細", nil, turns, catalog, true, DefaultWording()))
 }

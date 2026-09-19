@@ -27,6 +27,10 @@ type Picker struct {
 	// default is pickMaxTokens (200, today's behaviour), overridable via
 	// WithMaxTokens.
 	maxTokens int
+	// wording selects the three built-in candidates' own phrasing - New's
+	// default is DefaultWording() (v1, today's behaviour), overridable via
+	// WithWording.
+	wording Wording
 }
 
 var _ usecase.Picker = (*Picker)(nil)
@@ -45,6 +49,16 @@ func WithMaxTokens(maxTokens int) Option {
 	}
 }
 
+// WithWording overrides the three built-in candidates' own phrasing (New's
+// default is DefaultWording(), v1 - today's behaviour), read from
+// ORCHESTRA_PICK_WORDING (internal/infra/config, pkg/app) - the pick's own
+// equivalent of toolcall.WithWording.
+func WithWording(w Wording) Option {
+	return func(p *Picker) {
+		p.wording = w
+	}
+}
+
 // New builds a Picker over client, sending model on every request - the
 // same model the platform's toolcall.Planner is configured with (S6: "the
 // pick's model is the planner's model"). client is a chat.Completer, not a
@@ -52,7 +66,7 @@ func WithMaxTokens(maxTokens int) Option {
 // chat backend (chat.Client's OpenAI-compatible transport, or
 // internal/adapter/planner/chat/anthropic.Client).
 func New(client chat.Completer, model string, opts ...Option) *Picker {
-	p := &Picker{client: client, model: model, maxTokens: pickMaxTokens}
+	p := &Picker{client: client, model: model, maxTokens: pickMaxTokens, wording: DefaultWording()}
 
 	for _, opt := range opts {
 		opt(p)
@@ -92,7 +106,7 @@ func (p *Picker) Pick(
 		Model: p.model,
 		Messages: []chat.Message{
 			{Role: "system", Content: SystemPrompt},
-			{Role: "user", Content: userMessage(query, answers, turns, shortlist, offerProposePanel)},
+			{Role: "user", Content: userMessage(query, answers, turns, shortlist, offerProposePanel, p.wording)},
 		},
 		Temperature:        chat.Zero(),
 		MaxTokens:          &maxTokens,

@@ -8,6 +8,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/hybrid"
@@ -15,6 +16,13 @@ import (
 	"github.com/mktkhr/app-orchestra/services/platform/internal/adapter/planner/pick"
 	"github.com/mktkhr/app-orchestra/services/platform/internal/usecase"
 )
+
+// ErrInvalidPickWording is returned by New when Config.Picker.PickWording
+// names anything other than "" (pick.DefaultWording()) or one of
+// pick.WordingNames() - mirroring app.go's own ErrInvalidPlannerWording:
+// cmd/api always goes through config.Load's own validation first
+// (config.ErrInvalidPickWording).
+var ErrInvalidPickWording = errors.New("invalid Picker.PickWording")
 
 // stagesTwo is the one value of Config.LLM.Stages that turns staging on
 // (docs/specs/staging.md, S6) - named so the comparison below isn't a bare
@@ -85,7 +93,12 @@ func newPicker(cfg *Config, fanOut bool) (usecase.Picker, error) {
 			return nil, err
 		}
 
-		return pick.New(client, cfg.LLM.Model, pickOptions(cfg)...), nil
+		opts, err := pickOptionsWithWording(cfg)
+		if err != nil {
+			return nil, err
+		}
+
+		return pick.New(client, cfg.LLM.Model, opts...), nil
 	case PickerJev:
 		if cfg.Picker.JevAPIKey == "" {
 			return nil, ErrMissingJevAPIKey
@@ -121,6 +134,33 @@ func pickOptions(cfg *Config) []pick.Option {
 	return []pick.Option{pick.WithMaxTokens(cfg.LLM.PickMaxTokens)}
 }
 
+// resolvePickWording looks name up via pick.WordingByName, treating "" as
+// pick.DefaultWording() - the same "empty means the default, anything else
+// must be known" shape resolveWording (app.go) already gives the toolcall
+// planner's own wording.
+func resolvePickWording(name string) (pick.Wording, bool) {
+	if name == "" {
+		return pick.DefaultWording(), true
+	}
+
+	return pick.WordingByName(name)
+}
+
+// pickOptionsWithWording is pickOptions plus pick.WithWording, resolved
+// from cfg.Picker.PickWording (resolvePickWording) - split from pickOptions
+// itself since app_max_tokens_internal_test.go's own
+// TestPickOptionsIsNilWhenUnset/TestPickOptionsBuildsOneOptionWhenPositive
+// assert pickOptions' own MaxTokens-only shape (nil when unset), which an
+// always-appended WithWording option would break.
+func pickOptionsWithWording(cfg *Config) ([]pick.Option, error) {
+	w, ok := resolvePickWording(cfg.Picker.PickWording)
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrInvalidPickWording, cfg.Picker.PickWording)
+	}
+
+	return append(pickOptions(cfg), pick.WithWording(w)), nil
+}
+
 // newHybridPicker builds hybrid.New over a jev.Picker and a pick.Picker,
 // each built exactly as newPicker's own PickerJev/PickerLocal cases build
 // theirs - except the jev half here never takes jev.WithFanOutGate: that
@@ -149,7 +189,12 @@ func newHybridPicker(cfg *Config) (usecase.Picker, error) {
 		return nil, err
 	}
 
-	localPicker := pick.New(client, cfg.LLM.Model, pickOptions(cfg)...)
+	localOpts, err := pickOptionsWithWording(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	localPicker := pick.New(client, cfg.LLM.Model, localOpts...)
 
 	return hybrid.New(
 		jevPicker, localPicker,

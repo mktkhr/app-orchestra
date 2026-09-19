@@ -54,6 +54,7 @@ func main() {
 			JevObjectInstructions: cfg.JevObjectInstructions,
 			HybridJevTimeout:      cfg.HybridJevTimeout,
 			HybridThreshold:       cfg.HybridThreshold,
+			PickWording:           cfg.PickWording,
 		},
 		Gate: app.Gate{
 			Name:             cfg.Gate,

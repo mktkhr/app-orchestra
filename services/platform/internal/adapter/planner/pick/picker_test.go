@@ -446,3 +446,41 @@ func TestPickWithMaxTokensOverridesTheDefault(t *testing.T) {
 	require.True(t, ok)
 	assert.InDelta(t, 500.0, maxTokens, 0)
 }
+
+// TestPickWithWordingOverridesTheBuiltinPhrasing documents pick.WithWording:
+// TestPickSendsTheExactRequestTheStandInPickerSent already covers the
+// option-less default (DefaultWording, v1) reaching the request.
+func TestPickWithWordingOverridesTheBuiltinPhrasing(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(responseWith("listInventoryItems certain"))); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	v2, ok := pick.WordingByName("v2-strict-capabilities")
+	require.True(t, ok)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	picker := pick.New(client, "qwen3.5-9b-q8", pick.WithWording(v2))
+
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
+	require.NoError(t, err)
+
+	messages, ok := gotBody["messages"].([]any)
+	require.True(t, ok)
+	user, ok := messages[1].(map[string]any)
+	require.True(t, ok)
+
+	assert.Contains(t, user["content"], v2.ListCapabilities)
+	assert.NotContains(t, user["content"], "list_capabilities\tplatform\t"+pick.PhraseListCapabilities+"\n",
+		"the exact v1 candidate line must not appear once v2-strict-capabilities is selected")
+}

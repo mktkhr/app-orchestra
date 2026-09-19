@@ -274,6 +274,7 @@ type Picker struct {
 	// Ignored when Name is not PickerHybrid.
 	HybridJevTimeout time.Duration
 	HybridThreshold  float64
+	PickWording      string // mirrors config.Config.PickWording; see app_staging.go's resolvePickWording
 }
 
 // JevCriteriaV1 and JevCriteriaV2 are Picker.JevCriteria's two non-empty
@@ -404,8 +405,7 @@ var ErrInvalidPicker = errors.New("invalid Picker.Name, want \"\", \"local\", \"
 // for its own Jev half exactly as PickerJev does. Also returned when
 // Config.Gate.Name is GateJev and Config.Gate.JevAPIKey is empty, or
 // Config.ServiceRouter.Name is ServiceRouterJev and
-// Config.ServiceRouter.JevAPIKey is empty - the picker, the gate and the
-// service router share one error and one required key.
+// Config.ServiceRouter.JevAPIKey is empty - the three share one error/key.
 var ErrMissingJevAPIKey = errors.New(
 	"Picker.JevAPIKey is required when Picker.Name is \"jev\" or \"hybrid\", or Gate.JevAPIKey when Gate.Name is " +
 		"\"jev\", or ServiceRouter.JevAPIKey when ServiceRouter.Name is \"jev\"",
