@@ -213,9 +213,17 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
       ...(options.narrowing === undefined
         ? {}
         : {
-            ORCHESTRA_NARROWING_EMBED_MODEL: options.narrowing.embedModel,
-            ORCHESTRA_NARROWING_RERANK_MODEL: options.narrowing.rerankModel,
-            ORCHESTRA_NARROWING_K: String(options.narrowing.k),
+            // The embedding and reranking models, and K, are overridable
+            // from the caller's own environment the same way
+            // ORCHESTRA_LLM_MODEL is: a retrieval comparison needs to vary
+            // them without editing NARROWING, and unset keeps today's
+            // values byte-identical.
+            ORCHESTRA_NARROWING_EMBED_MODEL:
+              process.env["ORCHESTRA_NARROWING_EMBED_MODEL"] ?? options.narrowing.embedModel,
+            ORCHESTRA_NARROWING_RERANK_MODEL:
+              process.env["ORCHESTRA_NARROWING_RERANK_MODEL"] ?? options.narrowing.rerankModel,
+            ORCHESTRA_NARROWING_K:
+              process.env["ORCHESTRA_NARROWING_K"] ?? String(options.narrowing.k),
           }),
       ...(options.wording === undefined ? {} : { ORCHESTRA_PLANNER_WORDING: options.wording }),
       ...(options.thinking === undefined ? {} : { ORCHESTRA_PLANNER_THINKING: options.thinking }),

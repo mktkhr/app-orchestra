@@ -6,6 +6,8 @@
  * this split.
  */
 
+import { envSuffix } from "./flags-env-suffix.ts";
+
 /** `--wording a,b,c`'s names, deduplicated in first-seen order - `undefined` when `--wording` was not given at all. */
 export function wordingNames(): readonly string[] | undefined {
   const flagIndex = process.argv.indexOf("--wording");
@@ -154,114 +156,12 @@ export function variantSuffix(
   repeatPenalty?: number,
   stages?: 1 | 2,
 ): string {
-  // "on" gets its own suffix too: since 2026-09-16 the platform's default is
-  // off, so an explicit "on" is a distinct variant, not the plain pass.
   const thinkSuffix = { on: "-think", off: "-nothink" } as const;
   const nothink = thinking === undefined ? "" : thinkSuffix[thinking];
   const rp = repeatPenalty === undefined ? "" : `-rp${String(repeatPenalty)}`;
   const st = stages === undefined || stages === 1 ? "" : `-stages${String(stages)}`;
-  const picker = process.env["ORCHESTRA_PICKER"];
-  const jev = picker === "hybrid" ? "-hybrid" : picker === "jev" ? "-jev" : "";
-  // The Jev trial's second round (2026-09-17, "v2: richer criteria"):
-  // ORCHESTRA_JEV_CRITERIA, read the same direct way as ORCHESTRA_PICKER
-  // just above. Only meaningful alongside "-jev" (jev), but this suffix
-  // is appended whenever ORCHESTRA_JEV_CRITERIA is literally "v2"
-  // regardless of ORCHESTRA_PICKER, mirroring how `st` above does not
-  // itself check that a picker exists to be staged - the value's own
-  // presence is what names the variant. "v1" (the default) carries no
-  // suffix, matching `st`'s own no-suffix-for-the-default rule.
-  const criteria = process.env["ORCHESTRA_JEV_CRITERIA"] === "v2" ? "-v2" : "";
-  // The v3 Jev trial (2026-09-17, "a noul refusal gate in front of the
-  // local pick"): ORCHESTRA_GATE, read the same direct way as
-  // ORCHESTRA_PICKER/ORCHESTRA_JEV_CRITERIA just above - the gate is
-  // chosen through the platform's own environment, not a run.ts flag.
-  // Only "jev" carries a suffix; "none" (the default) does not, matching
-  // every other suffix here.
-  const gate = process.env["ORCHESTRA_GATE"] === "jev" ? "-gate" : "";
-  // The full-catalogue Jev trial's own follow-up (2026-09-18, "let Jev
-  // choose the service"): ORCHESTRA_SERVICE_ROUTER, read the same direct
-  // way as ORCHESTRA_GATE just above. Only "jev" carries a suffix; "none"
-  // (the default) does not, matching every other suffix here.
-  const router = process.env["ORCHESTRA_SERVICE_ROUTER"] === "jev" ? "-router" : "";
-  // The service router's own second criteria form (2026-09-18, "ops:
-  // every operation, not just a few names"): ORCHESTRA_SERVICE_ROUTER_CRITERIA,
-  // read the same direct way as ORCHESTRA_SERVICE_ROUTER just above.
-  // Appended after "-router" so the two forms' own output files never
-  // collide; only "ops" carries a suffix, "names" (the default) does
-  // not, matching every other suffix here.
-  const routerCriteria = process.env["ORCHESTRA_SERVICE_ROUTER_CRITERIA"] === "ops" ? "-ops" : "";
-  // The fill-stage experiment's own two arms (docs/measurements/jev-conditions.md):
-  // ORCHESTRA_FILL_ENUM and ORCHESTRA_FILL_SKIP_EMPTY, read the same direct
-  // way as ORCHESTRA_GATE/ORCHESTRA_SERVICE_ROUTER just above - each arm is
-  // chosen through the platform's own environment, not a run.ts flag, and
-  // the two are independent of each other and of every suffix above, so
-  // both can appear together.
-  const fillEnum = process.env["ORCHESTRA_FILL_ENUM"] === "jev" ? "-fillenum" : "";
-  const skipEmpty = process.env["ORCHESTRA_FILL_SKIP_EMPTY"] === "1" ? "-skipempty" : "";
-  // Arm 2's own two independent option-set changes (today's measurement,
-  // docs/measurements/jev-conditions.md): ORCHESTRA_FILL_ENUM_REFUSAL (a
-  // third sentinel option, "this operation cannot answer the question at
-  // all") and ORCHESTRA_FILL_ENUM_UNSET_WORDING (the __unset__ criterion's
-  // own wording), read the same direct way as ORCHESTRA_FILL_ENUM/
-  // ORCHESTRA_FILL_SKIP_EMPTY just above. Only meaningful alongside
-  // "-fillenum", but appended whenever the env var itself says so,
-  // matching every other suffix here; "narrow" (the default) carries no
-  // suffix, matching ORCHESTRA_SERVICE_ROUTER_CRITERIA's own
-  // "names"-carries-no-suffix rule. ORCHESTRA_FILL_ENUM_REFUSAL's own third
-  // value, "separate" (the whole-request judgements asked as their own
-  // questions instead of in-options sentinels - the category-error fix for
-  // the two ListInventoryItems rows docs/measurements/jev-conditions.md
-  // captured), gets its own "-refusalsep" suffix rather than reusing
-  // "-refusal": the two modes send a materially different request shape, so
-  // their own output files must never collide.
-  const refusalEnv = process.env["ORCHESTRA_FILL_ENUM_REFUSAL"];
-  const refusal = refusalEnv === "1" ? "-refusal" : refusalEnv === "separate" ? "-refusalsep" : "";
-  const unsetWording =
-    process.env["ORCHESTRA_FILL_ENUM_UNSET_WORDING"] === "wide" ? "-unsetwide" : "";
-  // A model comparison's own flag (boot.ts's ORCHESTRA_LLM_MODEL override):
-  // read the same direct way as every other env-sourced suffix above. Only
-  // a model other than the platform's own default, "qwen3.5-9b-q8", carries
-  // a suffix - the default (set explicitly or left unset) carries none,
-  // matching every other suffix here. Sanitised to `[a-z0-9.-]` so a model
-  // name can never break the output filename it becomes part of.
-  const DEFAULT_LLM_MODEL = "qwen3.5-9b-q8";
-  const llmModel = process.env["ORCHESTRA_LLM_MODEL"];
-  const model =
-    llmModel === undefined || llmModel === DEFAULT_LLM_MODEL
-      ? ""
-      : `-model-${llmModel.toLowerCase().replaceAll(/[^a-z0-9.-]/gu, "-")}`;
-  // The Anthropic thinking-comparison flag (docs/measurements: a
-  // 2026-09-15 round found thinking bought nothing on this task; the tree
-  // has changed since): ORCHESTRA_ANTHROPIC_THINKING, read the same direct
-  // way as ORCHESTRA_LLM_MODEL just above - the platform's own environment,
-  // not a run.ts flag. Only "on" carries a suffix; "off" (the default) and
-  // unset do not, matching every other suffix here, so a thinking-on run's
-  // output files never collide with the thinking-off ones.
-  const anthropicThinking = process.env["ORCHESTRA_ANTHROPIC_THINKING"] === "on" ? "-think" : "";
-  // The fill budget override for a thinking-on comparison (2026-09-19,
-  // docs/specs/shortlisting.md: the fixed 1024-token fill budget truncated
-  // 34 of 176 calls with thinking on, and the corpus score fell 81 -> 56):
-  // ORCHESTRA_PLANNER_MAX_TOKENS, read the same direct way as
-  // ORCHESTRA_ANTHROPIC_THINKING just above - the platform's own
-  // environment, not a run.ts flag. Any value carries its own "-mt<value>"
-  // suffix, unlike every boolean-ish suffix above, so a bigger-budget run's
-  // output files never collide with the platform's own default (1024,
-  // unset).
-  const maxTokensEnv = process.env["ORCHESTRA_PLANNER_MAX_TOKENS"];
-  const maxTokens = maxTokensEnv === undefined ? "" : `-mt${maxTokensEnv}`;
-  // The pick stage's own named wording sets (2026-09-19,
-  // docs/specs/staging.md section 7; DECISIONS.md 2026-09-19): ORCHESTRA_PICK_WORDING,
-  // read the same direct way as ORCHESTRA_PLANNER_MAX_TOKENS just above -
-  // the platform's own environment, not a run.ts flag. "v1" (the default,
-  // today's text byte for byte) carries no suffix, matching every other
-  // suffix here; any other name gets its own "-pick<name>" suffix so a
-  // non-default pick wording's output files never collide with the
-  // platform's own default.
-  const pickWordingEnv = process.env["ORCHESTRA_PICK_WORDING"];
-  const pickWording =
-    pickWordingEnv === undefined || pickWordingEnv === "v1" ? "" : `-pick${pickWordingEnv}`;
 
-  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}${model}${anthropicThinking}${maxTokens}${pickWording}`;
+  return `${nothink}${rp}${st}${envSuffix()}`;
 }
 
 /**

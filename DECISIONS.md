@@ -8698,3 +8698,41 @@ Where the work is, for axis D: the first-stage retriever (six of
 twenty-five answers dropped before anything downstream can help), then the
 pick stage (eight retrievable rows it gets wrong), then the examples
 (one row). Nothing adopted; nothing in the tree changed.
+
+## 2026-09-19 The five axes are not one number
+
+Full record: `docs/measurements/axes-are-not-addable-2026-09-19.md`.
+
+With axis D's ceiling traced to the first-stage retriever, the retriever
+became the thing to change. Six embedding configurations measured on the
+extension set through the product's own retrieval shape: `bge-m3-q8` leads
+on axis D (21/25 against the shipped `e5-large-q8`'s 19), `ruri-v3-310m-q8-mean`
+ties overall at a third of the size - and `ruri-v3-310m-q8` versus its
+`-mean` twin differ by **eight axis-D rows** on pooling alone.
+
+**Swapped in, it read +4 on all three models** (`bonsai2-27b` 60→64,
+`gemma4-12b-q8` 54→58, `qwen3.5-9b-q8` 50→54) - and unlike a wording the
+sign did not flip per model. On the original 100 questions the same swap
+reads **77→74 and 81→79**: both models lose. Not adopted.
+
+**The two sets disagree because the extension set is axes D and E only.**
+It was built that way to magnify the two axes that separate models, so it
+cannot see axis A - which is exactly what `bge-m3-q8` pays with (92→84 on
+both models).
+
+**The general form of that is the entry's point: the axes are different
+kinds of failure and should not be summed.** A miss on A (a plausible
+table of the wrong resource) and on B (受注 answered with 発注) is one the
+person cannot catch; a miss on D or E is visible or recoverable through
+the alternatives chips, which `correct@shown` already measures. So the
+eight points of axis A that `bge-m3-q8` costs are worth more than the
+seven of axis D it buys, and the -3 total understates the trade.
+
+Reading rules recorded with it: read the axes, not the sum; A and B
+first; D and E are partly recoverable; the extension set is a magnifier,
+confirm on the 100 before believing a difference.
+
+Under that reading `bonsai2-27b` looks better than its total suggests -
+equal to the incumbent on A, **+12 on B**, +13 on D, -4 on C - which is
+the argument for continuing to work on that model rather than the
+incumbent.

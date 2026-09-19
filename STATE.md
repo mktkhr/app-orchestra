@@ -1,8 +1,21 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-19 (axis D's ceiling is the retriever's, not the prompt's: 19 of 25 answers are retrievable at all)_
+_Last updated: 2026-09-19 (the five axes are not one number - a retriever swap gains on D/E and loses on A)_
 
 ## Summary
+
+**2026-09-19 - swapping the embedding retriever to `bge-m3-q8` reads +4 on
+every model on the D/E extension set and -3/-2 on the original 100.** Not
+adopted. The two sets disagree because the extension set carries axes D
+and E only, and the swap pays on axis A (92 → 84 on both models). The
+general finding recorded with it: **the axes are different kinds of
+failure and should not be summed** - a miss on A or B is one the person
+cannot catch, while D and E are visible or recoverable through the
+alternatives chips. Reading rules are in the record: axes not sums, A and
+B first, the extension set is a magnifier to confirm on the 100. Under
+that reading `bonsai2-27b` is equal to the incumbent on A, **+12 on B**,
++13 on D, -4 on C. See `DECISIONS.md` and
+`docs/measurements/axes-are-not-addable-2026-09-19.md`.
 
 **2026-09-19 - three prompt rounds were spent below a ceiling nobody had
 measured.** For the model-blind extension set, the product's own retrieval
