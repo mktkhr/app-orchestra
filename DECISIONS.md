@@ -8556,3 +8556,50 @@ measure both under their own wordings, then re-accept a baseline per model
 Open: whether a wording tuned for `bonsai2-27b` reaches 34/34. One attempt
 (`v2-strict-capabilities`) moved nothing, which is also what the
 incumbent's first attempts did.
+
+## 2026-09-19 Fifty model-blind questions, and the wording that costs points
+
+Full record: `docs/measurements/base-comparison-2026-09-19.md`.
+
+The wording ablation above showed the shipped prompt is a prosthetic
+fitted to `qwen3.5-9b-q8`. Three things followed from that: cross-model
+numbers taken under it are not comparisons; `make eval` is the incumbent's
+own regression gate, not a neutral instrument; and the two axes that
+actually separate models - D (vocabulary gap) and E (setting decoys) -
+were the smallest in the corpus, 15 and 10 questions, so one row moved 6.7
+or 10 points against a determinism band of about 7.
+
+So: **25 new axis-D and 25 new axis-E questions** (`7a1a69a`, four
+sharpened in `60988bc` after review), written by a subagent **forbidden to
+read any measurement result**, held apart from the original 100 so the
+recorded numbers stay comparable (`extensionQuestions()`), run with
+`--corpus ext` (`81c27d3`). Five local models x two wordings.
+
+| model                 | `v1`   | default | wording worth |
+| --------------------- | ------ | ------- | ------------- |
+| `qwen3.5-9b-q8`       | **38** | 50      | **+12**       |
+| `qwen3.5-9b` (Q4_K_M) | 46     | 54      | +8            |
+| `bonsai2-27b`         | **58** | **60**  | +2            |
+| `gemma4-12b-q8`       | **58** | 54      | **-4**        |
+| `gemma4-12b` (q4 QAT) | 48     | 52      | +4            |
+
+**The two question sets agree.** Fifty questions written today, blind,
+reproduce the original hundred's verdict: bare, the incumbent is last and
+`bonsai2-27b` leads; the wording is worth +12 to the incumbent and +2 to
+`bonsai2-27b` (the hundred said +12 and +3).
+
+**The wording can be negative.** `gemma4-12b-q8` reads 58 bare and 54
+under the default - the prosthetic written for another model costs it four
+points. No model lost ground on the original hundred; at 25 questions an
+axis, this is visible.
+
+**All of the wording's effect is on axis D; none is on axis E.** Axis E is
+unmoved between `v1` and the default for four of five models. The tuning
+is entirely a vocabulary-gap patch and does nothing about a settings decoy
+that out-scores the answer lexically. Which makes axis E the least
+contaminated single number these instruments produce: `bonsai2-27b` 76,
+`gemma4-12b-q8` 68, `qwen3.5-9b` 64, `qwen3.5-9b-q8` 60.
+
+Nothing in the tree changed: `ORCHESTRA_LLM_MODEL` stays
+`qwen3.5-9b-q8` and the default wording is untouched. What changed is what
+a future model comparison is allowed to claim.

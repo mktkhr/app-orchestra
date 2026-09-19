@@ -1,8 +1,21 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-19 (the wording is model-specific: +12 corpus points to the model it was tuned on, +3 to another)_
+_Last updated: 2026-09-19 (50 model-blind questions confirm it: bare, the shipped model is the weakest of five)_
 
 ## Summary
+
+**2026-09-19 - a second, model-blind question set confirms the wording
+finding and sharpens it.** 25 new axis-D and 25 new axis-E questions
+(`extensionQuestions()`, `--corpus ext`), written by a subagent forbidden
+to read any measurement result, held apart from the original 100. Five
+local models x two wordings: bare (`v1`) the shipped `qwen3.5-9b-q8` is
+**last at 38**, against `bonsai2-27b` and `gemma4-12b-q8` at 58; the
+wording is worth **+12** to the incumbent, +2 to `bonsai2-27b`, and
+**-4** to `gemma4-12b-q8` - a prompt tuned on one model's failures can
+cost another model points. All of its effect is on axis D; axis E does not
+move at all, which makes axis E the least contaminated number available
+(`bonsai2-27b` 76, `qwen3.5-9b-q8` 60). Nothing in the tree changed. See
+`DECISIONS.md` and `docs/measurements/base-comparison-2026-09-19.md`.
 
 **2026-09-19 - the system prompt is a prosthetic fitted to
 `qwen3.5-9b-q8`.** Two models x two wordings: the tuning (`v1` →
