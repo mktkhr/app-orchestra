@@ -8603,3 +8603,53 @@ contaminated single number these instruments produce: `bonsai2-27b` 76,
 Nothing in the tree changed: `ORCHESTRA_LLM_MODEL` stays
 `qwen3.5-9b-q8` and the default wording is untouched. What changed is what
 a future model comparison is allowed to claim.
+
+## 2026-09-19 Tuning for a model that is not the incumbent, and a wiring check that failed
+
+Full record: `docs/measurements/tuning-per-model-2026-09-19.md`.
+
+With the wording established as a prosthetic fitted to `qwen3.5-9b-q8`,
+the question became whether a prompt written for one of the other models
+buys anything, and at what cost. Economics from the numbers already held:
+the incumbent climbs 38 → 50 over four rounds of patches, three of them
+negative, and still sits below `bonsai2-27b`'s untuned 58. Tuning rescues
+a weak model; it does not raise a strong one. So: pick finalists bare,
+tune only those.
+
+**`gemma4-12b-q8` needed a removal, not an addition.** Bisecting the
+wording chain put the whole of its -4 on `v6-unmatched-filter`'s own added
+sentence - the one telling the model to ask rather than guess when a
+restricting word matches no enum value, written because the incumbent
+silently dropped filters. `gemma4-12b-q8` does not drop filters; the
+instruction only makes it hesitant. `v1` and `v2-commit` both read 58
+against the default's 54. A patch for a weakness a model does not have is
+a cost, not a neutral.
+
+**The mistake.** Two sentences written from `bonsai2-27b`'s own misses
+were added to the `wording` package (`v7-verb`, `v8-specific`, `f65cde8`)
+and measured: **byte-identical answers to the default on all 50
+questions**. `ORCHESTRA_PLANNER_WORDING` reaches the fill stage; which
+operation gets chosen is the pick stage's decision, and the pick stage
+carries its own system prompt that had never been parameterised. The
+experiment could not have moved anything. **A run that matches the
+baseline row for row is not a null result - it is a failed wiring check.**
+`f78d705` puts the system prompt inside `pick.Wording` (v1 byte-identical,
+default request unchanged) and adds `v3-verb` and `v4-specific`.
+
+**Then it worked, and not where it was aimed.** `bonsai2-27b` with pick
+wording `v3-verb`: 60 → **64**, four rows changed and all four from wrong
+to right. The sentence was written for three wrong-verb misses on axis D;
+axis D did not move, and axis E gained eight. Legible after the fact - an
+axis-E decoy is a `get*Setting`/`update*Threshold`, and "a question asking
+to record something calls the operation that creates it" pushes exactly
+those away. The reading was wrong about which axis; the sentence was right
+anyway.
+
+**Model-specificity runs both ways.** The same sentence on the other two:
+`gemma4-12b-q8` 54 → 56, `qwen3.5-9b-q8` 50 → **46**. A prompt is not a
+general improvement some models fail to exploit - it is a fit to one
+model's failure modes and a misfit elsewhere.
+
+`bonsai2-27b` now reads 58 bare, 60 shipped, **64** with one round of its
+own tuning. Nothing adopted: both wording env vars stay unset and
+`ORCHESTRA_LLM_MODEL` is unchanged.

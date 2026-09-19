@@ -1,8 +1,21 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-19 (50 model-blind questions confirm it: bare, the shipped model is the weakest of five)_
+_Last updated: 2026-09-19 (one round of tuning for bonsai2-27b: 60 → 64, and the same sentence costs the incumbent 4)_
 
 ## Summary
+
+**2026-09-19 - a prompt written for `bonsai2-27b` gains it four points and
+costs the incumbent four.** Pick-stage wording `v3-verb` (`f78d705`, which
+also made the pick stage's system prompt selectable at all): `bonsai2-27b`
+60 → **64**, `gemma4-12b-q8` 54 → 56, `qwen3.5-9b-q8` 50 → **46**. So
+model-specificity runs both ways - a prompt is a fit to one model's
+failure modes, a misfit elsewhere. `gemma4-12b-q8` needs no new wording,
+only the removal of `v6`'s own sentence (`v2-commit` restores it to 58
+from 54). On the way, a wiring check failed and is recorded as such: two
+sentences added to the _fill_ stage's wording produced byte-identical
+answers on all 50 questions, because the operation choice is the _pick_
+stage's. Nothing adopted; both wording env vars stay unset. See
+`DECISIONS.md` and `docs/measurements/tuning-per-model-2026-09-19.md`.
 
 **2026-09-19 - a second, model-blind question set confirms the wording
 finding and sharpens it.** 25 new axis-D and 25 new axis-E questions
