@@ -1,8 +1,23 @@
 # STATE.md — current implementation state
 
-_Last updated: 2026-09-19 (one round of tuning for bonsai2-27b: 60 → 64, and the same sentence costs the incumbent 4)_
+_Last updated: 2026-09-19 (axis D's ceiling is the retriever's, not the prompt's: 19 of 25 answers are retrievable at all)_
 
 ## Summary
+
+**2026-09-19 - three prompt rounds were spent below a ceiling nobody had
+measured.** For the model-blind extension set, the product's own retrieval
+puts an axis-D answer in the top 20 for **19 of 25 questions**, and K=50
+returns the same 19 - the missing six are never retrieved at all, so no
+wording can reach them. `bonsai2-27b` reads 44 there: eight rows the pick
+stage could win, six it cannot. That is why three wordings written for
+axis D each moved only axis E, where the answers _are_ retrieved (22/25).
+Two further readings from the same measurement: the examples layer is
+worth one row at K=20 (its 2026-09-15 result was measured at K=10), and it
+**costs** axis E two rows by giving settings decoys more surface to match
+on. With narrowing off entirely, the same model reads axis E 76 → 92 and
+axis D 44 → 40 - narrowing is a win where lexical similarity tracks the
+answer and a loss on the axis built from decoys. See `DECISIONS.md` and
+`docs/measurements/retrieval-ceiling-2026-09-19.md`.
 
 **2026-09-19 - a prompt written for `bonsai2-27b` gains it four points and
 costs the incumbent four.** Pick-stage wording `v3-verb` (`f78d705`, which

@@ -143,6 +143,19 @@ _Nothing in progress right now._
    with the local pick fixed and Jev called only for ordering, and a
    decision on the extra call per question.
 
+1. **Axis D's binding constraint is the first-stage retriever.** Measured
+   2026-09-19 (`retrieval-ceiling-2026-09-19.md`): on the model-blind
+   extension set the product's own narrowing retrieves an axis-D answer
+   into the top 20 for 19 of 25 questions, and **K=50 returns the same
+   19** - the other six never enter the first stage's results, so no
+   shortlist width, no examples layer and no prompt can reach them. Any
+   further axis-D work starts here (a different embedding model, a
+   lexical-plus-vector hybrid, or examples written for the questions that
+   are actually being lost), not in the wording. Two smaller findings from
+   the same run, both unexploited: the examples layer is worth one row at
+   K=20 while **costing axis E two rows**, and turning narrowing off moves
+   axis E from 76 to 92 on `bonsai2-27b` - the shortlist is what puts the
+   settings decoy in front of the answer.
 1. **Write a wording for `bonsai2-27b`, then judge it.** Measured
    2026-09-19 (`wording-is-model-specific-2026-09-19.md`): the shipped
    wording is worth +12 corpus points to `qwen3.5-9b-q8` and +3 to

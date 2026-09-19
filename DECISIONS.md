@@ -8653,3 +8653,48 @@ model's failure modes and a misfit elsewhere.
 `bonsai2-27b` now reads 58 bare, 60 shipped, **64** with one round of its
 own tuning. Nothing adopted: both wording env vars stay unset and
 `ORCHESTRA_LLM_MODEL` is unchanged.
+
+## 2026-09-19 The ceiling was in the retriever, not the prompt
+
+Full record: `docs/measurements/retrieval-ceiling-2026-09-19.md`.
+
+Three pick-stage wordings written from `bonsai2-27b`'s own axis-D misses
+each gained something on axis **E** and nothing at all on axis D (44
+throughout). After the third, the question that should have come first:
+**is the answer even among the twenty candidates the pick is shown?**
+
+Measured, in the product's own retrieval shape (examples embedded and read
+by the reranker, which the first attempt at this measurement got wrong by
+using `embedCatalogue` alone - that error is kept in the record):
+
+| retrieval           | axis D    | axis E |
+| ------------------- | --------- | ------ |
+| no examples, K=20   | 18/25     | 24/25  |
+| with examples, K=10 | 17/25     | 22/25  |
+| with examples, K=20 | **19/25** | 22/25  |
+| with examples, K=50 | **19/25** | 22/25  |
+
+**K=20 and K=50 are identical**, so the missing answers are not ranked
+21st-50th: the first-stage embedding retrieval never returns them. Axis
+D's ceiling on this set is **76%**, and `bonsai2-27b` reads 44 - eight
+rows the pick could win, six no prompt can. That is why three rounds of
+wording moved nothing there, and why they all landed on axis E instead,
+where the answers _are_ retrieved.
+
+**Two more findings from the same table.** The examples layer is worth one
+row here (18 → 19); the 2026-09-15 result that made it look decisive
+(axis D 33% → 80%) was measured at K=10, where ranking still had room.
+And the examples **cost** axis E two rows (24 → 22): a settings decoy
+gains matchable surface from them too, and the product ships this
+configuration.
+
+**The narrowing-off run reads differently in this light.** Same model,
+same questions, whole 1000-operation catalogue: axis E **76 → 92**, axis D
+44 → 40, overall 60 → 66. Narrowing is not uniformly good - it is a large
+win where lexical similarity tracks the answer and a net loss on the axis
+built out of decoys that lexical similarity loves.
+
+Where the work is, for axis D: the first-stage retriever (six of
+twenty-five answers dropped before anything downstream can help), then the
+pick stage (eight retrievable rows it gets wrong), then the examples
+(one row). Nothing adopted; nothing in the tree changed.
