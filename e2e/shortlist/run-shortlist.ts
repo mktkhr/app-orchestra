@@ -1,10 +1,10 @@
 import path from "node:path";
 
-import { questions } from "../narrowing/corpus/index.ts";
+import { extensionQuestions, questions, type Question } from "../narrowing/corpus/index.ts";
 import { signIn, type Session } from "../src/helpers/auth.ts";
 import { boot, NARROWING, type Booted } from "./boot.ts";
 import { safeOperationIds } from "./catalogue-safety.ts";
-import { variantSuffix } from "./flags.ts";
+import { missesVariant, passOutputName, variantSuffix, wordingOutputName } from "./flags.ts";
 import { writeMissesFromOutput } from "./misses.ts";
 import { alreadyDone, appendResult, outDir } from "./pass-io.ts";
 import { kindOf, postPlan } from "./plan-request.ts";
@@ -47,8 +47,12 @@ import type { QuestionResult } from "./score.ts";
  */
 
 /** Runs three sample questions and prints their raw responses, warning (not failing) if the first exceeds 5s (AC-H-107). */
-async function smokeTest(baseUrl: string, session: Session): Promise<void> {
-  const samples = questions().slice(0, 3);
+async function smokeTest(
+  baseUrl: string,
+  session: Session,
+  questionSet: () => readonly Question[],
+): Promise<void> {
+  const samples = questionSet().slice(0, 3);
 
   console.log("shortlist smoke test: 3 sample questions, raw /api/plan responses");
 
@@ -82,12 +86,13 @@ async function runQuestions(
   outputName: string,
   baseUrl: string,
   session: Session,
+  questionSet: () => readonly Question[],
 ): Promise<readonly QuestionResult[]> {
   const safeIds = safeOperationIds();
   const done = alreadyDone(outputName);
   const results: QuestionResult[] = [];
 
-  for (const question of questions()) {
+  for (const question of questionSet()) {
     if (done.has(question.id)) continue;
 
     const start = Date.now();
@@ -138,16 +143,22 @@ async function runQuestions(
   return results;
 }
 
-async function runPass(pass: "on" | "off"): Promise<void> {
+/** `pass` is `"on"` or `"off"`; `extCorpus` picks `passOutputName`'s `ext-` prefix (`on.jsonl`/`off.jsonl` vs `ext-on.jsonl`/`ext-off.jsonl`, flags.ts). */
+async function runPass(
+  pass: "on" | "off",
+  questionSet: () => readonly Question[],
+  extCorpus: boolean,
+): Promise<void> {
   const options = pass === "on" ? { narrowing: NARROWING } : {};
   const booted: Booted = await boot(options);
+  const outputName = passOutputName(pass, extCorpus);
 
   try {
     const session = await signIn(booted.baseUrl, "admin", booted.adminPassword);
 
-    if (pass === "on") await smokeTest(booted.baseUrl, session);
+    if (pass === "on") await smokeTest(booted.baseUrl, session, questionSet);
 
-    await runQuestions(pass, pass, booted.baseUrl, session);
+    await runQuestions(outputName, outputName, booted.baseUrl, session, questionSet);
   } finally {
     await booted.stop();
   }
@@ -172,14 +183,16 @@ async function runPass(pass: "on" | "off"): Promise<void> {
  */
 async function runWordingPass(
   name: string,
-  thinking?: "on" | "off",
-  repeatPenalty?: number,
-  stages?: 1 | 2,
-  narrowing?: "on" | "off",
+  thinking: "on" | "off" | undefined,
+  repeatPenalty: number | undefined,
+  stages: 1 | 2 | undefined,
+  narrowing: "on" | "off" | undefined,
+  questionSet: () => readonly Question[],
+  extCorpus: boolean,
 ): Promise<void> {
   const narrowingSuffix = narrowing === "off" ? "-narrowing-off" : "";
   const variant = `${name}${variantSuffix(thinking, repeatPenalty, stages)}${narrowingSuffix}`;
-  const outputName = `on-${variant}`;
+  const outputName = wordingOutputName(variant, extCorpus);
   const booted: Booted = await boot({
     ...(narrowing === "off" ? {} : { narrowing: NARROWING }),
     // "default" is a label for the report, not a wording the platform
@@ -195,30 +208,46 @@ async function runWordingPass(
   try {
     const session = await signIn(booted.baseUrl, "admin", booted.adminPassword);
 
-    await runQuestions(outputName, outputName, booted.baseUrl, session);
+    await runQuestions(outputName, outputName, booted.baseUrl, session, questionSet);
     // Reads the whole pass's file back - not just this run's freshly
     // appended rows - so a resumed pass's miss list still covers every
     // row, including ones a previous run already wrote (pass-io.ts's
-    // alreadyDone).
-    writeMissesFromOutput(variant, outputName);
+    // alreadyDone). `--corpus ext`'s own miss list carries an `ext-`
+    // prefix too (`misses-ext-<variant>.txt`), unlike the 100-question
+    // corpus's own (`misses-<variant>.txt`, unprefixed, unchanged) - so it
+    // never collides with the 100-question corpus's own miss list for the
+    // same wording/variant name.
+    writeMissesFromOutput(missesVariant(variant, extCorpus), outputName);
   } finally {
     await booted.stop();
   }
 }
 
-/** `run.ts`'s entry point for every corpus but `mid` (`run-mid.ts` owns that one) - see this file's own doc comment for every flag's meaning. */
+/**
+ * `run.ts`'s entry point for every corpus but `mid` (`run-mid.ts` owns that
+ * one) - see this file's own doc comment for every flag's meaning.
+ * `corpus` is `"ext"` for `--corpus ext` (the 50-question axis D/E
+ * extension corpus, `extensionQuestions()`) or `undefined` for the plain
+ * 100-question corpus (`questions()`) - the only difference between the
+ * two is which question set is asked and which output prefix
+ * (`ext-`/none) the pass functions above use; every flag composes with
+ * `ext` exactly as it does with the 100-question corpus.
+ */
 export async function runShortlist(
   names: readonly string[] | undefined,
   thinking: "on" | "off" | undefined,
   repeatPenalty: number | undefined,
   stages: 1 | 2 | undefined,
   narrowing?: "on" | "off",
+  corpus?: "ext",
 ): Promise<void> {
   const isVariant =
     thinking !== undefined ||
     repeatPenalty !== undefined ||
     stages !== undefined ||
     narrowing !== undefined;
+  const extCorpus = corpus === "ext";
+  const questionSet = extCorpus ? extensionQuestions : questions;
 
   if (names !== undefined) {
     // `v1` is always included first as a baseline, unless a thinking/
@@ -231,14 +260,30 @@ export async function runShortlist(
     for (const name of targets) {
       // Sequential and deliberate: one platform boot per wording, one at
       // a time (docs/plans/wording.md Task 2, Step 1).
-      await runWordingPass(name, thinking, repeatPenalty, stages, narrowing);
+      await runWordingPass(
+        name,
+        thinking,
+        repeatPenalty,
+        stages,
+        narrowing,
+        questionSet,
+        extCorpus,
+      );
     }
 
     return;
   }
 
   if (isVariant) {
-    await runWordingPass("default", thinking, repeatPenalty, stages, narrowing);
+    await runWordingPass(
+      "default",
+      thinking,
+      repeatPenalty,
+      stages,
+      narrowing,
+      questionSet,
+      extCorpus,
+    );
 
     return;
   }
@@ -246,6 +291,6 @@ export async function runShortlist(
   const onOnly = process.argv.includes("--on-only");
   const offOnly = process.argv.includes("--off-only");
 
-  if (!offOnly) await runPass("on");
-  if (!onOnly) await runPass("off");
+  if (!offOnly) await runPass("on", questionSet, extCorpus);
+  if (!onOnly) await runPass("off", questionSet, extCorpus);
 }

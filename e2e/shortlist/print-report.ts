@@ -22,6 +22,12 @@ import { scoreboard } from "./score.ts";
  * `mid-<variant>.jsonl` output file `run.ts --corpus mid` wrote, alongside
  * whatever shortlist reports above - `make eval-mid` runs `run.ts
  * --corpus mid` then this same script.
+ *
+ * And the extension corpus's own wording report for every `ext-<variant>`
+ * output file `run.ts --corpus ext` wrote (the 50-question axis D/E
+ * extension corpus, `extensionQuestions()`), reusing `renderWordingReport`
+ * unchanged - the extension set has only axes D and E, so `report.ts`
+ * prints `-` for the empty A/B/C cells rather than 0 or NaN.
  */
 
 const outDir = path.join(import.meta.dirname, "out");
@@ -42,6 +48,27 @@ function printWordingReport(names: readonly string[]): void {
     return { name, board: scoreboard(results), results };
   });
 
+  console.log(renderWordingReport(runs));
+}
+
+/** Every `ext-<variant>.jsonl` file's variant name, in directory order (the 50-question axis D/E extension corpus, `run.ts --corpus ext`). */
+function extNames(): readonly string[] {
+  if (!existsSync(outDir)) return [];
+
+  return readdirSync(outDir)
+    .map((entry) => /^ext-(.+)\.jsonl$/u.exec(entry)?.[1])
+    .filter((name): name is string => name !== undefined);
+}
+
+/** Renders the extension corpus's own report, reusing `renderWordingReport` unchanged - axes A/B/C read `-`, not 0 or NaN, since the extension set has none of those questions. */
+function printExtReport(names: readonly string[]): void {
+  const runs: readonly WordingRunReport[] = names.map((name) => {
+    const results = readResults(path.join(outDir, `ext-${name}.jsonl`));
+
+    return { name, board: scoreboard(results), results };
+  });
+
+  console.log("# extension corpus (axis D/E)");
   console.log(renderWordingReport(runs));
 }
 
@@ -90,3 +117,7 @@ if (existsSync(path.join(outDir, "on.jsonl")) && existsSync(path.join(outDir, "o
 const midNames = midVariantNames();
 
 if (midNames.length > 0) printMidReport(midNames);
+
+const extNamesList = extNames();
+
+if (extNamesList.length > 0) printExtReport(extNamesList);

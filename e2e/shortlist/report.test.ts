@@ -58,6 +58,20 @@ test("renderRun reports latency and how many requests exceeded 5000ms", () => {
   expect(rendered).toContain("over 5000ms: 1");
 });
 
+test("renderRun prints - for an axis with no questions, not 0 or NaN (the extension corpus is D/E only)", () => {
+  const rendered = renderRun("wording default", scoreboard([fakeResult({ axis: "D" })]));
+
+  expect(rendered).not.toContain("NaN");
+
+  // Axis A (no questions in this fake result set) is the correct@1 row's
+  // first column - it must read "-", not the "0" a naive zero-total rate
+  // would otherwise print.
+  const at1Rows = rendered.split("\n").filter((l) => l.startsWith("correct@1"));
+
+  expect(at1Rows).toHaveLength(1);
+  expect(at1Rows[0]).toMatch(/correct@1 \(higher better\)\s+-\s/u);
+});
+
 test("renderReferenceRows carries the stand-in picker's overall 83 and per-axis A100/B100/C72/D53/E70", () => {
   expect(STAND_IN_PICKER_ROW).toEqual({ A: 100, B: 100, C: 72, D: 53, E: 70, overall: 83 });
 });

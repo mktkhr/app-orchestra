@@ -11,18 +11,20 @@ import { runShortlist } from "./run-shortlist.ts";
 
 /**
  * `run.ts`'s own entry point: parses the command-line flags and dispatches
- * to `runShortlist` (the 100-question narrowing corpus, every corpus but
- * `mid`) or `runMid` (`--corpus mid`, docs/plans/midsizing.md Task 3, the
- * thirty-operation mid subset's sixty questions). Split into a thin
- * dispatcher plus `run-shortlist.ts` / `run-mid.ts` so no one file needs
- * more than ten dependencies or 300 lines (harness/quality/file-length.txt,
- * the import/max-dependencies lint rule).
+ * to `runShortlist` (the 100-question narrowing corpus, or, with
+ * `--corpus ext`, the 50-question axis D/E extension corpus) or `runMid`
+ * (`--corpus mid`, docs/plans/midsizing.md Task 3, the thirty-operation mid
+ * subset's sixty questions). Split into a thin dispatcher plus
+ * `run-shortlist.ts` / `run-mid.ts` so no one file needs more than ten
+ * dependencies or 300 lines (harness/quality/file-length.txt, the
+ * import/max-dependencies lint rule).
  *
- * Run with `node shortlist/run.ts` (invoked by `make eval-shortlist`) or
- * `node shortlist/run.ts --corpus mid` (`make eval-mid`) - every other
- * flag (`--wording`, `--thinking`, `--repeat-penalty`, `--stages`,
- * `--on-only`/`--off-only`) is `runShortlist`'s and `runMid`'s own, see
- * their doc comments.
+ * Run with `node shortlist/run.ts` (invoked by `make eval-shortlist`),
+ * `node shortlist/run.ts --corpus mid` (`make eval-mid`) or `node
+ * shortlist/run.ts --corpus ext` (the extension corpus, `ext-` output
+ * prefix) - every other flag (`--wording`, `--thinking`,
+ * `--repeat-penalty`, `--stages`, `--on-only`/`--off-only`) is
+ * `runShortlist`'s and `runMid`'s own, see their doc comments.
  */
 async function main(): Promise<void> {
   const names = wordingNames();
@@ -48,7 +50,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  await runShortlist(names, thinking, repeatPenalty, stages, narrowing);
+  // `corpus` is "ext" or undefined here - "mid" already returned above.
+  // `runShortlist` reads it to switch to `extensionQuestions()` and the
+  // `ext-` output prefix, otherwise behaving byte-identically to before
+  // this flag existed.
+  await runShortlist(names, thinking, repeatPenalty, stages, narrowing, corpus);
 }
 
 await main();

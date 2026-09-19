@@ -54,10 +54,10 @@ test("--corpus mid parses", () => {
   expect(corpusArg()).toBe("mid");
 });
 
-test("--corpus with anything else is a usage error", () => {
+test("--corpus with anything else is a usage error naming both mid and ext", () => {
   process.argv = [...process.argv, "--corpus", "shortlist"];
 
-  expect(() => corpusArg()).toThrow(/--corpus must be "mid"/u);
+  expect(() => corpusArg()).toThrow(/--corpus must be "mid" or "ext"/u);
 });
 
 test("--narrowing is undefined when not given", () => {

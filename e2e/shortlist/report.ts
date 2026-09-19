@@ -63,33 +63,51 @@ function pct(rate: number): number {
   return Math.round(rate * 100);
 }
 
+/**
+ * One axis's `rate` cell, from its own `total` - `"-"` for an axis with no
+ * questions at all (the extension corpus, `--corpus ext`, has none for A/B/C:
+ * `extensionQuestions()`, `e2e/narrowing/corpus/index.ts`, is axis D/E only),
+ * rather than the misleading `0` a zero-total tally's rate (`score.ts`'s own
+ * `tally`, already 0-not-NaN) would otherwise print.
+ */
+function cell(total: number, rate: number): string {
+  return total === 0 ? "-" : String(pct(rate));
+}
+
 function header(): string {
   const cols = COLUMNS.map((c) => c.padStart(CELL_WIDTH)).join("");
 
   return `${"".padEnd(28)}${cols}`;
 }
 
+/** One line, columns A-E then overall, formatted as a fixed-width table row - `cells` already rendered (numbers or `"-"`). */
+function textRow(label: string, cells: Readonly<Record<Column, string>>): string {
+  const padded = COLUMNS.map((k) => cells[k].padStart(CELL_WIDTH));
+
+  return `${label.padEnd(28)}${padded.join("")}`;
+}
+
 function scoreboardRows(board: Scoreboard): string {
-  const at1: Record<Column, number> = {
-    A: pct(board.byAxis.A.correctAt1Rate),
-    B: pct(board.byAxis.B.correctAt1Rate),
-    C: pct(board.byAxis.C.correctAt1Rate),
-    D: pct(board.byAxis.D.correctAt1Rate),
-    E: pct(board.byAxis.E.correctAt1Rate),
-    overall: pct(board.overall.correctAt1Rate),
+  const at1: Record<Column, string> = {
+    A: cell(board.byAxis.A.total, board.byAxis.A.correctAt1Rate),
+    B: cell(board.byAxis.B.total, board.byAxis.B.correctAt1Rate),
+    C: cell(board.byAxis.C.total, board.byAxis.C.correctAt1Rate),
+    D: cell(board.byAxis.D.total, board.byAxis.D.correctAt1Rate),
+    E: cell(board.byAxis.E.total, board.byAxis.E.correctAt1Rate),
+    overall: cell(board.overall.total, board.overall.correctAt1Rate),
   };
-  const atShown: Record<Column, number> = {
-    A: pct(board.byAxis.A.correctAtShownRate),
-    B: pct(board.byAxis.B.correctAtShownRate),
-    C: pct(board.byAxis.C.correctAtShownRate),
-    D: pct(board.byAxis.D.correctAtShownRate),
-    E: pct(board.byAxis.E.correctAtShownRate),
-    overall: pct(board.overall.correctAtShownRate),
+  const atShown: Record<Column, string> = {
+    A: cell(board.byAxis.A.total, board.byAxis.A.correctAtShownRate),
+    B: cell(board.byAxis.B.total, board.byAxis.B.correctAtShownRate),
+    C: cell(board.byAxis.C.total, board.byAxis.C.correctAtShownRate),
+    D: cell(board.byAxis.D.total, board.byAxis.D.correctAtShownRate),
+    E: cell(board.byAxis.E.total, board.byAxis.E.correctAtShownRate),
+    overall: cell(board.overall.total, board.overall.correctAtShownRate),
   };
 
   return [
-    row("correct@1 (higher better)", at1),
-    row("correct@shown (higher better)", atShown),
+    textRow("correct@1 (higher better)", at1),
+    textRow("correct@shown (higher better)", atShown),
   ].join("\n");
 }
 

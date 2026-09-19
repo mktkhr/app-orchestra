@@ -71,14 +71,22 @@ export function stagesArg(): 1 | 2 | undefined {
   return raw === "2" ? 2 : 1;
 }
 
-/** `--corpus mid` (docs/plans/midsizing.md, Task 3): the only corpus name this flag accepts besides the default (unset, the shortlist corpus) - anything else is a usage error, not a silent no-op. */
-export function corpusArg(): "mid" | undefined {
+/**
+ * `--corpus mid|ext` (docs/plans/midsizing.md, Task 3; the 50-question axis
+ * D/E extension corpus): the only corpus names this flag accepts besides
+ * the default (unset, the 100-question shortlist corpus) - anything else
+ * is a usage error, not a silent no-op. `ext` runs `extensionQuestions()`
+ * (`e2e/narrowing/corpus/index.ts`) through the same path as the
+ * 100-question corpus (`runShortlist`), with its own `ext-` output prefix
+ * so its files never collide with the 100-question runs.
+ */
+export function corpusArg(): "mid" | "ext" | undefined {
   const raw = flagValue("--corpus");
 
   if (raw === undefined) return undefined;
 
-  if (raw !== "mid") {
-    throw new Error(`--corpus must be "mid", got ${JSON.stringify(raw)}`);
+  if (raw !== "mid" && raw !== "ext") {
+    throw new Error(`--corpus must be "mid" or "ext", got ${JSON.stringify(raw)}`);
   }
 
   return raw;
@@ -254,4 +262,38 @@ export function variantSuffix(
     pickWordingEnv === undefined || pickWordingEnv === "v1" ? "" : `-pick${pickWordingEnv}`;
 
   return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}${model}${anthropicThinking}${maxTokens}${pickWording}`;
+}
+
+/**
+ * The plain on/off dual pass's output file base name (`run-shortlist.ts`'s
+ * `runPass`) - `"on"`/`"off"` for the 100-question corpus, unchanged, or
+ * `"ext-on"`/`"ext-off"` for `--corpus ext` (the 50-question axis D/E
+ * extension corpus), so its files never collide with the 100-question
+ * corpus's own.
+ */
+export function passOutputName(pass: "on" | "off", extCorpus: boolean): string {
+  return extCorpus ? `ext-${pass}` : pass;
+}
+
+/**
+ * A per-wording pass's output file base name (`run-shortlist.ts`'s
+ * `runWordingPass`), given `variant` (the wording name plus
+ * `variantSuffix`'s own suffix) - `"on-<variant>"` for the 100-question
+ * corpus, unchanged, or `"ext-<variant>"` for `--corpus ext`.
+ */
+export function wordingOutputName(variant: string, extCorpus: boolean): string {
+  return extCorpus ? `ext-${variant}` : `on-${variant}`;
+}
+
+/**
+ * A per-wording pass's miss-list name (`run-shortlist.ts`'s
+ * `runWordingPass`, `misses.ts`'s `writeMissesFromOutput`) - `variant`
+ * itself, unprefixed, for the 100-question corpus (unchanged: the miss
+ * list has never carried the `on-` prefix its own jsonl file does), or
+ * `"ext-<variant>"` for `--corpus ext`, so its own `misses-ext-<variant>.txt`
+ * never collides with the 100-question corpus's `misses-<variant>.txt` for
+ * the same wording/variant name.
+ */
+export function missesVariant(variant: string, extCorpus: boolean): string {
+  return extCorpus ? `ext-${variant}` : variant;
 }
