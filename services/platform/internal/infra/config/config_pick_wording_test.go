@@ -42,10 +42,10 @@ func TestLoadReadsAKnownPickWording(t *testing.T) {
 }
 
 // TestLoadReadsTheVerbAndSpecificPickWordings is TestLoadReadsAKnownPickWording's
-// own extension for v3-verb and v4-specific, the two new sets that carry a
-// changed SystemPrompt.
+// own extension for v3-verb, v4-specific and v5-commit-to-a-candidate, the
+// three sets that carry a changed SystemPrompt.
 func TestLoadReadsTheVerbAndSpecificPickWordings(t *testing.T) {
-	for _, name := range []string{"v3-verb", "v4-specific"} {
+	for _, name := range []string{"v3-verb", "v4-specific", "v5-commit-to-a-candidate"} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
 			t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
@@ -76,4 +76,5 @@ func TestLoadRejectsAnUnknownPickWording(t *testing.T) {
 	assert.Contains(t, err.Error(), "v2-strict-capabilities")
 	assert.Contains(t, err.Error(), "v3-verb")
 	assert.Contains(t, err.Error(), "v4-specific")
+	assert.Contains(t, err.Error(), "v5-commit-to-a-candidate")
 }

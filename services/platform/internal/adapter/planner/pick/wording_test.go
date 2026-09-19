@@ -62,7 +62,7 @@ func mustWording(t *testing.T, name string) pick.Wording {
 // TestWordingNamesIsDeclaredOrderV1First asserts WordingNames' exact
 // order, declared, not sorted - v1 first, since it is DefaultWording.
 func TestWordingNamesIsDeclaredOrderV1First(t *testing.T) {
-	assert.Equal(t, []string{"v1", "v2-strict-capabilities", "v3-verb", "v4-specific"}, pick.WordingNames())
+	assert.Equal(t, []string{"v1", "v2-strict-capabilities", "v3-verb", "v4-specific", "v5-commit-to-a-candidate"}, pick.WordingNames())
 }
 
 // TestWordingNamesAreUnique guards against a copy-pasted Name colliding
@@ -116,16 +116,16 @@ func TestV2StrictCapabilitiesDiffersOnlyInListCapabilities(t *testing.T) {
 		"v2-strict-capabilities must not touch SystemPrompt - it only changed a built-in line")
 }
 
-// TestVerbAndSpecificDifferFromV1OnlyInSystemPrompt asserts v3-verb's and
-// v4-specific's shared shape: each extends v1's SystemPrompt with exactly
-// one added sentence and touches nothing else - ListCapabilities,
-// ProposePanel and None stay v1's. One table-driven test, not two near
-// copies, so golangci's dupl linter (harness/quality/go/golangci.yml) sees
-// one body.
+// TestVerbAndSpecificDifferFromV1OnlyInSystemPrompt asserts v3-verb's,
+// v4-specific's and v5-commit-to-a-candidate's shared shape: each extends
+// v1's SystemPrompt with exactly one added sentence and touches nothing
+// else - ListCapabilities, ProposePanel and None stay v1's. One
+// table-driven test, not three near copies, so golangci's dupl linter
+// (harness/quality/go/golangci.yml) sees one body.
 func TestVerbAndSpecificDifferFromV1OnlyInSystemPrompt(t *testing.T) {
 	v1 := mustWording(t, "v1")
 
-	for _, name := range []string{"v3-verb", "v4-specific"} {
+	for _, name := range []string{"v3-verb", "v4-specific", "v5-commit-to-a-candidate"} {
 		t.Run(name, func(t *testing.T) {
 			w := mustWording(t, name)
 
@@ -149,16 +149,37 @@ func TestVerbAndSpecificDifferFromV1OnlyInSystemPrompt(t *testing.T) {
 func TestV3VerbAndV4SpecificNameNoResourceOrExample(t *testing.T) {
 	v1 := mustWording(t, "v1")
 
-	for _, name := range []string{"v3-verb", "v4-specific"} {
+	for _, name := range []string{"v3-verb", "v4-specific", "v5-commit-to-a-candidate"} {
 		w := mustWording(t, name)
 		addition := strings.TrimPrefix(w.SystemPrompt, v1.SystemPrompt)
 
 		assert.NotEmpty(t, strings.TrimSpace(addition), "%s: addition must not be empty", name)
 
-		for _, forbidden := range []string{"在庫", "勤怠", "listInventoryItems", "遅刻", "有給"} {
+		for _, forbidden := range []string{
+			"在庫", "勤怠", "listInventoryItems", "遅刻", "有給",
+			"見本", "壊れた", "常連", "特典", "定期", "サブスク", "契約",
+		} {
 			assert.NotContains(t, addition, forbidden, "%s: addition must name no resource or example", name)
 		}
 	}
+}
+
+// TestV5CommitToACandidateIsCompatibleWithTheBuiltInLines guards the task's
+// own constraint that the new sentence must not contradict the three
+// built-in candidate lines' own phrasing (PhraseListCapabilities,
+// PhraseNone): it neither retires list_capabilities' own wording nor
+// duplicates it, and it does not touch any of the three lines.
+func TestV5CommitToACandidateIsCompatibleWithTheBuiltInLines(t *testing.T) {
+	v1 := mustWording(t, "v1")
+	v5 := mustWording(t, "v5-commit-to-a-candidate")
+
+	addition := strings.TrimPrefix(v5.SystemPrompt, v1.SystemPrompt)
+
+	assert.Contains(t, addition, "使える操作の一覧",
+		"v5-commit-to-a-candidate must stay compatible with PhraseListCapabilities' own wording")
+	assert.Equal(t, v1.ListCapabilities, v5.ListCapabilities, "v5-commit-to-a-candidate must not touch ListCapabilities")
+	assert.Equal(t, v1.ProposePanel, v5.ProposePanel, "v5-commit-to-a-candidate must not touch ProposePanel")
+	assert.Equal(t, v1.None, v5.None, "v5-commit-to-a-candidate must not touch None")
 }
 
 // TestV2StrictCapabilitiesNamesAnExplicitActionExclusion asserts the

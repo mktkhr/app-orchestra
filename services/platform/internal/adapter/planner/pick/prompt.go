@@ -269,12 +269,60 @@ func v4Specific() Wording {
 	}
 }
 
+// wordingV5CommitToACandidateName is "v5-commit-to-a-candidate".
+const wordingV5CommitToACandidateName = "v5-commit-to-a-candidate"
+
+// v5CommitToACandidateSystemPromptAddition targets a fourth shape,
+// independent of v3-verb's and v4-specific's: bonsai2-27b answering
+// list_capabilities not because the wrong operation looked right, but
+// because it declined to commit to any operation at all, on a question a
+// shortlist candidate plainly serves (v1Wording's own doc comment, four of
+// bonsai2-27b's remaining losses after v3-verb, all the same shape). The
+// fill stage's own v2-commit wording (internal/adapter/planner/wording)
+// addresses the same instinct in the incumbent model with different words,
+// and does not help this one - so the fix has to land here, at the pick
+// stage's own choice, the same reasoning v3VerbSystemPromptAddition and
+// v4SpecificSystemPromptAddition give for why their own shapes are decided
+// here rather than in the fill stage. The sentence names no resource,
+// service or example question - it states the general rule only, appended
+// after SystemPrompt's own last instruction - and it is written to sit
+// beside PhraseListCapabilities and PhraseNone rather than against them:
+// list_capabilities still reads a question that asks what the system can
+// do at all (PhraseListCapabilities' own "使える操作の一覧そのものを求めて
+// いる"), and none still reads a question no candidate answers
+// (PhraseNone's own exclusion) - this sentence only narrows the case
+// between those two, where a candidate does fit but the model reached for
+// list_capabilities anyway.
+const v5CommitToACandidateSystemPromptAddition = "\n\n候補一覧の中に質問の求めることに応えられるものがあれば、" +
+	"使える操作の一覧を答えるのは質問が何ができるか自体を尋ねている場合に限り、それ以外では必ずその候補を選ぶこと。"
+
+// v5CommitToACandidateSystemPrompt is SystemPrompt with
+// v5CommitToACandidateSystemPromptAddition appended - v1's value plus
+// exactly this one sentence, nothing else.
+const v5CommitToACandidateSystemPrompt = SystemPrompt + v5CommitToACandidateSystemPromptAddition
+
+// v5CommitToACandidate targets the "declines to commit" shape in the
+// pick's own choice: a candidate that fits is passed over for
+// list_capabilities anyway. It differs from v1 by exactly one sentence
+// appended to SystemPrompt - ListCapabilities, ProposePanel and None are
+// v1's, unchanged.
+func v5CommitToACandidate() Wording {
+	return Wording{
+		Name:             wordingV5CommitToACandidateName,
+		SystemPrompt:     v5CommitToACandidateSystemPrompt,
+		ListCapabilities: PhraseListCapabilities,
+		ProposePanel:     PhraseProposePanel,
+		None:             PhraseNone,
+	}
+}
+
 // allWordings lists every named Wording this package declares, in the
 // order WordingNames reports them - v1 first, since it is DefaultWording
 // and every candidate is written as a delta from it (v1Wording's,
-// v2StrictCapabilities', v3Verb's and v4Specific's own doc comments).
+// v2StrictCapabilities', v3Verb's, v4Specific's and v5CommitToACandidate's
+// own doc comments).
 func allWordings() []Wording {
-	return []Wording{v1Wording(), v2StrictCapabilities(), v3Verb(), v4Specific()}
+	return []Wording{v1Wording(), v2StrictCapabilities(), v3Verb(), v4Specific(), v5CommitToACandidate()}
 }
 
 // DefaultWording is v1: today's text, byte for byte, selected whenever
