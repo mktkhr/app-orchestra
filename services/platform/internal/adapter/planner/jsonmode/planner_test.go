@@ -487,6 +487,47 @@ func TestPlanRendersTheCatalogueAndSetsResponseFormat(t *testing.T) {
 	assert.Contains(t, content, "検品保留")
 }
 
+// TestPlanWithNoMaxTokensSends1024 documents that an option-less Planner
+// (today's behaviour) sends max_tokens: 1024, chat.MaxTokens's own fixed
+// value - unchanged since ORCHESTRA_PLANNER_MAX_TOKENS started overriding
+// it.
+func TestPlanWithNoMaxTokensSends1024(t *testing.T) {
+	fixture := newPlanner(t, fixtureCatalog(), chatContent(t, `{"kind":"none"}`))
+
+	_, err := fixture.planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
+	require.NoError(t, err)
+
+	assert.InDelta(t, 1024.0, fixture.requests[0]["max_tokens"], 0)
+}
+
+// TestPlanWithMaxTokensOverridesTheDefault documents jsonmode.WithMaxTokens
+// - toolcall.WithMaxTokens's equivalent for this planner (measured
+// 2026-09-19, docs/specs/shortlisting.md).
+func TestPlanWithMaxTokensOverridesTheDefault(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(chatContent(t, `{"kind":"none"}`))); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := jsonmode.New(client, fixtureCatalog(), jsonmode.WithMaxTokens(4000))
+
+	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
+	require.NoError(t, err)
+
+	assert.InDelta(t, 4000.0, gotBody["max_tokens"], 0)
+}
+
 // TestPlanFallsBackWithoutResponseFormatWhenTheEndpointRejectsIt covers the
 // "falls back to asking for JSON in the prompt when it does not [accept
 // response_format]" half of Task 11: an endpoint that 400s on a request

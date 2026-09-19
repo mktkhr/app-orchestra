@@ -157,9 +157,14 @@ func Zero() *float64 {
 // nothing and, on a loop, costs the whole timeout for nothing in return.
 const planningMaxTokens = 1024
 
-// MaxTokens builds Request.MaxTokens's fixed value for every planning
-// call, for the same "mutable global" reason Zero returns a fresh pointer
-// rather than sharing one.
+// MaxTokens builds Request.MaxTokens's default value for a planning call,
+// for the same "mutable global" reason Zero returns a fresh pointer rather
+// than sharing one. It is only ever a default now: toolcall.New and
+// jsonmode.New start every Planner here, but toolcall.WithMaxTokens/
+// jsonmode.WithMaxTokens (config.Config.PlannerMaxTokens,
+// ORCHESTRA_PLANNER_MAX_TOKENS) override it per Planner - a thinking model
+// needs a bigger budget than a model that does not (measured 2026-09-19,
+// docs/specs/shortlisting.md).
 func MaxTokens() *int {
 	maxTokens := planningMaxTokens
 

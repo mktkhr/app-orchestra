@@ -146,12 +146,16 @@ type Planner struct {
 	// invented outright because the model was never told what day it
 	// is).
 	clock func() time.Time
+	// maxTokens is chat.Request.MaxTokens on every planning call - New's
+	// default is chat.MaxTokens's own value (1024, today's behaviour),
+	// overridable via WithMaxTokens, toolcall.WithMaxTokens's equivalent
+	// for this planner.
+	maxTokens int
 }
 
 var _ usecase.Planner = (*Planner)(nil)
 
-// Option configures a Planner beyond client and catalog. WithClock is the
-// only one today.
+// Option configures a Planner beyond client and catalog.
 type Option func(*Planner)
 
 // WithClock overrides the source of "today" buildMessages prefixes every
@@ -160,6 +164,15 @@ type Option func(*Planner)
 func WithClock(clock func() time.Time) Option {
 	return func(p *Planner) {
 		p.clock = clock
+	}
+}
+
+// WithMaxTokens overrides chat.Request.MaxTokens on every planning call
+// (New's default is chat.MaxTokens's own value, 1024 - today's behaviour) -
+// toolcall.WithMaxTokens's equivalent for this planner.
+func WithMaxTokens(maxTokens int) Option {
+	return func(p *Planner) {
+		p.maxTokens = maxTokens
 	}
 }
 
@@ -186,7 +199,8 @@ func New(client *chat.Client, catalog domain.Catalog, opts ...Option) *Planner {
 		responseFormatWithProposePanel:    buildResponseFormat(true),
 		responseFormatWithoutProposePanel: buildResponseFormat(false),
 
-		clock: time.Now,
+		clock:     time.Now,
+		maxTokens: *chat.MaxTokens(),
 	}
 
 	for _, opt := range opts {
@@ -312,8 +326,10 @@ func (p *Planner) complete(ctx context.Context, messages []chat.Message, offerPr
 		responseFormat = p.responseFormatWithProposePanel
 	}
 
+	maxTokens := p.maxTokens
+
 	resp, err := p.client.Complete(ctx, &chat.Request{
-		Messages: messages, ResponseFormat: responseFormat, Temperature: chat.Zero(), MaxTokens: chat.MaxTokens(),
+		Messages: messages, ResponseFormat: responseFormat, Temperature: chat.Zero(), MaxTokens: &maxTokens,
 	})
 	if err == nil {
 		return resp, nil
@@ -324,7 +340,7 @@ func (p *Planner) complete(ctx context.Context, messages []chat.Message, offerPr
 	}
 
 	resp, err = p.client.Complete(ctx, &chat.Request{
-		Messages: messages, Temperature: chat.Zero(), MaxTokens: chat.MaxTokens(),
+		Messages: messages, Temperature: chat.Zero(), MaxTokens: &maxTokens,
 	})
 	if err != nil {
 		return chat.Response{}, fmt.Errorf("calling chat completion without response_format: %w", err)

@@ -306,6 +306,63 @@ func logLineWith(t *testing.T, buf *bytes.Buffer, key string) map[string]any {
 	return nil
 }
 
+// TestPlanWithNoMaxTokensSends1024 documents that an option-less Planner
+// (today's behaviour) sends max_tokens: 1024, chat.MaxTokens's own fixed
+// value - unchanged since ORCHESTRA_PLANNER_MAX_TOKENS started overriding
+// it.
+func TestPlanWithNoMaxTokensSends1024(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(callResponse)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := toolcall.New(client, fixtureCatalog())
+
+	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
+	require.NoError(t, err)
+
+	assert.InDelta(t, 1024.0, gotBody["max_tokens"], 0)
+}
+
+// TestPlanWithMaxTokensOverridesTheDefault documents WithMaxTokens: a
+// thinking model needs a bigger budget than chat.MaxTokens's fixed 1024
+// (measured 2026-09-19, docs/specs/shortlisting.md).
+func TestPlanWithMaxTokensOverridesTheDefault(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(callResponse)); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	planner := toolcall.New(client, fixtureCatalog(), toolcall.WithMaxTokens(4000))
+
+	_, err := planner.Plan(context.Background(), "何か", nil, nil, usecase.ToolsFor(fixtureCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"}), nil)
+	require.NoError(t, err)
+
+	assert.InDelta(t, 4000.0, gotBody["max_tokens"], 0)
+}
+
 // TestPlanTruncationLogCarriesReasoningCompletionTokensAndThinking is the
 // evidence half of the facts recorded 2026-09-16: today, a truncated
 // answer's warn log carries only "content", empty whenever thinking

@@ -166,5 +166,10 @@ func loadFill(cfg *Config) error {
 
 	cfg.FillEnumUnsetWording = unsetWording
 
-	return nil
+	// loadPlannerMaxTokens (config_max_tokens.go) is chained onto this
+	// function's own tail, rather than called as its own step from
+	// Load/loadLLM (config.go), for the same reason loadServiceRouter's
+	// own tail calls this function instead: config.go is already at its
+	// own 1000-line cap (harness/quality/file-length.txt).
+	return loadPlannerMaxTokens(cfg)
 }

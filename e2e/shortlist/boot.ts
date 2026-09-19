@@ -104,6 +104,8 @@ let usedPorts: readonly number[] = [];
  * addition here is the whole diff.
  */
 const JEV_TRIAL_ENV_VARS = [
+  "ORCHESTRA_PLANNER_MAX_TOKENS",
+  "ORCHESTRA_PLANNER_PICK_MAX_TOKENS",
   "ORCHESTRA_LLM_PROVIDER",
   "ANTHROPIC_API_KEY",
   "ORCHESTRA_ANTHROPIC_THINKING",

@@ -185,7 +185,7 @@ type LLM struct {
 	// makes build also construct a pick.Picker over this same LLM and
 	// pass usecase.WithPicker/WithStages(2) to NewOrchestrator
 	// (docs/specs/staging.md, S1, S6).
-	Stages int
+	MaxTokens, PickMaxTokens, Stages int // MaxTokens/PickMaxTokens: app_max_tokens.go; 0 means that planner's own default
 	// Today mirrors config.Config.PlannerToday: nil (every test and
 	// caller that predates this option) leaves both planners on the real
 	// clock (toolcall.New/jsonmode.New's own default, time.Now); set,
@@ -965,20 +965,20 @@ func toolcallOptions(cfg *Config, w *wording.Wording) []toolcall.Option {
 		opts = append(opts, toolcall.WithClock(fixedClock(*cfg.LLM.Today)))
 	}
 
-	return opts
+	return append(opts, toolcallMaxTokensOptions(cfg)...)
 }
 
 // jsonmodeOptions builds the jsonmode.Option list newPlanner passes to
-// jsonmode.New: WithClock when cfg.LLM.Today is set, left off entirely
-// otherwise so New's own default (time.Now) applies exactly as it did
-// before this option existed - the same reasoning toolcallOptions already
-// applies to toolcall.WithClock.
+// jsonmode.New: WithClock when cfg.LLM.Today is set, plus
+// jsonmodeMaxTokensOptions (app_max_tokens.go) - both left off entirely
+// otherwise so New's own defaults (time.Now, chat.MaxTokens's value)
+// apply exactly as they did before either option existed.
 func jsonmodeOptions(cfg *Config) []jsonmode.Option {
 	if cfg.LLM.Today == nil {
-		return nil
+		return jsonmodeMaxTokensOptions(cfg)
 	}
 
-	return []jsonmode.Option{jsonmode.WithClock(fixedClock(*cfg.LLM.Today))}
+	return append([]jsonmode.Option{jsonmode.WithClock(fixedClock(*cfg.LLM.Today))}, jsonmodeMaxTokensOptions(cfg)...)
 }
 
 // fixedClock returns a clock func that always answers today, regardless

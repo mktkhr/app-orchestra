@@ -230,6 +230,17 @@ export function variantSuffix(
   // unset do not, matching every other suffix here, so a thinking-on run's
   // output files never collide with the thinking-off ones.
   const anthropicThinking = process.env["ORCHESTRA_ANTHROPIC_THINKING"] === "on" ? "-think" : "";
+  // The fill budget override for a thinking-on comparison (2026-09-19,
+  // docs/specs/shortlisting.md: the fixed 1024-token fill budget truncated
+  // 34 of 176 calls with thinking on, and the corpus score fell 81 -> 56):
+  // ORCHESTRA_PLANNER_MAX_TOKENS, read the same direct way as
+  // ORCHESTRA_ANTHROPIC_THINKING just above - the platform's own
+  // environment, not a run.ts flag. Any value carries its own "-mt<value>"
+  // suffix, unlike every boolean-ish suffix above, so a bigger-budget run's
+  // output files never collide with the platform's own default (1024,
+  // unset).
+  const maxTokensEnv = process.env["ORCHESTRA_PLANNER_MAX_TOKENS"];
+  const maxTokens = maxTokensEnv === undefined ? "" : `-mt${maxTokensEnv}`;
 
-  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}${model}${anthropicThinking}`;
+  return `${nothink}${rp}${st}${jev}${criteria}${gate}${router}${routerCriteria}${fillEnum}${skipEmpty}${refusal}${unsetWording}${model}${anthropicThinking}${maxTokens}`;
 }

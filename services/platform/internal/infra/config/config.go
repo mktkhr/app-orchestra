@@ -331,7 +331,7 @@ type Config struct {
 	// every eval case at baseline). Only pkg/app.build reads this, to
 	// decide whether to also build a usecase.Picker (pick.New) and pass
 	// usecase.WithPicker alongside usecase.WithStages.
-	PlannerStages int
+	PlannerStages, PlannerMaxTokens, PlannerPickMaxTokens int // last two: config_max_tokens.go, 1024/200 when unset
 	// PlannerToday pins the planners' "today" (toolcall.WithClock,
 	// jsonmode.WithClock) to local midnight on this date, read from
 	// ORCHESTRA_PLANNER_TODAY (a YYYY-MM-DD date). nil (unset) means the

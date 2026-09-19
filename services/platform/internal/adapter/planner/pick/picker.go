@@ -23,9 +23,27 @@ const pickMaxTokens = 200
 type Picker struct {
 	client chat.Completer
 	model  string
+	// maxTokens is chat.Request.MaxTokens on every pick call - New's
+	// default is pickMaxTokens (200, today's behaviour), overridable via
+	// WithMaxTokens.
+	maxTokens int
 }
 
 var _ usecase.Picker = (*Picker)(nil)
+
+// Option configures a Picker beyond client and model. WithMaxTokens is the
+// only one today.
+type Option func(*Picker)
+
+// WithMaxTokens overrides chat.Request.MaxTokens on every pick call (New's
+// default is pickMaxTokens, 200 - today's behaviour), mirroring
+// toolcall.WithMaxTokens for the pick stage's own, smaller budget
+// (docs/specs/staging.md section 4).
+func WithMaxTokens(maxTokens int) Option {
+	return func(p *Picker) {
+		p.maxTokens = maxTokens
+	}
+}
 
 // New builds a Picker over client, sending model on every request - the
 // same model the platform's toolcall.Planner is configured with (S6: "the
@@ -33,8 +51,14 @@ var _ usecase.Picker = (*Picker)(nil)
 // concrete *chat.Client, so the same Picker works unchanged over either
 // chat backend (chat.Client's OpenAI-compatible transport, or
 // internal/adapter/planner/chat/anthropic.Client).
-func New(client chat.Completer, model string) *Picker {
-	return &Picker{client: client, model: model}
+func New(client chat.Completer, model string, opts ...Option) *Picker {
+	p := &Picker{client: client, model: model, maxTokens: pickMaxTokens}
+
+	for _, opt := range opts {
+		opt(p)
+	}
+
+	return p
 }
 
 // Pick sends query, answers, turns and shortlist to the model in the
@@ -62,7 +86,7 @@ func (p *Picker) Pick(
 
 	offerProposePanel := planCtx.WorkspaceID != ""
 
-	maxTokens := pickMaxTokens
+	maxTokens := p.maxTokens
 
 	resp, err := p.client.Complete(ctx, &chat.Request{
 		Model: p.model,

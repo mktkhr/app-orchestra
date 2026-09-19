@@ -416,3 +416,33 @@ func TestPickOnEmptyShortlistNeverCallsTheModel(t *testing.T) {
 	assert.Equal(t, usecase.Pick{Kind: usecase.PickNone}, got)
 	assert.Zero(t, calls, "an empty shortlist must never reach the model")
 }
+
+// TestPickWithMaxTokensOverridesTheDefault documents pick.WithMaxTokens:
+// TestPickSendsTheExactRequestTheStandInPickerSent already covers the
+// option-less default (200) reaching the request.
+func TestPickWithMaxTokensOverridesTheDefault(t *testing.T) {
+	var gotBody map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decoding request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if _, err := w.Write([]byte(responseWith("listInventoryItems certain"))); err != nil {
+			t.Errorf("writing fixture response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
+	picker := pick.New(client, "qwen3.5-9b-q8", pick.WithMaxTokens(500))
+
+	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
+	require.NoError(t, err)
+
+	maxTokens, ok := gotBody["max_tokens"].(float64)
+	require.True(t, ok)
+	assert.InDelta(t, 500.0, maxTokens, 0)
+}

@@ -85,7 +85,7 @@ func newPicker(cfg *Config, fanOut bool) (usecase.Picker, error) {
 			return nil, err
 		}
 
-		return pick.New(client, cfg.LLM.Model), nil
+		return pick.New(client, cfg.LLM.Model, pickOptions(cfg)...), nil
 	case PickerJev:
 		if cfg.Picker.JevAPIKey == "" {
 			return nil, ErrMissingJevAPIKey
@@ -106,6 +106,19 @@ func newPicker(cfg *Config, fanOut bool) (usecase.Picker, error) {
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrInvalidPicker, cfg.Picker.Name)
 	}
+}
+
+// pickOptions builds the pick.Option list newPicker/newHybridPicker pass to
+// pick.New: WithMaxTokens when cfg.LLM.PickMaxTokens is positive, left off
+// entirely otherwise so New's own default (pickMaxTokens, 200) applies
+// exactly as it did before this option existed - the same reasoning
+// toolcallOptions already applies to toolcall.WithMaxTokens.
+func pickOptions(cfg *Config) []pick.Option {
+	if cfg.LLM.PickMaxTokens <= 0 {
+		return nil
+	}
+
+	return []pick.Option{pick.WithMaxTokens(cfg.LLM.PickMaxTokens)}
 }
 
 // newHybridPicker builds hybrid.New over a jev.Picker and a pick.Picker,
@@ -136,7 +149,7 @@ func newHybridPicker(cfg *Config) (usecase.Picker, error) {
 		return nil, err
 	}
 
-	localPicker := pick.New(client, cfg.LLM.Model)
+	localPicker := pick.New(client, cfg.LLM.Model, pickOptions(cfg)...)
 
 	return hybrid.New(
 		jevPicker, localPicker,

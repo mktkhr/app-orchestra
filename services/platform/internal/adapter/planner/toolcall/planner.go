@@ -60,6 +60,10 @@ type Planner struct {
 	// means neither is sent - today's behaviour.
 	repeatPenalty *float64
 	repeatLastN   *int
+	// maxTokens is chat.Request.MaxTokens on every planning call - New's
+	// default is chat.MaxTokens's own value (1024, today's behaviour),
+	// overridable via WithMaxTokens.
+	maxTokens int
 	// clock is what buildUserContent asks for "today" (WithClock's own
 	// doc comment): time.Now by default, so the running platform always
 	// prefixes the user message with the real date, but a test can pin
@@ -122,6 +126,18 @@ func WithRepeatPenalty(penalty float64, lastN int) Option {
 	}
 }
 
+// WithMaxTokens overrides chat.Request.MaxTokens on every planning call
+// (New's default is chat.MaxTokens's own value, 1024 - today's behaviour).
+// A thinking model needs a bigger budget than a model that does not
+// (measured 2026-09-19, docs/specs/shortlisting.md: 34 of 176 calls
+// stopped at the fixed 1024 with thinking on, and the corpus score fell
+// 81 -> 56).
+func WithMaxTokens(maxTokens int) Option {
+	return func(p *Planner) {
+		p.maxTokens = maxTokens
+	}
+}
+
 // New builds a Planner. catalog is needed to resolve the service an
 // operation id belongs to (see resolveService) - a tool call names only
 // the operation, never the service, so the tool-calling wire format alone
@@ -129,7 +145,10 @@ func WithRepeatPenalty(penalty float64, lastN int) Option {
 // behaviour) unless WithThinking(false) is given.
 func New(client chat.Completer, catalog domain.Catalog, opts ...Option) *Planner {
 	defaultWording := wording.Default()
-	p := &Planner{client: client, catalog: catalog, wording: &defaultWording, thinking: true, clock: time.Now}
+	p := &Planner{
+		client: client, catalog: catalog, wording: &defaultWording, thinking: true, clock: time.Now,
+		maxTokens: *chat.MaxTokens(),
+	}
 
 	for _, opt := range opts {
 		opt(p)
@@ -162,11 +181,13 @@ func (p *Planner) Plan(
 		effectiveThinking = *thinking
 	}
 
+	maxTokens := p.maxTokens
+
 	resp, err := p.client.Complete(ctx, &chat.Request{
 		Messages:           buildMessages(query, answers, turns, p.wording.SystemPrompt, p.clock()),
 		Tools:              shapeTools(tools, p.wording),
 		Temperature:        chat.Zero(),
-		MaxTokens:          chat.MaxTokens(),
+		MaxTokens:          &maxTokens,
 		ChatTemplateKwargs: chatTemplateKwargsFor(effectiveThinking),
 		RepeatPenalty:      p.repeatPenalty,
 		RepeatLastN:        p.repeatLastN,
