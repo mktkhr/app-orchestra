@@ -158,7 +158,7 @@ func pickOptionsWithWording(cfg *Config) ([]pick.Option, error) {
 		return nil, fmt.Errorf("%w: %q", ErrInvalidPickWording, cfg.Picker.PickWording)
 	}
 
-	return append(pickOptions(cfg), pick.WithWording(w)), nil
+	return append(pickOptions(cfg), pick.WithWording(&w)), nil
 }
 
 // newHybridPicker builds hybrid.New over a jev.Picker and a pick.Picker,

@@ -24,6 +24,16 @@ func userMessageCatalog() domain.Catalog {
 	}}
 }
 
+// defaultWordingPtr is DefaultWording(), addressable - userMessage takes
+// *Wording (gocritic's hugeParam, Wording having grown to 80 bytes once
+// SystemPrompt joined it), and DefaultWording()'s own return value is not
+// itself addressable.
+func defaultWordingPtr() *Wording {
+	w := DefaultWording()
+
+	return &w
+}
+
 // TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted is
 // the regression guard docs/specs/staging.md section 4 calls for (added
 // 2026-09-16 alongside the ask_user degradation fix, extended 2026-09-17
@@ -38,8 +48,8 @@ func TestUserMessageWithNoAnswersOrTurnsIsByteIdenticalToBeforeTheyExisted(t *te
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("在庫を見せて", nil, nil, catalog, true, DefaultWording()))
-	assert.Equal(t, want, userMessage("在庫を見せて", []usecase.Answer{}, []usecase.Turn{}, catalog, true, DefaultWording()),
+	assert.Equal(t, want, userMessage("在庫を見せて", nil, nil, catalog, true, defaultWordingPtr()))
+	assert.Equal(t, want, userMessage("在庫を見せて", []usecase.Answer{}, []usecase.Turn{}, catalog, true, defaultWordingPtr()),
 		"empty, non-nil answers and turns slices must build the same message as nil")
 }
 
@@ -54,7 +64,7 @@ func TestUserMessageWithoutOfferProposePanelOmitsItsLine(t *testing.T) {
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineNone
 
-	got := userMessage("在庫を見せて", nil, nil, catalog, false, DefaultWording())
+	got := userMessage("在庫を見せて", nil, nil, catalog, false, defaultWordingPtr())
 	assert.Equal(t, want, got)
 	assert.NotContains(t, got, "propose_panel")
 }
@@ -77,7 +87,7 @@ func TestUserMessageWithAnswersAddsOneLinePerAnswerBeforeTheCandidates(t *testin
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("注文を見たい", answers, nil, catalog, true, DefaultWording()))
+	assert.Equal(t, want, userMessage("注文を見たい", answers, nil, catalog, true, defaultWordingPtr()))
 }
 
 // TestUserMessageWithTurnsAddsOneLinePerTurnAfterAnswers is the with-turns
@@ -108,5 +118,5 @@ func TestUserMessageWithTurnsAddsOneLinePerTurnAfterAnswers(t *testing.T) {
 		"listInventoryItems\t在庫管理\t在庫の一覧を返す\n" +
 		lineListCapabilities + "\n" + lineProposePanel + "\n" + lineNone
 
-	assert.Equal(t, want, userMessage("itm-001の詳細", nil, turns, catalog, true, DefaultWording()))
+	assert.Equal(t, want, userMessage("itm-001の詳細", nil, turns, catalog, true, defaultWordingPtr()))
 }

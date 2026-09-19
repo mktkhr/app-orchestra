@@ -470,7 +470,7 @@ func TestPickWithWordingOverridesTheBuiltinPhrasing(t *testing.T) {
 	require.True(t, ok)
 
 	client := chat.New(chat.Config{BaseURL: server.URL, Model: "test-model"})
-	picker := pick.New(client, "qwen3.5-9b-q8", pick.WithWording(v2))
+	picker := pick.New(client, "qwen3.5-9b-q8", pick.WithWording(&v2))
 
 	_, err := picker.Pick(context.Background(), "在庫を見せて", nil, nil, shortlistCatalog(), usecase.PlanContext{WorkspaceID: "ws-1"})
 	require.NoError(t, err)

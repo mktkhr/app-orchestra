@@ -41,6 +41,24 @@ func TestLoadReadsAKnownPickWording(t *testing.T) {
 	assert.Equal(t, "v2-strict-capabilities", cfg.PickWording)
 }
 
+// TestLoadReadsTheVerbAndSpecificPickWordings is TestLoadReadsAKnownPickWording's
+// own extension for v3-verb and v4-specific, the two new sets that carry a
+// changed SystemPrompt.
+func TestLoadReadsTheVerbAndSpecificPickWordings(t *testing.T) {
+	for _, name := range []string{"v3-verb", "v4-specific"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("ORCHESTRA_DB_PATH", "/tmp/orchestra-test.db")
+			t.Setenv("ORCHESTRA_ADMIN_PASSWORD", "correct horse battery staple")
+			t.Setenv("ORCHESTRA_PICK_WORDING", name)
+
+			cfg, err := config.Load()
+
+			require.NoError(t, err)
+			assert.Equal(t, name, cfg.PickWording)
+		})
+	}
+}
+
 // TestLoadRejectsAnUnknownPickWording mirrors
 // TestLoadRejectsAnUnknownPlannerWording: an unrecognised
 // ORCHESTRA_PICK_WORDING fails startup, naming every known set in its
@@ -56,4 +74,6 @@ func TestLoadRejectsAnUnknownPickWording(t *testing.T) {
 	require.ErrorIs(t, err, config.ErrInvalidPickWording)
 	assert.Contains(t, err.Error(), "v1")
 	assert.Contains(t, err.Error(), "v2-strict-capabilities")
+	assert.Contains(t, err.Error(), "v3-verb")
+	assert.Contains(t, err.Error(), "v4-specific")
 }

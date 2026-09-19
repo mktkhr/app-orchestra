@@ -86,3 +86,53 @@ func TestNewWithPickWordingV2StrictCapabilitiesSendsItsOwnPhrasing(t *testing.T)
 	require.True(t, ok)
 	assert.Contains(t, user["content"], v2.ListCapabilities)
 }
+
+// TestNewWithPickWordingV3VerbSendsItsOwnSystemPrompt is
+// TestNewWithPickWordingV2StrictCapabilitiesSendsItsOwnPhrasing's own
+// counterpart for v3-verb: that set changes the system message, not a
+// candidate line, so the assertion reads the system message instead of the
+// user message.
+func TestNewWithPickWordingV3VerbSendsItsOwnSystemPrompt(t *testing.T) {
+	fixture := fixtureService(t)
+	capturing := fixtureChatServerCapturingRequests(t)
+
+	handler, err := app.New(&app.Config{
+		Services:      []app.Service{{Name: "fixture", URL: fixture.URL}},
+		LLM:           app.LLM{BaseURL: capturing.server.URL, Model: "test-model", Stages: 2},
+		Picker:        app.Picker{PickWording: "v3-verb"},
+		DBPath:        filepath.Join(t.TempDir(), "app.db"),
+		AdminPassword: appTestAdminPassword,
+	})
+	require.NoError(t, err)
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	signInTestAdmin(t, server)
+
+	raw, err := json.Marshal(map[string]string{"query": "widgets please"})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/plan", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := server.Client().Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotEmpty(t, *capturing.requests, "the pick must have sent at least one request")
+
+	v3, ok := pick.WordingByName("v3-verb")
+	require.True(t, ok)
+
+	pickRequest := (*capturing.requests)[0]
+	messages, ok := pickRequest["messages"].([]any)
+	require.True(t, ok)
+	require.Len(t, messages, 2)
+
+	system, ok := messages[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, v3.SystemPrompt, system["content"])
+	assert.NotEqual(t, pick.SystemPrompt, system["content"], "v3-verb must not send v1's unmodified SystemPrompt")
+}

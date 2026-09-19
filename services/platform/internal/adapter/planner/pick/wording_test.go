@@ -1,6 +1,7 @@
 package pick_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,6 +35,8 @@ func TestWordingByNameV1IsByteIdenticalToTodaysPhrases(t *testing.T) {
 	assert.Equal(t, wordingV1ListCapabilities, w.ListCapabilities)
 	assert.Equal(t, wordingV1ProposePanel, w.ProposePanel)
 	assert.Equal(t, wordingV1None, w.None)
+	assert.Equal(t, pick.SystemPrompt, w.SystemPrompt,
+		"v1's SystemPrompt must be pick.SystemPrompt (the package const), byte for byte")
 }
 
 // TestDefaultWordingIsV1 asserts ORCHESTRA_PICK_WORDING unset (internal/infra/config)
@@ -59,7 +62,7 @@ func mustWording(t *testing.T, name string) pick.Wording {
 // TestWordingNamesIsDeclaredOrderV1First asserts WordingNames' exact
 // order, declared, not sorted - v1 first, since it is DefaultWording.
 func TestWordingNamesIsDeclaredOrderV1First(t *testing.T) {
-	assert.Equal(t, []string{"v1", "v2-strict-capabilities"}, pick.WordingNames())
+	assert.Equal(t, []string{"v1", "v2-strict-capabilities", "v3-verb", "v4-specific"}, pick.WordingNames())
 }
 
 // TestWordingNamesAreUnique guards against a copy-pasted Name colliding
@@ -109,6 +112,53 @@ func TestV2StrictCapabilitiesDiffersOnlyInListCapabilities(t *testing.T) {
 		"v2-strict-capabilities must extend v1's ListCapabilities, not replace it")
 	assert.Equal(t, v1.ProposePanel, v2.ProposePanel, "v2-strict-capabilities must not touch ProposePanel")
 	assert.Equal(t, v1.None, v2.None, "v2-strict-capabilities must not touch None")
+	assert.Equal(t, v1.SystemPrompt, v2.SystemPrompt,
+		"v2-strict-capabilities must not touch SystemPrompt - it only changed a built-in line")
+}
+
+// TestVerbAndSpecificDifferFromV1OnlyInSystemPrompt asserts v3-verb's and
+// v4-specific's shared shape: each extends v1's SystemPrompt with exactly
+// one added sentence and touches nothing else - ListCapabilities,
+// ProposePanel and None stay v1's. One table-driven test, not two near
+// copies, so golangci's dupl linter (harness/quality/go/golangci.yml) sees
+// one body.
+func TestVerbAndSpecificDifferFromV1OnlyInSystemPrompt(t *testing.T) {
+	v1 := mustWording(t, "v1")
+
+	for _, name := range []string{"v3-verb", "v4-specific"} {
+		t.Run(name, func(t *testing.T) {
+			w := mustWording(t, name)
+
+			assert.NotEqual(t, v1.SystemPrompt, w.SystemPrompt, "%s must change SystemPrompt", name)
+			require.True(t, strings.HasPrefix(w.SystemPrompt, v1.SystemPrompt),
+				"%s must extend v1's SystemPrompt, not replace it", name)
+
+			addition := strings.TrimPrefix(w.SystemPrompt, v1.SystemPrompt)
+			assert.Equal(t, 1, strings.Count(addition, "。"), "%s's addition must be exactly one sentence", name)
+
+			assert.Equal(t, v1.ListCapabilities, w.ListCapabilities, "%s must not touch ListCapabilities", name)
+			assert.Equal(t, v1.ProposePanel, w.ProposePanel, "%s must not touch ProposePanel", name)
+			assert.Equal(t, v1.None, w.None, "%s must not touch None", name)
+		})
+	}
+}
+
+// TestV3VerbAndV4SpecificNameNoResourceOrExample guards the task's own
+// constraint: the added sentence states the rule only, never a resource,
+// service or example question.
+func TestV3VerbAndV4SpecificNameNoResourceOrExample(t *testing.T) {
+	v1 := mustWording(t, "v1")
+
+	for _, name := range []string{"v3-verb", "v4-specific"} {
+		w := mustWording(t, name)
+		addition := strings.TrimPrefix(w.SystemPrompt, v1.SystemPrompt)
+
+		assert.NotEmpty(t, strings.TrimSpace(addition), "%s: addition must not be empty", name)
+
+		for _, forbidden := range []string{"在庫", "勤怠", "listInventoryItems", "遅刻", "有給"} {
+			assert.NotContains(t, addition, forbidden, "%s: addition must name no resource or example", name)
+		}
+	}
 }
 
 // TestV2StrictCapabilitiesNamesAnExplicitActionExclusion asserts the

@@ -130,6 +130,12 @@ const (
 type Wording struct {
 	// Name selects this set via ORCHESTRA_PICK_WORDING.
 	Name string
+	// SystemPrompt is the pick's own system message under this set - v1's
+	// value is SystemPrompt (the package const) byte for byte; Pick sends
+	// this field, never the package const directly, so a named set can
+	// change it (v3-verb, v4-specific) without a second call site to keep
+	// in sync.
+	SystemPrompt string
 	// ListCapabilities is lineListCapabilities' phrase column under this
 	// set.
 	ListCapabilities string
@@ -151,6 +157,7 @@ const wordingV1Name = "v1"
 func v1Wording() Wording {
 	return Wording{
 		Name:             wordingV1Name,
+		SystemPrompt:     SystemPrompt,
 		ListCapabilities: PhraseListCapabilities,
 		ProposePanel:     PhraseProposePanel,
 		None:             PhraseNone,
@@ -183,7 +190,80 @@ const v2StrictCapabilitiesListCapabilities = PhraseListCapabilities +
 func v2StrictCapabilities() Wording {
 	return Wording{
 		Name:             wordingV2StrictCapabilitiesName,
+		SystemPrompt:     SystemPrompt,
 		ListCapabilities: v2StrictCapabilitiesListCapabilities,
+		ProposePanel:     PhraseProposePanel,
+		None:             PhraseNone,
+	}
+}
+
+// wordingV3VerbName is "v3-verb".
+const wordingV3VerbName = "v3-verb"
+
+// v3VerbSystemPromptAddition targets the same "wrong verb" shape
+// internal/adapter/planner/wording's v7-verb (v7_verb.go) was written
+// against, for the pick stage instead of the fill stage: a question that
+// asks for something to be recorded or requested for the first time was
+// answered with the operation that reads or edits an existing record of the
+// same resource, because that regression is decided here - which operation
+// gets chosen - not in the fill stage's own system prompt (DECISIONS.md,
+// v7-verb and v8-specific producing byte-identical fill-stage answers on
+// all 50 axis D/E questions because the pick stage's prompt was never
+// touched). The sentence names no resource, service or example question -
+// it states the general rule only, appended after SystemPrompt's own last
+// instruction.
+const v3VerbSystemPromptAddition = "\n\n操作を選ぶときは質問が求める動詞に合わせ、まだ存在しないものの記録や申請を求める質問には、" +
+	"それを参照・更新する操作ではなく、新しく作成する操作を選ぶこと。"
+
+// v3VerbSystemPrompt is SystemPrompt with v3VerbSystemPromptAddition
+// appended - v1's value plus exactly this one sentence, nothing else.
+const v3VerbSystemPrompt = SystemPrompt + v3VerbSystemPromptAddition
+
+// v3Verb targets the "wrong verb" shape in the pick's own choice: the right
+// resource, the wrong operation on it (a read or an update where the
+// question asked for a creation). It differs from v1 by exactly one
+// sentence appended to SystemPrompt - ListCapabilities, ProposePanel and
+// None are v1's, unchanged.
+func v3Verb() Wording {
+	return Wording{
+		Name:             wordingV3VerbName,
+		SystemPrompt:     v3VerbSystemPrompt,
+		ListCapabilities: PhraseListCapabilities,
+		ProposePanel:     PhraseProposePanel,
+		None:             PhraseNone,
+	}
+}
+
+// wordingV4SpecificName is "v4-specific".
+const wordingV4SpecificName = "v4-specific"
+
+// v4SpecificSystemPromptAddition targets the same "neighbouring or more
+// general resource" shape internal/adapter/planner/wording's v8-specific
+// (v8_specific.go) was written against, for the pick stage instead of the
+// fill stage (see v3VerbSystemPromptAddition's own doc comment for why the
+// pick stage is where this choice is actually made): the candidate list
+// holds both a general resource and a more specific one that would also
+// fit, and the general one gets picked instead of the one the question
+// actually names. The sentence names no resource, service or example
+// question - it states the general rule only, appended after SystemPrompt's
+// own last instruction.
+const v4SpecificSystemPromptAddition = "\n\n候補に対象を広く扱う操作とより具体的な対象を扱う操作の両方があり、" +
+	"どちらも条件に合いそうな場合は、それも該当するだけの広い操作ではなく、質問が名指ししている具体的な対象の操作を選ぶこと。"
+
+// v4SpecificSystemPrompt is SystemPrompt with v4SpecificSystemPromptAddition
+// appended - v1's value plus exactly this one sentence, nothing else.
+const v4SpecificSystemPrompt = SystemPrompt + v4SpecificSystemPromptAddition
+
+// v4Specific targets the "neighbouring or more general resource" shape in
+// the pick's own choice: the right family, the wrong member, because a more
+// general operation also technically fits. It differs from v1 by exactly
+// one sentence appended to SystemPrompt - ListCapabilities, ProposePanel
+// and None are v1's, unchanged.
+func v4Specific() Wording {
+	return Wording{
+		Name:             wordingV4SpecificName,
+		SystemPrompt:     v4SpecificSystemPrompt,
+		ListCapabilities: PhraseListCapabilities,
 		ProposePanel:     PhraseProposePanel,
 		None:             PhraseNone,
 	}
@@ -191,10 +271,10 @@ func v2StrictCapabilities() Wording {
 
 // allWordings lists every named Wording this package declares, in the
 // order WordingNames reports them - v1 first, since it is DefaultWording
-// and every candidate is written as a delta from it (v1Wording's and
-// v2StrictCapabilities' own doc comments).
+// and every candidate is written as a delta from it (v1Wording's,
+// v2StrictCapabilities', v3Verb's and v4Specific's own doc comments).
 func allWordings() []Wording {
-	return []Wording{v1Wording(), v2StrictCapabilities()}
+	return []Wording{v1Wording(), v2StrictCapabilities(), v3Verb(), v4Specific()}
 }
 
 // DefaultWording is v1: today's text, byte for byte, selected whenever
@@ -299,7 +379,7 @@ const builtinLineCount = 3
 // (Wording, ORCHESTRA_PICK_WORDING) - the ids themselves never change.
 func userMessage(
 	query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog, offerProposePanel bool,
-	w Wording,
+	w *Wording,
 ) string {
 	lines := make([]string, 0, len(shortlist.Endpoints)+builtinLineCount)
 

@@ -49,13 +49,16 @@ func WithMaxTokens(maxTokens int) Option {
 	}
 }
 
-// WithWording overrides the three built-in candidates' own phrasing (New's
-// default is DefaultWording(), v1 - today's behaviour), read from
-// ORCHESTRA_PICK_WORDING (internal/infra/config, pkg/app) - the pick's own
-// equivalent of toolcall.WithWording.
-func WithWording(w Wording) Option {
+// WithWording overrides the three built-in candidates' own phrasing and the
+// system prompt (New's default is DefaultWording(), v1 - today's
+// behaviour), read from ORCHESTRA_PICK_WORDING (internal/infra/config,
+// pkg/app) - the pick's own equivalent of toolcall.WithWording. w is a
+// pointer, not a value, the same way toolcall.WithWording takes
+// *wording.Wording - Wording grew to 80 bytes once SystemPrompt joined it,
+// gocritic's hugeParam threshold (harness/quality/go/golangci.yml).
+func WithWording(w *Wording) Option {
 	return func(p *Picker) {
-		p.wording = w
+		p.wording = *w
 	}
 }
 
@@ -83,13 +86,16 @@ func New(client chat.Completer, model string, opts ...Option) *Picker {
 // turns is rendered into the user message (turnLines) since 2026-09-17
 // (docs/measurements/jev-v5.md's isolation result: giving the pick stage
 // the turns recovered follow-up-other-service from 0/10 to 10/10 for the
-// Jev picker - the local pick had the same blindness). SystemPrompt still
-// stays byte-identical to e2e/narrowing/pick/client.ts's own
-// PICK_SYSTEM_PROMPT (S2's cross-language comparison, prompt_test.go): only
-// the user message changes, and only when turns is non-empty -
-// TestPickByteIdenticalWithNoTurns (picker_test.go) is the explicit
-// assertion that a request built with no turns is still byte-identical to
-// one built before turns existed.
+// Jev picker - the local pick had the same blindness). The system message
+// is p.wording.SystemPrompt, not the package SystemPrompt const directly -
+// DefaultWording()'s own SystemPrompt field is that const, byte for byte,
+// so with the default wording the outgoing system message still stays
+// byte-identical to e2e/narrowing/pick/client.ts's own PICK_SYSTEM_PROMPT
+// (S2's cross-language comparison, prompt_test.go asserts the const itself
+// against that file). Only the user message changes with turns, and only
+// when turns is non-empty - TestPickByteIdenticalWithNoTurns
+// (picker_test.go) is the explicit assertion that a request built with no
+// turns is still byte-identical to one built before turns existed.
 func (p *Picker) Pick(
 	ctx context.Context, query string, answers []usecase.Answer, turns []usecase.Turn, shortlist domain.Catalog,
 	planCtx usecase.PlanContext,
@@ -105,8 +111,8 @@ func (p *Picker) Pick(
 	resp, err := p.client.Complete(ctx, &chat.Request{
 		Model: p.model,
 		Messages: []chat.Message{
-			{Role: "system", Content: SystemPrompt},
-			{Role: "user", Content: userMessage(query, answers, turns, shortlist, offerProposePanel, p.wording)},
+			{Role: "system", Content: p.wording.SystemPrompt},
+			{Role: "user", Content: userMessage(query, answers, turns, shortlist, offerProposePanel, &p.wording)},
 		},
 		Temperature:        chat.Zero(),
 		MaxTokens:          &maxTokens,
